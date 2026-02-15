@@ -6,7 +6,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Activity, LogOut, ChevronDown, Bell, MessageSquare, Settings } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
-import LisaSwipeButton from "@/components/LisaSwipeButton";
+import SwipeButton from "@/components/SwipeButton";
 import { useTrialStatus } from "@/lib/useTrialStatus";
 import SessionVerification from "@/components/SessionVerification";
 import { NotificationProvider } from "@/components/notifications/NotificationProvider";
@@ -276,7 +276,7 @@ export default function DashboardLayout({
       <main className="flex-1 pt-[144px] sm:pt-[148px]">{children}</main>
 
       {/* Fixed Lisa Swipe Button */}
-      <LisaSwipeButton />
+      <SwipeButton variant="lisa" />
 
         {/* Notification Container */}
         <NotificationContainer />

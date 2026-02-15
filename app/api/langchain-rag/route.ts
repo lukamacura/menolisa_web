@@ -529,6 +529,21 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Extract follow_up_links from KB entries for non-verbatim responses too
+    const followUpLinks: Array<{ persona: string; topic: string; subtopic: string; label: string }> = [];
+    if (orchestrationResult.kbEntries && orchestrationResult.kbEntries.length > 0) {
+      for (const entry of orchestrationResult.kbEntries) {
+        const links = entry.metadata?.follow_up_links;
+        if (Array.isArray(links)) {
+          for (const link of links) {
+            if (link && link.label && link.subtopic && !followUpLinks.some(l => l.subtopic === link.subtopic)) {
+              followUpLinks.push(link);
+            }
+          }
+        }
+      }
+    }
+
     // For non-verbatim responses, continue with LLM (with tools) using orchestrator's system prompt
     // The orchestrator has already handled KB retrieval and persona classification
 
@@ -1018,6 +1033,13 @@ IMPORTANT: The user is engaging in casual conversation, not asking for informati
               await storeConversation(user_id, userMessage, fullResponse, sessionId);
             }
 
+            // Send follow_up_links after content is done
+            if (followUpLinks.length > 0) {
+              controller.enqueue(
+                new TextEncoder().encode(`data: ${JSON.stringify({ type: "follow_up_links", links: followUpLinks })}\n\n`)
+              );
+            }
+
             controller.enqueue(
               new TextEncoder().encode(`data: ${JSON.stringify({ type: "done" })}\n\n`)
             );
@@ -1106,6 +1128,7 @@ IMPORTANT: The user is engaging in casual conversation, not asking for informati
         persona: orchestrationResult.persona,
         source: orchestrationResult.source,
         toolCallsMade,
+        follow_up_links: followUpLinks.length > 0 ? followUpLinks : undefined,
       });
     }
   } catch (e: unknown) {

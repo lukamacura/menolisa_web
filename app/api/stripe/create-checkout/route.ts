@@ -101,11 +101,16 @@ export async function POST(req: NextRequest) {
       const supabaseAdmin = getSupabaseAdmin();
       const [refRes, trialRes] = await Promise.all([
         supabaseAdmin.from("referrals").select("id").eq("referrer_id", user.id).limit(1),
-        supabaseAdmin.from("user_trials").select("referral_discount_used_at").eq("user_id", user.id).maybeSingle(),
+        supabaseAdmin
+          .from("user_trials")
+          .select("referral_discount_used_at, account_status")
+          .eq("user_id", user.id)
+          .maybeSingle(),
       ]);
       const hasReferred = (refRes.data?.length ?? 0) > 0;
       const discountNotUsed = trialRes.data?.referral_discount_used_at == null;
-      if (hasReferred && discountNotUsed) {
+      const notPaid = trialRes.data?.account_status !== "paid";
+      if (hasReferred && discountNotUsed && notPaid) {
         referralCouponId = couponId;
       }
     }

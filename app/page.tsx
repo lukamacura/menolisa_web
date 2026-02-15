@@ -43,7 +43,7 @@ const LandingFinalCTA = dynamic(() => import("@/components/landing/LandingFinalC
 const LandingFooter = dynamic(() => import("@/components/landing/LandingFooter"), {
   loading: () => <SectionPlaceholder className="h-[180px]" />
 });
-const HomeSwipeButton = dynamic(() => import("@/components/HomeSwipeButton"));
+const SwipeButton = dynamic(() => import("@/components/SwipeButton"));
 
 const LANDING_GRADIENT = {
   backgroundImage: `linear-gradient(135deg, #FDF2F8 0%, #FCE7F3 25%, #F5D0FE 50%, #E9D5FF 75%, #FDF2F8 100%)`,
@@ -239,7 +239,7 @@ export default function Home() {
         <LandingFAQ />
         <LandingFinalCTA />
         <LandingFooter />
-        <HomeSwipeButton />
+        <SwipeButton variant="home" />
       </div>
     </main>
   );

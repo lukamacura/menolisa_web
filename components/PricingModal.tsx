@@ -495,7 +495,6 @@ export function PricingModal({
                         >
                           ${PRICE_ANNUAL_FULL}
                         </span>
-                        <span className="text-2xl sm:text-3xl font-bold" style={{ color: "var(--chart-1)" }}>→</span>
                         <span
                           className="text-3xl sm:text-4xl font-extrabold transition-all duration-300"
                           style={{ color: "var(--primary)" }}
@@ -512,7 +511,6 @@ export function PricingModal({
                         >
                           $144
                         </span>
-                        <span className="text-2xl sm:text-3xl font-bold" style={{ color: "var(--chart-1)" }}>→</span>
                         <span
                           className="text-3xl sm:text-4xl font-extrabold transition-all duration-300"
                           style={{ color: "var(--primary)" }}

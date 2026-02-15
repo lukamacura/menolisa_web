@@ -169,19 +169,19 @@ export function TrialCard({ trial, accountStatus, subscriptionCanceled = false, 
 
   const styles = getStateStyles();
 
-  // Get CTA button text based on state
+  // Get CTA button text based on state (plan-agnostic so users choose monthly/annual in the modal)
   const getCTAText = () => {
     switch (state) {
       case "subscriber":
         return isPortalLoading ? "Opening…" : "Manage subscription";
       case "calm":
-        return referralDiscountEligible ? "50% off — $3.29/mo" : "Upgrade for $6.58/mo";
+        return referralDiscountEligible ? "You have 50% off — Choose your plan" : "Choose your plan";
       case "warning":
-        return referralDiscountEligible ? "50% off — Upgrade now" : "Keep going - Upgrade now";
+        return referralDiscountEligible ? "50% off — Keep your progress" : "Keep your progress — Choose plan";
       case "urgent":
-        return referralDiscountEligible ? "50% off — Save your progress" : "Save your progress - Upgrade today";
+        return referralDiscountEligible ? "50% off — Save your progress" : "Save your progress";
       case "expired":
-        return referralDiscountEligible ? "50% off — Pick up where you left off" : "Pick up where you left off";
+        return referralDiscountEligible ? "50% off — Unlock your patterns" : "Unlock your patterns";
     }
   };
 

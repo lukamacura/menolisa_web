@@ -4,6 +4,7 @@
 import React, { useState, useCallback, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { supabase } from "@/lib/supabaseClient";
 import { detectBrowser, hasBrowserMismatchIssue } from "@/lib/browserUtils";
@@ -25,22 +26,18 @@ import {
   Goal,
   BarChart3,
   AlertTriangle,
-  Stethoscope,
-  UserCheck,
   HeartPulse,
-  UserX,
   UserCircle,
   Check,
-  Sparkles,
   Users,
 } from "lucide-react";
 import {
   SYMPTOM_LABELS,
 } from "@/lib/quiz-results-helpers";
 
-type Step = "q1_problems" | "q2_severity" | "q5_doctor" | "q6_goal" | "q7_name";
+type Step = "q1_problems" | "q2_severity" | "q6_goal" | "q7_name";
 
-const STEPS: Step[] = ["q1_problems", "q2_severity", "q5_doctor", "q6_goal", "q7_name"];
+const STEPS: Step[] = ["q1_problems", "q2_severity", "q6_goal", "q7_name"];
 
 // Question options with Lucide icons
 const PROBLEM_OPTIONS = [
@@ -58,13 +55,6 @@ const SEVERITY_OPTIONS = [
   { id: "mild", label: "Mild - Annoying but manageable", icon: Goal },
   { id: "moderate", label: "Moderate - Affecting my work/relationships", icon: BarChart3 },
   { id: "severe", label: "Severe - I'm struggling every day", icon: AlertTriangle },
-];
-
-const DOCTOR_OPTIONS = [
-  { id: "yes_actively", label: "Yes, actively", icon: Stethoscope },
-  { id: "yes_not_helpful", label: "Yes, but they're not helpful", icon: UserX },
-  { id: "no_planning", label: "No, planning to", icon: HeartPulse },
-  { id: "no_natural", label: "No, prefer natural approaches", icon: UserCheck },
 ];
 
 const GOAL_OPTIONS = [
@@ -208,7 +198,6 @@ function RegisterPageContent() {
   const [severity, setSeverity] = useState<string>("");
   const [timing] = useState<string>("");
   const [triedOptions] = useState<string[]>([]);
-  const [doctorStatus, setDoctorStatus] = useState<string>("");
   const [goal, setGoal] = useState<string[]>([]);
   const [firstName, setFirstName] = useState<string>("");
 
@@ -223,7 +212,6 @@ function RegisterPageContent() {
   // Results loading state
   const [isResultsLoading, setIsResultsLoading] = useState(true);
   const [messageIndex, setMessageIndex] = useState(0);
-  const [progress, setProgress] = useState(0);
   const [displayScore, setDisplayScore] = useState(0);
 
   // Loading messages for results screen
@@ -236,38 +224,36 @@ function RegisterPageContent() {
     "Launching your plan...",
   ];
 
-  // Handle results loading animation
+  // Distinct color per loading state (smooth, on-brand)
+  const loadingMessageColors = [
+    "#ff8da1", // primary
+    "#e67a8f", // primaryDark
+    "#65dbff", // blue
+    "#F97316", // warning
+    "#ffb8c9", // primaryLight
+    "#1D3557", // navy
+  ];
+
+  // Handle results loading animation (message rotation, no progress bar)
   useEffect(() => {
-    if (phase === "results") {
-      // Reset loading state when entering results phase
-      setIsResultsLoading(true);
-      setProgress(0);
-      setMessageIndex(0);
-      setDisplayScore(0);
+    if (phase !== "results") return;
+    setIsResultsLoading(true);
+    setMessageIndex(0);
+    setDisplayScore(0);
 
-      // Rotate messages every 600ms (faster rotation to show more messages)
-      const messageInterval = setInterval(() => {
-        setMessageIndex((prev) => (prev + 1) % loadingMessages.length);
-      }, 600);
+    const messageInterval = setInterval(() => {
+      setMessageIndex((prev) => (prev + 1) % loadingMessages.length);
+    }, 700);
 
-      // Progress bar animation
-      const progressInterval = setInterval(() => {
-        setProgress((prev) => Math.min(prev + 1.5, 100));
-      }, 60);
+    const loadingTimer = setTimeout(() => {
+      setIsResultsLoading(false);
+      clearInterval(messageInterval);
+    }, 5000);
 
-      // Hide loading after 5 seconds (longer duration to show more messages)
-      const loadingTimer = setTimeout(() => {
-        setIsResultsLoading(false);
-        clearInterval(messageInterval);
-        clearInterval(progressInterval);
-      }, 5000);
-
-      return () => {
-        clearInterval(messageInterval);
-        clearInterval(progressInterval);
-        clearTimeout(loadingTimer);
-      };
-    }
+    return () => {
+      clearInterval(messageInterval);
+      clearTimeout(loadingTimer);
+    };
   }, [phase, loadingMessages.length]);
 
   // Animate score counting up
@@ -311,8 +297,6 @@ function RegisterPageContent() {
         return topProblems.length > 0;
       case "q2_severity":
         return severity !== "";
-      case "q5_doctor":
-        return doctorStatus !== "";
       case "q6_goal":
         return goal.length > 0;
       case "q7_name":
@@ -320,7 +304,7 @@ function RegisterPageContent() {
       default:
         return false;
     }
-  }, [topProblems, severity, doctorStatus, goal, firstName]);
+  }, [topProblems, severity, goal, firstName]);
 
   // Save quiz answers to sessionStorage (cleared when tab closes)
   const saveQuizAnswers = useCallback(() => {
@@ -329,12 +313,11 @@ function RegisterPageContent() {
       severity: severity,
       timing: timing,
       tried_options: triedOptions,
-      doctor_status: doctorStatus,
       goal: goal,
       name: firstName.trim() || null,
     };
     sessionStorage.setItem("pending_quiz_answers", JSON.stringify(quizAnswers));
-  }, [topProblems, severity, timing, triedOptions, doctorStatus, goal, firstName]);
+  }, [topProblems, severity, timing, triedOptions, goal, firstName]);
 
   const goNext = useCallback(() => {
     if (!stepIsAnswered(currentStep)) return;
@@ -390,7 +373,6 @@ function RegisterPageContent() {
         severity: severity,
         timing: timing,
         tried_options: triedOptions,
-        doctor_status: doctorStatus,
         goal: goal,
         name: firstName.trim() || null,
       };
@@ -549,40 +531,56 @@ function RegisterPageContent() {
         <div className="h-screen flex flex-col overflow-hidden -mx-4 sm:-mx-6 px-4 sm:px-6">
           <AnimatePresence mode="wait">
             {isResultsLoading ? (
-              // Loading Screen
+              // Loading Screen – favicon, smooth spin/scale, colored messages, no progress bar
               <motion.div
                 key="loading"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
+                transition={{ duration: 0.4, ease: [0.42, 0, 0.58, 1] }}
                 className="flex-1 flex flex-col items-center justify-center px-4"
               >
-                {/* Animated icon - pulse + rotate */}
-                <div className="relative mb-8">
-                  <div className="w-20 h-20 rounded-full flex items-center justify-center animate-pulse" style={{ background: 'linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)' }}>
-                    <Sparkles className="w-10 h-10 text-white animate-spin-slow" />
+                {/* Favicon with smooth spin + scale */}
+                <motion.div
+                  className="relative mb-8"
+                  animate={{
+                    rotate: 360,
+                    scale: [0.7, 1, 0.7],
+                  }}
+                  transition={{
+                    rotate: { duration: 2.4, repeat: Infinity, ease: "linear" },
+                    scale: { duration: 2.4, repeat: Infinity, ease: [0.42, 0, 0.58, 1] },
+                  }}
+                >
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center overflow-hidden bg-white/80 shadow-sm">
+                    <Image
+                      src="/favicon.png"
+                      alt=""
+                      width={64}
+                      height={64}
+                      className="w-10 h-10 sm:w-12 sm:h-12 object-contain"
+                    />
                   </div>
-                  {/* Rotating ring around icon */}
-                  <div className="absolute inset-0 w-20 h-20 border-4 border-transparent rounded-full animate-spin" style={{ borderTopColor: 'rgba(255, 116, 177, 0.3)', borderRightColor: 'rgba(255, 235, 118, 0.3)', borderBottomColor: 'rgba(101, 219, 255, 0.3)', borderLeftColor: 'rgba(255, 180, 213, 0.3)' }} />
-                </div>
+                </motion.div>
 
-                {/* Main text */}
-                <h2 className="text-xl font-medium text-[#3D3D3D] mb-3">
-                Getting to know you better...
+                <h2 className="text-xl font-semibold text-[#3D3D3D] mb-3">
+                  Getting to know you better...
                 </h2>
 
-                {/* Rotating message with fade */}
-                <p className="text-[#5A5A5A] h-6 transition-opacity duration-300">
-                  {loadingMessages[messageIndex]}
-                </p>
-
-                {/* Progress bar */}
-                <div className="w-48 h-1.5 bg-[#E8DDD9] rounded-full mt-8 overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all duration-100 ease-out"
-                    style={{ width: `${progress}%`, background: 'linear-gradient(to right, #ff74b1, #ffeb76, #65dbff)' }}
-                  />
-                </div>
+                {/* Rotating message with crossfade and per-state color */}
+                <AnimatePresence mode="wait">
+                  <motion.p
+                    key={messageIndex}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.28, ease: [0.42, 0, 0.58, 1] }}
+                    className="h-6 font-medium min-w-48 text-center"
+                    style={{ color: loadingMessageColors[messageIndex] ?? "#6B7280" }}
+                  >
+                    {loadingMessages[messageIndex]}
+                  </motion.p>
+                </AnimatePresence>
               </motion.div>
             ) : (
               // Results Page - Scrollable content with Next button
@@ -999,47 +997,6 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => setSeverity(option.id)}
-                          className={`w-full py-2 px-2.5 sm:px-3 rounded-lg border-2 text-left transition-all duration-200 group ${
-                            isSelected
-                              ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
-                              : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <div className={`p-1 rounded-md transition-colors shrink-0 ${
-                              isSelected ? "bg-primary/20" : "bg-foreground/5 group-hover:bg-primary/10"
-                            }`}>
-                              <Icon className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
-                            </div>
-                            <span className="font-medium flex-1 text-xs sm:text-sm">{option.label}</span>
-                            {isSelected && (
-                              <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Q5: Doctor Status */}
-              {currentStep === "q5_doctor" && (
-                <div className="flex-1 flex flex-col min-h-0 space-y-1.5 sm:space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
-                  <div className="shrink-0">
-                    <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-0.5">
-                      Are you working with a doctor on this?
-                    </h2>
-                  </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto space-y-1">
-                    {DOCTOR_OPTIONS.map((option) => {
-                      const Icon = option.icon;
-                      const isSelected = doctorStatus === option.id;
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => setDoctorStatus(option.id)}
                           className={`w-full py-2 px-2.5 sm:px-3 rounded-lg border-2 text-left transition-all duration-200 group ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"

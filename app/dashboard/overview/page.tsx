@@ -117,17 +117,55 @@ function AnimatedCard({
 // Card Components
 // ---------------------------
 
+type InviteCopyState = "eligible" | "already_used" | "already_subscribed" | "no_referrals";
+
+const REFERRAL_CARD_COPY: Record<
+  InviteCopyState,
+  { title: string; subtitle: string; shareText: string }
+> = {
+  eligible: {
+    title: "Give 3 days free. Get 50% off.",
+    subtitle:
+      "Invite friends to try MenoLisa. They get 3 days free; you get 50% off your first subscription when you upgrade.",
+    shareText: "Give 3 days free. Get 50% off. Invite friends to try MenoLisa.",
+  },
+  already_used: {
+    title: "Invite friends — they get 3 days free.",
+    subtitle: "Your friends get 3 days free when they sign up with your link.",
+    shareText: "Invite friends to try MenoLisa. They get 3 days free.",
+  },
+  already_subscribed: {
+    title: "Invite friends — they get 3 days free.",
+    subtitle: "Your friends get 3 days free when they sign up with your link.",
+    shareText: "Invite friends to try MenoLisa. They get 3 days free.",
+  },
+  no_referrals: {
+    title: "Invite friends — they get 3 days free.",
+    subtitle: "Your friends get 3 days free when they sign up with your link.",
+    shareText: "Invite friends to try MenoLisa. They get 3 days free.",
+  },
+};
+
 function ReferralCard() {
   const [code, setCode] = useState<string | null>(null);
+  const [inviteCopyState, setInviteCopyState] = useState<InviteCopyState>("no_referrals");
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let mounted = true;
-    fetch("/api/referral/code", { credentials: "include" })
-      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("Unauthorized"))))
-      .then((data) => {
-        if (mounted && data?.code) setCode(data.code);
+    Promise.all([
+      fetch("/api/referral/code", { credentials: "include" }).then((res) =>
+        res.ok ? res.json() : Promise.reject(new Error("Unauthorized"))
+      ),
+      fetch("/api/referral/discount-eligible", { credentials: "include" }).then((res) =>
+        res.ok ? res.json() : Promise.resolve({ inviteCopyState: "no_referrals" as InviteCopyState })
+      ),
+    ])
+      .then(([codeData, eligibleData]) => {
+        if (mounted && codeData?.code) setCode(codeData.code);
+        else if (mounted) setCode(null);
+        if (mounted && eligibleData?.inviteCopyState) setInviteCopyState(eligibleData.inviteCopyState);
       })
       .catch(() => {
         if (mounted) setCode(null);
@@ -135,7 +173,9 @@ function ReferralCard() {
       .finally(() => {
         if (mounted) setLoading(false);
       });
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const link = typeof window !== "undefined" && code
@@ -152,16 +192,19 @@ function ReferralCard() {
 
   const share = useCallback(() => {
     if (!link) return;
+    const copy = REFERRAL_CARD_COPY[inviteCopyState];
     if (navigator.share) {
       navigator.share({
         title: "Try MenoLisa",
-        text: "Give 3 days free. Get 50% off. Invite friends to try MenoLisa.",
+        text: copy.shareText,
         url: link,
       }).catch(() => copyLink());
     } else {
       copyLink();
     }
-  }, [link, copyLink]);
+  }, [link, copyLink, inviteCopyState]);
+
+  const copy = REFERRAL_CARD_COPY[inviteCopyState];
 
   return (
     <AnimatedCard index={2} delay={180}>
@@ -172,10 +215,10 @@ function ReferralCard() {
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-lg font-bold text-foreground mb-1">
-              Give 3 days free. Get 50% off.
+              {copy.title}
             </h3>
             <p className="text-sm text-muted-foreground mb-4">
-              Invite friends to try MenoLisa. They get 3 days free; you get 50% off your first subscription when you upgrade.
+              {copy.subtitle}
             </p>
             {loading ? (
               <div className="h-9 w-24 rounded-lg bg-amber-200/50 dark:bg-amber-800/30 animate-pulse" />

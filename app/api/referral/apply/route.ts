@@ -61,6 +61,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const { data: referredTrial } = await supabaseAdmin
+      .from("user_trials")
+      .select("account_status")
+      .eq("user_id", referredUserId)
+      .maybeSingle();
+    if (referredTrial?.account_status === "paid") {
+      return NextResponse.json(
+        { error: "Referral cannot be applied for an already subscribed account" },
+        { status: 400 }
+      );
+    }
+
     const { data: existingReferral } = await supabaseAdmin
       .from("referrals")
       .select("id, reward_applied_at")
