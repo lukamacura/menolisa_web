@@ -44,12 +44,15 @@ async function handleCheckoutSessionCompleted(
 
   const supabaseAdmin = getSupabaseAdmin();
   const nowIso = new Date().toISOString();
+  // Only mark the discount as used when the referral coupon was actually applied at checkout.
+  // create-checkout sets metadata.referral_discount_applied when it adds the coupon.
+  const referralDiscountApplied = session.metadata?.referral_discount_applied === "true";
   const row: Record<string, unknown> = {
     user_id: userId,
     account_status: "paid",
     subscription_canceled,
     updated_at: nowIso,
-    referral_discount_used_at: nowIso,
+    ...(referralDiscountApplied && { referral_discount_used_at: nowIso }),
   };
   if (subscription_ends_at) row.subscription_ends_at = subscription_ends_at;
   if (stripe_customer_id) row.stripe_customer_id = stripe_customer_id;

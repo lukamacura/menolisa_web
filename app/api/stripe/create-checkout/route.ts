@@ -129,6 +129,9 @@ export async function POST(req: NextRequest) {
     };
     if (referralCouponId) {
       sessionParams.discounts = [{ coupon: referralCouponId }];
+      // Tag the session so the webhook knows the referral coupon was actually applied.
+      // Without this, the webhook would mark the discount as used for every subscriber.
+      sessionParams.metadata = { referral_discount_applied: "true" };
     }
     const session = await stripe.checkout.sessions.create(sessionParams);
 
