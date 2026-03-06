@@ -134,6 +134,7 @@ export async function POST(req: NextRequest) {
       "welcome",
       "success",
       "error",
+      "symptom_logged",
     ];
     if (!validTypes.includes(type)) {
       return NextResponse.json(

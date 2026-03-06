@@ -13,6 +13,7 @@ export const runtime = "nodejs";
 
 // Import lazy Supabase admin client
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { sendPushNotification } from "@/lib/sendPushNotification";
 
 // Import RAG orchestrator
 import { orchestrateRAG } from "@/lib/rag/orchestrator";
@@ -20,6 +21,39 @@ import { getPersonaSystemPrompt } from "@/lib/rag/persona-prompts";
 import { addMessage, getConversationHistory } from "@/lib/rag/conversation-memory";
 import type { RetrievalMode } from "@/lib/rag/types";
 
+/** Asset keys used by mobile app assets/symptoms/ (snake_case filenames without extension). */
+const SYMPTOM_ASSET_KEYS = [
+  "anxiety", "bloating", "brain_fog", "fatigue", "headaches", "hot_flashes",
+  "insomnia", "joint_pain", "low_libido", "mood_swings", "night_sweats", "period", "weight_gain",
+] as const;
+const NEUTRAL_ICON = "neutral";
+
+/** Map symptom name from chat to a mobile asset key or neutral. Kept in sync with mobile app assets/symptoms/. */
+function getSymptomIconKey(symptomName: string): string {
+  const slug = symptomName.trim().toLowerCase().replace(/\s+/g, "_");
+  if (SYMPTOM_ASSET_KEYS.includes(slug as any)) return slug;
+  const alias: Record<string, string> = {
+    headache: "headaches", hot_flash: "hot_flashes", night_sweat: "night_sweats",
+    mood_swing: "mood_swings", sleep_disturbance: "insomnia", sleep_issues: "insomnia",
+    sleep_problems: "insomnia", tired: "fatigue", tiredness: "fatigue", exhaustion: "fatigue",
+    brain_fog: "brain_fog", weight_gain: "weight_gain", low_libido: "low_libido",
+  };
+  if (alias[slug]) return alias[slug];
+  if (slug.includes("headache")) return "headaches";
+  if (slug.includes("hot_flash") || slug.includes("hotflash")) return "hot_flashes";
+  if (slug.includes("night_sweat")) return "night_sweats";
+  if (slug.includes("mood_swing") || slug.includes("moodswing")) return "mood_swings";
+  if (slug.includes("sleep") || slug.includes("insomnia")) return "insomnia";
+  if (slug.includes("fatigue") || slug.includes("tired") || slug.includes("energy")) return "fatigue";
+  if (slug.includes("brain") || slug.includes("fog") || slug.includes("cognitive")) return "brain_fog";
+  if (slug.includes("anxiety") || slug.includes("anxious")) return "anxiety";
+  if (slug.includes("joint") || slug.includes("pain") && slug.includes("joint")) return "joint_pain";
+  if (slug.includes("bloat")) return "bloating";
+  if (slug.includes("weight")) return "weight_gain";
+  if (slug.includes("libido")) return "low_libido";
+  if (slug.includes("period") || slug.includes("menstrual")) return "period";
+  return NEUTRAL_ICON;
+}
 
 // Initialize LLM with function calling support
 // Base LLM for normal conversation (with personalization)
@@ -782,13 +816,14 @@ IMPORTANT: The user is engaging in casual conversation, not asking for informati
               symptomDef = existingSymptom;
             } else {
               // Create symptom definition if it doesn't exist
+              const iconKey = getSymptomIconKey(name);
               const { data: newSymptom, error: createError } = await supabaseClient
                 .from("symptoms")
                 .insert([
                   {
                     user_id,
                     name: name.trim(),
-                    icon: "🔴",
+                    icon: iconKey,
                     is_default: false,
                   },
                 ])
@@ -824,12 +859,34 @@ IMPORTANT: The user is engaging in casual conversation, not asking for informati
             if (logError) {
               return `Error logging symptom: ${logError.message}`;
             }
-            
+
             const severityLabel = severity.charAt(0).toUpperCase() + severity.slice(1);
-            const triggersText = normalizedTriggers.length > 0 
-              ? ` | Triggers: ${normalizedTriggers.join(', ')}`
-              : '';
-            return `Successfully logged 📝 symptom: ${name} (${severityLabel})${triggersText}`;
+            const triggersText = normalizedTriggers.length > 0
+              ? ` | Triggers: ${normalizedTriggers.join(", ")}`
+              : "";
+            const summaryMessage = `${name} (${severityLabel})${triggersText}`;
+            const notificationTitle = "Symptom logged";
+
+            await supabaseClient.from("notifications").insert([
+              {
+                user_id,
+                type: "symptom_logged",
+                title: notificationTitle,
+                message: summaryMessage,
+                priority: "medium",
+                seen: false,
+                dismissed: false,
+              },
+            ]);
+
+            sendPushNotification({
+              userId: user_id,
+              title: notificationTitle,
+              body: summaryMessage,
+              data: { screen: "Notifications" },
+            }).catch(() => {});
+
+            return `Successfully logged 📝 symptom: ${summaryMessage}`;
           } catch (e: unknown) {
             const errorMessage = e instanceof Error ? e.message : String(e);
             return `Error logging symptom: ${errorMessage}`;

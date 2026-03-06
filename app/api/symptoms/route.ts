@@ -168,10 +168,17 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
-
+    let id = new URL(req.url).searchParams.get("id");
     if (!id) {
+      try {
+        const body = await req.json();
+        id = body?.id != null ? String(body.id) : null;
+      } catch {
+        // no body or invalid JSON
+      }
+    }
+
+    if (!id || id.trim() === "") {
       return NextResponse.json(
         { error: "Symptom ID is required" },
         { status: 400 }

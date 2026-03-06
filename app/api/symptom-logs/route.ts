@@ -213,7 +213,7 @@ export async function PUT(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { id, severity, triggers, notes } = body;
+    const { id, severity, triggers, notes, loggedAt } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -249,6 +249,22 @@ export async function PUT(req: NextRequest) {
     }
     if (notes !== undefined) {
       updateData.notes = notes?.trim() || null;
+    }
+    if (loggedAt !== undefined) {
+      if (typeof loggedAt !== "string" || !loggedAt.trim()) {
+        return NextResponse.json(
+          { error: "loggedAt must be a non-empty ISO date string" },
+          { status: 400 }
+        );
+      }
+      const parsed = new Date(loggedAt);
+      if (Number.isNaN(parsed.getTime())) {
+        return NextResponse.json(
+          { error: "Invalid loggedAt date" },
+          { status: 400 }
+        );
+      }
+      updateData.logged_at = parsed.toISOString();
     }
 
     // Update symptom log
@@ -289,7 +305,7 @@ export async function PUT(req: NextRequest) {
   }
 }
 
-// DELETE: Delete symptom log
+// DELETE: Delete one symptom log. Id must be in query: DELETE /api/symptom-logs?id=<uuid>
 export async function DELETE(req: NextRequest) {
   try {
     const user = await getAuthenticatedUser(req);
@@ -297,17 +313,14 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
-
+    const id = req.nextUrl.searchParams.get("id")?.trim() ?? "";
     if (!id) {
       return NextResponse.json(
-        { error: "Log ID is required" },
+        { error: "Log ID is required. Use ?id=<log-uuid>." },
         { status: 400 }
       );
     }
 
-    // Delete symptom log
     const supabaseAdmin = getSupabaseAdmin();
     const { error: deleteError } = await supabaseAdmin
       .from("symptom_logs")
