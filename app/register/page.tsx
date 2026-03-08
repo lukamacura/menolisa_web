@@ -25,12 +25,11 @@ import {
   EyeOff,
   Goal,
   AlertTriangle,
-  HeartPulse,
   UserCircle,
   Check,
   Users,
   Calendar,
-  Pulse,
+  Pause,
   Flower2,
   HelpCircle,
   Clock,
@@ -122,7 +121,7 @@ const AGE_OPTIONS = [
 ];
 
 const HERE_FOR_OPTIONS = [
-  { id: "perimenopause", label: "Perimenopause", icon: Pulse },
+  { id: "perimenopause", label: "Perimenopause", icon: Pause },
   { id: "menopause", label: "Menopause", icon: Flower2 },
   { id: "supporting", label: "Supporting someone", icon: Users },
   { id: "curious", label: "Just curious", icon: HelpCircle },
@@ -824,10 +823,10 @@ function RegisterPageContent() {
               <form onSubmit={handleGateSubmit} className="space-y-4 sm:space-y-6">
                 <div>
                   <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] text-center mb-2 sm:mb-3">
-                    Your results are ready
+                    Your personalized Menopause Score is ready.
                   </h2>
                   <p className="text-sm sm:text-base text-[#5A5A5A] text-center">
-                    We&apos;ve prepared your personalized score and plan based on what you shared. Enter your email and we&apos;ll show them to you, and save them so you can come back anytime.
+                    Enter your email to see your results.
                   </p>
                 </div>
                 {firstName.trim() && (
@@ -983,6 +982,16 @@ function RegisterPageContent() {
                       )}
                     </motion.p>
 
+                    {/* Primary messaging: companion, not clinical */}
+                    <motion.p
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.7 }}
+                      className="text-sm text-[#5A5A5A] text-center leading-relaxed mb-4 sm:mb-6 italic"
+                    >
+                      Lisa is the menopause companion who gets what you&apos;re going through-available 24/7, never dismisses you.
+                    </motion.p>
+
                 {/* Quality of Life Score */}
                 {!isResultsLoading && (() => {
                   const score = calculateQualityScore(
@@ -1092,6 +1101,9 @@ function RegisterPageContent() {
                   className="pt-3 pb-4 sm:pb-6 shrink-0"
                 >
                   <div className="max-w-md mx-auto px-4">
+                    <p className="text-xs sm:text-sm text-[#5A5A5A] text-center mb-2">
+                      Lisa will use your answers to personalize your experience and start spotting patterns.
+                    </p>
                     <button
                       type="button"
                       onClick={() => setPhase("email")}
@@ -1341,6 +1353,17 @@ function RegisterPageContent() {
       {/* Quiz Phase */}
       {phase === "quiz" && (
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          {/* Quiz entry headline (step 0 only) - strategy: curiosity-driven, 2-min assessment */}
+          {stepIndex === 0 && (
+            <div className="shrink-0 text-center mb-2 sm:mb-3 px-2">
+              <h1 className="text-lg sm:text-xl font-bold text-[#3D3D3D]">
+                What&apos;s Your Menopause Score?
+              </h1>
+              <p className="text-xs sm:text-sm text-[#5A5A5A] mt-0.5">
+                Take the free 2-minute quiz. No download required.
+              </p>
+            </div>
+          )}
           {/* Animated Step Indicators */}
           <div className="mb-2 sm:mb-3 shrink-0 pt-2 sm:pt-3">
             <div className="flex justify-center gap-2 sm:gap-3">
@@ -1585,7 +1608,7 @@ function RegisterPageContent() {
                     You&apos;re in good company
                   </h2>
                   <p className="text-sm sm:text-base text-muted-foreground text-center leading-relaxed">
-                    Thousands of women use MenoLisa to track symptoms and get support from Lisa. Take a breath, then we&apos;ll ask a couple more quick questions.
+                    You&apos;re not imagining this. Let&apos;s see what your experience tells us. Thousands of women use MenoLisa to track symptoms and get support from Lisa. Take a breath, then we&apos;ll ask a couple more quick questions.
                   </p>
                 </div>
               )}

@@ -29,6 +29,7 @@
     "react": "19.2.1",
     "react-dom": "19.2.1",
     "react-markdown": "^9.x",
+    "resend": "^4.0.0",
     "recharts": "^2.15.4",
     "rehype-raw": "^7.x",
     "rehype-sanitize": "^6.x",
