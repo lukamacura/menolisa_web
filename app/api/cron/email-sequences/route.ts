@@ -29,7 +29,8 @@ type RecipientRow = {
 
 /**
  * Cron: email sequences (Segment 2 trial/expired, Segment 3 paid).
- * Uses email_sequence_recipients and Resend. Run hourly (e.g. Vercel Cron).
+ * Uses email_sequence_recipients and Resend. Run once daily (vercel.json: 0 11 * * *).
+ * Due windows in Supabase get_email_sequence_due() are tuned for daily run (24h+ windows).
  */
 export async function GET(req: NextRequest) {
   try {
