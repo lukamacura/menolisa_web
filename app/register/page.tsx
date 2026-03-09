@@ -64,18 +64,6 @@ const QUIZ_ILLUSTRATION: Record<string, string> = {
   email: "illustration_email.png",
 };
 
-/** Quiz symptom option id -> illustration filename (from public/symptoms/, same as mobile app assets). */
-const SYMPTOM_IMAGE: Record<string, string> = {
-  hot_flashes: "hot_flashes.png",
-  sleep_issues: "insomnia.png",
-  brain_fog: "brain_fog.png",
-  mood_swings: "mood_swings.png",
-  weight_changes: "weight_gain.png",
-  low_energy: "fatigue.png",
-  anxiety: "anxiety.png",
-  joint_pain: "joint_pain.png",
-};
-
 /** Renders option icon or Check if icon is undefined (avoids "Element type is invalid" crash). */
 function OptionIcon({
   icon,
@@ -252,14 +240,18 @@ const getSeverityPainText = (
   name: string
 ): string => {
   const displayName = name || "you";
+  const symptomWord = symptomCount === 1 ? "symptom" : "symptoms";
+  const theseThis = symptomCount === 1 ? "this" : "these";
+  const themIt = symptomCount === 1 ? "it" : "them";
+  const theyIt = symptomCount === 1 ? "it" : "they";
   switch (severity) {
     case "severe":
-      return `${symptomCount} symptoms controlling your life. You've probably tried to explain it to people who don't get it. You've probably wondered if this is just your new normal. It's not. And ${displayName}, you don't have to keep living like this.`;
+      return `${symptomCount} ${symptomWord} controlling your life. You've probably tried to explain it to people who don't get it. You've probably wondered if this is just your new normal. It's not. And ${displayName}, you don't have to keep living like this.`;
     case "moderate":
-      return `${symptomCount} symptoms. Affecting your work. Your mood. Your relationships. ${displayName}, you're spending so much energy just trying to function normally - energy you shouldn't have to spend.`;
+      return `${symptomCount} ${symptomWord}. Affecting your work. Your mood. Your relationships. ${displayName}, you're spending so much energy just trying to function normally - energy you shouldn't have to spend.`;
     case "mild":
     default:
-      return `${displayName}, these ${symptomCount} symptoms might feel manageable now. But without understanding what's causing them, they often get worse. Let's figure this out before they do.`;
+      return `${displayName}, ${theseThis} ${symptomCount} ${symptomWord} might feel manageable now. But without understanding what's causing ${themIt}, ${theyIt} often get${symptomCount === 1 ? "s" : ""} worse. Let's figure this out before ${theyIt} ${symptomCount === 1 ? "does" : "do"}.`;
   }
 };
 
@@ -354,7 +346,7 @@ function RegisterPageContent() {
     "#1D3557", // navy
   ];
 
-  // Handle results loading animation (message rotation, no progress bar)
+  // Results loading: ~3s then show results
   useEffect(() => {
     if (phase !== "results") return;
     setIsResultsLoading(true);
@@ -363,12 +355,12 @@ function RegisterPageContent() {
 
     const messageInterval = setInterval(() => {
       setMessageIndex((prev) => (prev + 1) % loadingMessages.length);
-    }, 700);
+    }, 600);
 
     const loadingTimer = setTimeout(() => {
       setIsResultsLoading(false);
       clearInterval(messageInterval);
-    }, 5000);
+    }, 3000);
 
     return () => {
       clearInterval(messageInterval);
@@ -1083,7 +1075,7 @@ function RegisterPageContent() {
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 1.4 }}
-                      className="mb-0 text-center"
+                      className="mb-4 text-center"
                     >
                       <div className="flex items-center justify-center gap-2 text-xs sm:text-sm text-[#5A5A5A]">
                         <Users className="w-3 h-3 sm:w-4 sm:h-4 text-info" />
@@ -1093,28 +1085,32 @@ function RegisterPageContent() {
                   </div>
                 </div>
 
-                {/* Next Button - Fixed at bottom */}
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
+                {/* What happens next — fixed to bottom, always visible */}
+                <motion.section
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
                   transition={{ delay: 1.4 }}
-                  className="pt-3 pb-4 sm:pb-6 shrink-0"
+                  className="shrink-0 border-t-2 border-[#E8DDD9]/70 bg-background pt-4 pb-6 sm:pb-8 px-4"
+                  aria-labelledby="what-happens-next-heading"
                 >
-                  <div className="max-w-md mx-auto px-4">
-                    <p className="text-xs sm:text-sm text-[#5A5A5A] text-center mb-2">
-                      Lisa will use your answers to personalize your experience and start spotting patterns.
-                    </p>
+                  <h2 id="what-happens-next-heading" className="text-lg sm:text-xl font-bold text-[#3D3D3D] text-center mb-2">
+                    What happens next
+                  </h2>
+                  <p className="text-sm sm:text-base text-[#5A5A5A] text-center mb-4">
+                    Set a password to save your results and use the dashboard.
+                  </p>
+                  <div className="max-w-md mx-auto">
                     <button
                       type="button"
                       onClick={() => setPhase("email")}
-                      className="w-full py-3 sm:py-4 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
-                      style={{ background: 'linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)', boxShadow: '0 4px 15px rgba(255, 116, 177, 0.4)' }}
+                      className="w-full min-h-[48px] py-3 sm:py-4 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
+                      style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)", boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)" }}
                     >
                       Set my password & continue
                       <ArrowRight className="w-5 h-5" />
                     </button>
                   </div>
-                </motion.div>
+                </motion.section>
               </motion.div>
             )}
           </AnimatePresence>
@@ -1364,8 +1360,15 @@ function RegisterPageContent() {
               </p>
             </div>
           )}
-          {/* Animated Step Indicators */}
-          <div className="mb-2 sm:mb-3 shrink-0 pt-2 sm:pt-3">
+          {/* Progress: explicit "Question X of 9" above dots so users always see how much is left */}
+          <div className="mb-2 sm:mb-3 shrink-0 pt-2 sm:pt-3 px-2">
+            <p className="text-center text-base sm:text-lg font-semibold text-[#3D3D3D] mb-2 min-h-6" role="status" aria-live="polite">
+              {currentStep === "breather"
+                ? "Quick pause"
+                : stepIndex >= STEPS.length - 2
+                  ? "Almost there"
+                  : `Question ${stepIndex + 1} of ${STEPS.length}`}
+            </p>
             <div className="flex justify-center gap-2 sm:gap-3">
               {STEPS.map((_, index) => {
                 const stepNumber = index + 1;
@@ -1379,11 +1382,11 @@ function RegisterPageContent() {
                         : "bg-foreground/20"
                     }`}
                     animate={{ width: isActive ? 40 : 8 }}
-                    transition={{ 
+                    transition={{
                       type: "spring",
                       damping: 30,
                       stiffness: 200,
-                      duration: prefersReducedMotion ? 0 : 0.4 
+                      duration: prefersReducedMotion ? 0 : 0.4,
                     }}
                   />
                 );
@@ -1408,14 +1411,14 @@ function RegisterPageContent() {
               )}
               {/* Q1: Age */}
               {currentStep === "q1_age" && (
-                <div className="flex-1 flex flex-col min-h-0 space-y-1.5 sm:space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex-1 flex flex-col min-h-0 space-y-2 sm:space-y-3 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-0.5">
                       What&apos;s your age or life stage?
                     </h2>
-                    <p className="text-xs sm:text-sm text-muted-foreground">Choose one</p>
+                    <p className="text-sm sm:text-base text-muted-foreground">Choose one</p>
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 gap-1">
+                  <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 gap-3">
                     {AGE_OPTIONS.map((option) => {
                       const isSelected = ageBand === option.id;
                       return (
@@ -1423,7 +1426,7 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => setAgeBand(option.id)}
-                          className={`py-2 px-2.5 sm:px-3 rounded-lg border-2 transition-all duration-200 text-left group cursor-pointer ${
+                          className={`min-h-[48px] py-3 px-3 sm:px-4 rounded-lg border-2 transition-all duration-200 text-left group cursor-pointer ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
                               : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
@@ -1438,7 +1441,7 @@ function RegisterPageContent() {
                                 className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
                               />
                             </div>
-                            <span className="font-medium flex-1 text-xs sm:text-sm">{option.label}</span>
+                            <span className="font-medium flex-1 text-sm sm:text-base">{option.label}</span>
                             {isSelected && (
                               <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
                             )}
@@ -1452,14 +1455,14 @@ function RegisterPageContent() {
 
               {/* Q2: Here for */}
               {currentStep === "q2_here_for" && (
-                <div className="flex-1 flex flex-col min-h-0 space-y-1.5 sm:space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex-1 flex flex-col min-h-0 space-y-2 sm:space-y-3 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-0.5">
                       I&apos;m here for…
                     </h2>
-                    <p className="text-xs sm:text-sm text-muted-foreground">Choose one</p>
+                    <p className="text-sm sm:text-base text-muted-foreground">Choose one</p>
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 gap-1">
+                  <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 gap-3">
                     {HERE_FOR_OPTIONS.map((option) => {
                       const isSelected = hereFor === option.id;
                       return (
@@ -1467,7 +1470,7 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => setHereFor(option.id)}
-                          className={`py-2 px-2.5 sm:px-3 rounded-lg border-2 transition-all duration-200 text-left group cursor-pointer ${
+                          className={`min-h-[48px] py-3 px-3 sm:px-4 rounded-lg border-2 transition-all duration-200 text-left group cursor-pointer ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
                               : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
@@ -1482,7 +1485,7 @@ function RegisterPageContent() {
                                 className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
                               />
                             </div>
-                            <span className="font-medium flex-1 text-xs sm:text-sm">{option.label}</span>
+                            <span className="font-medium flex-1 text-sm sm:text-base">{option.label}</span>
                             {isSelected && (
                               <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
                             )}
@@ -1496,14 +1499,19 @@ function RegisterPageContent() {
 
               {/* Q3: Goals */}
               {currentStep === "q3_goals" && (
-                <div className="flex-1 flex flex-col min-h-0 space-y-1.5 sm:space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex-1 flex flex-col min-h-0 space-y-2 sm:space-y-3 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-0.5">
                       What would success look like for you?
                     </h2>
-                    <p className="text-xs sm:text-sm text-muted-foreground">Select all that apply</p>
+                    <p className="text-sm sm:text-base text-muted-foreground">Select all that apply</p>
+                    {goal.length > 0 && (
+                      <p className="text-sm text-primary font-medium mt-1">
+                        {goal.length} selected. You can choose more than one.
+                      </p>
+                    )}
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 gap-1">
+                  <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 gap-3">
                     {GOAL_OPTIONS.map((option) => {
                       const isSelected = goal.includes(option.id);
                       return (
@@ -1511,7 +1519,7 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => toggleGoal(option.id)}
-                          className={`py-2 px-2.5 sm:px-3 rounded-lg border-2 transition-all duration-200 text-left group cursor-pointer ${
+                          className={`min-h-[48px] py-3 px-3 sm:px-4 rounded-lg border-2 transition-all duration-200 text-left group cursor-pointer ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
                               : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
@@ -1526,7 +1534,7 @@ function RegisterPageContent() {
                                 className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
                               />
                             </div>
-                            <span className="font-medium flex-1 text-xs sm:text-sm">{option.label}</span>
+                            <span className="font-medium flex-1 text-sm sm:text-base">{option.label}</span>
                             {isSelected && (
                               <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
                             )}
@@ -1538,16 +1546,21 @@ function RegisterPageContent() {
                 </div>
               )}
 
-              {/* Q4: Symptoms */}
+              {/* Q4: Symptoms — Lucide icons only (same pattern as Q3/Q5) for consistent alignment */}
               {currentStep === "q4_symptoms" && (
-                <div className="flex-1 flex flex-col min-h-0 space-y-1.5 sm:space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex-1 flex flex-col min-h-0 space-y-2 sm:space-y-3 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-0.5">
                       What&apos;s making life hardest right now?
                     </h2>
-                    <p className="text-xs sm:text-sm text-muted-foreground">Select all that apply</p>
+                    <p className="text-sm sm:text-base text-muted-foreground">Select all that apply</p>
+                    {topProblems.length > 0 && (
+                      <p className="text-sm text-primary font-medium mt-1">
+                        {topProblems.length} selected. You can choose more than one.
+                      </p>
+                    )}
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 gap-1">
+                  <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 gap-3">
                     {PROBLEM_OPTIONS.map((option) => {
                       const isSelected = topProblems.includes(option.id);
                       return (
@@ -1555,34 +1568,22 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => toggleProblem(option.id)}
-                          className={`py-2 px-2.5 sm:px-3 rounded-lg border-2 transition-all duration-200 text-left group cursor-pointer ${
+                          className={`min-h-[48px] py-3 px-3 sm:px-4 rounded-lg border-2 transition-all duration-200 text-left group cursor-pointer ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
                               : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
                           }`}
                         >
                           <div className="flex items-center gap-2">
-                            {SYMPTOM_IMAGE[option.id] ? (
-                              <div className="relative w-10 h-10 sm:w-12 sm:h-12 rounded-lg overflow-hidden shrink-0 bg-muted/50">
-                                <Image
-                                  src={`/symptoms/${SYMPTOM_IMAGE[option.id]}`}
-                                  alt=""
-                                  width={48}
-                                  height={48}
-                                  className="w-full h-full object-contain"
-                                />
-                              </div>
-                            ) : (
-                              <div className={`p-1 rounded-md transition-colors shrink-0 ${
-                                isSelected ? "bg-primary/20" : "bg-foreground/5 group-hover:bg-primary/10"
-                              }`}>
-                                <OptionIcon
-                                  icon={option.icon}
-                                  className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
-                                />
-                              </div>
-                            )}
-                            <span className="font-medium flex-1 text-xs sm:text-sm">{option.label}</span>
+                            <div className={`p-1 rounded-md transition-colors shrink-0 ${
+                              isSelected ? "bg-primary/20" : "bg-foreground/5 group-hover:bg-primary/10"
+                            }`}>
+                              <OptionIcon
+                                icon={option.icon}
+                                className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
+                              />
+                            </div>
+                            <span className="font-medium flex-1 text-sm sm:text-base">{option.label}</span>
                             {isSelected && (
                               <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
                             )}
@@ -1592,7 +1593,7 @@ function RegisterPageContent() {
                     })}
                   </div>
                   {topProblems.length > 0 && (
-                    <div className="flex items-center justify-center gap-1 text-xs shrink-0 pt-0.5">
+                    <div className="flex items-center justify-center gap-1 text-sm shrink-0 pt-0.5">
                       <span className="text-muted-foreground font-medium">
                         {topProblems.length} {topProblems.length === 1 ? "symptom" : "symptoms"} selected
                       </span>
@@ -1615,14 +1616,19 @@ function RegisterPageContent() {
 
               {/* Q5: What tried */}
               {currentStep === "q5_what_tried" && (
-                <div className="flex-1 flex flex-col min-h-0 space-y-1.5 sm:space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex-1 flex flex-col min-h-0 space-y-2 sm:space-y-3 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-0.5">
                       What have you tried so far?
                     </h2>
-                    <p className="text-xs sm:text-sm text-muted-foreground">Select all that apply</p>
+                    <p className="text-sm sm:text-base text-muted-foreground">Select all that apply</p>
+                    {triedOptions.length > 0 && (
+                      <p className="text-sm text-primary font-medium mt-1">
+                        {triedOptions.length} selected. You can choose more than one.
+                      </p>
+                    )}
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 gap-1">
+                  <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 gap-3">
                     {TRIED_OPTIONS.map((option) => {
                       const isSelected = triedOptions.includes(option.id);
                       return (
@@ -1630,7 +1636,7 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => toggleTriedOption(option.id)}
-                          className={`py-2 px-2.5 sm:px-3 rounded-lg border-2 transition-all duration-200 text-left group cursor-pointer ${
+                          className={`min-h-[48px] py-3 px-3 sm:px-4 rounded-lg border-2 transition-all duration-200 text-left group cursor-pointer ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
                               : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
@@ -1645,7 +1651,7 @@ function RegisterPageContent() {
                                 className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
                               />
                             </div>
-                            <span className="font-medium flex-1 text-xs sm:text-sm">{option.label}</span>
+                            <span className="font-medium flex-1 text-sm sm:text-base">{option.label}</span>
                             {isSelected && (
                               <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
                             )}
@@ -1659,14 +1665,14 @@ function RegisterPageContent() {
 
               {/* Q6: How long */}
               {currentStep === "q6_how_long" && (
-                <div className="flex-1 flex flex-col min-h-0 space-y-1.5 sm:space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex-1 flex flex-col min-h-0 space-y-2 sm:space-y-3 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-0.5">
                       How long have symptoms been affecting you?
                     </h2>
-                    <p className="text-xs sm:text-sm text-muted-foreground">Choose one</p>
+                    <p className="text-sm sm:text-base text-muted-foreground">Choose one</p>
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto space-y-1">
+                  <div className="flex-1 min-h-0 overflow-y-auto space-y-3">
                     {TIMING_OPTIONS.map((option) => {
                       const isSelected = timing === option.id;
                       return (
@@ -1674,7 +1680,7 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => setTiming(option.id)}
-                          className={`w-full py-2 px-2.5 sm:px-3 rounded-lg border-2 text-left transition-all duration-200 group cursor-pointer ${
+                          className={`w-full min-h-[48px] py-3 px-3 sm:px-4 rounded-lg border-2 text-left transition-all duration-200 group cursor-pointer ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
                               : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
@@ -1689,7 +1695,7 @@ function RegisterPageContent() {
                                 className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
                               />
                             </div>
-                            <span className="font-medium flex-1 text-xs sm:text-sm">{option.label}</span>
+                            <span className="font-medium flex-1 text-sm sm:text-base">{option.label}</span>
                             {isSelected && (
                               <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
                             )}
@@ -1703,14 +1709,14 @@ function RegisterPageContent() {
 
               {/* Q7: Qualifier */}
               {currentStep === "q7_qualifier" && (
-                <div className="flex-1 flex flex-col min-h-0 space-y-1.5 sm:space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex-1 flex flex-col min-h-0 space-y-2 sm:space-y-3 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-0.5">
                       How ready are you to make a change?
                     </h2>
-                    <p className="text-xs sm:text-sm text-muted-foreground">Choose one</p>
+                    <p className="text-sm sm:text-base text-muted-foreground">Choose one</p>
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto space-y-1">
+                  <div className="flex-1 min-h-0 overflow-y-auto space-y-3">
                     {QUALIFIER_OPTIONS.map((option) => {
                       const isSelected = qualifier === option.id;
                       return (
@@ -1718,7 +1724,7 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => setQualifier(option.id)}
-                          className={`w-full py-2 px-2.5 sm:px-3 rounded-lg border-2 text-left transition-all duration-200 group cursor-pointer ${
+                          className={`w-full min-h-[48px] py-3 px-3 sm:px-4 rounded-lg border-2 text-left transition-all duration-200 group cursor-pointer ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
                               : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
@@ -1733,7 +1739,7 @@ function RegisterPageContent() {
                                 className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
                               />
                             </div>
-                            <span className="font-medium flex-1 text-xs sm:text-sm">{option.label}</span>
+                            <span className="font-medium flex-1 text-sm sm:text-base">{option.label}</span>
                             {isSelected && (
                               <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
                             )}
@@ -1752,7 +1758,7 @@ function RegisterPageContent() {
                     <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-1">
                       What should Lisa call you?
                     </h2>
-                    <p className="text-xs sm:text-sm text-muted-foreground">
+                    <p className="text-sm sm:text-base text-muted-foreground">
                       Lisa will use this to personalize your experience
                     </p>
                   </div>
@@ -1777,13 +1783,13 @@ function RegisterPageContent() {
             </div>
           </div>
 
-          {/* Navigation Buttons - Always visible at bottom */}
-          <div className="flex items-center justify-between gap-2 shrink-0 py-2 px-2 border-t border-foreground/10 bg-background">
+          {/* Navigation Buttons - min 48px height for easy tapping */}
+          <div className="flex items-center justify-between gap-2 shrink-0 py-3 px-2 border-t border-foreground/10 bg-background">
             <button
               type="button"
               onClick={goBack}
               disabled={stepIndex === 0}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border-2 border-foreground/15 hover:bg-foreground/5 hover:border-foreground/25 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent font-medium text-xs sm:text-sm"
+              className="min-h-[48px] flex items-center gap-1.5 px-4 py-3 rounded-lg border-2 border-foreground/15 hover:bg-foreground/5 hover:border-foreground/25 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent font-medium text-sm sm:text-base"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               Back
@@ -1792,7 +1798,7 @@ function RegisterPageContent() {
               type="button"
               onClick={goNext}
               disabled={!stepIsAnswered(currentStep)}
-              className="flex  items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:brightness-110 hover:shadow-lg hover:shadow-primary/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100 disabled:hover:shadow-none font-semibold text-xs sm:text-sm"
+              className="min-h-[48px] flex items-center gap-1.5 px-4 py-3 rounded-lg bg-primary text-primary-foreground hover:brightness-110 hover:shadow-lg hover:shadow-primary/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100 disabled:hover:shadow-none font-semibold text-sm sm:text-base"
             >
               {currentStep === "breather" || stepIndex === STEPS.length - 1 ? "Continue" : "Next"}
               <ArrowRight className="w-3.5 h-3.5" />
