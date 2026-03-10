@@ -145,7 +145,15 @@ export default function SettingsPage() {
               <div className="min-w-0 flex-1">
                 <h3 className="text-base sm:text-lg font-bold text-foreground mb-1">Delete account</h3>
                 <p className="text-xs sm:text-sm text-muted-foreground">
-                  Permanently delete your account and all associated data. This cannot be undone.
+                  Permanently delete your account and all associated data. This cannot be undone.{" "}
+                  <Link
+                    href="/delete-account"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    Learn more
+                  </Link>
                 </p>
               </div>
             </div>
