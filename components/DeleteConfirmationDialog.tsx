@@ -10,6 +10,9 @@ type DeleteConfirmationDialogProps = {
   message: string;
   itemName?: string;
   isLoading?: boolean;
+  confirmLabel?: string;
+  loadingLabel?: string;
+  error?: string | null;
 };
 
 export default function DeleteConfirmationDialog({
@@ -20,6 +23,9 @@ export default function DeleteConfirmationDialog({
   message,
   itemName,
   isLoading = false,
+  confirmLabel = "Delete",
+  loadingLabel = "Deleting...",
+  error,
 }: DeleteConfirmationDialogProps) {
   if (!isOpen) return null;
 
@@ -47,6 +53,9 @@ export default function DeleteConfirmationDialog({
               <p className="text-sm font-medium text-[#3D3D3D]">{itemName}</p>
             </div>
           )}
+          {error && (
+            <p className="mb-4 text-sm text-red-600 font-medium" role="alert">{error}</p>
+          )}
 
           {/* Actions */}
           <div className="flex items-center gap-3 mt-6">
@@ -65,12 +74,12 @@ export default function DeleteConfirmationDialog({
               {isLoading ? (
                 <>
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  Deleting...
+                  {loadingLabel}
                 </>
               ) : (
                 <>
                   <Trash2 className="h-4 w-4" />
-                  Delete
+                  {confirmLabel}
                 </>
               )}
             </button>

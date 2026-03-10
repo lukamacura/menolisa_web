@@ -27,17 +27,17 @@ const INVITE_COPY: Record<
     shareText: "Give 3 days free. Get 50% off. Invite friends to try MenoLisa.",
   },
   already_used: {
-    title: "Invite friends — they get 3 days free.",
+    title: "Invite friends - they get 3 days free.",
     subtitle: "Your friends get 3 days free when they sign up with your link.",
     shareText: "Invite friends to try MenoLisa. They get 3 days free.",
   },
   already_subscribed: {
-    title: "Invite friends — they get 3 days free.",
+    title: "Invite friends - they get 3 days free.",
     subtitle: "Your friends get 3 days free when they sign up with your link.",
     shareText: "Invite friends to try MenoLisa. They get 3 days free.",
   },
   no_referrals: {
-    title: "Invite friends — they get 3 days free.",
+    title: "Invite friends - they get 3 days free.",
     subtitle: "Your friends get 3 days free when they sign up with your link.",
     shareText: "Invite friends to try MenoLisa. They get 3 days free.",
   },
@@ -109,10 +109,10 @@ export function InviteReferralSection({ className = "" }: { className?: string }
 
   return (
     <div className={className}>
-      <div className="rounded-2xl border-2 border-amber-200/80 dark:border-amber-800/40 bg-transparent dark:from-amber-950/40 dark:to-orange-950/30 p-6 shadow-xl">
+      <div className="rounded-2xl  bg-orange-200 p-6 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-          <div className="p-3 rounded-xl shrink-0 bg-orange-200 w-14 h-14 flex items-center justify-center">
-            <Gift className="h-7 w-7 text-orange-600 " />
+          <div className="p-3 rounded-xl shrink-0 bg-orange-300 w-14 h-14 flex items-center justify-center">
+            <Gift className="h-7 w-7 text-orange-800 " />
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-lg font-bold text-foreground mb-1">
@@ -128,7 +128,7 @@ export function InviteReferralSection({ className = "" }: { className?: string }
                 <button
                   type="button"
                   onClick={copyLink}
-                  className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-orange-200 text-orange-600! px-3 py-2 text-sm font-medium  dark:text-amber-200 hover:bg-orange-400  transition-colors"
+                  className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-orange-300 text-orange-800! px-3 py-2 text-sm font-medium  dark:text-amber-200 hover:bg-orange-400  transition-colors"
                 >
                   <Copy className="h-4 w-4" />
                   {copied ? "Copied!" : "Copy link"}
@@ -136,7 +136,7 @@ export function InviteReferralSection({ className = "" }: { className?: string }
                 <button
                   type="button"
                   onClick={share}
-                  className="inline-flex items-center gap-2 rounded-lg border  bg-amber-600 text-white px-3 py-2 text-sm font-medium hover:bg-amber-600 dark:hover:bg-amber-500 transition-colors"
+                  className="inline-flex items-center gap-2 rounded-lg border  bg-amber-800 text-orange-200 px-3 py-2 text-sm font-medium hover:bg-amber-600 dark:hover:bg-amber-500 transition-colors"
                 >
                   <Share2 className="h-4 w-4" />
                   Share
