@@ -97,9 +97,8 @@ export default function DeleteAccountPage() {
           </p>
         </section>
 
-        <section className="mb-8 rounded-xl border border-border/50 bg-card/50 p-6">
+        <section className="mb-8 rounded-xl border border-border/50 bg-card p-6">
           <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
-            <LogIn className="h-5 w-5 text-primary" aria-hidden />
             Ready to delete your account?
           </h2>
           <p className="text-muted-foreground mb-4">
@@ -108,7 +107,7 @@ export default function DeleteAccountPage() {
           </p>
           <Link
             href="/login?redirectedFrom=/dashboard/settings"
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity"
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-card! hover:opacity-90 transition-opacity"
           >
             <LogIn className="h-4 w-4" aria-hidden />
             Log in and go to Settings
