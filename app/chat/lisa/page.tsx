@@ -1865,12 +1865,6 @@ function ChatPageInner() {
                         }
                         
                         message = messageParts.join(' | ');
-                      } else if (toolName === "log_nutrition") {
-                        title = "Meal Logged";
-                        message = `${toolArgs.food_item} (${toolArgs.meal_type})`;
-                      } else if (toolName === "log_fitness") {
-                        title = "Workout Logged";
-                        message = `${toolArgs.exercise_name} (${toolArgs.exercise_type})`;
                       }
                       
                       if (title && message) {
