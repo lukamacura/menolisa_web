@@ -4,12 +4,14 @@ import { useMemo, useEffect } from "react";
 import { useSymptomLogs } from "@/hooks/useSymptomLogs";
 import { useSymptoms } from "@/hooks/useSymptoms";
 import { useNotification } from "@/hooks/useNotification";
+import { useUserProfile } from "@/hooks/useUserProfile";
 import { useRouter } from "next/navigation";
 
 export default function EmptyState() {
   const { logs, loading } = useSymptomLogs(30); // Last 30 days for new user check
   const { loading: symptomsLoading } = useSymptoms();
   const { show } = useNotification();
+  const { profile } = useUserProfile();
   const router = useRouter();
 
   const hasLogsToday = useMemo(() => {
@@ -34,11 +36,13 @@ export default function EmptyState() {
     if (isNewUser) {
       // Delay notification slightly to let page settle
       const timer = setTimeout(() => {
-        show("welcome", "Welcome to Daily Check-in!", {
-          message: "Tap any symptom to log it. The more you log, the more patterns Lisa can find.",
+        const firstName = profile?.name?.split(" ")[0] ?? null;
+        const welcomeTitle = firstName ? `Hi, ${firstName}! I'm Lisa` : "Hi! I'm Lisa";
+        show("welcome", welcomeTitle, {
+          message: "Tap any symptom card to log how you're feeling — I'll start spotting your patterns right away.",
           showOnce: true,
           primaryAction: {
-            label: "Got it, let's start",
+            label: "Let's start",
             action: () => {},
           },
         });
@@ -46,7 +50,7 @@ export default function EmptyState() {
       
       return () => clearTimeout(timer);
     }
-  }, [loading, symptomsLoading, hasLogsToday, isNewUser, show]);
+  }, [loading, symptomsLoading, hasLogsToday, isNewUser, show, profile]);
 
   // Component doesn't render anything - notifications handle the messaging
   return null;

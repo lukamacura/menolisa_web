@@ -40,11 +40,13 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
   });
   const [now, setNow] = useState<Date>(new Date());
 
-  // Ticker for live countdown
+  // Ticker for live countdown — 1s precision only when < 1 day remaining, else 1 min
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), MS.SECOND);
+    const interval =
+      trialStatus.remaining.d === 0 ? MS.SECOND : MS.MINUTE;
+    const id = setInterval(() => setNow(new Date()), interval);
     return () => clearInterval(id);
-  }, []);
+  }, [trialStatus.remaining.d]);
 
   const fetchUserTrial = useCallback(async (userId: string) => {
     try {

@@ -63,7 +63,7 @@ function AuthErrorHandler() {
     if (error || errorCode) {
       let errorMessage = "Authentication failed. Please try again.";
       if (errorCode === "otp_expired") {
-        errorMessage = "The email link has expired. Please request a new magic link.";
+        errorMessage = "The password reset link has expired. Please request a new one.";
       } else if (errorCode === "access_denied") {
         errorMessage = errorDescription
           ? decodeURIComponent(errorDescription)

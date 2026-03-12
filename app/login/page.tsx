@@ -1,30 +1,24 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { useEffect, useMemo, useState, Suspense } from "react";
 import Link from "next/link";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import { Eye, EyeOff, AlertCircle, Loader2, CheckCircle } from "lucide-react";
+import { AlertCircle, Loader2, Eye, EyeOff, CheckCircle } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 function LoginForm() {
-  const searchParams = useSearchParams();
   const router = useRouter();
-  
+  const searchParams = useSearchParams();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [errorType, setErrorType] = useState<'user_not_found' | 'invalid_credentials' | 'invalid_email' | 'rate_limit' | 'network' | 'unknown' | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Get redirect target from URL params
-  const redirectTarget = searchParams.get("redirectedFrom") || "/dashboard";
-
-  // Handle error or success query parameters from previous navigation
   useEffect(() => {
     const errorParam = searchParams.get("error");
     const message = searchParams.get("message");
@@ -32,89 +26,57 @@ function LoginForm() {
     const decoded = decodeURIComponent(message);
     if (errorParam) {
       setErr(decoded);
-      setErrorType("unknown");
     } else {
-      setSuccessMessage(decoded);
+      setSuccessMsg(decoded);
     }
   }, [searchParams]);
 
-  // Login flow must not touch quiz data: clear any stale pending quiz so dashboard won't save it after redirect
+  // Clear any stale quiz data from a previous registration attempt
   useEffect(() => {
     sessionStorage.removeItem("pending_quiz_answers");
   }, []);
 
   const emailValid = useMemo(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email), [email]);
-  const passwordValid = useMemo(() => password.length >= 8, [password]);
-  const canSubmit = emailValid && passwordValid && !loading;
+  const canSubmit = emailValid && password.length >= 1 && !loading;
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!canSubmit) return;
 
     setErr(null);
-    setErrorType(null);
+    setSuccessMsg(null);
     setLoading(true);
 
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
+      const { error } = await supabase.auth.signInWithPassword({
         email: email.toLowerCase().trim(),
         password,
       });
 
-      if (authError) {
-        console.error("Login error:", authError);
-        
-        let friendly = "An error occurred. Please try again.";
-        let errorCategory: typeof errorType = 'unknown';
-
-        // Handle specific Supabase error messages
-        if (authError.message.includes("Invalid login credentials")) {
-          friendly = "Invalid email or password. Please check your credentials and try again.";
-          errorCategory = 'invalid_credentials';
-        } else if (authError.message.includes("Email not confirmed")) {
-          friendly = "Please verify your email address before logging in.";
-          errorCategory = 'invalid_email';
-        } else if (authError.message.includes("Too many requests")) {
-          friendly = "Too many login attempts. Please wait a moment and try again.";
-          errorCategory = 'rate_limit';
-        } else if (authError.message.includes("User not found")) {
-          friendly = "No account found with this email. Please register to create an account.";
-          errorCategory = 'user_not_found';
+      if (error) {
+        if (
+          error.message.includes("Invalid login credentials") ||
+          error.message.includes("invalid_credentials") ||
+          error.message.includes("Email not confirmed")
+        ) {
+          setErr("Incorrect email or password. Please try again.");
         } else {
-          friendly = authError.message;
+          setErr(error.message || "Sign in failed. Please try again.");
         }
-
-        setErr(friendly);
-        setErrorType(errorCategory);
         setLoading(false);
         return;
       }
 
-      if (data.session) {
-        // Login successful! Redirect to dashboard
-        console.log("Login successful");
-        router.push(redirectTarget);
-      }
-      
-      setLoading(false);
-    } catch (e) {
-      console.error("Unexpected error during login:", e);
-      
-      if (e instanceof TypeError && e.message.includes("fetch")) {
-        setErr("Network error. Please check your connection and try again.");
-        setErrorType('network');
-      } else {
-        const errorMessage = e instanceof Error ? e.message : "An unexpected error occurred. Please try again.";
-        setErr(errorMessage);
-        setErrorType('unknown');
-      }
+      router.push("/dashboard/symptoms");
+      router.refresh();
+    } catch {
+      setErr("Network error. Please check your connection and try again.");
       setLoading(false);
     }
   }
 
   return (
     <main className="relative overflow-hidden mx-auto max-w-md p-6 sm:p-8 min-h-screen flex flex-col justify-center">
-      {/* Subtle background accents */}
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 opacity-40">
         <div className="absolute -top-24 -left-24 h-56 w-56 rounded-full bg-primary/20 blur-3xl" />
         <div className="absolute -bottom-24 -right-24 h-56 w-56 rounded-full bg-primary/10 blur-3xl" />
@@ -130,8 +92,17 @@ function LoginForm() {
           </p>
         </div>
 
+        {successMsg && (
+          <div
+            role="status"
+            className="mb-4 rounded-xl border border-green-400/30 bg-green-50/80 dark:bg-green-900/20 p-4 text-sm text-green-700 dark:text-green-400 flex items-start gap-3"
+          >
+            <CheckCircle className="w-5 h-5 shrink-0 mt-0.5" />
+            <p>{successMsg}</p>
+          </div>
+        )}
+
         <form onSubmit={onSubmit} className="space-y-4" noValidate>
-          {/* Email */}
           <div>
             <label htmlFor="email" className="mb-2 block text-sm font-medium text-foreground">
               Email
@@ -141,23 +112,25 @@ function LoginForm() {
               name="email"
               inputMode="email"
               autoComplete="email"
+              autoFocus
               className="w-full rounded-xl border border-foreground/15 bg-background px-4 py-3 ring-offset-background placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
               type="email"
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              aria-invalid={email.length > 0 && !emailValid}
               required
             />
           </div>
 
-          {/* Password + Forgot link */}
           <div>
-            <div className="mb-2 flex items-center justify-between">
+            <div className="flex items-center justify-between mb-2">
               <label htmlFor="password" className="block text-sm font-medium text-foreground">
                 Password
               </label>
-              <Link href="/forgot-password" className="text-sm text-primary font-medium hover:underline">
+              <Link
+                href="/forgot-password"
+                className="text-xs text-primary font-medium hover:underline underline-offset-4"
+              >
                 Forgot password?
               </Link>
             </div>
@@ -168,10 +141,9 @@ function LoginForm() {
                 autoComplete="current-password"
                 className="w-full rounded-xl border border-foreground/15 bg-background px-4 py-3 pr-12 ring-offset-background placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
                 type={showPassword ? "text" : "password"}
-                placeholder="Enter your password"
+                placeholder="Your password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                aria-invalid={password.length > 0 && !passwordValid}
                 required
               />
               <button
@@ -183,12 +155,8 @@ function LoginForm() {
                 {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
             </div>
-            {password.length > 0 && password.length < 8 && (
-              <p className="text-xs text-muted-foreground mt-1">Password must be at least 8 characters</p>
-            )}
           </div>
 
-          {/* Submit */}
           <button
             className="group w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 font-semibold text-primary-foreground shadow-sm ring-1 ring-inset ring-primary/20 transition hover:brightness-95 hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
             type="submit"
@@ -200,86 +168,23 @@ function LoginForm() {
                 Signing in…
               </>
             ) : (
-              <>Sign in</>
+              "Sign in"
             )}
           </button>
         </form>
 
-        {successMessage && (
-          <div
-            role="status"
-            className="mt-4 rounded-xl border border-green-400/30 bg-green-50/80 dark:bg-green-900/20 p-4 text-sm text-green-800 dark:text-green-300 flex items-start gap-3"
-          >
-            <CheckCircle className="w-5 h-5 shrink-0 mt-0.5" />
-            <p>{successMessage}</p>
-          </div>
-        )}
-
         {err && (
-          <div 
-            role="alert" 
-            className={`mt-4 rounded-xl border p-4 text-sm ${
-              errorType === 'user_not_found' 
-                ? "border-blue-400/30 bg-blue-50/80 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400"
-                : errorType === 'rate_limit'
-                ? "border-orange-400/30 bg-orange-50/80 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400"
-                : errorType === 'invalid_email'
-                ? "border-yellow-400/30 bg-yellow-50/80 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400"
-                : "border-error/30 bg-error/10 text-error"
-            }`}
+          <div
+            role="alert"
+            className="mt-4 rounded-xl border border-error/30 bg-error/10 p-4 text-sm text-error flex items-start gap-3"
           >
-            <div className="flex items-start gap-3">
-              <AlertCircle className={`w-5 h-5 shrink-0 mt-0.5 ${
-                errorType === 'user_not_found' ? 'text-blue-600 dark:text-blue-400' : ''
-              }`} />
-              <div className="flex-1">
-                <p className="font-semibold mb-1">
-                  {errorType === 'user_not_found' 
-                    ? 'Account Not Found'
-                    : errorType === 'rate_limit'
-                    ? 'Too Many Requests'
-                    : errorType === 'invalid_email'
-                    ? 'Email Not Verified'
-                    : errorType === 'invalid_credentials'
-                    ? 'Invalid Credentials'
-                    : errorType === 'network'
-                    ? 'Network Error'
-                    : 'Error'
-                  }
-                </p>
-                <p className="mb-2">{err}</p>
-                {errorType === 'user_not_found' && (
-                  <div className="mt-3 pt-3 border-t border-blue-200/50 dark:border-blue-700/50">
-                    <p className="text-xs mb-2">Don&apos;t have an account yet?</p>
-                    <Link 
-                      href="/register" 
-                      className="inline-flex items-center gap-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
-                    >
-                      Register here →
-                    </Link>
-                  </div>
-                )}
-                {errorType === 'rate_limit' && (
-                  <div className="mt-3 pt-3 border-t border-orange-200/50 dark:border-orange-700/50">
-                    <p className="text-xs">
-                      Please wait a minute before trying again. This helps us protect your account.
-                    </p>
-                  </div>
-                )}
-                {errorType === 'network' && (
-                  <div className="mt-3 pt-3 border-t border-error/20">
-                    <p className="text-xs">
-                      Check your internet connection and try again. If the problem persists, please contact support.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
+            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+            <p>{err}</p>
           </div>
         )}
 
         <p className="mt-6 text-md text-muted-foreground text-center">
-          Don&apos;t have an account? {" "}
+          Don&apos;t have an account?{" "}
           <Link href="/register" className="text-primary font-semibold underline-offset-4 hover:opacity-80">
             Sign up
           </Link>

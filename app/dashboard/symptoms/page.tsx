@@ -112,7 +112,7 @@ export default function SymptomsPage() {
     useSymptoms();
   const { logs, loading: logsLoading, refetch: refetchLogs } =
     useSymptomLogs(30);
-  useUserProfile();
+  const { profile } = useUserProfile();
   const { mood: dailyMood } = useDailyMood();
 
   // Refetch data when component mounts or auth state changes
@@ -212,12 +212,6 @@ export default function SymptomsPage() {
   useEffect(() => {
     setPageLoaded(true);
   }, []);
-
-  // Redirect to dashboard if trial is expired
-  if (!trialStatus.loading && trialStatus.expired) {
-    router.replace("/dashboard");
-    return null;
-  }
 
   // Get smart-ordered symptoms (exclude Good Day)
   const topSymptoms = useMemo(() => {
@@ -500,9 +494,9 @@ export default function SymptomsPage() {
             
             show(
               "reminder",
-              "Tip",
+              "Logging tip from Lisa",
               {
-                message: `You've logged ${symptom.name} ${todayLogs.length} times today. For patterns, logging once with your worst severity is usually enough.`,
+                message: `You've logged ${symptom.name} ${todayLogs.length} times today. One entry with your worst severity is usually enough — or update the earlier one.`,
                 priority: "low",
                 autoDismiss: false,
                 primaryAction: {
@@ -567,11 +561,17 @@ export default function SymptomsPage() {
       // Only show EOD reminder when user has logged today (prompt to set mood).
       // When they haven't logged, we do not show a second nudge — the daily "Time to check in" reminder is enough.
       if (todayLogs.length > 0) {
+        const firstName = profile?.name?.split(" ")[0] ?? null;
+        const eodTitle = firstName ? `${firstName}, how did today feel?` : "How did today feel?";
+        const eodMessage = todayLogs.length === 1
+          ? "You logged 1 symptom today. A quick mood rating gives Lisa the full picture."
+          : `You logged ${todayLogs.length} symptoms today. Before you go, rate your day — it helps Lisa connect the dots.`;
+
         show(
           "reminder",
-          "🌙 End of Day",
+          eodTitle,
           {
-            message: `You logged ${todayLogs.length} symptom(s) today. Overall, how was your day?`,
+            message: eodMessage,
             priority: "low",
             autoDismiss: false,
             primaryAction: {
@@ -584,7 +584,7 @@ export default function SymptomsPage() {
               },
             },
             secondaryAction: {
-              label: "Skip for today",
+              label: "Maybe tomorrow",
               action: () => {},
             },
             showOnce: true,
@@ -598,7 +598,7 @@ export default function SymptomsPage() {
     if (!trialStatus.loading && !trialStatus.expired) {
       checkEndOfDay();
     }
-  }, [logs, dailyMood, trialStatus, show]);
+  }, [logs, dailyMood, trialStatus, show, profile]);
 
   // Handle save symptom log (create or update)
   const handleSaveLog = useCallback(
@@ -721,11 +721,6 @@ export default function SymptomsPage() {
         </div>
       </div>
     );
-  }
-
-  // Don't render if trial is expired (will redirect)
-  if (trialStatus.expired) {
-    return null;
   }
 
   return (

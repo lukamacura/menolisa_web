@@ -75,14 +75,23 @@ export async function GET(req: NextRequest) {
     }
 
     const users = (rows ?? []) as TrialRow[];
+
+    // Pre-fetch names for all users in one query
+    const userIds = users.map(u => u.user_id);
+    const { data: profileRows } = await supabase
+      .from("user_profiles")
+      .select("user_id, name")
+      .in("user_id", userIds);
+    const nameMap = new Map((profileRows || []).map(p => [p.user_id, p.name as string | null]));
+
     let sent = 0;
 
     for (const row of users) {
       const result = getTrialState(row);
       if (!result) continue;
 
-      // Dedupe: at most one trial notification per user per day
-      const { data: existing } = await supabase
+      // Phase 1: skip if same state already sent today
+      const { data: sentToday } = await supabase
         .from("notifications")
         .select("id")
         .eq("user_id", row.user_id)
@@ -91,24 +100,61 @@ export async function GET(req: NextRequest) {
         .limit(1)
         .maybeSingle();
 
-      if (existing) continue;
+      if (sentToday) continue;
+
+      // Phase 2: delete all prior undismissed trial notifications (supersede old state)
+      await supabase
+        .from("notifications")
+        .delete()
+        .eq("user_id", row.user_id)
+        .eq("type", "trial")
+        .eq("dismissed", false)
+        .lt("created_at", todayStartStr);
+
+      // Fetch total log count for this user
+      const { count: totalLogs } = await supabase
+        .from("symptom_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", row.user_id);
+      const logCount = totalLogs ?? 0;
+
+      const firstName = nameMap.get(row.user_id)?.split(" ")[0] ?? null;
+      const namePrefix = firstName ? `${firstName}, ` : "";
 
       let title: string;
       let message: string;
       let priority: "high" | "medium" = "medium";
+      let ctaLabel: string;
 
       if (result.state === "expired") {
-        title = "Trial ended";
-        message = "Your trial has ended. Manage your subscription at menolisa.com to continue.";
+        title = "Your access has paused";
+        message = logCount > 0
+          ? `${namePrefix}your ${logCount} symptom log${logCount === 1 ? "" : "s"} are safe. Reactivate anytime to pick up where you left off.`
+          : `${namePrefix}your logs are safe. Reactivate anytime to pick up where you left off.`;
         priority = "high";
+        ctaLabel = "Reactivate";
       } else if (result.state === "urgent") {
-        title = "Trial Ending Today";
-        message = "Your trial ends today. Manage your subscription at menolisa.com.";
+        title = "Today is your last day";
+        message = logCount > 0
+          ? `${namePrefix}your trial ends today. You've logged ${logCount} symptom${logCount === 1 ? "" : "s"} — don't lose this data or the patterns Lisa is building.`
+          : `${namePrefix}your trial ends today. There's still time to log and let Lisa find your patterns.`;
         priority = "high";
+        ctaLabel = "Don't lose my data";
       } else {
-        title = "Trial Ending Soon";
-        message = `Your trial ends in ${result.daysLeft} ${result.daysLeft === 1 ? "day" : "days"}. Manage your subscription at menolisa.com.`;
+        // warning state (1–2 days left)
+        if (result.daysLeft === 1) {
+          title = "Lisa is still learning about you";
+          message = logCount > 0
+            ? `${namePrefix}you have 1 day left. I've logged ${logCount} symptom${logCount === 1 ? "" : "s"} with you so far — keep tracking to uncover your patterns.`
+            : `${namePrefix}you have 1 day left. There's still time to log and let Lisa find your patterns.`;
+        } else {
+          title = "Your trial ends in 2 days";
+          message = logCount > 0
+            ? `${namePrefix}I've been tracking ${logCount} symptom${logCount === 1 ? "" : "s"} with you. Keep your access to see where this goes.`
+            : `Your trial ends in 2 days. There's still time to log and let Lisa find your patterns.`;
+        }
         priority = "medium";
+        ctaLabel = "Keep my access";
       }
 
       const { error: insertError } = await supabase.from("notifications").insert([
@@ -121,9 +167,9 @@ export async function GET(req: NextRequest) {
           show_once: false,
           metadata: {
             primaryAction: {
-              label: "Manage subscription",
-              route: "/dashboard/settings",
-              actionType: "open_settings",
+              label: ctaLabel,
+              route: "/checkout",
+              actionType: "navigate",
             },
           },
         },

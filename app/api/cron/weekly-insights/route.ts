@@ -38,6 +38,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ message: "No users with weekly insights enabled" });
     }
 
+    // Pre-fetch names for all users in one query
+    const userIds = users.map(u => u.user_id);
+    const { data: profileRows } = await supabaseAdmin
+      .from("user_profiles")
+      .select("user_id, name")
+      .in("user_id", userIds);
+    const nameMap = new Map((profileRows || []).map(p => [p.user_id, p.name as string | null]));
+
     let processed = 0;
     let notificationsSent = 0;
 
@@ -117,26 +125,55 @@ export async function GET(req: NextRequest) {
 
         // Create notification
         const totalLogs = currentWeekLogs?.length || 0;
-        const notificationContent = totalLogs > 0
-          ? `You logged ${totalLogs} symptom${totalLogs === 1 ? '' : 's'} this week. Tap to see your insights.`
-          : "Your weekly summary is ready. Tap to see your insights.";
+        const mostFrequentName = (currentWeekLogs && currentWeekLogs.length > 0)
+          ? (() => {
+              const counts: Record<string, number> = {};
+              for (const log of currentWeekLogs) {
+                const name = (log as { symptoms?: { name: string } }).symptoms?.name;
+                if (name) counts[name] = (counts[name] || 0) + 1;
+              }
+              const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+              return top ? top[0] : null;
+            })()
+          : null;
+
+        const firstName = nameMap.get(userPref.user_id)?.split(" ")[0] ?? null;
+        const namePrefix = firstName ? `${firstName}, ` : "";
+
+        let notificationTitle: string;
+        let notificationContent: string;
+
+        if (totalLogs > 0) {
+          notificationTitle = "Lisa spotted something this week";
+          notificationContent = mostFrequentName
+            ? `${namePrefix}I tracked ${totalLogs} symptom${totalLogs === 1 ? "" : "s"} this week. ${mostFrequentName} showed up most — tap to see what I found.`
+            : `You logged ${totalLogs} symptom${totalLogs === 1 ? "" : "s"} this week. Tap to see your patterns.`;
+        } else {
+          notificationTitle = "Your weekly summary is ready";
+          notificationContent = "Your weekly summary is ready. Tap to see your insights.";
+        }
 
         await supabaseAdmin
           .from("notifications")
           .insert([{
             user_id: userPref.user_id,
             type: "weekly_insights",
-            title: "Your weekly summary is ready",
+            title: notificationTitle,
             message: notificationContent,
             metadata: {
               weekStart: weekStart.toISOString().split('T')[0],
               weekEnd: weekEnd.toISOString().split('T')[0],
+              primaryAction: {
+                label: "See my insights",
+                route: "/dashboard/overview",
+                actionType: "navigate",
+              },
             },
           }]);
 
         sendPushNotification({
           userId: userPref.user_id,
-          title: "Your weekly summary is ready",
+          title: notificationTitle,
           body: notificationContent,
           data: { screen: "Notifications" },
         }).catch(() => {});

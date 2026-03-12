@@ -12,19 +12,27 @@ export const runtime = "nodejs";
 // - Haven't received a reminder today already
 // - Have an active trial
 
+function getDayOfWeekTitle(date: Date): string {
+  const day = date.getUTCDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  if (day === 1) return "A new week, a fresh log";
+  if (day === 5) return "End-of-week check-in";
+  if (day === 0 || day === 6) return "Weekend check-in";
+  return "How's your body today?";
+}
+
 export async function GET(req: NextRequest) {
   try {
     // Verify cron secret to prevent unauthorized access
     const authHeader = req.headers.get("authorization");
     const cronSecret = process.env.CRON_SECRET;
-    
+
     if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const supabaseAdmin = getSupabaseAdmin();
     const now = new Date();
-    
+
     // Get today's date range in UTC
     const today = new Date(now);
     today.setUTCHours(0, 0, 0, 0);
@@ -32,6 +40,8 @@ export async function GET(req: NextRequest) {
     const todayEnd = new Date(today);
     todayEnd.setUTCHours(23, 59, 59, 999);
     const todayEndStr = todayEnd.toISOString();
+
+    const title = getDayOfWeekTitle(now);
 
     // Fetch all users who have notifications enabled (no time filtering)
     const { data: users, error: usersError } = await supabaseAdmin
@@ -48,12 +58,20 @@ export async function GET(req: NextRequest) {
     }
 
     if (!users || users.length === 0) {
-      return NextResponse.json({ 
+      return NextResponse.json({
         message: "No users with notifications enabled",
         count: 0,
         timestamp: now.toISOString(),
       });
     }
+
+    // Pre-fetch names for all users in one query
+    const userIds = users.map(u => u.user_id);
+    const { data: profileRows } = await supabaseAdmin
+      .from("user_profiles")
+      .select("user_id, name")
+      .in("user_id", userIds);
+    const nameMap = new Map((profileRows || []).map(p => [p.user_id, p.name as string | null]));
 
     let notificationsCreated = 0;
     let skipped = 0;
@@ -90,13 +108,12 @@ export async function GET(req: NextRequest) {
           continue;
         }
 
-        // Check if reminder already sent today (prevent duplicates)
+        // Check if reminder already sent today (prevent duplicates) — type + date only, no title check
         const { data: existingNotification } = await supabaseAdmin
           .from("notifications")
           .select("id")
           .eq("user_id", userPref.user_id)
           .eq("type", "reminder")
-          .eq("title", "Time to check in")
           .gte("created_at", todayStart)
           .lte("created_at", todayEndStr)
           .limit(1)
@@ -107,6 +124,11 @@ export async function GET(req: NextRequest) {
           continue;
         }
 
+        const firstName = nameMap.get(userPref.user_id)?.split(" ")[0] ?? null;
+        const message = firstName
+          ? `${firstName}, Lisa is ready when you are. Even one log helps build your pattern.`
+          : "Lisa is ready when you are. Even one log helps build your pattern.";
+
         // Create reminder notification
         const { error: notificationError } = await supabaseAdmin
           .from("notifications")
@@ -114,8 +136,8 @@ export async function GET(req: NextRequest) {
             {
               user_id: userPref.user_id,
               type: "reminder",
-              title: "Time to check in",
-              message: "How are you feeling today? Track your symptoms to see patterns.",
+              title,
+              message,
               priority: "medium",
               auto_dismiss: true,
               auto_dismiss_seconds: 30,
@@ -123,7 +145,7 @@ export async function GET(req: NextRequest) {
               show_on_pages: [],
               metadata: {
                 primaryAction: {
-                  label: "Track Now",
+                  label: "Log now",
                   route: "/dashboard/symptoms",
                   actionType: "navigate",
                 },
@@ -140,8 +162,8 @@ export async function GET(req: NextRequest) {
           notificationsCreated++;
           sendPushNotification({
             userId: userPref.user_id,
-            title: "Time to check in",
-            body: "How are you feeling today? Track your symptoms to see patterns.",
+            title,
+            body: message,
           }).catch(() => {});
         }
       } catch (error) {

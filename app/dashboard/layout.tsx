@@ -63,7 +63,7 @@ export default function DashboardLayout({
       href: "/dashboard/symptoms",
       label: "Home",
       icon: Activity,
-      requiresActiveTrial: true,
+      requiresActiveTrial: false,
     },
     {
       href: "/chat/lisa",

@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { checkTrialExpired } from "@/lib/checkTrialStatus";
 import { getAuthenticatedUser } from "@/lib/getAuthenticatedUser";
 import { sendPushNotification } from "@/lib/sendPushNotification";
 
@@ -69,15 +68,6 @@ export async function POST(req: NextRequest) {
     const user = await getAuthenticatedUser(req);
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if trial is expired
-    const isExpired = await checkTrialExpired(user.id);
-    if (isExpired) {
-      return NextResponse.json(
-        { error: "Trial expired. Please upgrade to continue using the tracker." },
-        { status: 403 }
-      );
     }
 
     const body = await req.json();

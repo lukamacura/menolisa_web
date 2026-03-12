@@ -1,48 +1,42 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { Bell, ArrowRight, Trash2 } from "lucide-react";
-import { TrialCard } from "@/components/TrialCard";
+import { Bell, ArrowRight, Trash2, CreditCard } from "lucide-react";
 import { InviteReferralSection } from "@/components/InviteReferralSection";
 import DeleteConfirmationDialog from "@/components/DeleteConfirmationDialog";
 import { useTrialStatus } from "@/lib/useTrialStatus";
-import { useSymptomLogs } from "@/hooks/useSymptomLogs";
+import { usePricingModal } from "@/lib/PricingModalContext";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function SettingsPage() {
   const trialStatus = useTrialStatus();
-  const { logs: symptomLogs } = useSymptomLogs(30);
-  const [patternCount, setPatternCount] = useState(0);
+  const { openModal } = usePricingModal();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isPortalLoading, setIsPortalLoading] = useState(false);
 
-  const fetchPatternCount = useCallback(async () => {
-    try {
-      const response = await fetch("/api/tracker-insights?days=30", {
-        method: "GET",
-        cache: "no-store",
-      });
-      if (!response.ok) return;
-      const { data } = await response.json();
-      const patterns = data?.plainLanguageInsights?.filter(
-        (insight: { type: string }) => insight.type === "pattern"
-      ) || [];
-      setPatternCount(patterns.length);
-    } catch {
-      setPatternCount(0);
+  const isSubscriber = trialStatus.accountStatus === "paid";
+
+  async function handleSubscriptionClick() {
+    if (isSubscriber) {
+      setIsPortalLoading(true);
+      try {
+        const res = await fetch("/api/stripe/create-portal", { method: "POST" });
+        const data = await res.json();
+        if (res.ok && data?.url) {
+          window.location.href = data.url;
+          return;
+        }
+      } catch {
+        // fall through to modal
+      } finally {
+        setIsPortalLoading(false);
+      }
     }
-  }, []);
-
-  useEffect(() => {
-    // Using an async function inside the effect to avoid calling setState synchronously
-    const loadPatternCount = async () => {
-      await fetchPatternCount();
-    };
-    loadPatternCount();
-    // Only fetchPatternCount is a dependency as before
-  }, [fetchPatternCount]);
+    openModal();
+  }
 
   async function handleDeleteAccount() {
     setDeleteError(null);
@@ -66,6 +60,14 @@ export default function SettingsPage() {
 
   const settingsSections = [
     {
+      title: isSubscriber ? (isPortalLoading ? "Opening…" : "Manage subscription") : "Upgrade to full access",
+      description: isSubscriber
+        ? "View billing, change plan, or cancel"
+        : "Unlock all features and keep your progress",
+      icon: CreditCard,
+      onClick: handleSubscriptionClick,
+    },
+    {
       title: "Notifications",
       description: "Manage when and how you receive reminders",
       href: "/dashboard/settings/notifications",
@@ -84,54 +86,41 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      {/* Trial / subscription card */}
-      <div className="mb-6 sm:mb-8">
-        <TrialCard
-          trial={{
-            expired: trialStatus.expired,
-            start: trialStatus.start,
-            end: trialStatus.end,
-            daysLeft: trialStatus.daysLeft,
-            elapsedDays: trialStatus.elapsedDays,
-            progressPct: trialStatus.progressPct,
-            remaining: trialStatus.remaining,
-            trialDays: trialStatus.trialDays,
-          }}
-          accountStatus={trialStatus.accountStatus}
-          subscriptionCanceled={trialStatus.subscriptionCanceled}
-          symptomCount={symptomLogs.length}
-          patternCount={patternCount}
-        />
-      </div>
-
       {/* Invite friends / referral */}
       <InviteReferralSection className="mb-6 sm:mb-8" />
 
       <div className="space-y-3 sm:space-y-4">
         {settingsSections.map((section) => {
           const Icon = section.icon;
-          return (
-            <Link
-              key={section.href}
-              href={section.href}
-              className="group relative overflow-hidden block rounded-xl sm:rounded-2xl border border-border/30 bg-card backdrop-blur-lg p-4 sm:p-6 shadow-xl transition-all duration-300 hover:shadow-2xl hover:scale-[1.01] active:scale-[0.99]"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                  <div className="shrink-0 p-2.5 sm:p-3 rounded-xl shadow-md" style={{ background: 'linear-gradient(135deg, #ff74b1 0%, #d85a9a 100%)' }}>
-                    <Icon className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="text-lg sm:text-xl font-bold text-foreground mb-0.5 sm:mb-1 truncate">
-                      {section.title}
-                    </h3>
-                    <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2">
-                      {section.description}
-                    </p>
-                  </div>
+          const inner = (
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                <div className="shrink-0 p-2.5 sm:p-3 rounded-xl shadow-md" style={{ background: 'linear-gradient(135deg, #ff74b1 0%, #d85a9a 100%)' }}>
+                  <Icon className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
                 </div>
-                <ArrowRight className="h-5 w-5 text-primary shrink-0 transition-transform group-hover:translate-x-1" />
+                <div className="min-w-0">
+                  <h3 className="text-lg sm:text-xl font-bold text-foreground mb-0.5 sm:mb-1 truncate">
+                    {section.title}
+                  </h3>
+                  <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2">
+                    {section.description}
+                  </p>
+                </div>
               </div>
+              <ArrowRight className="h-5 w-5 text-primary shrink-0 transition-transform group-hover:translate-x-1" />
+            </div>
+          );
+          const sharedClass = "group relative overflow-hidden block rounded-xl sm:rounded-2xl border border-border/30 bg-card backdrop-blur-lg p-4 sm:p-6 shadow-xl transition-all duration-300 hover:shadow-2xl hover:scale-[1.01] active:scale-[0.99]";
+          if ("onClick" in section) {
+            return (
+              <button key={section.title} type="button" onClick={section.onClick} className={`w-full text-left ${sharedClass}`}>
+                {inner}
+              </button>
+            );
+          }
+          return (
+            <Link key={section.href} href={section.href} className={sharedClass}>
+              {inner}
             </Link>
           );
         })}

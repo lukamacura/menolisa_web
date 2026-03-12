@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     let errorType = "auth_callback_error";
     
     if (errorCode === "otp_expired") {
-      errorMessage = "The email link has expired. Please request a new magic link.";
+      errorMessage = "The password reset link has expired. Please request a new one.";
       errorType = "otp_expired";
     } else if (errorCode === "access_denied") {
       errorMessage = errorDescription 
