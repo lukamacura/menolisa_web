@@ -2,6 +2,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
+import { isSuppressDailySymptomLogReminderToast } from "@/lib/dailySymptomReminder";
 
 export type NotificationType =
   | "lisa_insight"
@@ -53,6 +54,7 @@ interface DBNotification {
   show_once: boolean;
   show_on_pages: string[];
   metadata: {
+    reminder_kind?: string;
     primaryAction?: {
       label: string;
       route?: string;
@@ -188,8 +190,16 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         if (!isMounted) return;
         
         if (data && Array.isArray(data)) {
-          // Filter out dismissed and limit to max toast notifications
+          // Daily symptom cron reminders stay in the notification center but do not pop as toasts (noise).
           const clientNotifications = data
+            .filter(
+              (row: DBNotification) =>
+                !isSuppressDailySymptomLogReminderToast({
+                  type: row.type,
+                  title: row.title,
+                  metadata: row.metadata,
+                })
+            )
             .map(dbToClientNotification)
             .filter((n: Notification) => !n.dismissed)
             .slice(0, MAX_TOAST_NOTIFICATIONS);

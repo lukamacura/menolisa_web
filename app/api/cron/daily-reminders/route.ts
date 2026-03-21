@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { checkTrialExpired } from "@/lib/checkTrialStatus";
 import { sendPushNotification } from "@/lib/sendPushNotification";
+import {
+  DAILY_SYMPTOM_LOG_REMINDER_KIND,
+  DAILY_SYMPTOM_LOG_REMINDER_TITLES,
+} from "@/lib/dailySymptomReminder";
 
 export const runtime = "nodejs";
 
@@ -108,18 +112,19 @@ export async function GET(req: NextRequest) {
           continue;
         }
 
-        // Check if reminder already sent today (prevent duplicates) — type + date only, no title check
-        const { data: existingNotification } = await supabaseAdmin
+        // One daily nudge per user per UTC day. Use limit(1) — maybeSingle() errors when 2+ rows exist,
+        // which made the handler treat "duplicates" as "none" and insert again.
+        const { data: existingRows } = await supabaseAdmin
           .from("notifications")
           .select("id")
           .eq("user_id", userPref.user_id)
           .eq("type", "reminder")
+          .in("title", [...DAILY_SYMPTOM_LOG_REMINDER_TITLES])
           .gte("created_at", todayStart)
           .lte("created_at", todayEndStr)
-          .limit(1)
-          .maybeSingle();
+          .limit(1);
 
-        if (existingNotification) {
+        if (existingRows && existingRows.length > 0) {
           skipped++;
           continue;
         }
@@ -144,6 +149,7 @@ export async function GET(req: NextRequest) {
               show_once: false,
               show_on_pages: [],
               metadata: {
+                reminder_kind: DAILY_SYMPTOM_LOG_REMINDER_KIND,
                 primaryAction: {
                   label: "Log now",
                   route: "/dashboard/symptoms",

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // Weekly insights generation - pure data calculations, no AI
 
 import type { SymptomLog } from "@/lib/symptom-tracker-constants";
@@ -9,7 +10,6 @@ import {
   generateTimePatternInsight,
   generateGoodDaysInsight,
   generateSeverityInsight,
-  type InsightData,
 } from "./insightTemplates";
 
 export interface WeeklyInsight {
@@ -24,10 +24,7 @@ export interface WeeklyInsight {
  */
 export function generateWeeklyInsights(
   currentWeekLogs: SymptomLog[],
-  previousWeekLogs: SymptomLog[],
-  weekStart: Date,
-  weekEnd: Date
-): WeeklyInsight[] {
+  previousWeekLogs: SymptomLog[]): WeeklyInsight[] {
   const insights: WeeklyInsight[] = [];
 
   // 1. Frequency insight

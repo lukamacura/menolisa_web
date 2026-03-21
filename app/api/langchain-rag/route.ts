@@ -1120,11 +1120,16 @@ IMPORTANT: The user is engaging in casual conversation, not asking for informati
         },
       });
     } else {
-      // Non-streaming mode (backward compatibility)
+      // Non-streaming mode (backward compatibility) — used by Android chat (stream: false)
       const response = await llmWithTools.invoke(messages);
 
       let responseText = "";
       let toolCallsMade = false;
+      const toolNotifications: Array<{
+        tool_name: string;
+        tool_args: Record<string, unknown>;
+        success: boolean;
+      }> = [];
 
       if (response.tool_calls && response.tool_calls.length > 0) {
         toolCallsMade = true;
@@ -1134,14 +1139,23 @@ IMPORTANT: The user is engaging in casual conversation, not asking for informati
             const tool = tools.find((t) => t.name === toolCall.name);
             if (tool && toolCall.id) {
               try {
-                 
                 const result = await (tool as any).invoke(toolCall.args);
+                toolNotifications.push({
+                  tool_name: toolCall.name,
+                  tool_args: toolCall.args ?? {},
+                  success: true,
+                });
                 return new ToolMessage({
                   content: result,
                   tool_call_id: toolCall.id,
                 });
               } catch (e: unknown) {
                 const errorMessage = e instanceof Error ? e.message : String(e);
+                toolNotifications.push({
+                  tool_name: toolCall.name,
+                  tool_args: toolCall.args ?? {},
+                  success: false,
+                });
                 return new ToolMessage({
                   content: `Error: ${errorMessage}`,
                   tool_call_id: toolCall.id,
@@ -1186,6 +1200,7 @@ IMPORTANT: The user is engaging in casual conversation, not asking for informati
         source: orchestrationResult.source,
         toolCallsMade,
         follow_up_links: followUpLinks.length > 0 ? followUpLinks : undefined,
+        tool_notifications: toolNotifications.length > 0 ? toolNotifications : undefined,
       });
     }
   } catch (e: unknown) {

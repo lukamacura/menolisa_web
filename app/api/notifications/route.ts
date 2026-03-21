@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getAuthenticatedUser } from "@/lib/getAuthenticatedUser";
 import { sendPushNotification } from "@/lib/sendPushNotification";
+import { DAILY_SYMPTOM_LOG_REMINDER_TITLES, isDailySymptomLogReminderTitle } from "@/lib/dailySymptomReminder";
 
 export const runtime = "nodejs";
 
@@ -186,27 +187,26 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Daily symptom-logging reminder: only one "Time to check in" per user per day (avoids duplicate toasts/cron re-runs)
-    if (type === "reminder" && title === "Time to check in") {
+    // Daily symptom-logging reminder: one per user per UTC day (matches cron/daily-reminders)
+    if (type === "reminder" && isDailySymptomLogReminderTitle(title)) {
       const supabaseAdmin = getSupabaseAdmin();
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
+      const todayUtc = new Date();
+      todayUtc.setUTCHours(0, 0, 0, 0);
+      const tomorrowUtc = new Date(todayUtc);
+      tomorrowUtc.setUTCDate(tomorrowUtc.getUTCDate() + 1);
 
-      const { data: existingReminder } = await supabaseAdmin
+      const { data: existingRows } = await supabaseAdmin
         .from("notifications")
-        .select("id")
+        .select("*")
         .eq("user_id", user.id)
         .eq("type", "reminder")
-        .eq("title", "Time to check in")
-        .gte("created_at", today.toISOString())
-        .lt("created_at", tomorrow.toISOString())
-        .limit(1)
-        .maybeSingle();
+        .in("title", [...DAILY_SYMPTOM_LOG_REMINDER_TITLES])
+        .gte("created_at", todayUtc.toISOString())
+        .lt("created_at", tomorrowUtc.toISOString())
+        .limit(1);
 
-      if (existingReminder) {
-        return NextResponse.json({ data: existingReminder }, { status: 200 });
+      if (existingRows && existingRows.length > 0) {
+        return NextResponse.json({ data: existingRows[0] }, { status: 200 });
       }
     }
 

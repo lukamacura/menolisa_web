@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Network, RefreshCw, ChevronDown, ChevronUp, Copy, Check } from "lucide-react";
+import Image from "next/image";
+import { Network, RefreshCw, ChevronDown, ChevronUp, FileText } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 function Skeleton({ className }: { className?: string }) {
@@ -9,13 +10,13 @@ function Skeleton({ className }: { className?: string }) {
 }
 
 // Letter-by-letter reveal animation component
-function AnimatedText({ 
-  text, 
-  delay = 0, 
+function AnimatedText({
+  text,
+  delay = 0,
   speed = 30,
-  className = "" 
-}: { 
-  text: string; 
+  className = ""
+}: {
+  text: string;
   delay?: number;
   speed?: number;
   className?: string;
@@ -26,7 +27,7 @@ function AnimatedText({
   useEffect(() => {
     setDisplayedText("");
     setIsComplete(false);
-    
+
     const timeout = setTimeout(() => {
       let currentIndex = 0;
       const interval = setInterval(() => {
@@ -45,24 +46,16 @@ function AnimatedText({
     return () => clearTimeout(timeout);
   }, [text, delay, speed]);
 
-  // Render text with bold formatting, handling partial bold markers during animation
   const renderTextWithBold = (textToRender: string) => {
-    // Split by complete bold markers (**text**)
     const parts = textToRender.split(/(\*\*[^*]+\*\*)/g);
     return parts.map((part, index) => {
       if (part.startsWith("**") && part.endsWith("**")) {
-        // Complete bold text
-        const boldText = part.slice(2, -2);
         return (
           <strong key={index} className="font-semibold text-[#8B7E74]">
-            {boldText}
+            {part.slice(2, -2)}
           </strong>
         );
-      } else if (part.includes("**")) {
-        // Partial bold marker (during animation) - show as regular text
-        return <span key={index}>{part}</span>;
       }
-      // Regular text
       return <span key={index}>{part}</span>;
     });
   };
@@ -89,8 +82,13 @@ interface Insight {
   doctorNote: string;
   trend: "improving" | "worsening" | "stable";
   whyThisMatters?: string;
+  generatedAt?: string;
+  dataPoints?: {
+    symptomLogs: number;
+    chatSessions: number;
+    daysWindow: number;
+  };
 }
-
 
 function getTrendColor(trend: string) {
   switch (trend) {
@@ -103,13 +101,53 @@ function getTrendColor(trend: string) {
   }
 }
 
+function buildReportText(insight: Insight): string {
+  const trendLabel = insight.trend === "improving" ? "Improving" : insight.trend === "worsening" ? "Needs attention" : "Stable";
+  const date = insight.generatedAt ? new Date(insight.generatedAt).toLocaleDateString() : new Date().toLocaleDateString();
+  const lines: string[] = [
+    "═══════════════════════════════════",
+    "  MENOLISA — YOUR HEALTH REPORT",
+    `  Generated: ${date}`,
+    "═══════════════════════════════════",
+    "",
+    `TREND: ${trendLabel.toUpperCase()}`,
+    "",
+    "─── WHAT LISA NOTICED ─────────────",
+    insight.patternHeadline,
+    "",
+    insight.why,
+  ];
+  if (insight.whatsWorking) {
+    lines.push("", "─── WHAT'S WORKING ────────────────", insight.whatsWorking);
+  }
+  lines.push(
+    "",
+    "─── WHAT YOU CAN TRY ──────────────",
+    `Start here:         ${insight.actionSteps.easy}`,
+    `A bit more energy:  ${insight.actionSteps.medium}`,
+    `Go deeper:          ${insight.actionSteps.advanced}`,
+    "",
+    "─── FOR YOUR NEXT APPOINTMENT ─────",
+    insight.doctorNote,
+  );
+  if (insight.whyThisMatters) {
+    lines.push("", "─── WHY THIS MATTERS ──────────────", insight.whyThisMatters);
+  }
+  if (insight.dataPoints) {
+    const { daysWindow, symptomLogs, chatSessions } = insight.dataPoints;
+    lines.push("", "─── DATA SOURCES ──────────────────", `Based on ${daysWindow} days · ${symptomLogs} symptom logs · ${chatSessions} chats`);
+  }
+  lines.push("", "═══════════════════════════════════", "  menolisa.com", "═══════════════════════════════════");
+  return lines.join("\n");
+}
+
 export default function WhatLisaNoticed() {
   const [insight, setInsight] = useState<Insight | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [copiedNote, setCopiedNote] = useState(false);
+  const [whyExpanded, setWhyExpanded] = useState(false);
+  const [whyMattersExpanded, setWhyMattersExpanded] = useState(false);
 
   const fetchInsight = async (refresh = false) => {
     try {
@@ -128,10 +166,8 @@ export default function WhatLisaNoticed() {
       }
 
       const { insight: insightData } = await response.json();
-      
-      // Handle both old format (string) and new format (object)
+
       if (typeof insightData === "string") {
-        // Legacy format - convert to new structure with Lisa-noticed copy
         setInsight({
           patternHeadline: insightData.split('\n')[0] || "Lisa didn't have enough data yet to notice something specific.",
           why: insightData.substring(0, 200) || "Keep logging your symptoms and mood so Lisa can share what she notices.",
@@ -162,83 +198,62 @@ export default function WhatLisaNoticed() {
     fetchInsight();
   }, []);
 
-  const handleRefresh = () => {
-    fetchInsight(true);
-  };
-
-  const toggleExpand = () => {
-    setIsExpanded(prev => !prev);
-  };
-
-  const copyDoctorNote = async (note: string) => {
-    try {
-      await navigator.clipboard.writeText(note);
-      setCopiedNote(true);
-      setTimeout(() => setCopiedNote(false), 2000);
-    } catch (err) {
-      console.error("Failed to copy:", err);
-    }
+  const downloadReport = () => {
+    if (!insight) return;
+    const text = buildReportText(insight);
+    const blob = new Blob([text], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `menolisa-report-${new Date().toISOString().split("T")[0]}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   // Loading state
   if (loading) {
     return (
-      <div className="bg-card backdrop-blur-lg rounded-2xl border border-border/30 p-4 sm:p-6 shadow-xl mb-6">
-        {/* Header skeleton */}
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex items-center gap-3 flex-1">
-            <Skeleton className="h-8 w-8 rounded" />
-            <div className="flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <Skeleton className="h-7 w-48" />
-                <Skeleton className="h-6 w-20 rounded-full" />
-              </div>
+      <div className="bg-card backdrop-blur-lg rounded-2xl border border-border/30 shadow-xl mb-6 overflow-hidden">
+        <Skeleton className="h-28 sm:h-36 md:h-44 lg:h-52 w-full rounded-none" />
+        <div className="p-4 sm:p-6">
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex items-center gap-2 flex-wrap flex-1">
+              <Skeleton className="h-7 w-48" />
+              <Skeleton className="h-6 w-20 rounded-full" />
+            </div>
+            <Skeleton className="h-8 w-8 rounded-lg shrink-0" />
+          </div>
+          <div className="mb-4">
+            <Skeleton className="h-6 w-full mb-2" />
+            <Skeleton className="h-6 w-3/4" />
+          </div>
+          <div className="mb-4">
+            <Skeleton className="h-4 w-full mb-2" />
+            <Skeleton className="h-4 w-full mb-2" />
+            <Skeleton className="h-4 w-5/6" />
+          </div>
+          <div className="mb-4 p-3 rounded-xl bg-green-50/50 border border-green-200/50">
+            <Skeleton className="h-4 w-full" />
+          </div>
+          <div className="mb-4">
+            <Skeleton className="h-5 w-32 mb-3" />
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="space-y-1">
+                  <Skeleton className="h-6 w-24 rounded" />
+                  <Skeleton className="h-4 w-full" />
+                </div>
+              ))}
             </div>
           </div>
-          <Skeleton className="h-8 w-8 rounded-lg" />
-        </div>
-
-        {/* Pattern headline skeleton */}
-        <div className="mb-4">
-          <Skeleton className="h-6 w-full mb-2" />
-          <Skeleton className="h-6 w-3/4" />
-        </div>
-
-        {/* Why section skeleton */}
-        <div className="mb-4">
-          <Skeleton className="h-4 w-full mb-2" />
-          <Skeleton className="h-4 w-full mb-2" />
-          <Skeleton className="h-4 w-5/6" />
-        </div>
-
-        {/* What's working skeleton */}
-        <div className="mb-4 p-3 rounded-xl bg-green-50/50 border border-green-200/50">
-          <Skeleton className="h-4 w-full" />
-        </div>
-
-        {/* Action steps skeleton */}
-        <div className="mb-4">
-          <Skeleton className="h-5 w-32 mb-3" />
-          <div className="space-y-2">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-start gap-3">
-                <Skeleton className="h-6 w-12 rounded shrink-0" />
-                <Skeleton className="h-4 w-full flex-1" />
-              </div>
-            ))}
+          <div className="mb-4 p-3 rounded-xl bg-blue-50/50 border border-blue-200/50">
+            <Skeleton className="h-4 w-40 mb-2" />
+            <Skeleton className="h-4 w-full mb-1" />
+            <Skeleton className="h-4 w-4/5" />
           </div>
-        </div>
-
-        {/* Doctor note skeleton */}
-        <div className="mb-4 p-3 rounded-xl bg-blue-50/50 border border-blue-200/50">
-          <Skeleton className="h-4 w-40 mb-2" />
-          <Skeleton className="h-4 w-full mb-1" />
-          <Skeleton className="h-4 w-4/5" />
-        </div>
-
-        {/* Why this matters skeleton */}
-        <div className="border-t border-border/30 pt-4">
-          <Skeleton className="h-5 w-32" />
+          <div className="border-t border-border/30 pt-4">
+            <Skeleton className="h-5 w-32" />
+          </div>
         </div>
       </div>
     );
@@ -248,18 +263,16 @@ export default function WhatLisaNoticed() {
   if (error && !insight) {
     return (
       <div className="bg-card backdrop-blur-lg rounded-2xl border border-border/30 p-4 sm:p-6 shadow-xl mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <Network className="h-8 w-8 text-pink-500" />
-            <h3 className="text-2xl font-semibold text-card-foreground">What Lisa noticed</h3>
-          </div>
+        <div className="flex items-center gap-3 mb-4">
+          <Network className="h-8 w-8 text-pink-500" />
+          <h3 className="text-2xl font-semibold text-card-foreground">What Lisa noticed</h3>
         </div>
         <p className="text-sm text-muted-foreground">{error}</p>
       </div>
     );
   }
 
-  // No insight available - show empty state card
+  // Empty state
   if (!insight) {
     return (
       <div className="bg-card backdrop-blur-lg rounded-2xl border border-border/30 p-4 sm:p-6 shadow-xl mb-6">
@@ -275,224 +288,220 @@ export default function WhatLisaNoticed() {
   }
 
   const trendColor = getTrendColor(insight.trend);
+  const { dataPoints } = insight;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="bg-card backdrop-blur-lg rounded-2xl border border-white/30 p-4 sm:p-6 shadow-xl mb-6"
+      className="bg-card backdrop-blur-lg rounded-2xl border border-white/30 shadow-xl mb-6 overflow-hidden"
     >
-      {/* Header */}
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-3 flex-1">
-          <Network className="h-8 w-8 text-pink-500 shrink-0" />
-          <div className="flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-2xl font-semibold text-card-foreground">What Lisa noticed</h3>
-              <span className={`px-2 py-1 rounded-full text-xs font-medium border ${trendColor}`}>
-                {insight.trend}
-              </span>
-            </div>
-          </div>
-        </div>
-        <button
-          onClick={handleRefresh}
-          disabled={isRefreshing}
-          className="p-2 rounded-lg text-muted-foreground hover:bg-card/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-          aria-label="Refresh what Lisa noticed"
-        >
-          <RefreshCw
-            className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
-          />
-        </button>
+      {/* Banner illustration */}
+      <div className="relative w-full h-28 sm:h-36 md:h-44 lg:h-52">
+        <Image
+          src="/lisa-noticed-banner.png"
+          alt=""
+          fill
+          className="object-cover"
+          aria-hidden="true"
+          priority
+        />
       </div>
 
-      {/* Pattern Headline */}
-      <motion.div 
-        className="mb-4"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.1 }}
-      >
-        <h4 className="text-lg sm:text-xl font-bold text-card-foreground leading-tight">
-          <AnimatedText 
-            text={insight.patternHeadline} 
-            delay={200}
-            speed={25}
-          />
-        </h4>
-      </motion.div>
-
-      {/* The Why */}
-      <motion.div 
-        className="mb-4"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.3 }}
-      >
-        <p className="text-muted-foreground text-base leading-relaxed">
-          <AnimatedText 
-            text={insight.why} 
-            delay={400}
-            speed={20}
-          />
-        </p>
-      </motion.div>
-
-      {/* What's Working */}
-      {insight.whatsWorking && (
-        <motion.div 
-          className="mb-4 p-3 rounded-xl bg-green-50/50 border border-green-200/50"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.5 }}
-        >
-          <p className="text-green-700 text-sm font-medium">
-            ✨ <AnimatedText 
-              text={insight.whatsWorking} 
-              delay={600}
-              speed={20}
-            />
-          </p>
-        </motion.div>
-      )}
-
-      {/* Action Steps */}
-      <motion.div 
-        className="mb-4"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.7 }}
-      >
-        <h5 className="text-sm font-semibold text-card-foreground mb-3">What You Can Try:</h5>
-        <div className="space-y-2">
-          <motion.div 
-            className="flex items-start gap-3"
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.3, delay: 0.9 }}
-          >
-            <span className="px-2 py-1 rounded text-xs font-semibold bg-green-100 text-green-700 shrink-0 mt-0.5">
-              Easy
+      <div className="p-4 sm:p-6">
+        {/* Header */}
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex items-center gap-2 flex-wrap flex-1">
+            <h3 className="text-2xl font-semibold text-card-foreground">What Lisa noticed</h3>
+            <span className={`px-2 py-1 rounded-full text-xs font-medium border ${trendColor}`}>
+              {insight.trend}
             </span>
-            <p className="text-muted-foreground text-sm flex-1">
-              <AnimatedText 
-                text={insight.actionSteps.easy} 
-                delay={1000}
-                speed={18}
-              />
-            </p>
-          </motion.div>
-          <motion.div 
-            className="flex items-start gap-3"
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.3, delay: 1.1 }}
-          >
-            <span className="px-2 py-1 rounded text-xs font-semibold bg-amber-200 text-amber-700 shrink-0 mt-0.5">
-              Medium
-            </span>
-            <p className="text-[#6B6B6B] text-sm flex-1">
-              <AnimatedText 
-                text={insight.actionSteps.medium} 
-                delay={1200}
-                speed={18}
-              />
-            </p>
-          </motion.div>
-          <motion.div 
-            className="flex items-start gap-3"
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.3, delay: 1.3 }}
-          >
-            <span className="px-2 py-1 rounded text-xs font-semibold bg-red-200 text-pink-700 shrink-0 mt-0.5">
-              Advanced
-            </span>
-            <p className="text-[#6B6B6B] text-sm flex-1">
-              <AnimatedText 
-                text={insight.actionSteps.advanced} 
-                delay={1400}
-                speed={18}
-              />
-            </p>
-          </motion.div>
-        </div>
-      </motion.div>
-
-      {/* Doctor Note */}
-      <motion.div 
-        className="mb-4 p-3 rounded-xl bg-blue-50/50 border border-blue-200/50"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 1.5 }}
-      >
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1">
-            <p className="text-xs font-semibold text-blue-700 mb-1">For Your Healthcare Provider:</p>
-            <p className="text-blue-800 text-sm leading-relaxed">
-              <AnimatedText 
-                text={insight.doctorNote} 
-                delay={1600}
-                speed={18}
-              />
-            </p>
           </div>
           <button
-            onClick={() => copyDoctorNote(insight.doctorNote)}
-            className="p-1.5 rounded-lg hover:bg-blue-100/50 transition-colors shrink-0"
-            aria-label="Copy doctor note"
+            onClick={() => fetchInsight(true)}
+            disabled={isRefreshing}
+            className="p-2 rounded-lg text-muted-foreground hover:bg-card/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            aria-label="Refresh what Lisa noticed"
           >
-            {copiedNote ? (
-              <Check className="h-4 w-4 text-green-600" />
-            ) : (
-              <Copy className="h-4 w-4 text-blue-600" />
-            )}
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
           </button>
         </div>
-      </motion.div>
 
-      {/* Why This Matters (Expandable) */}
-      {insight.whyThisMatters && (
-        <motion.div 
-          className="border-t border-border/30 pt-4"
+        {/* 1. Pattern Headline */}
+        <motion.div
+          className="mb-4"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 1.7 }}
+          transition={{ duration: 0.3, delay: 0.1 }}
+        >
+          <h4 className="text-lg sm:text-xl font-bold text-card-foreground leading-tight">
+            <AnimatedText text={insight.patternHeadline} delay={200} speed={25} />
+          </h4>
+        </motion.div>
+
+        {/* 2. Why — truncated with expand toggle */}
+        <motion.div
+          className="mb-4"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.3 }}
+        >
+          <p className={`text-muted-foreground text-base leading-relaxed ${!whyExpanded ? "line-clamp-2" : ""}`}>
+            <AnimatedText text={insight.why} delay={400} speed={20} />
+          </p>
+          <button
+            onClick={() => setWhyExpanded(!whyExpanded)}
+            className="text-xs text-pink-500 hover:text-pink-600 transition-colors mt-1"
+          >
+            {whyExpanded ? "Show less" : "Read more"}
+          </button>
+        </motion.div>
+
+        {/* 3. What's Working */}
+        {insight.whatsWorking && (
+          <motion.div
+            className="mb-4 p-3 rounded-xl bg-green-50/50 border border-green-200/50"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.5 }}
+          >
+            <p className="text-green-700 text-sm font-medium">
+              ✨ <AnimatedText text={insight.whatsWorking} delay={600} speed={20} />
+            </p>
+          </motion.div>
+        )}
+
+        {/* 4. Freshness bar */}
+        {dataPoints && (
+          <div className="mb-4 text-xs text-muted-foreground">
+            Based on{" "}
+            <span className="font-medium">{dataPoints.daysWindow} days</span>
+            {"  ·  "}
+            <span className="font-medium">{dataPoints.symptomLogs} logs</span>
+            {"  ·  "}
+            <span className="font-medium">{dataPoints.chatSessions} chats</span>
+            <div className="mt-2 border-t border-border/30" />
+          </div>
+        )}
+
+        {/* 5. Action Steps — badge on top, text below */}
+        <motion.div
+          className="mb-4"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.7 }}
+        >
+          <h5 className="text-sm font-semibold text-card-foreground mb-3">What you can try</h5>
+          <div className="space-y-3">
+            <motion.div
+              className="flex flex-col gap-1"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.3, delay: 0.9 }}
+            >
+              <span className="px-2 py-1 rounded text-xs font-semibold bg-green-100 text-green-700 self-start">
+                Start here
+              </span>
+              <p className="text-muted-foreground text-sm">
+                <AnimatedText text={insight.actionSteps.easy} delay={1000} speed={18} />
+              </p>
+            </motion.div>
+            <motion.div
+              className="flex flex-col gap-1"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.3, delay: 1.1 }}
+            >
+              <span className="px-2 py-1 rounded text-xs font-semibold bg-amber-100 text-amber-700 self-start">
+                A bit more energy
+              </span>
+              <p className="text-muted-foreground text-sm">
+                <AnimatedText text={insight.actionSteps.medium} delay={1200} speed={18} />
+              </p>
+            </motion.div>
+            <motion.div
+              className="flex flex-col gap-1"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.3, delay: 1.3 }}
+            >
+              <span className="px-2 py-1 rounded text-xs font-semibold bg-pink-100 text-pink-700 self-start">
+                Go deeper
+              </span>
+              <p className="text-muted-foreground text-sm">
+                <AnimatedText text={insight.actionSteps.advanced} delay={1400} speed={18} />
+              </p>
+            </motion.div>
+          </div>
+        </motion.div>
+
+        {/* 6. For your next appointment */}
+        <motion.div
+          className="mb-4 p-3 rounded-xl bg-blue-50/50 border border-blue-200/50"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 1.5 }}
+        >
+          <p className="text-xs font-semibold text-blue-700 mb-1">For your next appointment</p>
+          <p className="text-blue-800 text-sm leading-relaxed">
+            <AnimatedText text={insight.doctorNote} delay={1600} speed={18} />
+          </p>
+        </motion.div>
+
+        {/* 7. Get full report */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 1.6 }}
+          className="border-t border-border/30 pt-4 mb-2"
         >
           <button
-            onClick={toggleExpand}
-            className="flex items-center gap-2 w-full text-left text-sm font-semibold text-card-foreground hover:text-primary transition-colors"
+            onClick={downloadReport}
+            className="flex items-center justify-center gap-2 w-full text-sm font-medium text-pink-500 hover:text-pink-600 transition-colors py-1"
           >
-            {isExpanded ? (
-              <ChevronUp className="h-4 w-4" />
-            ) : (
-              <ChevronDown className="h-4 w-4" />
-            )}
-            <span>Why this matters</span>
+            <FileText className="h-4 w-4" />
+            Get full report
           </button>
-          <AnimatePresence>
-            {isExpanded && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="overflow-hidden"
-              >
-                <p className="text-muted-foreground text-sm leading-relaxed mt-2 pl-6">
-                  <AnimatedText 
-                    text={insight.whyThisMatters} 
-                    delay={0}
-                    speed={18}
-                  />
-                </p>
-              </motion.div>
-            )}
-          </AnimatePresence>
         </motion.div>
-      )}
+
+        {/* 8. Why this matters (expandable) */}
+        {insight.whyThisMatters && (
+          <motion.div
+            className="border-t border-border/30 pt-4"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 1.7 }}
+          >
+            <button
+              onClick={() => setWhyMattersExpanded(!whyMattersExpanded)}
+              className="flex items-center gap-2 w-full text-left text-sm font-semibold text-card-foreground hover:text-primary transition-colors"
+            >
+              {whyMattersExpanded ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+              <span>Why this matters</span>
+            </button>
+            <AnimatePresence>
+              {whyMattersExpanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <p className="text-muted-foreground text-sm leading-relaxed mt-2 pl-6">
+                    <AnimatedText text={insight.whyThisMatters} delay={0} speed={18} />
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+      </div>
     </motion.div>
   );
 }

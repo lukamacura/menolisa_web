@@ -3,8 +3,37 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { checkTrialExpired } from "@/lib/checkTrialStatus";
 import { getAuthenticatedUser } from "@/lib/getAuthenticatedUser";
+import {
+  addDaysToIsoDate,
+  computeMoodStreakFromDates,
+  normalizeMoodDate,
+} from "@/lib/moodStreak";
 
 export const runtime = "nodejs";
+
+async function fetchMoodStreakForUser(
+  userId: string,
+  endDate: string,
+): Promise<number> {
+  const supabaseAdmin = getSupabaseAdmin();
+  const minDate = addDaysToIsoDate(normalizeMoodDate(endDate), -400);
+  const { data, error } = await supabaseAdmin
+    .from("daily_mood")
+    .select("date")
+    .eq("user_id", userId)
+    .gte("date", minDate)
+    .lte("date", normalizeMoodDate(endDate));
+
+  if (error) {
+    console.error("[daily-mood] streak query error:", error);
+    return 0;
+  }
+
+  const dates = (data ?? []).map((r: { date: string }) =>
+    normalizeMoodDate(String(r.date)),
+  );
+  return computeMoodStreakFromDates(dates, endDate);
+}
 
 // GET: Fetch mood for a specific date (defaults to today) or date range
 export async function GET(req: NextRequest) {
@@ -62,7 +91,12 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ data: data || null });
+    const current_streak = await fetchMoodStreakForUser(user.id, targetDate);
+
+    return NextResponse.json({
+      data: data ? { ...data, current_streak } : null,
+      current_streak,
+    });
   } catch (e) {
     console.error("GET /api/daily-mood error:", e);
     return NextResponse.json(
@@ -131,7 +165,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ data }, { status: 201 });
+    const current_streak = await fetchMoodStreakForUser(user.id, targetDate);
+
+    return NextResponse.json(
+      { data: data ? { ...data, current_streak } : null, current_streak },
+      { status: 201 },
+    );
   } catch (e) {
     console.error("POST /api/daily-mood error:", e);
     return NextResponse.json(

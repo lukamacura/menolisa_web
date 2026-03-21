@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // Insight text templates - pure data reflection, no AI, no medical advice
 
 export type InsightType = 
@@ -84,7 +85,6 @@ export function generateTimePatternInsight(
 ): InsightData | null {
   if (count < 4) return null; // Only show if 4+ symptoms at same time
   
-  const timeLabel = timeOfDay.charAt(0).toUpperCase() + timeOfDay.slice(1);
   const content = `Most symptoms logged in the ${timeOfDay}.`;
   
   return {
