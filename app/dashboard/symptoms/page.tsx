@@ -107,7 +107,7 @@ function AnimatedSection({
 export default function SymptomsPage() {
   const router = useRouter();
   const trialStatus = useTrialStatus();
-  const { showSuccess, showError, show } = useNotification();
+  const { showSuccess, showError, showLocal } = useNotification();
   const { symptoms, loading: symptomsLoading, refetch: refetchSymptoms } =
     useSymptoms();
   const { logs, loading: logsLoading, refetch: refetchLogs } =
@@ -492,7 +492,7 @@ export default function SymptomsPage() {
           if (!sessionState.duplicateWarningsShown.has(warningKey)) {
             const firstLogToday = todayLogs[todayLogs.length - 1]; // Oldest log today
             
-            show(
+            showLocal(
               "reminder",
               "Logging tip from Lisa",
               {
@@ -529,7 +529,7 @@ export default function SymptomsPage() {
         }
       }, 1000);
     },
-    [symptoms, logs, sessionState, show]
+    [symptoms, logs, sessionState, showLocal]
   );
 
   // Check for end-of-day notification (mood prompt only when user has logged — avoids redundant "log symptoms" nudge)
@@ -567,7 +567,7 @@ export default function SymptomsPage() {
           ? "You logged 1 symptom today. A quick mood rating gives Lisa the full picture."
           : `You logged ${todayLogs.length} symptoms today. Before you go, rate your day — it helps Lisa connect the dots.`;
 
-        show(
+        showLocal(
           "reminder",
           eodTitle,
           {
@@ -598,7 +598,7 @@ export default function SymptomsPage() {
     if (!trialStatus.loading && !trialStatus.expired) {
       checkEndOfDay();
     }
-  }, [logs, dailyMood, trialStatus, show, profile]);
+  }, [logs, dailyMood, trialStatus, showLocal, profile]);
 
   // Handle save symptom log (create or update)
   const handleSaveLog = useCallback(

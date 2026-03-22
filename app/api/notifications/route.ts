@@ -239,15 +239,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Push: same title/body as in-app; trial/urgent bypass preference
-    const isTrialOrUrgent = type === "trial" || priority === "high";
-    sendPushNotification({
-      userId: user.id,
-      title,
-      body: finalMessage,
-      skipPreferenceCheck: isTrialOrUrgent,
-      ...(type === "trial" ? { data: { action: "upgrade" } } : {}),
-    }).catch(() => {});
+    // Push only for high-signal types (avoid spamming mobile from routine web toasts)
+    const shouldPushDevice =
+      type === "trial" || (type === "error" && priority === "high");
+    if (shouldPushDevice) {
+      const skipPreferenceCheck = type === "trial" || priority === "high";
+      sendPushNotification({
+        userId: user.id,
+        title,
+        body: finalMessage,
+        skipPreferenceCheck,
+        ...(type === "trial" ? { data: { action: "upgrade" } } : {}),
+      }).catch(() => {});
+    }
 
     return NextResponse.json({ data }, { status: 201 });
   } catch (e) {

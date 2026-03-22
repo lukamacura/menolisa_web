@@ -10,7 +10,6 @@ import type { SymptomLog, Symptom } from "@/lib/symptom-tracker-constants";
 import { useSymptomLogs } from "@/hooks/useSymptomLogs";
 import DeleteConfirmationDialog from "@/components/DeleteConfirmationDialog";
 import RecentLogs from "@/components/symptom-tracker/RecentLogs";
-import { getTrialState, type TrialState } from "@/components/TrialCard";
 import { Skeleton } from "@/components/ui/AnimatedComponents";
 import { useTrialStatus } from "@/lib/useTrialStatus";
 import LogSymptomModal from "@/components/symptom-tracker/LogSymptomModal";
@@ -300,7 +299,6 @@ export default function OverviewPage() {
   const [loading] = useState(false); // Start as false - don't block rendering
   const [err, setErr] = useState<string | null>(null);
   const [, setNow] = useState<Date>(new Date());
-  const lastNotifiedStateRef = useRef<TrialState | null>(null);
   const { logs: symptomLogs, loading: symptomLogsLoading, refetch: refetchSymptomLogs } = useSymptomLogs(30);
   const { symptoms, refetch: refetchSymptoms } = useSymptoms();
 
@@ -535,82 +533,7 @@ export default function OverviewPage() {
     refetchTrialRef.current?.();
   }, [router]);
 
-  // Send trial phase notifications (uses trialStatus from useTrialStatus)
-  useEffect(() => {
-    if (!user || !trialStatus.end || trialStatus.expired === true) {
-      lastNotifiedStateRef.current = null;
-      return;
-    }
-
-    const currentState = getTrialState(!!trialStatus.expired, trialStatus.daysLeft, trialStatus.remaining);
-    
-    // Only send notifications for warning and urgent states
-    if (currentState !== "warning" && currentState !== "urgent") {
-      // Reset ref when not in notification states
-      if (currentState === "calm") {
-        lastNotifiedStateRef.current = null;
-      }
-      return;
-    }
-
-    // Don't send duplicate notification for the same state
-    if (lastNotifiedStateRef.current === currentState) {
-      return;
-    }
-
-    const sendNotification = async () => {
-      try {
-        let title: string;
-        let message: string;
-        let priority: "high" | "medium" = "medium";
-
-        if (currentState === "warning") {
-          title = "Trial Ending Soon";
-          message = `Your trial ends in ${trialStatus.daysLeft} ${trialStatus.daysLeft === 1 ? "day" : "days"}. Manage your subscription at menolisa.com.`;
-          priority = "medium";
-        } else if (currentState === "urgent") {
-          title = "Trial Ending Today";
-          message = `Your trial ends in ${trialStatus.remaining.h}h ${trialStatus.remaining.m}m. Manage your subscription at menolisa.com.`;
-          priority = "high";
-        } else {
-          return;
-        }
-
-        const response = await fetch("/api/notifications", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            type: "trial",
-            title,
-            message,
-            priority,
-            showOnce: true, // Prevent duplicate notifications
-            metadata: {
-              primaryAction: {
-                label: "Manage subscription",
-                route: "/dashboard/settings",
-                actionType: "open_settings",
-              },
-            },
-          }),
-        });
-
-        if (response.ok) {
-          // Mark this state as notified
-          lastNotifiedStateRef.current = currentState;
-        } else {
-          console.error("Failed to create trial notification");
-        }
-      } catch (error) {
-        console.error("Error creating trial notification:", error);
-      }
-    };
-
-    // Send notification when entering warning or urgent state
-    sendNotification();
-  }, [user, trialStatus.expired, trialStatus.daysLeft, trialStatus.remaining, trialStatus.end]);
+  // Trial urgency is surfaced via TrialCard + settings (no duplicate DB toast from overview)
 
   // ---------------------------
   // Event handlers

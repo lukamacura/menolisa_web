@@ -91,9 +91,7 @@ export async function GET(req: NextRequest) {
         // Generate insights
         const insights = generateWeeklyInsights(
           (currentWeekLogs || []) as SymptomLog[],
-          (previousWeekLogs || []) as SymptomLog[],
-          weekStart,
-          weekEnd
+          (previousWeekLogs || []) as SymptomLog[]
         );
 
         if (insights.length === 0) {

@@ -7,7 +7,13 @@ import type {
 } from "@/components/notifications/NotificationProvider";
 
 export function useNotification() {
-  const { showNotification, dismissNotification, clearAll } = useNotificationContext();
+  const {
+    showNotification,
+    showLocalNotification,
+    showEphemeralSuccess,
+    dismissNotification,
+    clearAll,
+  } = useNotificationContext();
 
   const show = useCallback(
     async (
@@ -25,19 +31,6 @@ export function useNotification() {
         showOnPages?: string[];
       }
     ): Promise<string> => {
-      // Icons are now handled by NotificationCard component using Lucide icons
-      // This field is kept for backward compatibility but won't be used
-      const defaultIcons: Record<NotificationType, string> = {
-        lisa_insight: "lightbulb",
-        lisa_message: "message-circle",
-        achievement: "party-popper",
-        reminder: "droplet",
-        trial: "clock",
-        welcome: "hand-heart",
-        success: "check-circle-2",
-        error: "alert-triangle",
-      };
-
       const defaultPriorities: Record<NotificationType, NotificationPriority> = {
         lisa_insight: "medium",
         lisa_message: "medium",
@@ -55,7 +48,8 @@ export function useNotification() {
         message: options?.message || "",
         priority: options?.priority || defaultPriorities[type],
         autoDismiss: options?.autoDismiss ?? (type === "success" || type === "achievement" || type === "reminder"),
-        autoDismissSeconds: options?.autoDismissSeconds || (type === "success" ? 3 : type === "achievement" ? 5 : 8),
+        autoDismissSeconds:
+          options?.autoDismissSeconds || (type === "success" ? 3 : type === "achievement" ? 5 : 8),
         primaryAction: options?.primaryAction,
         secondaryAction: options?.secondaryAction,
         showOnce: options?.showOnce,
@@ -65,22 +59,63 @@ export function useNotification() {
     [showNotification]
   );
 
-  // Convenience methods for common notification types
-  const showSuccess = useCallback(
-    (title: string, message?: string) => {
-      return show("success", title, {
-        message: message || title, // Use title as message if message not provided
-        autoDismiss: true,
-        autoDismissSeconds: 3,
+  /** Same as show() but no DB persistence and no device push — for tips and nudges */
+  const showLocal = useCallback(
+    (
+      type: NotificationType,
+      title: string,
+      options?: {
+        message?: string;
+        priority?: NotificationPriority;
+        autoDismiss?: boolean;
+        autoDismissSeconds?: number;
+        primaryAction?: NotificationAction;
+        secondaryAction?: NotificationAction;
+        showOnce?: boolean;
+      }
+    ): string => {
+      const defaultPriorities: Record<NotificationType, NotificationPriority> = {
+        lisa_insight: "medium",
+        lisa_message: "medium",
+        achievement: "low",
+        reminder: "low",
+        trial: "high",
+        welcome: "low",
+        success: "low",
+        error: "high",
+      };
+
+      return showLocalNotification({
+        type,
+        title,
+        message: options?.message || "",
+        priority: options?.priority || defaultPriorities[type],
+        autoDismiss: options?.autoDismiss ?? false,
+        autoDismissSeconds: options?.autoDismissSeconds,
+        primaryAction: options?.primaryAction,
+        secondaryAction: options?.secondaryAction,
+        showOnce: options?.showOnce,
+        showOnPages: [],
       });
     },
-    [show]
+    [showLocalNotification]
+  );
+
+  const showSuccess = useCallback(
+    (title: string, message?: string) => {
+      showEphemeralSuccess(title, message && message !== title ? message : undefined, 3000);
+    },
+    [showEphemeralSuccess]
   );
 
   const showError = useCallback(
     (title: string, message: string, retryAction?: () => void) => {
-      return show("error", title, {
+      return showNotification({
+        type: "error",
+        title,
         message,
+        priority: "high",
+        autoDismiss: false,
         primaryAction: retryAction
           ? {
               label: "Retry",
@@ -93,29 +128,23 @@ export function useNotification() {
         },
       });
     },
-    [show]
+    [showNotification]
   );
 
   const showAchievement = useCallback(
     (title: string, message: string) => {
-      return show("achievement", title, {
-        message,
-        autoDismiss: true,
-        autoDismissSeconds: 5,
-      });
+      showEphemeralSuccess(title, message, 5000);
     },
-    [show]
+    [showEphemeralSuccess]
   );
 
   const showReminder = useCallback(
-    (
-      title: string,
-      message: string,
-      actionLabel: string,
-      action: () => void
-    ) => {
-      return show("reminder", title, {
+    (title: string, message: string, actionLabel: string, action: () => void) => {
+      return showLocalNotification({
+        type: "reminder",
+        title,
         message,
+        priority: "low",
         primaryAction: {
           label: actionLabel,
           action,
@@ -126,13 +155,15 @@ export function useNotification() {
         },
         autoDismiss: true,
         autoDismissSeconds: 8,
+        showOnPages: [],
       });
     },
-    [show]
+    [showLocalNotification]
   );
 
   return {
     show,
+    showLocal,
     showSuccess,
     showError,
     showAchievement,
@@ -141,4 +172,3 @@ export function useNotification() {
     clearAll,
   };
 }
-

@@ -24,6 +24,8 @@ interface NotificationCardProps {
   onDismiss: (id: string) => void;
   onPrimaryAction?: () => void;
   onSecondaryAction?: () => void;
+  /** Smaller padding and type for narrow screens */
+  compact?: boolean;
 }
 
 // Render icon based on notification type and title
@@ -137,6 +139,7 @@ export default function NotificationCard({
   onDismiss,
   onPrimaryAction,
   onSecondaryAction,
+  compact = false,
 }: NotificationCardProps) {
   const router = useRouter();
   const styles = getNotificationStyles(notification.type);
@@ -245,15 +248,22 @@ export default function NotificationCard({
   if (notification.type === "success") {
     return (
       <div
-        className="rounded-lg shadow-lg border-l-4 border-green-500 p-3 mb-3 animate-slide-up backdrop-blur-lg"
+        className={`rounded-lg shadow-lg border-l-4 border-green-500 animate-slide-up backdrop-blur-lg ${
+          compact ? "p-2.5 mb-2" : "p-3 mb-3"
+        }`}
         style={{
-          background: 'linear-gradient(135deg, rgba(219, 234, 254, 0.9) 0%, rgba(254, 243, 199, 0.9) 50%, rgba(252, 231, 243, 0.9) 100%)',
-          border: '1px solid rgba(255, 255, 255, 0.3)',
+          background:
+            "linear-gradient(135deg, rgba(219, 234, 254, 0.9) 0%, rgba(254, 243, 199, 0.9) 50%, rgba(252, 231, 243, 0.9) 100%)",
+          border: "1px solid rgba(255, 255, 255, 0.3)",
         }}
       >
         <div className="flex items-center gap-2">
-          {renderNotificationIcon(notification.type, notification.title, "h-5 w-5 text-green-600")}
-          <span className="text-sm font-bold text-foreground flex-1">
+          {renderNotificationIcon(
+            notification.type,
+            notification.title,
+            compact ? "h-4 w-4 text-green-600" : "h-5 w-5 text-green-600"
+          )}
+          <span className={`font-bold text-foreground flex-1 ${compact ? "text-xs" : "text-sm"}`}>
             {notification.message || notification.title}
           </span>
         </div>
@@ -263,24 +273,30 @@ export default function NotificationCard({
 
   return (
     <div
-      className={`rounded-xl shadow-xl border-l-4 ${styles.borderAccent} p-4 mb-3 animate-slide-up max-w-md w-full backdrop-blur-lg border border-white/30`}
+      className={`rounded-xl shadow-xl border-l-4 ${styles.borderAccent} ${
+        compact ? "p-3 mb-2" : "p-4 mb-3"
+      } animate-slide-up max-w-md w-full backdrop-blur-lg border border-white/30`}
       style={{
         background: 'linear-gradient(135deg, rgba(219, 234, 254, 0.9) 0%, rgba(254, 243, 199, 0.9) 50%, rgba(252, 231, 243, 0.9) 100%)',
       }}
     >
       {/* Header */}
-      <div className="flex items-start justify-between mb-2">
-        <div className="flex items-center gap-2 flex-1">
-          <div className={`${styles.iconBg} rounded-full p-2`}>
-            {renderNotificationIcon(notification.type, notification.title, `h-5 w-5 ${styles.iconColor}`)}
+      <div className={`flex items-start justify-between ${compact ? "mb-1.5" : "mb-2"}`}>
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <div className={`${styles.iconBg} rounded-full ${compact ? "p-1.5" : "p-2"} shrink-0`}>
+            {renderNotificationIcon(
+              notification.type,
+              notification.title,
+              compact ? `h-4 w-4 ${styles.iconColor}` : `h-5 w-5 ${styles.iconColor}`
+            )}
           </div>
-          <h3 className="font-semibold text-foreground text-base flex-1">
+          <h3 className={`font-semibold text-foreground flex-1 min-w-0 ${compact ? "text-sm leading-snug" : "text-base"}`}>
             {notification.title}
           </h3>
         </div>
         <button
           onClick={() => onDismiss(notification.id)}
-          className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-muted"
+          className="text-muted-foreground hover:text-foreground transition-colors p-2 rounded hover:bg-muted min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0"
           aria-label="Dismiss"
         >
           <X className="h-4 w-4" />
@@ -289,16 +305,22 @@ export default function NotificationCard({
 
       {/* Message */}
       {notification.message && (
-        <p className="text-sm text-[#6B6B6B] mb-3 ml-12">{notification.message}</p>
+        <p
+          className={`text-[#6B6B6B] ${compact ? "text-xs mb-2 ml-9" : "text-sm mb-3 ml-12"}`}
+        >
+          {notification.message}
+        </p>
       )}
 
       {/* Actions */}
       {(notification.primaryAction || notification.secondaryAction) && (
-        <div className="flex gap-2 ml-12">
+        <div className={`flex gap-2 ${compact ? "ml-9 flex-col" : "ml-12"}`}>
           {notification.secondaryAction && (
             <button
               onClick={handleSecondaryAction}
-              className="flex-1 px-3 py-2 text-sm font-medium text-[#6B6B6B] hover:text-[#3D3D3D] transition-colors rounded-lg hover:bg-gray-50"
+              className={`flex-1 font-medium text-[#6B6B6B] hover:text-[#3D3D3D] transition-colors rounded-lg hover:bg-gray-50 ${
+                compact ? "px-3 py-2.5 text-sm min-h-[44px]" : "px-3 py-2 text-sm"
+              }`}
             >
               {notification.secondaryAction.label}
             </button>
@@ -306,7 +328,9 @@ export default function NotificationCard({
           {notification.primaryAction && (
             <button
               onClick={handlePrimaryAction}
-              className={`flex-1 px-3 py-2 text-sm font-semibold text-white rounded-lg transition-colors ${styles.buttonBg} ${styles.buttonHover}`}
+              className={`flex-1 font-semibold text-white rounded-lg transition-colors ${styles.buttonBg} ${styles.buttonHover} ${
+                compact ? "px-3 py-2.5 text-sm min-h-[44px]" : "px-3 py-2 text-sm"
+              }`}
             >
               {notification.primaryAction.label}
             </button>

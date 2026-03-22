@@ -26,7 +26,7 @@ export interface Notification {
   type: NotificationType;
   title: string;
   message: string;
-  icon?: string; // Optional, will use default icon based on type if not provided
+  icon?: string;
   priority: NotificationPriority;
   autoDismiss: boolean;
   autoDismissSeconds?: number;
@@ -37,6 +37,14 @@ export interface Notification {
   createdAt: Date;
   seen?: boolean;
   dismissed?: boolean;
+  /** True = never persisted; dismiss skips API */
+  localOnly?: boolean;
+}
+
+export interface EphemeralToast {
+  id: string;
+  title: string;
+  message?: string;
 }
 
 // Database notification format (snake_case)
@@ -74,8 +82,6 @@ interface DBNotification {
 
 // Convert DB notification to client notification
 function dbToClientNotification(db: DBNotification): Notification {
-  // Reconstruct actions from metadata
-  // Store route in metadata so NotificationCard can use Next.js router
   let primaryAction: NotificationAction | undefined;
   let secondaryAction: NotificationAction | undefined;
 
@@ -84,26 +90,22 @@ function dbToClientNotification(db: DBNotification): Notification {
     primaryAction = {
       label: actionMeta.label,
       action: async () => {
-        // Route navigation will be handled by NotificationCard using Next.js router
-        // This function is kept for backward compatibility but route is preferred
         if (actionMeta.route) {
-          // Store route in a way that NotificationCard can access it
-          // The actual navigation happens in NotificationCard
+          // Navigation handled in NotificationCard
         }
       },
     };
-    // Store route and actionType in the action object for easy access
-    (primaryAction as NotificationAction & { route?: string; actionType?: string }).route = actionMeta.route || undefined;
-    (primaryAction as NotificationAction & { route?: string; actionType?: string }).actionType = actionMeta.actionType || undefined;
+    (primaryAction as NotificationAction & { route?: string; actionType?: string }).route =
+      actionMeta.route || undefined;
+    (primaryAction as NotificationAction & { route?: string; actionType?: string }).actionType =
+      actionMeta.actionType || undefined;
   }
 
   if (db.metadata?.secondaryAction) {
     const actionMeta = db.metadata.secondaryAction;
     secondaryAction = {
       label: actionMeta.label,
-      action: async () => {
-        // Secondary actions are typically dismiss
-      },
+      action: async () => {},
     };
     (secondaryAction as NotificationAction & { route?: string }).route = actionMeta.route || undefined;
   }
@@ -124,16 +126,28 @@ function dbToClientNotification(db: DBNotification): Notification {
     createdAt: new Date(db.created_at),
     seen: db.seen,
     dismissed: db.dismissed,
-    // Store metadata for access in NotificationCard
+    localOnly: false,
     metadata: db.metadata,
   } as Notification & { metadata?: DBNotification["metadata"] };
 }
 
+function sortByPriority(a: Notification, b: Notification): number {
+  const priorityOrder = { high: 3, medium: 2, low: 1 };
+  return priorityOrder[b.priority] - priorityOrder[a.priority];
+}
+
 interface NotificationContextType {
   notifications: Notification[];
+  ephemeralToasts: EphemeralToast[];
   loading: boolean;
+  isMobileToastLayout: boolean;
   showNotification: (notification: Omit<Notification, "id" | "createdAt">) => Promise<string>;
+  /** In-memory toast with actions; no DB, no push */
+  showLocalNotification: (notification: Omit<Notification, "id" | "createdAt" | "seen" | "dismissed">) => string;
+  /** Short confirmation line; no DB, no push */
+  showEphemeralSuccess: (title: string, message?: string, durationMs?: number) => void;
   dismissNotification: (id: string) => Promise<void>;
+  dismissEphemeral: (id: string) => void;
   clearAll: () => Promise<void>;
 }
 
@@ -147,40 +161,86 @@ export function useNotificationContext() {
   return context;
 }
 
-// Maximum number of toast notifications visible at once (for screen real estate)
-const MAX_TOAST_NOTIFICATIONS = 3;
+const MAX_TOAST_DESKTOP = 3;
+const MAX_TOAST_MOBILE = 1;
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
-  // These are the notifications shown as toasts (max 3, non-dismissed only)
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [ephemeralToasts, setEphemeralToasts] = useState<EphemeralToast[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isMobileToastLayout, setIsMobileToastLayout] = useState(false);
   const dismissTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const ephemeralTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const seenNotificationsRef = useRef<Set<string>>(new Set());
 
-  // Fetch notifications from API on mount for toast display
-  // Note: Notification center fetches its own notifications separately
+  const maxToastRef = useRef(MAX_TOAST_DESKTOP);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    const update = () => {
+      const mobile = mq.matches;
+      setIsMobileToastLayout(mobile);
+      maxToastRef.current = mobile ? MAX_TOAST_MOBILE : MAX_TOAST_DESKTOP;
+    };
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  const dismissNotification = useCallback(async (id: string) => {
+    const timer = dismissTimersRef.current.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      dismissTimersRef.current.delete(id);
+    }
+
+    let wasLocalOnly = false;
+    setNotifications((prev) => {
+      const notification = prev.find((n) => n.id === id);
+      wasLocalOnly = notification?.localOnly === true;
+      if (notification?.showOnce) {
+        const notificationKey = `${notification.type}_${notification.title}`;
+        seenNotificationsRef.current.add(notificationKey);
+        sessionStorage.setItem(
+          "seen_notifications",
+          JSON.stringify(Array.from(seenNotificationsRef.current))
+        );
+      }
+      return prev.filter((n) => n.id !== id);
+    });
+
+    if (wasLocalOnly) return;
+
+    try {
+      await fetch("/api/notifications", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, seen: true }),
+      });
+    } catch (error) {
+      console.error("Error updating notification:", error);
+    }
+  }, []);
+
+  // Fetch only unseen, non-dismissed rows for toast hydration (dismissed toasts must not reappear)
   useEffect(() => {
     let isMounted = true;
-    
+
     const fetchNotifications = async () => {
       try {
         setLoading(true);
-        // Fetch non-dismissed notifications for toast display
-        const response = await fetch("/api/notifications?not_dismissed=true&limit=10", {
-          method: "GET",
-          cache: "no-store",
-        });
+        const response = await fetch(
+          "/api/notifications?not_dismissed=true&unseen=true&limit=10",
+          { method: "GET", cache: "no-store" }
+        );
 
         if (!isMounted) return;
 
         if (!response.ok) {
-          // Handle 401 (unauthorized) gracefully - user might not be logged in yet
           if (response.status === 401) {
-            // User not authenticated, skip notification fetch silently
             setLoading(false);
             return;
           }
-          // For other errors, log but don't throw
           console.warn("Failed to fetch notifications:", response.status);
           setLoading(false);
           return;
@@ -188,50 +248,41 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
         const { data } = await response.json();
         if (!isMounted) return;
-        
+
         if (data && Array.isArray(data)) {
-          // Daily symptom cron reminders stay in the notification center but do not pop as toasts (noise).
           const clientNotifications = data
-            .filter(
-              (row: DBNotification) =>
-                !isSuppressDailySymptomLogReminderToast({
-                  type: row.type,
-                  title: row.title,
-                  metadata: row.metadata,
-                })
+            .filter((row: DBNotification) =>
+              !isSuppressDailySymptomLogReminderToast({
+                type: row.type,
+                title: row.title,
+                metadata: row.metadata,
+              })
             )
             .map(dbToClientNotification)
-            .filter((n: Notification) => !n.dismissed)
-            .slice(0, MAX_TOAST_NOTIFICATIONS);
+            .filter((n: Notification) => !n.dismissed && n.seen === false)
+            .sort(sortByPriority)
+            .slice(0, maxToastRef.current);
 
           setNotifications(clientNotifications);
 
-          // Set up auto-dismiss timers for fetched notifications
           clientNotifications.forEach((notification: Notification) => {
             if (notification.autoDismiss && notification.autoDismissSeconds) {
-              const timer = setTimeout(() => {
+              const t = setTimeout(() => {
                 dismissNotification(notification.id);
               }, notification.autoDismissSeconds * 1000);
-              dismissTimersRef.current.set(notification.id, timer);
+              dismissTimersRef.current.set(notification.id, t);
             }
           });
         }
       } catch (error) {
-        // Handle network errors gracefully - user may not be authenticated yet
-        if (isMounted) {
-          // Only log if it's not a typical auth-related network issue
-          if (!(error instanceof TypeError)) {
-            console.warn("Error fetching notifications:", error);
-          }
+        if (isMounted && !(error instanceof TypeError)) {
+          console.warn("Error fetching notifications:", error);
         }
       } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+        if (isMounted) setLoading(false);
       }
     };
 
-    // Small delay to ensure auth cookies are set after login redirect
     const timer = setTimeout(() => {
       fetchNotifications();
     }, 300);
@@ -242,7 +293,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     };
   }, []);
 
-  // Load seen notifications from sessionStorage on mount (for backward compatibility)
   useEffect(() => {
     const seen = sessionStorage.getItem("seen_notifications");
     if (seen) {
@@ -254,24 +304,90 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   }, []);
 
-  const showNotification = useCallback(
-    async (notificationData: Omit<Notification, "id" | "createdAt">): Promise<string> => {
-      // Check if this is a show-once notification that's already been seen
+  const dismissEphemeral = useCallback((id: string) => {
+    const t = ephemeralTimersRef.current.get(id);
+    if (t) {
+      clearTimeout(t);
+      ephemeralTimersRef.current.delete(id);
+    }
+    setEphemeralToasts((prev) => prev.filter((e) => e.id !== id));
+  }, []);
+
+  const showEphemeralSuccess = useCallback(
+    (title: string, message?: string, durationMs = 3000) => {
+      const id =
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `ephemeral-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      setEphemeralToasts((prev) => {
+        const next = [...prev, { id, title, message }];
+        const cap = maxToastRef.current;
+        return next.slice(-cap);
+      });
+      const t = setTimeout(() => {
+        dismissEphemeral(id);
+      }, durationMs);
+      ephemeralTimersRef.current.set(id, t);
+    },
+    [dismissEphemeral]
+  );
+
+  const showLocalNotification = useCallback(
+    (
+      notificationData: Omit<Notification, "id" | "createdAt" | "seen" | "dismissed">
+    ): string => {
       if (notificationData.showOnce) {
         const notificationKey = `${notificationData.type}_${notificationData.title}`;
         if (seenNotificationsRef.current.has(notificationKey)) {
-          return ""; // Don't show if already seen
+          return "";
+        }
+      }
+
+      const id =
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+      const notification: Notification = {
+        ...notificationData,
+        id,
+        createdAt: new Date(),
+        seen: false,
+        dismissed: false,
+        localOnly: true,
+      };
+
+      setNotifications((prev) => {
+        const sorted = [...prev, notification].sort(sortByPriority);
+        return sorted.slice(0, maxToastRef.current);
+      });
+
+      if (notification.autoDismiss && notification.autoDismissSeconds) {
+        const timer = setTimeout(() => {
+          dismissNotification(notification.id);
+        }, notification.autoDismissSeconds * 1000);
+        dismissTimersRef.current.set(notification.id, timer);
+      }
+
+      return id;
+    },
+    [dismissNotification]
+  );
+
+  const showNotification = useCallback(
+    async (notificationData: Omit<Notification, "id" | "createdAt">): Promise<string> => {
+      if (notificationData.showOnce) {
+        const notificationKey = `${notificationData.type}_${notificationData.title}`;
+        if (seenNotificationsRef.current.has(notificationKey)) {
+          return "";
         }
       }
 
       try {
-        // Extract action metadata (functions can't be serialized)
-        // Store action labels and try to infer routes from common patterns
         const actionMetadata: Record<string, unknown> = {};
         if (notificationData.primaryAction) {
           const label = notificationData.primaryAction.label.toLowerCase();
           let route: string | null = null;
-          // Infer route from common action labels
           if (label.includes("lisa") || label.includes("talk to")) {
             route = "/chat/lisa";
           } else if (label.includes("see plans") || label.includes("upgrade") || label.includes("pricing")) {
@@ -279,7 +395,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           } else if (label.includes("open chat")) {
             route = "/chat/lisa";
           }
-          
+
           actionMetadata.primaryAction = {
             label: notificationData.primaryAction.label,
             route,
@@ -297,12 +413,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           actionMetadata.icon = notificationData.icon;
         }
 
-        // Save notification to API
         const response = await fetch("/api/notifications", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             type: notificationData.type,
             title: notificationData.title,
@@ -325,18 +438,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         const notification: Notification = dbToClientNotification(data);
 
         setNotifications((prev) => {
-          // Sort by priority: high > medium > low
-          const priorityOrder = { high: 3, medium: 2, low: 1 };
-          const sorted = [...prev, notification].sort(
-            (a, b) => priorityOrder[b.priority] - priorityOrder[a.priority]
-          );
-
-          // Keep only MAX_TOAST_NOTIFICATIONS for toast display
-          // Note: All notifications persist in database and are accessible via notification center
-          return sorted.slice(0, MAX_TOAST_NOTIFICATIONS);
+          const sorted = [...prev, notification].sort(sortByPriority);
+          return sorted.slice(0, maxToastRef.current);
         });
 
-        // Set up auto-dismiss timer if needed
         if (notification.autoDismiss && notification.autoDismissSeconds) {
           const timer = setTimeout(() => {
             dismissNotification(notification.id);
@@ -350,81 +455,31 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         return "";
       }
     },
-    []
-  );
-
-  const dismissNotification = useCallback(
-    async (id: string) => {
-      // Clear auto-dismiss timer if exists
-      const timer = dismissTimersRef.current.get(id);
-      if (timer) {
-        clearTimeout(timer);
-        dismissTimersRef.current.delete(id);
-      }
-
-      // Mark notification as seen (but NOT dismissed) so it remains in notification center
-      // Dismissing a toast only removes it from toast display, not from the notification center
-      try {
-        await fetch("/api/notifications", {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            id,
-            seen: true,
-            // Note: We do NOT set dismissed=true here, so notification remains in center
-          }),
-        });
-      } catch (error) {
-        console.error("Error updating notification:", error);
-      }
-
-      // Remove from toast display only (notification persists in database for notification center)
-      setNotifications((prev) => {
-        const notification = prev.find((n) => n.id === id);
-        if (notification?.showOnce) {
-          const notificationKey = `${notification.type}_${notification.title}`;
-          seenNotificationsRef.current.add(notificationKey);
-          // Save to sessionStorage for backward compatibility
-          sessionStorage.setItem(
-            "seen_notifications",
-            JSON.stringify(Array.from(seenNotificationsRef.current))
-          );
-        }
-        return prev.filter((n) => n.id !== id);
-      });
-    },
-    []
+    [dismissNotification]
   );
 
   const clearAll = useCallback(async () => {
-    // Clear all timers
     dismissTimersRef.current.forEach((timer) => clearTimeout(timer));
     dismissTimersRef.current.clear();
+    ephemeralTimersRef.current.forEach((timer) => clearTimeout(timer));
+    ephemeralTimersRef.current.clear();
 
-    // Mark all notifications as seen (but NOT dismissed) so they remain in notification center
-    // Clearing toasts only removes them from toast display
-    const updatePromises = notifications.map((notification) =>
-      fetch("/api/notifications", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          id: notification.id,
-          seen: true,
-          // Note: We do NOT set dismissed=true here, so notifications remain in center
-        }),
-      }).catch((error) => {
-        console.error("Error updating notification:", error);
-      })
-    );
+    const snapshot = [...notifications];
+    const updatePromises = snapshot
+      .filter((n) => !n.localOnly)
+      .map((notification) =>
+        fetch("/api/notifications", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: notification.id, seen: true }),
+        }).catch((error) => {
+          console.error("Error updating notification:", error);
+        })
+      );
 
     await Promise.all(updatePromises);
 
-    // Mark all show-once notifications as seen
-    notifications.forEach((notification) => {
+    snapshot.forEach((notification) => {
       if (notification.showOnce) {
         const notificationKey = `${notification.type}_${notification.title}`;
         seenNotificationsRef.current.add(notificationKey);
@@ -436,12 +491,13 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     );
 
     setNotifications([]);
+    setEphemeralToasts([]);
   }, [notifications]);
 
-  // Cleanup timers on unmount
   useEffect(() => {
     return () => {
       dismissTimersRef.current.forEach((timer) => clearTimeout(timer));
+      ephemeralTimersRef.current.forEach((timer) => clearTimeout(timer));
     };
   }, []);
 
@@ -449,9 +505,14 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     <NotificationContext.Provider
       value={{
         notifications,
+        ephemeralToasts,
         loading,
+        isMobileToastLayout,
         showNotification,
+        showLocalNotification,
+        showEphemeralSuccess,
         dismissNotification,
+        dismissEphemeral,
         clearAll,
       }}
     >
@@ -459,4 +520,3 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     </NotificationContext.Provider>
   );
 }
-
