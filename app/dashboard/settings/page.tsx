@@ -1,16 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { Bell, ArrowRight, Trash2, CreditCard } from "lucide-react";
 import { InviteReferralSection } from "@/components/InviteReferralSection";
 import DeleteConfirmationDialog from "@/components/DeleteConfirmationDialog";
+import { TrialCard } from "@/components/TrialCard";
 import { useTrialStatus } from "@/lib/useTrialStatus";
+import { useSymptomLogs } from "@/hooks/useSymptomLogs";
 import { usePricingModal } from "@/lib/PricingModalContext";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function SettingsPage() {
   const trialStatus = useTrialStatus();
+  const { logs } = useSymptomLogs(30);
+  const [patternCount, setPatternCount] = useState(0);
+
+  const fetchPatternCount = useCallback(async () => {
+    try {
+      const response = await fetch("/api/tracker-insights?days=30", {
+        method: "GET",
+        cache: "no-store",
+      });
+      if (!response.ok) return;
+      const { data } = await response.json();
+      const patterns =
+        data?.plainLanguageInsights?.filter(
+          (insight: { type: string }) => insight.type === "pattern"
+        ) || [];
+      setPatternCount(patterns.length);
+    } catch {
+      setPatternCount(0);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPatternCount();
+  }, [fetchPatternCount]);
   const { openModal } = usePricingModal();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -85,6 +111,35 @@ export default function SettingsPage() {
           Manage your account preferences and notifications
         </p>
       </div>
+
+      {!trialStatus.loading && (
+        <section className="mb-6 sm:mb-8" aria-label="Plan and subscription">
+          <TrialCard
+            trial={{
+              expired: trialStatus.expired,
+              start: trialStatus.start,
+              end: trialStatus.end,
+              daysLeft: trialStatus.daysLeft,
+              elapsedDays: trialStatus.elapsedDays,
+              progressPct: trialStatus.progressPct,
+              remaining: trialStatus.remaining,
+              trialDays: trialStatus.trialDays,
+            }}
+            accountStatus={trialStatus.accountStatus}
+            subscriptionCanceled={trialStatus.subscriptionCanceled}
+            symptomCount={logs.length}
+            patternCount={patternCount}
+          />
+        </section>
+      )}
+
+      <p className="text-sm text-muted-foreground mb-6 sm:mb-8">
+        For a dedicated plan page with more context, open{" "}
+        <Link href="/dashboard/account" className="text-primary font-semibold hover:underline">
+          Account
+        </Link>
+        .
+      </p>
 
       {/* Invite friends / referral */}
       <InviteReferralSection className="mb-6 sm:mb-8" />

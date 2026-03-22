@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { Activity, LogOut, ChevronDown, Bell, MessageSquare, Settings } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { Activity, LogOut, ChevronDown, Bell, MessageSquare, Settings, UserCircle } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import SwipeButton from "@/components/SwipeButton";
 import { useTrialStatus } from "@/lib/useTrialStatus";
@@ -52,7 +52,6 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const trialStatus = useTrialStatus();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -75,6 +74,12 @@ export default function DashboardLayout({
       href: "/dashboard/notifications",
       label: "Notifications",
       icon: Bell,
+      requiresActiveTrial: false,
+    },
+    {
+      href: "/dashboard/account",
+      label: "Account",
+      icon: UserCircle,
       requiresActiveTrial: false,
     },
     {
@@ -193,10 +198,10 @@ export default function DashboardLayout({
                         className={`
                           flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors duration-200
                           ${isActive
-                            ? "text-white! font-bold!"
+                            ? "font-bold! text-white!"
                             : isDisabled
                             ? "text-muted-foreground/50 cursor-not-allowed opacity-50"
-                            : "text-foreground! hover:bg-foreground/5"
+                            : "text-foreground hover:bg-foreground/5"
                           }
                         `}
                         style={isActive ? { background: 'linear-gradient(135deg, #ff74b1 0%, #ffb4d5 100%)' } : {}}
@@ -244,7 +249,7 @@ export default function DashboardLayout({
                           ? "text-white font-semibold scale-105 bg-pink-200"
                           : isDisabled
                           ? "text-muted-foreground/50 cursor-not-allowed opacity-50"
-                          : "text-foreground! hover:bg-foreground/5 hover:scale-105"
+                          : "text-foreground hover:bg-foreground/5 hover:scale-105"
                         }
                       `}
                       aria-label={item.label}

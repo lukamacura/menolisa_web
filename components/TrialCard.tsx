@@ -117,7 +117,7 @@ export function TrialCard({ trial, accountStatus, subscriptionCanceled = false, 
           badgeBorder: "border-green-500/50",
           badgeLabel: "Subscriber",
           progressBar: "from-primary via-accent to-secondary",
-          buttonStyle: "bg-white/10 hover:bg-white/20 text-white! border border-white/30 w-full",
+          buttonStyle: "bg-white/10 hover:bg-white/20 !text-white border border-white/30 w-full",
           title: "Your plan",
         };
       case "calm":
@@ -128,7 +128,7 @@ export function TrialCard({ trial, accountStatus, subscriptionCanceled = false, 
           badgeBorder: "border-green-500/50",
           badgeLabel: "Active",
           progressBar: "from-primary via-accent to-secondary",
-          buttonStyle: "bg-white/10 hover:bg-white/20 text-white! border border-white/30 w-full",
+          buttonStyle: "bg-white/10 hover:bg-white/20 !text-white border border-white/30 w-full",
           title: "Your Trial",
         };
       case "warning":
@@ -139,7 +139,7 @@ export function TrialCard({ trial, accountStatus, subscriptionCanceled = false, 
           badgeBorder: "border-orange-500/50",
           badgeLabel: "Last day",
           progressBar: "from-orange-500 to-amber-500",
-          buttonStyle: "bg-orange-500/80 hover:bg-orange-500 text-white! border border-orange-400/50 w-full",
+          buttonStyle: "bg-orange-500/80 hover:bg-orange-500 !text-white border border-orange-400/50 w-full",
           title: "Your Trial",
         };
       case "urgent":
@@ -150,7 +150,7 @@ export function TrialCard({ trial, accountStatus, subscriptionCanceled = false, 
           badgeBorder: "border-red-500/50",
           badgeLabel: "Ends today",
           progressBar: "from-red-500 to-red-600",
-          buttonStyle: "bg-red-500 hover:bg-red-600 text-white! border border-red-400/50 w-full",
+          buttonStyle: "bg-red-500 hover:bg-red-600 !text-white border border-red-400/50 w-full",
           title: "Trial Ending Soon",
         };
       case "expired":
@@ -161,7 +161,7 @@ export function TrialCard({ trial, accountStatus, subscriptionCanceled = false, 
           badgeBorder: "border-red-500/50",
           badgeLabel: "Expired",
           progressBar: "from-red-600 to-red-700",
-          buttonStyle: "bg-red-600 hover:bg-red-700 text-white! border border-red-500/50 w-full",
+          buttonStyle: "bg-red-600 hover:bg-red-700 !text-white border border-red-500/50 w-full",
           title: "Trial Ended",
         };
     }

@@ -25,7 +25,6 @@ import GoodDayCard from "@/components/symptom-tracker/GoodDayCard";
 import DeleteConfirmationDialog from "@/components/DeleteConfirmationDialog";
 import TriggerPromptModal from "@/components/symptom-tracker/TriggerPromptModal";
 import WeekView from "@/components/symptom-tracker/WeekView";
-import { TrialCard } from "@/components/TrialCard";
 import { InviteReferralSection } from "@/components/InviteReferralSection";
 import type { Symptom, LogSymptomData, SymptomLog } from "@/lib/symptom-tracker-constants";
 import { orderSymptoms } from "@/lib/symptomOrdering";
@@ -185,29 +184,6 @@ export default function SymptomsPage() {
     log: null,
     isLoading: false,
   });
-  const [patternCount, setPatternCount] = useState(0);
-
-  const fetchPatternCount = useCallback(async () => {
-    try {
-      const response = await fetch("/api/tracker-insights?days=30", {
-        method: "GET",
-        cache: "no-store",
-      });
-      if (!response.ok) return;
-      const { data } = await response.json();
-      const patterns = data?.plainLanguageInsights?.filter(
-        (insight: { type: string }) => insight.type === "pattern"
-      ) || [];
-      setPatternCount(patterns.length);
-    } catch {
-      setPatternCount(0);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchPatternCount();
-  }, [fetchPatternCount]);
-
   // Trigger page load animation
   useEffect(() => {
     setPageLoaded(true);
@@ -725,26 +701,6 @@ export default function SymptomsPage() {
 
   return (
     <div className="mx-auto max-w-7xl p-4 sm:p-6 md:p-8 pb-12 sm:pb-16 space-y-6 sm:space-y-8 min-h-screen">
-      {/* Trial card — first thing users see when entering dashboard */}
-      <section className="opacity-0 animate-[fadeInDown_0.6s_ease-out_forwards]">
-        <TrialCard
-          trial={{
-            expired: trialStatus.expired,
-            start: trialStatus.start,
-            end: trialStatus.end,
-            daysLeft: trialStatus.daysLeft,
-            elapsedDays: trialStatus.elapsedDays,
-            progressPct: trialStatus.progressPct,
-            remaining: trialStatus.remaining,
-            trialDays: trialStatus.trialDays,
-          }}
-          accountStatus={trialStatus.accountStatus}
-          subscriptionCanceled={trialStatus.subscriptionCanceled}
-          symptomCount={logs.length}
-          patternCount={patternCount}
-        />
-      </section>
-
       {/* Invite friends */}
       <section className="opacity-0 animate-[fadeInDown_0.6s_ease-out_forwards]">
         <InviteReferralSection />

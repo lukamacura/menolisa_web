@@ -533,7 +533,7 @@ export default function OverviewPage() {
     refetchTrialRef.current?.();
   }, [router]);
 
-  // Trial urgency is surfaced via TrialCard + settings (no duplicate DB toast from overview)
+  // Trial urgency is surfaced via TrialCard on Account + Settings (no duplicate DB toast from overview)
 
   // ---------------------------
   // Event handlers
