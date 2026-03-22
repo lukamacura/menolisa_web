@@ -7,7 +7,10 @@ import { usePathname } from "next/navigation";
 import { Activity, LogOut, ChevronDown, Bell, MessageSquare, Settings, UserCircle } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import SwipeButton from "@/components/SwipeButton";
-import { useTrialStatus } from "@/lib/useTrialStatus";
+import {
+  DashboardTrialProvider,
+  useDashboardTrialStatus,
+} from "@/lib/dashboardTrialContext";
 import SessionVerification from "@/components/SessionVerification";
 import { NotificationProvider } from "@/components/notifications/NotificationProvider";
 import NotificationContainer from "@/components/notifications/NotificationContainer";
@@ -51,8 +54,20 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  return (
+    <NotificationProvider>
+      <PricingModalProvider>
+        <DashboardTrialProvider>
+          <DashboardLayoutInner>{children}</DashboardLayoutInner>
+        </DashboardTrialProvider>
+      </PricingModalProvider>
+    </NotificationProvider>
+  );
+}
+
+function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const trialStatus = useTrialStatus();
+  const trialStatus = useDashboardTrialStatus();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const isDropdownOpenRef = useRef(false);
@@ -144,8 +159,7 @@ export default function DashboardLayout({
   }, [pathname]);
 
   return (
-    <NotificationProvider>
-      <PricingModalProvider>
+    <>
         <PricingModalWrapper />
         <div className="min-h-screen flex flex-col bg-background">
         {/* Session Verification - checks for browser mismatch issues */}
@@ -281,13 +295,12 @@ export default function DashboardLayout({
       <main className="flex-1 pt-[144px] sm:pt-[148px]">{children}</main>
 
       {/* Fixed Lisa Swipe Button */}
-      <SwipeButton variant="lisa" />
+      <SwipeButton variant="lisa" trialExpired={trialStatus.expired} />
 
         {/* Notification Container */}
         <NotificationContainer />
       </div>
-      </PricingModalProvider>
-    </NotificationProvider>
+    </>
   );
 }
 

@@ -6,13 +6,13 @@ import { Bell, ArrowRight, Trash2, CreditCard } from "lucide-react";
 import { InviteReferralSection } from "@/components/InviteReferralSection";
 import DeleteConfirmationDialog from "@/components/DeleteConfirmationDialog";
 import { TrialCard } from "@/components/TrialCard";
-import { useTrialStatus } from "@/lib/useTrialStatus";
+import { useDashboardTrialStatus } from "@/lib/dashboardTrialContext";
 import { useSymptomLogs } from "@/hooks/useSymptomLogs";
 import { usePricingModal } from "@/lib/PricingModalContext";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function SettingsPage() {
-  const trialStatus = useTrialStatus();
+  const trialStatus = useDashboardTrialStatus();
   const { logs } = useSymptomLogs(30);
   const [patternCount, setPatternCount] = useState(0);
 

@@ -4,13 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { LayoutDashboard } from "lucide-react";
 import { TrialCard } from "@/components/TrialCard";
-import { useTrialStatus } from "@/lib/useTrialStatus";
+import { useDashboardTrialStatus } from "@/lib/dashboardTrialContext";
 import { useSymptomLogs } from "@/hooks/useSymptomLogs";
 
 export const dynamic = "force-dynamic";
 
 export default function AccountPage() {
-  const trialStatus = useTrialStatus();
+  const trialStatus = useDashboardTrialStatus();
   const { logs } = useSymptomLogs(30);
   const [patternCount, setPatternCount] = useState(0);
 
@@ -38,18 +38,6 @@ export default function AccountPage() {
     };
   }, []);
 
-  if (trialStatus.loading) {
-    return (
-      <div className="mx-auto max-w-4xl w-full p-4 sm:p-6 md:p-8 pb-24 min-h-screen">
-        <div className="animate-pulse space-y-4">
-          <div className="h-10 w-48 rounded-lg bg-muted" />
-          <div className="h-24 rounded-2xl bg-muted" />
-          <div className="h-64 rounded-2xl bg-muted" />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="mx-auto max-w-4xl w-full p-4 sm:p-6 md:p-8 pb-24 min-h-screen">
       <div className="mb-6 sm:mb-8">
@@ -62,22 +50,30 @@ export default function AccountPage() {
       </div>
 
       <section className="mb-8 sm:mb-10" aria-label="Plan and subscription">
-        <TrialCard
-          trial={{
-            expired: trialStatus.expired,
-            start: trialStatus.start,
-            end: trialStatus.end,
-            daysLeft: trialStatus.daysLeft,
-            elapsedDays: trialStatus.elapsedDays,
-            progressPct: trialStatus.progressPct,
-            remaining: trialStatus.remaining,
-            trialDays: trialStatus.trialDays,
-          }}
-          accountStatus={trialStatus.accountStatus}
-          subscriptionCanceled={trialStatus.subscriptionCanceled}
-          symptomCount={logs.length}
-          patternCount={patternCount}
-        />
+        {trialStatus.loading ? (
+          <div className="animate-pulse space-y-3 rounded-2xl border border-border p-4 sm:p-6">
+            <div className="h-6 w-40 rounded bg-muted" />
+            <div className="h-32 rounded-xl bg-muted" />
+            <div className="h-12 w-full rounded-xl bg-muted" />
+          </div>
+        ) : (
+          <TrialCard
+            trial={{
+              expired: trialStatus.expired,
+              start: trialStatus.start,
+              end: trialStatus.end,
+              daysLeft: trialStatus.daysLeft,
+              elapsedDays: trialStatus.elapsedDays,
+              progressPct: trialStatus.progressPct,
+              remaining: trialStatus.remaining,
+              trialDays: trialStatus.trialDays,
+            }}
+            accountStatus={trialStatus.accountStatus}
+            subscriptionCanceled={trialStatus.subscriptionCanceled}
+            symptomCount={logs.length}
+            patternCount={patternCount}
+          />
+        )}
       </section>
 
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">

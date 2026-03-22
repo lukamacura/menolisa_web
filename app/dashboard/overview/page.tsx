@@ -11,7 +11,7 @@ import { useSymptomLogs } from "@/hooks/useSymptomLogs";
 import DeleteConfirmationDialog from "@/components/DeleteConfirmationDialog";
 import RecentLogs from "@/components/symptom-tracker/RecentLogs";
 import { Skeleton } from "@/components/ui/AnimatedComponents";
-import { useTrialStatus } from "@/lib/useTrialStatus";
+import { useDashboardTrialStatus } from "@/lib/dashboardTrialContext";
 import LogSymptomModal from "@/components/symptom-tracker/LogSymptomModal";
 import { useSymptoms } from "@/hooks/useSymptoms";
 import type { LogSymptomData } from "@/lib/symptom-tracker-constants";
@@ -292,7 +292,7 @@ function RecentSymptomsCard({
 // ---------------------------
 export default function OverviewPage() {
   const router = useRouter();
-  const trialStatus = useTrialStatus();
+  const trialStatus = useDashboardTrialStatus();
 
   const [user, setUser] = useState<User | null>(null);
   const [userName, setUserName] = useState<string | null>(null);

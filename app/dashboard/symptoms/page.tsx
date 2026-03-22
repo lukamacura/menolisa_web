@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { Book, BookOpen, Plus } from "lucide-react";
 import { useSymptoms } from "@/hooks/useSymptoms";
 import { useSymptomLogs } from "@/hooks/useSymptomLogs";
-import { useTrialStatus } from "@/lib/useTrialStatus";
+import { useDashboardTrialStatus } from "@/lib/dashboardTrialContext";
 import { useNotification } from "@/hooks/useNotification";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import SymptomCard from "@/components/symptom-tracker/SymptomCard";
@@ -105,7 +105,7 @@ function AnimatedSection({
 
 export default function SymptomsPage() {
   const router = useRouter();
-  const trialStatus = useTrialStatus();
+  const trialStatus = useDashboardTrialStatus();
   const { showSuccess, showError, showLocal } = useNotification();
   const { symptoms, loading: symptomsLoading, refetch: refetchSymptoms } =
     useSymptoms();

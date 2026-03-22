@@ -4,20 +4,17 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowBigRight } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
-import { useTrialStatus } from "@/lib/useTrialStatus";
 
 const SWIPE_THRESHOLD = 80;
 const DRAG_CAP_PX = 200;
 
-type SwipeButtonVariant = "home" | "lisa";
+type SwipeButtonProps =
+  | { variant: "home" }
+  | { variant: "lisa"; trialExpired: boolean };
 
-type SwipeButtonProps = {
-  variant: SwipeButtonVariant;
-};
-
-export default function SwipeButton({ variant }: SwipeButtonProps) {
+export default function SwipeButton(props: SwipeButtonProps) {
   const router = useRouter();
-  const trialStatus = useTrialStatus();
+  const variant = props.variant;
 
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
@@ -31,7 +28,8 @@ export default function SwipeButton({ variant }: SwipeButtonProps) {
 
   const isHome = variant === "home";
   const isLisa = variant === "lisa";
-  const canNavigate = isHome || (isLisa && !trialStatus.expired);
+  const trialExpired = isLisa ? props.trialExpired : false;
+  const canNavigate = isHome || (isLisa && !trialExpired);
 
   // Auth only for home variant
   useEffect(() => {
@@ -185,7 +183,7 @@ export default function SwipeButton({ variant }: SwipeButtonProps) {
     navigate();
   };
 
-  if (isLisa && trialStatus.expired) return null;
+  if (isLisa && trialExpired) return null;
 
   const swipeProgress = Math.min(dragOffset / SWIPE_THRESHOLD, 1);
 
