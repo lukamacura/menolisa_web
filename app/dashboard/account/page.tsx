@@ -40,7 +40,7 @@ export default function AccountPage() {
 
   if (trialStatus.loading) {
     return (
-      <div className="mx-auto max-w-4xl w-full p-4 sm:p-6 md:p-8 min-h-screen">
+      <div className="mx-auto max-w-4xl w-full p-4 sm:p-6 md:p-8 pb-24 min-h-screen">
         <div className="animate-pulse space-y-4">
           <div className="h-10 w-48 rounded-lg bg-muted" />
           <div className="h-24 rounded-2xl bg-muted" />
@@ -51,18 +51,13 @@ export default function AccountPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl w-full p-4 sm:p-6 md:p-8 pb-12 sm:pb-16 md:pb-20 min-h-screen">
+    <div className="mx-auto max-w-4xl w-full p-4 sm:p-6 md:p-8 pb-24 min-h-screen">
       <div className="mb-6 sm:mb-8">
         <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight text-foreground mb-2 sm:mb-3">
           Account
         </h1>
-        <p className="text-sm sm:text-base text-muted-foreground max-w-2xl leading-relaxed">
-          Your plan, trial, and subscription live here. Subscribe or change your billing whenever you need
-          to — everything stays in one calm place.
-        </p>
-        <p className="mt-3 text-sm text-muted-foreground max-w-2xl leading-relaxed">
-          Use the card below to choose a plan, open the billing portal, or see when your access renews.
-          Your symptom history and preferences are not affected by opening these options.
+        <p className="text-sm sm:text-base text-muted-foreground max-w-xl">
+          Plan, trial, and billing - update anytime below.
         </p>
       </div>
 
@@ -98,7 +93,7 @@ export default function AccountPage() {
           Go to my overview
         </Link>
         <p className="text-xs sm:text-sm text-muted-foreground sm:max-w-xs">
-          Return to your health overview and recent activity.
+          Back to your dashboard.
         </p>
       </div>
     </div>
