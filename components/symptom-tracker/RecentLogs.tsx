@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import type { SymptomLog } from "@/lib/symptom-tracker-constants";
 import { SEVERITY_LABELS } from "@/lib/symptom-tracker-constants";
 import { formatDateSimple } from "@/lib/dateUtils";
-import { getIconFromName } from "@/lib/symptomIconMapping";
+import { resolveSymptomLucideIcon } from "@/lib/symptomIconMapping";
 
 interface RecentLogsProps {
   logs: SymptomLog[];
@@ -173,34 +173,10 @@ export default function RecentLogs({ logs, loading, onLogClick, onDelete }: Rece
         const { dateStr, timeStr } = formatDateSimple(log.logged_at);
         const symptomName = log.symptoms?.name || "Unknown";
         const symptomIconName = log.symptoms?.icon || "Activity";
-
-        // Map symptom names to icon names (prioritize name mapping for unique icons)
-        const iconMap: Record<string, string> = {
-          'Hot flashes': 'Flame',
-          'Night sweats': 'Droplet',
-          'Fatigue': 'Zap',
-          'Brain fog': 'Brain',
-          'Mood swings': 'Heart',
-          'Anxiety': 'AlertCircle',
-          'Headaches': 'AlertTriangle',
-          'Joint pain': 'Activity',
-          'Bloating': 'CircleDot',
-          'Insomnia': 'Moon',
-          'Weight gain': 'TrendingUp',
-          'Low libido': 'HeartOff',
-          'Good Day': 'Sun',
-        };
-
-        // Try to get icon by symptom name first (ensures unique icons)
-        const iconName = iconMap[symptomName];
-        let SymptomIcon;
-        if (iconName) {
-          SymptomIcon = getIconFromName(iconName);
-        } else if (symptomIconName && symptomIconName.length > 1 && !symptomIconName.includes('🔥') && !symptomIconName.includes('💧')) {
-          SymptomIcon = getIconFromName(symptomIconName);
-        } else {
-          SymptomIcon = getIconFromName('Activity');
-        }
+        const SymptomIcon = resolveSymptomLucideIcon({
+          name: symptomName,
+          icon: symptomIconName,
+        });
 
         return (
           <div key={log.id}>

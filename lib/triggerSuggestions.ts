@@ -1,5 +1,5 @@
 import type { SymptomLog } from "@/lib/symptom-tracker-constants";
-import { TRIGGER_OPTIONS } from "@/lib/symptom-tracker-constants";
+import { getSymptomTriggerList } from "@/lib/symptom-tracker-constants";
 
 /**
  * Get user's custom triggers from user_preferences
@@ -22,55 +22,49 @@ export async function saveCustomTrigger(userId: string, trigger: string): Promis
  * Get suggested triggers for a symptom based on user's historical patterns
  */
 export function getSuggestedTriggers(
+  symptomName: string,
   symptomId: string,
   logs: SymptomLog[],
   limit: number = 3
 ): string[] {
-  // Filter logs for this symptom
-  const symptomLogs = logs.filter(log => log.symptom_id === symptomId);
-  
+  const pool = getTriggerPool(symptomName);
+  if (pool.length === 0) return [];
+
+  const symptomLogs = logs.filter((log) => log.symptom_id === symptomId);
+
   if (symptomLogs.length === 0) {
-    // No logs yet - return default triggers based on symptom name (we'll enhance this later)
-    return getDefaultTriggersForSymptom(symptomId, limit);
+    return pool.slice(0, limit);
   }
 
-  // Count trigger frequency
   const triggerCount = new Map<string, number>();
-  symptomLogs.forEach(log => {
+  symptomLogs.forEach((log) => {
     if (log.triggers && log.triggers.length > 0) {
-      log.triggers.forEach(trigger => {
+      log.triggers.forEach((trigger) => {
+        if (!pool.includes(trigger)) return;
         triggerCount.set(trigger, (triggerCount.get(trigger) || 0) + 1);
       });
     }
   });
 
   if (triggerCount.size === 0) {
-    // No triggers logged yet - return defaults
-    return getDefaultTriggersForSymptom(symptomId, limit);
+    return pool.slice(0, limit);
   }
 
-  // Sort triggers by frequency
-  const sortedTriggers = Array.from(triggerCount.entries())
+  return Array.from(triggerCount.entries())
     .sort((a, b) => b[1] - a[1])
     .map(([trigger]) => trigger)
     .slice(0, limit);
+}
 
-  return sortedTriggers;
+function getTriggerPool(symptomName: string): string[] {
+  return [...getSymptomTriggerList(symptomName)];
 }
 
 /**
- * Get default triggers for a symptom based on common patterns
+ * Get remaining triggers (not in suggested list) for this symptom's pool only.
  */
-function getDefaultTriggersForSymptom(symptomId: string, limit: number): string[] {
-  // This is a fallback - we could enhance this with symptom-specific defaults
-  // For now, return the most common triggers globally
-  return TRIGGER_OPTIONS.slice(0, limit);
-}
-
-/**
- * Get remaining triggers (not in suggested list)
- */
-export function getRemainingTriggers(suggested: string[]): string[] {
-  return TRIGGER_OPTIONS.filter(trigger => !suggested.includes(trigger));
+export function getRemainingTriggers(suggested: string[], symptomName: string): string[] {
+  const pool = getTriggerPool(symptomName);
+  return pool.filter((trigger) => !suggested.includes(trigger));
 }
 

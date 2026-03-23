@@ -27,7 +27,7 @@ function AnimatedNavItem({
   delay = 0,
 }: {
   children: React.ReactNode;
-  delay?: number;
+  delay?: number; 
 }) {
   const [isVisible, setIsVisible] = useState(false);
 

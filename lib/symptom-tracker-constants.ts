@@ -1,9 +1,9 @@
 // Symptom Tracker Constants and Types
+// Canonical symptom list + per-symptom triggers: see mobile app/symptoms.md
 
 import { Smile, Meh, Frown } from "lucide-react";
-import { getSymptomIconName } from "./symptomIconMapping";
 
-// Hardcoded trigger options (NOT stored in database)
+/** Legacy global trigger chips (custom free-text still allowed in modals). Prefer SYMPTOM_TRIGGERS per symptom. */
 export const TRIGGER_OPTIONS = [
   'Stress',
   'Poor sleep',
@@ -19,21 +19,107 @@ export const TRIGGER_OPTIONS = [
   'Unknown'
 ] as const;
 
-// Default symptom definitions (icon field now stores Lucide icon name instead of emoji)
+/**
+ * Triggers shown when logging a symptom (empty array = no trigger step content / skip chips).
+ * Aligned with mobile app/symptoms.md.
+ */
+export const SYMPTOM_TRIGGERS = {
+  'Hot flashes': [
+    'Alcohol',
+    'Caffeine',
+    'Spicy food',
+    'Warm room / heavy bedding',
+    'Stress',
+    'Tight or synthetic clothing',
+    'Smoking',
+  ],
+  'Night sweats': [
+    'Alcohol',
+    'Caffeine',
+    'Spicy food',
+    'Warm room / heavy bedding',
+    'Stress',
+    'Tight or synthetic clothing',
+    'Smoking',
+  ],
+  Palpitations: [],
+  'Sleep problems': [
+    'Late exercise',
+    'Heavy meal late at night',
+    'High-carb dinner',
+    'Skipping meals',
+    'Screen time before bed',
+    'Stress',
+    'Alcohol',
+    'Caffeine',
+  ],
+  'Mood swings': [
+    'High caffeine',
+    'Alcohol',
+    'Poor sleep (night before)',
+    'Skipped meals / blood sugar dip',
+    'Stress event',
+    'Lack of exercise',
+    'PMS-like cycle patterns (perimenopause)',
+  ],
+  Irritability: [],
+  Anxiety: [
+    'High caffeine',
+    'Alcohol',
+    'Poor sleep (night before)',
+    'Skipped meals / blood sugar dip',
+    'Stress event',
+    'Lack of exercise',
+    'PMS-like cycle patterns (perimenopause)',
+  ],
+  'Brain fog': [
+    'Poor sleep (night before)',
+    'Alcohol',
+    'Dehydration',
+    'High sugar / processed food',
+    'Stress',
+    'Sedentary day',
+  ],
+  Fatigue: [],
+  'Low libido': [
+    'Vaginal discomfort',
+    'Poor sleep',
+    'Stress & mental overload',
+    'Low energy / fatigue',
+    'Relationship / emotional disconnect',
+    'Mood changes',
+    'Medications',
+  ],
+  'Vaginal discomfort': [],
+  'Bladder problems': [],
+  'Joint pain': [],
+  'Weight gain': [],
+} as const satisfies Record<string, readonly string[]>;
+
+export function getSymptomTriggerList(symptomName: string): readonly string[] {
+  if (symptomName === "Insomnia") {
+    return SYMPTOM_TRIGGERS["Sleep problems"];
+  }
+  const list = SYMPTOM_TRIGGERS[symptomName as keyof typeof SYMPTOM_TRIGGERS];
+  return list ?? [];
+}
+
+// Default symptom definitions (icon field stores Lucide icon name). New users only — see symptoms.md (no Period in tracker).
 export const DEFAULT_SYMPTOMS = [
   { name: 'Hot flashes', icon: 'Flame' },
   { name: 'Night sweats', icon: 'Droplet' },
-  { name: 'Fatigue', icon: 'Zap' },
-  { name: 'Brain fog', icon: 'Brain' },
+  { name: 'Palpitations', icon: 'HeartPulse' },
+  { name: 'Sleep problems', icon: 'Moon' },
   { name: 'Mood swings', icon: 'Heart' },
+  { name: 'Irritability', icon: 'Frown' },
   { name: 'Anxiety', icon: 'AlertCircle' },
-  { name: 'Headaches', icon: 'AlertTriangle' },
-  { name: 'Joint pain', icon: 'Activity' },
-  { name: 'Bloating', icon: 'CircleDot' },
-  { name: 'Insomnia', icon: 'Moon' },
-  { name: 'Weight gain', icon: 'TrendingUp' },
+  { name: 'Brain fog', icon: 'Brain' },
+  { name: 'Fatigue', icon: 'Zap' },
   { name: 'Low libido', icon: 'HeartOff' },
-  { name: 'Period', icon: 'Circle' }
+  { name: 'Vaginal discomfort', icon: 'Shield' },
+  { name: 'Bladder problems', icon: 'Droplets' },
+  { name: 'Joint pain', icon: 'Activity' },
+  { name: 'Weight gain', icon: 'TrendingUp' },
 ] as const;
 
 // TypeScript Types

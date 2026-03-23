@@ -43,6 +43,9 @@ next-env.d.ts
 # Knowledge base (proprietary RAG content)
 /knowledge-base/
 
+# Local explanatory / planning docs (not committed)
+/docs/
+
 # IDE/AI assistant configs (user-specific)
 .cursor/
 .claude/

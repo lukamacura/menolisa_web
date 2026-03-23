@@ -27,19 +27,15 @@ export default function TriggerPromptModal({
   const [selectedTriggers, setSelectedTriggers] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Get suggested triggers (show 4 most common)
-  const suggestedTriggers = useMemo(() => {
-    if (allLogs.length === 0) return [];
-    return getSuggestedTriggers(symptom.id, allLogs, 4);
-  }, [symptom.id, allLogs]);
+  const suggestedTriggers = useMemo(
+    () => getSuggestedTriggers(symptom.name, symptom.id, allLogs, 4),
+    [symptom.name, symptom.id, allLogs]
+  );
 
-  // Get a few remaining common triggers (to show popular ones)
   const commonTriggers = useMemo(() => {
-    const remaining = getRemainingTriggers(suggestedTriggers);
-    // Show most common triggers: Stress, Poor sleep, Hormonal, Coffee
-    const popular = ['Stress', 'Poor sleep', 'Hormonal', 'Coffee'];
-    return remaining.filter(t => popular.includes(t)).slice(0, 4 - suggestedTriggers.length);
-  }, [suggestedTriggers]);
+    const remaining = getRemainingTriggers(suggestedTriggers, symptom.name);
+    return remaining.slice(0, Math.max(0, 4 - suggestedTriggers.length));
+  }, [suggestedTriggers, symptom.name]);
 
   const displayTriggers = [...suggestedTriggers, ...commonTriggers].slice(0, 4);
 

@@ -260,7 +260,11 @@ function generatePlainLanguageInsights(
 
   // Sleep correlation with other symptoms (e.g., brain fog)
   Object.entries(logsBySymptom).forEach(([symptomName, logs]) => {
-    if (symptomName === "Insomnia" || symptomName === "Sleep issues") {
+    if (
+      symptomName === "Insomnia" ||
+      symptomName === "Sleep issues" ||
+      symptomName === "Sleep problems"
+    ) {
       // Find days with sleep issues
       const sleepIssueDays = new Set(
         logs.map(log => new Date(log.logged_at).toDateString())

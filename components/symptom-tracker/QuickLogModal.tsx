@@ -4,9 +4,9 @@ import { useState, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { X, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { SEVERITY_LABELS, TRIGGER_OPTIONS } from "@/lib/symptom-tracker-constants";
+import { SEVERITY_LABELS } from "@/lib/symptom-tracker-constants";
 import type { Symptom, LogSymptomData, SymptomLog } from "@/lib/symptom-tracker-constants";
-import { getIconFromName } from "@/lib/symptomIconMapping";
+import { resolveSymptomLucideIcon } from "@/lib/symptomIconMapping";
 import { getSuggestedTriggers, getRemainingTriggers } from "@/lib/triggerSuggestions";
 
 interface QuickLogModalProps {
@@ -59,45 +59,18 @@ export default function QuickLogModal({
     }
   }, [isOpen]);
 
-  // Get icon component
-  const SymptomIcon = useMemo(() => {
-    const iconMap: Record<string, string> = {
-      'Hot flashes': 'Flame',
-      'Night sweats': 'Droplet',
-      'Fatigue': 'Zap',
-      'Brain fog': 'Brain',
-      'Mood swings': 'Heart',
-      'Anxiety': 'AlertCircle',
-      'Headaches': 'AlertTriangle',
-      'Joint pain': 'Activity',
-      'Bloating': 'CircleDot',
-      'Insomnia': 'Moon',
-      'Weight gain': 'TrendingUp',
-      'Low libido': 'HeartOff',
-    };
-    
-    const iconName = iconMap[symptom.name];
-    if (iconName) {
-      return getIconFromName(iconName);
-    }
-    
-    if (symptom.icon && symptom.icon.length > 1 && !symptom.icon.includes('🔥') && !symptom.icon.includes('💧')) {
-      return getIconFromName(symptom.icon);
-    }
-    
-    return getIconFromName('Activity');
-  }, [symptom.icon, symptom.name]);
+  const SymptomIcon = useMemo(
+    () => resolveSymptomLucideIcon(symptom),
+    [symptom.icon, symptom.name]
+  );
 
-  // Get suggested triggers
   const suggestedTriggers = useMemo(() => {
-    if (allLogs.length === 0) return [];
-    return getSuggestedTriggers(symptom.id, allLogs, 3);
-  }, [symptom.id, allLogs]);
+    return getSuggestedTriggers(symptom.name, symptom.id, allLogs, 3);
+  }, [symptom.name, symptom.id, allLogs]);
 
-  // Get remaining triggers
   const remainingTriggers = useMemo(() => {
-    return getRemainingTriggers(suggestedTriggers);
-  }, [suggestedTriggers]);
+    return getRemainingTriggers(suggestedTriggers, symptom.name);
+  }, [suggestedTriggers, symptom.name]);
 
   if (!isOpen || !mounted) return null;
 

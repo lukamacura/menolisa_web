@@ -2,7 +2,7 @@
 
 import { X } from "lucide-react";
 import type { Symptom } from "@/lib/symptom-tracker-constants";
-import { getIconFromName } from "@/lib/symptomIconMapping";
+import { resolveSymptomLucideIcon } from "@/lib/symptomIconMapping";
 
 interface SymptomSelectorModalProps {
   symptoms: Symptom[];
@@ -68,34 +68,8 @@ export default function SymptomSelectorModal({
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
             {filteredSymptoms.map((symptom) => {
-              // Map symptom names to icon names (prioritize name mapping for unique icons)
-              const iconMap: Record<string, string> = {
-                'Hot flashes': 'Flame',
-                'Night sweats': 'Droplet',
-                'Fatigue': 'Zap',
-                'Brain fog': 'Brain',
-                'Mood swings': 'Heart',
-                'Anxiety': 'AlertCircle',
-                'Headaches': 'AlertTriangle',
-                'Joint pain': 'Activity',
-                'Bloating': 'CircleDot',
-                'Insomnia': 'Moon',
-                'Weight gain': 'TrendingUp',
-                'Low libido': 'HeartOff',
-                'Good Day': 'Sun',
-              };
-              
-              // Try to get icon by symptom name first (ensures unique icons)
-              const iconName = iconMap[symptom.name];
-              let SymptomIcon;
-              if (iconName) {
-                SymptomIcon = getIconFromName(iconName);
-              } else if (symptom.icon && symptom.icon.length > 1 && !symptom.icon.includes('🔥') && !symptom.icon.includes('💧')) {
-                SymptomIcon = getIconFromName(symptom.icon);
-              } else {
-                SymptomIcon = getIconFromName('Activity');
-              }
-              
+              const SymptomIcon = resolveSymptomLucideIcon(symptom);
+
               return (
                 <button
                   key={symptom.id}

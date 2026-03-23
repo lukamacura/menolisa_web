@@ -5,7 +5,7 @@ import { X, ChevronLeft, ChevronRight, Check } from "lucide-react";
 import { SEVERITY_LABELS } from "@/lib/symptom-tracker-constants";
 import type { LogSymptomData, Symptom, SymptomLog } from "@/lib/symptom-tracker-constants";
 import { getSuggestedTriggers, getRemainingTriggers } from "@/lib/triggerSuggestions";
-import { getIconFromName } from "@/lib/symptomIconMapping";
+import { resolveSymptomLucideIcon } from "@/lib/symptomIconMapping";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface LogSymptomModalProps {
@@ -41,50 +41,21 @@ export default function LogSymptomModal({
 
   const isEditing = !!editingLog;
 
-  // Get icon component - always map by symptom name for consistency
-  const SymptomIcon = useMemo(() => {
-    // Map symptom names to icon names (prioritize name mapping for unique icons)
-    const iconMap: Record<string, string> = {
-      'Hot flashes': 'Flame',
-      'Night sweats': 'Droplet',
-      'Fatigue': 'Zap',
-      'Brain fog': 'Brain',
-      'Mood swings': 'Heart',
-      'Anxiety': 'AlertCircle',
-      'Headaches': 'AlertTriangle',
-      'Joint pain': 'Activity',
-      'Bloating': 'CircleDot',
-      'Insomnia': 'Moon',
-      'Weight gain': 'TrendingUp',
-      'Low libido': 'HeartOff',
-      'Good Day': 'Sun',
-    };
-    
-    // Try to get icon by symptom name first (ensures unique icons)
-    const iconName = iconMap[symptom.name];
-    if (iconName) {
-      return getIconFromName(iconName);
-    }
-    
-    // Fallback: try to use icon from database if it's a valid icon name
-    if (symptom.icon && symptom.icon.length > 1 && !symptom.icon.includes('🔥') && !symptom.icon.includes('💧')) {
-      return getIconFromName(symptom.icon);
-    }
-    
-    // Default fallback
-    return getIconFromName('Activity');
-  }, [symptom.icon, symptom.name]);
+  const SymptomIcon = useMemo(
+    () => resolveSymptomLucideIcon(symptom),
+    [symptom.icon, symptom.name]
+  );
 
   // Get suggested triggers for this symptom
   const suggestedTriggers = useMemo(() => {
-    if (isEditing || allLogs.length === 0) return [];
-    return getSuggestedTriggers(symptom.id, allLogs, 3);
-  }, [symptom.id, allLogs, isEditing]);
+    if (isEditing) return [];
+    return getSuggestedTriggers(symptom.name, symptom.id, allLogs, 3);
+  }, [symptom.name, symptom.id, allLogs, isEditing]);
 
   // Get remaining triggers (not in suggested list)
   const remainingTriggers = useMemo(() => {
-    return getRemainingTriggers(suggestedTriggers);
-  }, [suggestedTriggers]);
+    return getRemainingTriggers(suggestedTriggers, symptom.name);
+  }, [suggestedTriggers, symptom.name]);
 
   // Reset form when modal opens/closes or editing log changes
   useEffect(() => {

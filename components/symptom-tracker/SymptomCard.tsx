@@ -5,7 +5,7 @@ import { useMemo, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { SEVERITY_LABELS } from "@/lib/symptom-tracker-constants";
 import type { Symptom } from "@/lib/symptom-tracker-constants";
-import { getIconFromName } from "@/lib/symptomIconMapping";
+import { resolveSymptomLucideIcon } from "@/lib/symptomIconMapping";
 
 interface SymptomCardProps {
   symptom: Symptom;
@@ -27,39 +27,10 @@ export default function SymptomCard({
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
   const [, setIsLongPressing] = useState(false);
 
-  // Get icon component - always map by symptom name for consistency
-  const SymptomIcon = useMemo(() => {
-    // Map symptom names to icon names (prioritize name mapping for unique icons)
-    const iconMap: Record<string, string> = {
-      'Hot flashes': 'Flame',
-      'Night sweats': 'Droplet',
-      'Fatigue': 'Zap',
-      'Brain fog': 'Brain',
-      'Mood swings': 'Heart',
-      'Anxiety': 'AlertCircle',
-      'Headaches': 'AlertTriangle',
-      'Joint pain': 'Activity',
-      'Bloating': 'CircleDot',
-      'Insomnia': 'Moon',
-      'Weight gain': 'TrendingUp',
-      'Low libido': 'HeartOff',
-      'Good Day': 'Sun',
-    };
-    
-    // Try to get icon by symptom name first (ensures unique icons)
-    const iconName = iconMap[symptom.name];
-    if (iconName) {
-      return getIconFromName(iconName);
-    }
-    
-    // Fallback: try to use icon from database if it's a valid icon name
-    if (symptom.icon && symptom.icon.length > 1 && !symptom.icon.includes('🔥') && !symptom.icon.includes('💧')) {
-      return getIconFromName(symptom.icon);
-    }
-    
-    // Default fallback
-    return getIconFromName('Activity');
-  }, [symptom.icon, symptom.name]);
+  const SymptomIcon = useMemo(
+    () => resolveSymptomLucideIcon(symptom),
+    [symptom.icon, symptom.name]
+  );
 
   const loggedTime = useMemo(() => {
     if (!lastLoggedAt) return null;
