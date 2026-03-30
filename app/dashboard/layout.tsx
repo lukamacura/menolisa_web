@@ -295,7 +295,9 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
       <main className="flex-1 pt-[144px] sm:pt-[148px]">{children}</main>
 
       {/* Fixed Lisa Swipe Button */}
-      <SwipeButton variant="lisa" trialExpired={trialStatus.expired} />
+      {pathname !== "/dashboard/account" && (
+        <SwipeButton variant="lisa" trialExpired={trialStatus.expired} />
+      )}
 
         {/* Notification Container */}
         <NotificationContainer />
