@@ -8,7 +8,7 @@ export default function PrivacyPage() {
           <br />
           Macura Solutions LLC
           <br />
-          Last Updated: March 10, 2026
+          Last Updated: March 31, 2026
         </p>
 
         <section className="mb-8">
@@ -49,9 +49,11 @@ export default function PrivacyPage() {
           <h3 className="text-xl font-semibold mb-3 mt-6">2.3 AI Conversation Data</h3>
           <p>When you use the Lisa chatbot, we collect and process:</p>
           <ul>
-            <li>Your messages and conversation history with Lisa</li>
-            <li>Context we send to our AI provider (see Section 5) to generate responses, including your profile summary and symptom/tracker summaries</li>
+            <li><strong>Chat messages</strong> — your messages and full conversation history with Lisa</li>
+            <li><strong>Health profile context</strong> — your age range, menopause stage, main concerns, and health goals</li>
+            <li><strong>Symptom log summaries</strong> — recent symptom entries, severity, and triggers</li>
           </ul>
+          <p>This data is sent to our third-party AI provider, OpenAI, to generate your responses. See Section 5.1 for full details and your consent notice.</p>
 
           <h3 className="text-xl font-semibold mb-3 mt-6">2.4 Usage Data and Analytics</h3>
           <p>When you use our Service, we may collect:</p>
@@ -93,8 +95,24 @@ export default function PrivacyPage() {
         <section className="mb-8">
           <h2 className="text-2xl font-semibold mb-4">5. How We Share Your Information</h2>
           <p>We <strong>do not sell</strong> your personal or health data. We <strong>do not use</strong> your health data for advertising or data mining. We share data only as follows:</p>
+
+          <h3 className="text-xl font-semibold mb-3 mt-6">5.1 Third-Party AI Service — OpenAI (Special Notice)</h3>
+          <p>
+            To generate personalised AI responses and health summaries through the Lisa chatbot, we send the following data to <strong>OpenAI, L.L.C.</strong> (188 Spear Street, Suite 1700, San Francisco, CA 94105, United States):
+          </p>
           <ul>
-            <li><strong>OpenAI</strong> — We use OpenAI&apos;s API (via LangChain) to power the Lisa chatbot. When you send a message, we send to OpenAI: your message, recent conversation history, a summary of your profile (e.g., name, age, main concerns, goals), and a summary of your symptom/tracker data so Lisa can give personalized, educational responses. OpenAI processes this data according to its privacy policy and our agreement with OpenAI. We do not use your health data for advertising.</li>
+            <li><strong>Your chat messages</strong> — the messages you send to Lisa and recent conversation history</li>
+            <li><strong>Your symptom logs</strong> — recent symptom entries, severity, triggers, and timestamps</li>
+            <li><strong>Your basic health profile</strong> — age range, menopause stage, main concerns, and health goals</li>
+          </ul>
+          <p><strong>How OpenAI uses this data:</strong> OpenAI processes this data solely to generate your responses. It is not sold to third parties. OpenAI&apos;s data handling is governed by our API agreement with OpenAI and meets equivalent privacy protection standards. You can review OpenAI&apos;s Privacy Policy at <a href="https://openai.com/policies/privacy-policy" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">https://openai.com/policies/privacy-policy</a>.</p>
+          <p>
+            <strong>Consent:</strong> By using MenoLisa&apos;s AI chat features (Lisa), you consent to your chat messages, symptom logs, and basic health profile being sent to OpenAI for AI processing as described above. You may stop using the AI chat feature at any time to prevent further data sharing with OpenAI.
+          </p>
+
+          <h3 className="text-xl font-semibold mb-3 mt-6">5.2 Other Service Providers</h3>
+          <ul>
+            <li><strong>OpenAI</strong> — as described in Section 5.1 above.</li>
             <li><strong>Supabase (Supabase, Inc.)</strong> — We use Supabase for authentication (magic links, sessions), database storage (profiles, symptom logs, mood, conversations, preferences, etc.), and server-side logic. Data is stored and processed according to Supabase&apos;s infrastructure and privacy practices.</li>
             <li><strong>Stripe</strong> — We use Stripe for subscription billing and payment processing. Stripe receives payment-related data (e.g., payment method, billing details) as needed to process payments. Stripe does not use your health data.</li>
             <li><strong>Resend</strong> — We use Resend to send transactional emails (e.g., magic links, notifications). Resend receives the email address and message content necessary to deliver these emails.</li>
@@ -102,6 +120,16 @@ export default function PrivacyPage() {
             <li><strong>Expo (Expo Push Notifications)</strong> — We use Expo&apos;s push notification service to send reminders and in-app notification content to your device. We send your push token and notification content to Expo&apos;s servers so they can deliver the notification.</li>
           </ul>
           <p>We require these providers to protect your data under contracts and to use it only for the purposes we specify. We may also disclose information when required by law, to protect rights or safety, or in connection with a merger or sale of assets (with notice and, where required, consent).</p>
+        </section>
+
+        <section className="mb-8">
+          <h2 className="text-2xl font-semibold mb-4">5A. Medical Disclaimer</h2>
+          <p>
+            MenoLisa provides <strong>wellness and educational information only</strong>. Nothing in the app or generated by the Lisa AI assistant constitutes medical advice, diagnosis, or treatment. The AI-generated responses are informational in nature and are not a substitute for professional medical advice.
+          </p>
+          <p>
+            Always consult a qualified healthcare provider before making any decisions about your health, medications, or treatment. Do not disregard professional medical advice or delay seeking it because of something you read or receive from MenoLisa.
+          </p>
         </section>
 
         <section className="mb-8">
