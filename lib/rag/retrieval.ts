@@ -234,7 +234,7 @@ export function normalizeTextForIntentMatching(text: string): string {
  * Check if query has a perfect match with any intent pattern
  * Perfect match = exact match OR high semantic similarity (>= 0.6 word overlap with synonyms)
  */
-function hasPerfectIntentMatch(
+export function hasPerfectIntentMatch(
   docIntentPatterns: string[],
   userQuery: string
 ): boolean {

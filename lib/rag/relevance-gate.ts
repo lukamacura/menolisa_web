@@ -7,8 +7,8 @@
  * Prevents low-relevance results (e.g. generic "what is menopause")
  * from being served for out-of-scope queries that merely share a keyword.
  *
- * Only invoked on the non-exact-match verbatim path — exact intent pattern
- * matches (string equality after normalization) bypass this check entirely.
+ * Only invoked on the non-exact-match verbatim path — exact or strong intent
+ * overlap (see findExactIntentMatch in orchestrator) bypasses this check entirely.
  *
  * Cost: gpt-4o-mini, maxTokens 3 → ~50-100 ms, negligible token usage.
  */

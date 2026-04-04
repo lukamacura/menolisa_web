@@ -5,7 +5,7 @@
 import type { Persona, RetrievalMode, OrchestrationResult, FollowUpLink, KBEntry, ContentSections } from "./types";
 import { classifyPersona } from "./persona-classifier";
 import { validateMenopauseQuery, generateRefusalResponse } from "./safety-validator";
-import { retrieveFromKB, retrieveFromKBByIntentOnly, normalizeTextForIntentMatching, checkExactIntentMatchAcrossAllPersonas } from "./retrieval";
+import { retrieveFromKB, retrieveFromKBByIntentOnly, normalizeTextForIntentMatching, checkExactIntentMatchAcrossAllPersonas, hasPerfectIntentMatch } from "./retrieval";
 import { formatVerbatimResponse, formatKBContextForLLM } from "./response-formatter";
 import { getConversationHistory } from "./conversation-memory";
 import { shouldRouteWhyToMenopause, isWhyHormoneQuestion } from "./classifier/whyRouter";
@@ -34,8 +34,11 @@ interface SupabaseDocumentMetadata {
 
 
 /**
- * Check if retrieval result has exact intent match
- * Returns the entry with exact intent match if found, null otherwise
+ * Check if retrieval result has exact (or equivalent) intent match.
+ * Equivalent = same normalization pipeline as hybrid retrieval: high overlap with any
+ * intent pattern (hasPerfectIntentMatch). That bypasses the LLM relevance gate, which
+ * only sees topic/subtopic titles and can wrongly reject good rows (e.g. "metabolism
+ * overview" title vs "why am I suddenly gaining weight?" queries).
  */
 function findExactIntentMatch(retrievalResult: RetrievalResult, query: string): { entry: import("./types").KBEntry; intentScore: number } | null {
   if (!retrievalResult.hasMatch || retrievalResult.kbEntries.length === 0) {
@@ -45,7 +48,7 @@ function findExactIntentMatch(retrievalResult: RetrievalResult, query: string): 
   // Use consistent normalization from retrieval.ts
   const queryNormalized = normalizeTextForIntentMatching(query);
   
-  // Check each entry for exact intent match
+  // 1) Normalized string equality against any pattern
   for (const entry of retrievalResult.kbEntries) {
     const intentPatterns = entry.metadata.intent_patterns || [];
     
@@ -58,6 +61,17 @@ function findExactIntentMatch(retrievalResult: RetrievalResult, query: string): 
         console.log(`[Exact Intent Match] Topic: ${entry.metadata.topic} | Subtopic: ${entry.metadata.subtopic}`);
         return { entry, intentScore: 1.0 };
       }
+    }
+  }
+
+  // 2) Strong intent overlap (synonyms + phrase normalization) — same bar as "perfect" in retrieval
+  for (const entry of retrievalResult.kbEntries) {
+    const intentPatterns = entry.metadata.intent_patterns || [];
+    if (intentPatterns.length > 0 && hasPerfectIntentMatch(intentPatterns, query)) {
+      console.log(
+        `[Exact Intent Match] ✅ Perfect intent overlap (verbatim, skip relevance gate) | Topic: ${entry.metadata.topic} | Subtopic: ${entry.metadata.subtopic}`,
+      );
+      return { entry, intentScore: 1.0 };
     }
   }
   
