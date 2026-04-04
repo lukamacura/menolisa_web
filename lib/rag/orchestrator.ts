@@ -9,6 +9,8 @@ import { retrieveFromKB, retrieveFromKBByIntentOnly, normalizeTextForIntentMatch
 import { formatVerbatimResponse, formatKBContextForLLM } from "./response-formatter";
 import { getConversationHistory } from "./conversation-memory";
 import { shouldRouteWhyToMenopause, isWhyHormoneQuestion } from "./classifier/whyRouter";
+import { rewriteQueryWithContext } from "./query-rewriter";
+import { verifyKBRelevance } from "./relevance-gate";
 import type { RetrievalResult } from "./types";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -383,15 +385,24 @@ export async function orchestrateRAG(
     const memoryHistory = getConversationHistory(sessionId);
     const allHistory = conversationHistory || memoryHistory.map(msg => [msg.role, msg.content] as ["user" | "assistant", string]);
 
-    // Step 1.5: Detect and enhance follow-up questions
-    const queryForKB = userQuery;
+    // Step 1.5: Context-aware query rewriting for follow-ups
+    // Detects short/ambiguous messages ("yes", "tell me more") and rewrites them
+    // into standalone search queries using conversation history context.
+    // Self-contained queries pass through unchanged (zero extra latency).
+    const { rewrittenQuery: queryForKB, wasRewritten } = await rewriteQueryWithContext(userQuery, allHistory);
+    if (wasRewritten) {
+      console.log(`[RAG Orchestrator] Query rewritten for retrieval: "${userQuery}" → "${queryForKB}"`);
+    }
     
-    // Step 2: Classify persona (use original query, not enhanced) - do this early for follow-up link resolution
-    let persona = await classifyPersona(userQuery);
+    // Step 2: Classify persona - use rewritten query so persona routing is also context-aware
+    let persona = await classifyPersona(wasRewritten ? queryForKB : userQuery);
+    
+    // Use the rewritten query for all downstream matching when available
+    const effectiveQuery = wasRewritten ? queryForKB : userQuery;
     
     // SAFEGUARD: Skip exact intent matching for very short queries (< 4 chars)
     // These are likely greetings (hey, hi, ok) and shouldn't trigger verbatim responses
-    const normalizedQuery = userQuery.toLowerCase().trim();
+    const normalizedQuery = effectiveQuery.toLowerCase().trim();
     const shouldCheckExactIntent = normalizedQuery.length >= 4;
     
     // CRITICAL FIX: Check for exact intent pattern matches across ALL personas FIRST
@@ -399,7 +410,7 @@ export async function orchestrateRAG(
     // or follow-up detection - if intent matches exactly, return verbatim from whichever persona has it
     // BUT skip for very short queries that are likely greetings
     const exactIntentMatches = shouldCheckExactIntent 
-      ? await checkExactIntentMatchAcrossAllPersonas(userQuery, 3)
+      ? await checkExactIntentMatchAcrossAllPersonas(effectiveQuery, 3)
       : [];
     
     if (exactIntentMatches.length > 0) {
@@ -430,10 +441,10 @@ export async function orchestrateRAG(
     // Step 2.6: Check for WHY hormone questions and potentially route to menopause persona
     // If it's a pure WHY hormone question (not asking for a plan), route to menopause
     // If it's asking for a plan + why, keep the persona and let prompt builder handle redirect
-    const isWhyHormone = isWhyHormoneQuestion(userQuery);
-    const isAskingForPlan = /\b(plan|routine|workout|meal|diet|program|schedule)\b/i.test(userQuery);
+    const isWhyHormone = isWhyHormoneQuestion(effectiveQuery);
+    const isAskingForPlan = /\b(plan|routine|workout|meal|diet|program|schedule)\b/i.test(effectiveQuery);
     
-    if (isWhyHormone && shouldRouteWhyToMenopause(persona, userQuery)) {
+    if (isWhyHormone && shouldRouteWhyToMenopause(persona, effectiveQuery)) {
       // If user is asking for a plan + why, keep the persona (prompt builder will add redirect)
       // Otherwise, route to menopause specialist for pure WHY questions
       if (!isAskingForPlan) {
@@ -442,7 +453,7 @@ export async function orchestrateRAG(
         // Update retrieval mode after persona change (menopause_specialist uses kb_strict)
         const newRetrievalMode = getRetrievalMode(persona);
         // Re-check exact intent with new persona
-        const exactIntentCheckAfterRouting = await retrieveFromKBByIntentOnly(userQuery, persona, 3, 0.80);
+        const exactIntentCheckAfterRouting = await retrieveFromKBByIntentOnly(effectiveQuery, persona, 3, 0.80);
         if (exactIntentCheckAfterRouting.hasMatch && exactIntentCheckAfterRouting.kbEntries.length > 0) {
           console.log(`[RAG Orchestrator] ✅ Exact intent match found after persona routing - returning verbatim`);
           const verbatimResponse = formatVerbatimResponse(exactIntentCheckAfterRouting.kbEntries, true);
@@ -463,7 +474,7 @@ export async function orchestrateRAG(
     
     // Step 3: Retrieval mode already determined (set earlier)
 
-    console.log(`[RAG Orchestrator] Query: "${userQuery}"`);
+    console.log(`[RAG Orchestrator] Original query: "${userQuery}"${wasRewritten ? ` → Rewritten: "${queryForKB}"` : ""}`);
     console.log(`[RAG Orchestrator] Classified persona: ${persona}`);
     console.log(`[RAG Orchestrator] Retrieval mode: ${retrievalMode}`);
 
@@ -561,17 +572,29 @@ async function handleKBStrictMode(
     if (retrievalResult.topScore !== undefined) {
       console.log(`  - Top hybrid score: ${retrievalResult.topScore.toFixed(3)}`);
     }
-    const verbatimResponse = formatVerbatimResponse(retrievalResult.kbEntries, true); // Pass excludeMetadata=true
 
-    return {
-      response: verbatimResponse,
-      persona,
-      retrievalMode: mode,
-      usedKB: true,
-      source: "kb",
-      kbEntries: retrievalResult.kbEntries,
-      isVerbatim: true,
-    };
+    // Layer 2: LLM relevance gate — verify the KB entry actually answers the query
+    const topEntry = retrievalResult.kbEntries[0];
+    const isRelevant = await verifyKBRelevance(
+      userQuery,
+      topEntry.metadata.topic,
+      topEntry.metadata.subtopic,
+    );
+
+    if (isRelevant) {
+      const verbatimResponse = formatVerbatimResponse(retrievalResult.kbEntries, true);
+      return {
+        response: verbatimResponse,
+        persona,
+        retrievalMode: mode,
+        usedKB: true,
+        source: "kb",
+        kbEntries: retrievalResult.kbEntries,
+        isVerbatim: true,
+      };
+    }
+
+    console.log(`[KB Strict Mode] ❌ Relevance gate rejected verbatim — falling through to LLM`);
   }
 
   if (retrievalResult.hasMatch && retrievalResult.kbEntries.length > 0 && !semanticOkForVerbatim) {
@@ -675,21 +698,32 @@ async function handleHybridMode(
   const hasGoodHybridMatch = retrievalResult.topScore !== undefined && retrievalResult.topScore >= 0.45; // Adaptive threshold already applied, just verify it's reasonable
   
   if (retrievalResult.hasMatch && retrievalResult.kbEntries.length > 0 && hasSemanticMatch && hasGoodHybridMatch) {
-    // Strong KB match found - return verbatim response
     console.log(`[Hybrid Mode] ✅ VERBATIM RESPONSE triggered`);
     console.log(`  - Semantic: ${retrievalResult.topSemanticScore!.toFixed(3)} >= ${semanticThreshold} ✓`);
     console.log(`  - Hybrid: ${retrievalResult.topScore!.toFixed(3)} >= 0.45 ✓`);
-    const verbatimResponse = formatVerbatimResponse(retrievalResult.kbEntries);
-    
-    return {
-      response: verbatimResponse,
-      persona,
-      retrievalMode: mode,
-      usedKB: true,
-      source: "kb",
-      kbEntries: retrievalResult.kbEntries,
-      isVerbatim: true,
-    };
+
+    // Layer 2: LLM relevance gate — verify the KB entry actually answers the query
+    const topEntry = retrievalResult.kbEntries[0];
+    const isRelevant = await verifyKBRelevance(
+      userQuery,
+      topEntry.metadata.topic,
+      topEntry.metadata.subtopic,
+    );
+
+    if (isRelevant) {
+      const verbatimResponse = formatVerbatimResponse(retrievalResult.kbEntries);
+      return {
+        response: verbatimResponse,
+        persona,
+        retrievalMode: mode,
+        usedKB: true,
+        source: "kb",
+        kbEntries: retrievalResult.kbEntries,
+        isVerbatim: true,
+      };
+    }
+
+    console.log(`[Hybrid Mode] ❌ Relevance gate rejected verbatim — falling through to hybrid LLM`);
   }
 
   // No strong match - use KB context with LLM (hybrid approach)

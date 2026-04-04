@@ -404,10 +404,14 @@ function calculateIntentPatternScore(
     }
     
     // Calculate score with both exact and partial matches
+    // Uses BIDIRECTIONAL coverage (geometric mean of pattern coverage & query coverage)
+    // to prevent a single shared keyword from inflating scores when the query
+    // asks about something the KB entry doesn't cover
     if (matchingWords.length > 0 || partialMatches.length > 0) {
-      const exactScore = matchingWords.length / patternWords.length;
-      const partialScore = partialMatches.length / patternWords.length * 0.5; // Partial matches worth less
-      const wordMatchScore = exactScore + partialScore;
+      const totalMatchWeight = matchingWords.length + partialMatches.length * 0.5;
+      const patternCoverage = totalMatchWeight / patternWords.length;
+      const queryCoverage = totalMatchWeight / queryWords.length;
+      const wordMatchScore = Math.sqrt(patternCoverage * queryCoverage);
       
       // Only consider if score >= 0.3 (lowered threshold)
       if (wordMatchScore >= 0.3) {
