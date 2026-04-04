@@ -142,6 +142,21 @@ const intentSynonymMap: Record<string, string[]> = {
   'at night': ['every night', 'each night', 'nightly', 'during the night', 'in the night', 'throughout the night'],
   'every night': ['at night', 'each night', 'nightly', 'night after night'],
   'each night': ['every night', 'at night', 'nightly'],
+  // Sudden / rapid onset (weight and similar intents)
+  'suddenly': ['overnight', 'fast', 'quickly', 'rapid', 'sudden'],
+  'sudden': ['suddenly', 'overnight', 'fast'],
+  'overnight': ['suddenly', 'fast', 'quickly'],
+  'fast': ['suddenly', 'quickly', 'overnight', 'rapid'],
+  'quickly': ['fast', 'suddenly', 'overnight'],
+  'rapid': ['fast', 'quickly', 'suddenly'],
+  // Weight-gain phrasing (Overview "sudden fat" vs user "gain weight")
+  'weightgain': ['gain', 'gaining', 'weight', 'fat', 'overweight'],
+  'gain': ['gaining', 'gained', 'weight', 'weightgain'],
+  'gaining': ['gain', 'weight', 'weightgain'],
+  'gained': ['gain', 'gaining', 'weightgain'],
+  'weight': ['gain', 'gaining', 'fat', 'overweight', 'weightgain'],
+  'fat': ['weight', 'overweight', 'gain', 'gaining', 'weightgain'],
+  'overweight': ['fat', 'weight', 'gain', 'weightgain'],
 };
 
 /**
@@ -188,6 +203,15 @@ export function normalizeTextForIntentMatching(text: string): string {
   // NEW: Normalize "so [adjective]" to "feel [adjective]" (when not after am/are/is)
   // This handles standalone "so" as intensifier
   normalized = normalized.replace(/\bso\s+([a-z]{3,})\b/g, 'feel $1');
+
+  // Weight-gain intent: single canonical token so "gain weight", "gaining weight",
+  // "feel/get fat", etc. align with KB patterns like "Why am I suddenly so fat?"
+  normalized = normalized.replace(/\b(gain|gaining|gained)\s+weight\b/g, 'weightgain');
+  normalized = normalized.replace(/\b(feel|feeling)\s+fat\b/g, 'weightgain');
+  normalized = normalized.replace(/\b(get|getting|got)\s+fat\b/g, 'weightgain');
+  normalized = normalized.replace(/\bweight\s+going\s+up\b/g, 'weightgain');
+  normalized = normalized.replace(/\ball\s+of\s+a\s+sudden\b/g, 'suddenly');
+  normalized = normalized.replace(/\bout\s+of\s+nowhere\b/g, 'suddenly');
   
   // FIX: Comprehensive temporal phrase normalization
   // Handle all variations of "at night" / "every night" patterns
