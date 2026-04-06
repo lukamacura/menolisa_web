@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
     const { error: updateError } = await supabaseAdmin
       .from("user_trials")
       .update({
+        provider: "stripe",
         subscription_ends_at,
         subscription_canceled,
         stripe_subscription_id: subscription.id,

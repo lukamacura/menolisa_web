@@ -95,6 +95,41 @@ export async function POST(req: NextRequest) {
     const useMobileReturns =
       customSuccess && customCancel;
 
+    // Block double-subscribe: refuse if user already has an active subscription managed by another provider.
+    {
+      const supabaseAdmin = getSupabaseAdmin();
+      const { data: existing } = await supabaseAdmin
+        .from("user_trials")
+        .select("provider, account_status, subscription_ends_at")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (existing?.provider && existing.provider !== "stripe") {
+        const endsMs = existing.subscription_ends_at
+          ? new Date(existing.subscription_ends_at).getTime()
+          : 0;
+        const stillActive =
+          existing.account_status === "paid" && (!endsMs || endsMs > Date.now());
+        if (stillActive) {
+          const manageUrl =
+            existing.provider === "apple"
+              ? "https://apps.apple.com/account/subscriptions"
+              : null;
+          return NextResponse.json(
+            {
+              error: "already_subscribed",
+              provider: existing.provider,
+              ...(manageUrl && { manageUrl }),
+              message:
+                existing.provider === "apple"
+                  ? "You already have an active subscription managed by Apple. Manage it in your Apple ID settings."
+                  : "You already have an active subscription.",
+            },
+            { status: 409 }
+          );
+        }
+      }
+    }
+
     let referralCouponId: string | null = null;
     const couponId = process.env.STRIPE_REFERRAL_COUPON_ID;
     if (couponId) {

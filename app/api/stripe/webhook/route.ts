@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { writeSubscription } from "@/lib/subscriptionWrite";
 
 export const runtime = "nodejs";
 
@@ -47,24 +48,30 @@ async function handleCheckoutSessionCompleted(
   // Only mark the discount as used when the referral coupon was actually applied at checkout.
   // create-checkout sets metadata.referral_discount_applied when it adds the coupon.
   const referralDiscountApplied = session.metadata?.referral_discount_applied === "true";
-  const row: Record<string, unknown> = {
-    user_id: userId,
-    account_status: "paid",
-    subscription_canceled,
-    updated_at: nowIso,
-    ...(referralDiscountApplied && { referral_discount_used_at: nowIso }),
-  };
-  if (subscription_ends_at) row.subscription_ends_at = subscription_ends_at;
-  if (stripe_customer_id) row.stripe_customer_id = stripe_customer_id;
-  if (stripe_subscription_id) row.stripe_subscription_id = stripe_subscription_id;
+  const extras: Record<string, unknown> = {};
+  if (stripe_customer_id) extras.stripe_customer_id = stripe_customer_id;
+  if (stripe_subscription_id) extras.stripe_subscription_id = stripe_subscription_id;
+  if (referralDiscountApplied) extras.referral_discount_used_at = nowIso;
 
-  const { error } = await supabaseAdmin
-    .from("user_trials")
-    .upsert(row, { onConflict: "user_id" });
-
-  if (error) {
-    console.error("Webhook: failed to upsert user_trials:", error);
-    return { ok: false, error: error.message };
+  try {
+    const result = await writeSubscription(supabaseAdmin, {
+      userId,
+      provider: "stripe",
+      active: true,
+      expiresAt: subscription_ends_at,
+      canceled: subscription_canceled,
+      extras,
+    });
+    if (!result.written) {
+      console.warn(
+        `Webhook: checkout.session.completed conflict — user ${userId} already has active ${result.existingProvider} sub`
+      );
+      return { ok: true };
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to upsert";
+    console.error("Webhook: failed to upsert user_trials:", err);
+    return { ok: false, error: message };
   }
   return { ok: true };
 }
@@ -87,6 +94,7 @@ async function handleSubscriptionUpdated(
       : (subscription.customer as { id?: string })?.id ?? null;
 
   const updatePayload = {
+    provider: "stripe" as const,
     subscription_ends_at,
     subscription_canceled,
     stripe_subscription_id: subscription.id,
@@ -129,22 +137,27 @@ async function handleSubscriptionUpdated(
     return { ok: true };
   }
 
-  const { error: upsertErr } = await supabaseAdmin.from("user_trials").upsert(
-    {
-      user_id: userId,
-      account_status: "paid",
-      subscription_ends_at,
-      subscription_canceled,
-      stripe_subscription_id: subscription.id,
-      ...(stripe_customer_id && { stripe_customer_id }),
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "user_id" }
-  );
-
-  if (upsertErr) {
-    console.error("Webhook: subscription.updated upsert failed:", upsertErr);
-    return { ok: false, error: upsertErr.message };
+  try {
+    const result = await writeSubscription(supabaseAdmin, {
+      userId,
+      provider: "stripe",
+      active: true,
+      expiresAt: subscription_ends_at,
+      canceled: subscription_canceled,
+      extras: {
+        stripe_subscription_id: subscription.id,
+        ...(stripe_customer_id && { stripe_customer_id }),
+      },
+    });
+    if (!result.written) {
+      console.warn(
+        `Webhook: subscription.updated conflict — user ${userId} already has active ${result.existingProvider} sub`
+      );
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "upsert failed";
+    console.error("Webhook: subscription.updated upsert failed:", err);
+    return { ok: false, error: message };
   }
   return { ok: true };
 }
