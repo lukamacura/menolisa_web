@@ -99,7 +99,7 @@ const Navbar: React.FC<NavbarProps> = ({ isAuthenticated }) => {
                     prefetch={false}
                     className="font-medium text-white! transition-colors duration-200 hover:text-white text-sm"
                   >
-                    Log in
+                    Sign in
                   </Link>
                   <Link
                     href="/register"
@@ -191,12 +191,12 @@ const Navbar: React.FC<NavbarProps> = ({ isAuthenticated }) => {
             ) : (
               <>
                 <Link 
-                  href="/login" 
+                  href="/login"
                   prefetch={false}
                   className="px-4 py-3 rounded-lg font-medium text-white! hover:bg-white/10 transition-colors text-md text-center"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  Log in
+                  Sign in
                 </Link>
                 <Link 
                   href="/register" 

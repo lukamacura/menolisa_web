@@ -169,7 +169,10 @@ function deriveSeverity(
   return "mild";
 }
 
-type Phase = "quiz" | "gate" | "results" | "email";
+type Phase = "quiz" | "gate" | "results" | "email" | "download";
+
+const APP_STORE_URL = "https://apps.apple.com/de/app/menolisa/id6761130271?l=en-GB";
+const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.menolisa.app&pcampaignid=web_share";
 
 // Quality of Life Score calculation
 const calculateQualityScore = (
@@ -641,12 +644,12 @@ function RegisterPageContent() {
           // Continue anyway - user is registered
         }
 
-        // Registration successful! Clear sessionStorage and redirect to dashboard
+        // Registration successful! Clear sessionStorage and show download screen
         console.log("=== REGISTRATION COMPLETE ===");
         console.log("User created:", authData.user.id);
         sessionStorage.removeItem("pending_quiz_answers");
         if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(REFERRAL_STORAGE_KEY);
-        router.push("/dashboard");
+        setPhase("download");
       }
       
       setLoading(false);
@@ -679,8 +682,7 @@ function RegisterPageContent() {
         sessionStorage.removeItem(REFERRAL_STORAGE_KEY);
         sessionStorage.removeItem("pending_quiz_answers");
       }
-      router.replace("/dashboard");
-      router.refresh();
+      setPhase("download");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
     }
@@ -690,7 +692,7 @@ function RegisterPageContent() {
   // Check for authenticated session and redirect if profile exists.
   // Do not redirect when: results, gate, or email (set-password) so user can finish the flow.
   useEffect(() => {
-    if (phase === "results" || phase === "gate") {
+    if (phase === "results" || phase === "gate" || phase === "download") {
       return;
     }
     if (phase === "email" && signedUpAtGate) {
@@ -933,7 +935,7 @@ function RegisterPageContent() {
                 className="flex-1 flex flex-col min-h-0 overflow-hidden"
               >
                 <div className="flex-1 min-h-0 overflow-y-auto pb-0">
-                  <div className="max-w-md mx-auto w-full pt-4 sm:pt-22">
+                  <div className="max-w-md mx-auto w-full pt-4 sm:pt-6">
                     {/* Results illustration (from public/quiz/) */}
                     <motion.div
                       initial={{ opacity: 0, y: 20 }}
@@ -946,7 +948,7 @@ function RegisterPageContent() {
                         alt=""
                         width={320}
                         height={180}
-                        className="object-contain w-full max-h-[160px] sm:max-h-[180px]"
+                        className="object-contain w-full max-h-40 sm:max-h-[180px]"
                       />
                     </motion.div>
 
@@ -1002,7 +1004,7 @@ function RegisterPageContent() {
                     >
                       {/* Header */}
                       <div className="flex items-center justify-between mb-3 sm:mb-4">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 w-full">
                           <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-orange-500" />
                           <span className="text-base sm:text-lg font-bold text-gray-900!">Your Menopause Score</span>
                         </div>
@@ -1103,7 +1105,7 @@ function RegisterPageContent() {
                     <button
                       type="button"
                       onClick={() => setPhase("email")}
-                      className="w-full min-h-[48px] py-3 sm:py-4 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
+                      className="w-full min-h-12 py-3 sm:py-4 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
                       style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)", boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)" }}
                     >
                       Set my password & continue
@@ -1346,6 +1348,65 @@ function RegisterPageContent() {
         </div>
       )}
 
+      {/* Download Phase - redirect users to mobile app */}
+      {phase === "download" && (
+        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 py-4 sm:py-6">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-md mx-auto w-full flex-1 flex flex-col justify-center min-h-0 text-center"
+          >
+
+            <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-3">
+              {firstName.trim() ? `${firstName.trim()}, you're all set!` : "You're all set!"}
+            </h2>
+            <p className="text-sm sm:text-base text-[#5A5A5A] mb-8 leading-relaxed">
+              Download the Menolisa app to start tracking your symptoms and chatting with Lisa — your 24/7 menopause companion.
+            </p>
+
+            <div className="flex flex-col items-center gap-3 mb-6">
+              <a
+                href={APP_STORE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="transition-transform hover:scale-[1.03]"
+              >
+                <Image
+                  src="/app_store.png"
+                  alt="Download on the App Store"
+                  width={160}
+                  height={53}
+                  className="h-[53px] w-auto object-contain"
+                />
+              </a>
+
+              <a
+                href={PLAY_STORE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="transition-transform hover:scale-[1.03]"
+              >
+                <Image
+                  src="/play_store.png"
+                  alt="Get it on Google Play"
+                  width={160}
+                  height={53}
+                  className="h-[53px] w-auto object-contain"
+                />
+              </a>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => router.push("/dashboard")}
+              className="text-sm text-[#9A9A9A] hover:text-[#5A5A5A] underline transition-colors"
+            >
+              Continue to web dashboard instead
+            </button>
+          </motion.div>
+        </div>
+      )}
+
       {/* Quiz Phase */}
       {phase === "quiz" && (
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -1405,20 +1466,20 @@ function RegisterPageContent() {
                     alt=""
                     width={320}
                     height={currentStep === "breather" || currentStep === "q8_name" ? 140 : 160}
-                    className="object-contain w-full max-h-[140px] sm:max-h-[160px]"
+                    className="object-contain w-full max-h-[90px] sm:max-h-28"
                   />
                 </div>
               )}
               {/* Q1: Age */}
               {currentStep === "q1_age" && (
-                <div className="flex-1 flex flex-col min-h-0 space-y-2 sm:space-y-3 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex-1 flex flex-col min-h-0 space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
-                    <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-0.5">
+                    <h2 className="text-lg sm:text-xl font-bold mb-0.5">
                       What&apos;s your age or life stage?
                     </h2>
-                    <p className="text-sm sm:text-base text-muted-foreground">Choose one</p>
+                    <p className="text-sm text-muted-foreground">Choose one</p>
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 gap-3">
+                  <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
                     {AGE_OPTIONS.map((option) => {
                       const isSelected = ageBand === option.id;
                       return (
@@ -1426,13 +1487,13 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => setAgeBand(option.id)}
-                          className={`min-h-[48px] py-3 px-3 sm:px-4 rounded-lg border-2 transition-all duration-200 text-left group cursor-pointer ${
+                          className={`h-14 px-3 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
                               : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
                           }`}
                         >
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 w-full">
                             <div className={`p-1 rounded-md transition-colors shrink-0 ${
                               isSelected ? "bg-primary/20" : "bg-foreground/5 group-hover:bg-primary/10"
                             }`}>
@@ -1441,7 +1502,7 @@ function RegisterPageContent() {
                                 className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
                               />
                             </div>
-                            <span className="font-medium flex-1 text-sm sm:text-base">{option.label}</span>
+                            <span className="font-medium flex-1 text-sm">{option.label}</span>
                             {isSelected && (
                               <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
                             )}
@@ -1455,14 +1516,14 @@ function RegisterPageContent() {
 
               {/* Q2: Here for */}
               {currentStep === "q2_here_for" && (
-                <div className="flex-1 flex flex-col min-h-0 space-y-2 sm:space-y-3 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex-1 flex flex-col min-h-0 space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
-                    <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-0.5">
+                    <h2 className="text-lg sm:text-xl font-bold mb-0.5">
                       I&apos;m here for…
                     </h2>
-                    <p className="text-sm sm:text-base text-muted-foreground">Choose one</p>
+                    <p className="text-sm text-muted-foreground">Choose one</p>
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 gap-3">
+                  <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
                     {HERE_FOR_OPTIONS.map((option) => {
                       const isSelected = hereFor === option.id;
                       return (
@@ -1470,13 +1531,13 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => setHereFor(option.id)}
-                          className={`min-h-[48px] py-3 px-3 sm:px-4 rounded-lg border-2 transition-all duration-200 text-left group cursor-pointer ${
+                          className={`h-14 px-3 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
                               : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
                           }`}
                         >
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 w-full">
                             <div className={`p-1 rounded-md transition-colors shrink-0 ${
                               isSelected ? "bg-primary/20" : "bg-foreground/5 group-hover:bg-primary/10"
                             }`}>
@@ -1485,7 +1546,7 @@ function RegisterPageContent() {
                                 className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
                               />
                             </div>
-                            <span className="font-medium flex-1 text-sm sm:text-base">{option.label}</span>
+                            <span className="font-medium flex-1 text-sm">{option.label}</span>
                             {isSelected && (
                               <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
                             )}
@@ -1499,19 +1560,19 @@ function RegisterPageContent() {
 
               {/* Q3: Goals */}
               {currentStep === "q3_goals" && (
-                <div className="flex-1 flex flex-col min-h-0 space-y-2 sm:space-y-3 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex-1 flex flex-col min-h-0 space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
-                    <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-0.5">
+                    <h2 className="text-lg sm:text-xl font-bold mb-0.5">
                       What would success look like for you?
                     </h2>
-                    <p className="text-sm sm:text-base text-muted-foreground">Select all that apply</p>
+                    <p className="text-sm text-muted-foreground">Select all that apply</p>
                     {goal.length > 0 && (
-                      <p className="text-sm text-primary font-medium mt-1">
-                        {goal.length} selected. You can choose more than one.
+                      <p className="text-sm text-primary font-medium mt-0.5">
+                        {goal.length} selected
                       </p>
                     )}
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 gap-3">
+                  <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
                     {GOAL_OPTIONS.map((option) => {
                       const isSelected = goal.includes(option.id);
                       return (
@@ -1519,13 +1580,13 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => toggleGoal(option.id)}
-                          className={`min-h-[48px] py-3 px-3 sm:px-4 rounded-lg border-2 transition-all duration-200 text-left group cursor-pointer ${
+                          className={`h-14 px-3 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
                               : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
                           }`}
                         >
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 w-full">
                             <div className={`p-1 rounded-md transition-colors shrink-0 ${
                               isSelected ? "bg-primary/20" : "bg-foreground/5 group-hover:bg-primary/10"
                             }`}>
@@ -1534,7 +1595,7 @@ function RegisterPageContent() {
                                 className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
                               />
                             </div>
-                            <span className="font-medium flex-1 text-sm sm:text-base">{option.label}</span>
+                            <span className="font-medium flex-1 text-sm">{option.label}</span>
                             {isSelected && (
                               <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
                             )}
@@ -1548,19 +1609,19 @@ function RegisterPageContent() {
 
               {/* Q4: Symptoms — Lucide icons only (same pattern as Q3/Q5) for consistent alignment */}
               {currentStep === "q4_symptoms" && (
-                <div className="flex-1 flex flex-col min-h-0 space-y-2 sm:space-y-3 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex-1 flex flex-col min-h-0 space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
-                    <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-0.5">
+                    <h2 className="text-lg sm:text-xl font-bold mb-0.5">
                       What&apos;s making life hardest right now?
                     </h2>
-                    <p className="text-sm sm:text-base text-muted-foreground">Select all that apply</p>
+                    <p className="text-sm text-muted-foreground">Select all that apply</p>
                     {topProblems.length > 0 && (
-                      <p className="text-sm text-primary font-medium mt-1">
-                        {topProblems.length} selected. You can choose more than one.
+                      <p className="text-sm text-primary font-medium mt-0.5">
+                        {topProblems.length} selected
                       </p>
                     )}
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 gap-3">
+                  <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
                     {PROBLEM_OPTIONS.map((option) => {
                       const isSelected = topProblems.includes(option.id);
                       return (
@@ -1568,13 +1629,13 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => toggleProblem(option.id)}
-                          className={`min-h-[48px] py-3 px-3 sm:px-4 rounded-lg border-2 transition-all duration-200 text-left group cursor-pointer ${
+                          className={`h-14 px-3 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
                               : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
                           }`}
                         >
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 w-full">
                             <div className={`p-1 rounded-md transition-colors shrink-0 ${
                               isSelected ? "bg-primary/20" : "bg-foreground/5 group-hover:bg-primary/10"
                             }`}>
@@ -1583,7 +1644,7 @@ function RegisterPageContent() {
                                 className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
                               />
                             </div>
-                            <span className="font-medium flex-1 text-sm sm:text-base">{option.label}</span>
+                            <span className="font-medium flex-1 text-sm">{option.label}</span>
                             {isSelected && (
                               <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
                             )}
@@ -1592,13 +1653,6 @@ function RegisterPageContent() {
                       );
                     })}
                   </div>
-                  {topProblems.length > 0 && (
-                    <div className="flex items-center justify-center gap-1 text-sm shrink-0 pt-0.5">
-                      <span className="text-muted-foreground font-medium">
-                        {topProblems.length} {topProblems.length === 1 ? "symptom" : "symptoms"} selected
-                      </span>
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -1616,19 +1670,19 @@ function RegisterPageContent() {
 
               {/* Q5: What tried */}
               {currentStep === "q5_what_tried" && (
-                <div className="flex-1 flex flex-col min-h-0 space-y-2 sm:space-y-3 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex-1 flex flex-col min-h-0 space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
-                    <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-0.5">
+                    <h2 className="text-lg sm:text-xl font-bold mb-0.5">
                       What have you tried so far?
                     </h2>
-                    <p className="text-sm sm:text-base text-muted-foreground">Select all that apply</p>
+                    <p className="text-sm text-muted-foreground">Select all that apply</p>
                     {triedOptions.length > 0 && (
-                      <p className="text-sm text-primary font-medium mt-1">
-                        {triedOptions.length} selected. You can choose more than one.
+                      <p className="text-sm text-primary font-medium mt-0.5">
+                        {triedOptions.length} selected
                       </p>
                     )}
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 gap-3">
+                  <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
                     {TRIED_OPTIONS.map((option) => {
                       const isSelected = triedOptions.includes(option.id);
                       return (
@@ -1636,13 +1690,13 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => toggleTriedOption(option.id)}
-                          className={`min-h-[48px] py-3 px-3 sm:px-4 rounded-lg border-2 transition-all duration-200 text-left group cursor-pointer ${
+                          className={`h-14 px-3 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
                               : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
                           }`}
                         >
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 w-full">
                             <div className={`p-1 rounded-md transition-colors shrink-0 ${
                               isSelected ? "bg-primary/20" : "bg-foreground/5 group-hover:bg-primary/10"
                             }`}>
@@ -1651,7 +1705,7 @@ function RegisterPageContent() {
                                 className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
                               />
                             </div>
-                            <span className="font-medium flex-1 text-sm sm:text-base">{option.label}</span>
+                            <span className="font-medium flex-1 text-sm">{option.label}</span>
                             {isSelected && (
                               <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
                             )}
@@ -1665,14 +1719,14 @@ function RegisterPageContent() {
 
               {/* Q6: How long */}
               {currentStep === "q6_how_long" && (
-                <div className="flex-1 flex flex-col min-h-0 space-y-2 sm:space-y-3 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex-1 flex flex-col min-h-0 space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
-                    <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-0.5">
+                    <h2 className="text-lg sm:text-xl font-bold mb-0.5">
                       How long have symptoms been affecting you?
                     </h2>
-                    <p className="text-sm sm:text-base text-muted-foreground">Choose one</p>
+                    <p className="text-sm text-muted-foreground">Choose one</p>
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto space-y-3">
+                  <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
                     {TIMING_OPTIONS.map((option) => {
                       const isSelected = timing === option.id;
                       return (
@@ -1680,13 +1734,13 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => setTiming(option.id)}
-                          className={`w-full min-h-[48px] py-3 px-3 sm:px-4 rounded-lg border-2 text-left transition-all duration-200 group cursor-pointer ${
+                          className={`w-full h-14 px-3 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
                               : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
                           }`}
                         >
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 w-full">
                             <div className={`p-1 rounded-md transition-colors shrink-0 ${
                               isSelected ? "bg-primary/20" : "bg-foreground/5 group-hover:bg-primary/10"
                             }`}>
@@ -1695,7 +1749,7 @@ function RegisterPageContent() {
                                 className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
                               />
                             </div>
-                            <span className="font-medium flex-1 text-sm sm:text-base">{option.label}</span>
+                            <span className="font-medium flex-1 text-sm">{option.label}</span>
                             {isSelected && (
                               <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
                             )}
@@ -1709,14 +1763,14 @@ function RegisterPageContent() {
 
               {/* Q7: Qualifier */}
               {currentStep === "q7_qualifier" && (
-                <div className="flex-1 flex flex-col min-h-0 space-y-2 sm:space-y-3 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex-1 flex flex-col min-h-0 space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
-                    <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-0.5">
+                    <h2 className="text-lg sm:text-xl font-bold mb-0.5">
                       How ready are you to make a change?
                     </h2>
-                    <p className="text-sm sm:text-base text-muted-foreground">Choose one</p>
+                    <p className="text-sm text-muted-foreground">Choose one</p>
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto space-y-3">
+                  <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
                     {QUALIFIER_OPTIONS.map((option) => {
                       const isSelected = qualifier === option.id;
                       return (
@@ -1724,13 +1778,13 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => setQualifier(option.id)}
-                          className={`w-full min-h-[48px] py-3 px-3 sm:px-4 rounded-lg border-2 text-left transition-all duration-200 group cursor-pointer ${
+                          className={`w-full h-14 px-3 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
                               : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
                           }`}
                         >
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 w-full">
                             <div className={`p-1 rounded-md transition-colors shrink-0 ${
                               isSelected ? "bg-primary/20" : "bg-foreground/5 group-hover:bg-primary/10"
                             }`}>
@@ -1739,7 +1793,7 @@ function RegisterPageContent() {
                                 className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
                               />
                             </div>
-                            <span className="font-medium flex-1 text-sm sm:text-base">{option.label}</span>
+                            <span className="font-medium flex-1 text-sm">{option.label}</span>
                             {isSelected && (
                               <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
                             )}
@@ -1789,7 +1843,7 @@ function RegisterPageContent() {
               type="button"
               onClick={goBack}
               disabled={stepIndex === 0}
-              className="min-h-[48px] flex items-center gap-1.5 px-4 py-3 rounded-lg border-2 border-foreground/15 hover:bg-foreground/5 hover:border-foreground/25 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent font-medium text-sm sm:text-base"
+              className="min-h-12 flex items-center gap-1.5 px-4 py-3 rounded-lg border-2 border-foreground/15 hover:bg-foreground/5 hover:border-foreground/25 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent font-medium text-sm sm:text-base"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               Back
@@ -1798,7 +1852,7 @@ function RegisterPageContent() {
               type="button"
               onClick={goNext}
               disabled={!stepIsAnswered(currentStep)}
-              className="min-h-[48px] flex items-center gap-1.5 px-4 py-3 rounded-lg bg-primary text-primary-foreground hover:brightness-110 hover:shadow-lg hover:shadow-primary/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100 disabled:hover:shadow-none font-semibold text-sm sm:text-base"
+              className="min-h-12 flex items-center gap-1.5 px-4 py-3 rounded-lg bg-primary text-primary-foreground hover:brightness-110 hover:shadow-lg hover:shadow-primary/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100 disabled:hover:shadow-none font-semibold text-sm sm:text-base"
             >
               {currentStep === "breather" || stepIndex === STEPS.length - 1 ? "Continue" : "Next"}
               <ArrowRight className="w-3.5 h-3.5" />

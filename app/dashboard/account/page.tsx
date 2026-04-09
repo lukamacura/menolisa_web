@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { LayoutDashboard } from "lucide-react";
 import { TrialCard } from "@/components/TrialCard";
 import { useDashboardTrialStatus } from "@/lib/dashboardTrialContext";
 import { useSymptomLogs } from "@/hooks/useSymptomLogs";
@@ -76,22 +74,6 @@ export default function AccountPage() {
         )}
       </section>
 
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
-        <Link
-          href="/dashboard/overview"
-          className="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-white! shadow-md transition-all duration-200 hover:opacity-95 hover:shadow-lg hover:text-white! min-h-[44px] w-full sm:w-auto focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-white/80"
-          style={{
-            background: "linear-gradient(135deg, #ff74b1 0%, #d85a9a 100%)",
-            color: "#ffffff",
-          }}
-        >
-          <LayoutDashboard className="h-5 w-5 shrink-0 text-current" aria-hidden />
-          Go to my overview
-        </Link>
-        <p className="text-xs sm:text-sm text-muted-foreground sm:max-w-xs">
-          Back to your dashboard.
-        </p>
-      </div>
     </div>
   );
 }

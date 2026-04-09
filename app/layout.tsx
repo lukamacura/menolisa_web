@@ -3,6 +3,7 @@ import "./globals.css";
 
 import type { Metadata } from "next";
 import ConditionalNavbar from "@/components/ConditionalNavbar";
+import AppDownloadWidget from "@/components/AppDownloadWidget";
 import PreloaderGate from "@/components/PreloaderGate";
 import localFont from "next/font/local";
 import { Dancing_Script, Poppins, Lora } from "next/font/google";
@@ -75,6 +76,7 @@ export default function RootLayout({
 
         <main className="flex-1 w-full">{children}</main>
 
+        <AppDownloadWidget />
         <Analytics />
         <SpeedInsights />
       </body>
