@@ -63,6 +63,7 @@ export async function POST(req: NextRequest) {
     const subscription_ends_at = new Date(endTs * 1000).toISOString();
     const subscription_canceled = !!subscription.cancel_at;
 
+    const isActive = subscription.status === "active" || subscription.status === "trialing";
     const { error: updateError } = await supabaseAdmin
       .from("user_trials")
       .update({
@@ -70,7 +71,8 @@ export async function POST(req: NextRequest) {
         subscription_ends_at,
         subscription_canceled,
         stripe_subscription_id: subscription.id,
-        account_status: "paid",
+        account_status: isActive ? "paid" : "expired",
+        ...(isActive && { payment_failed_at: null }),
         updated_at: new Date().toISOString(),
       })
       .eq("user_id", user.id);

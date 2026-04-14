@@ -20,6 +20,8 @@ export type TrialStatus = {
   accountStatus: string;
   /** True when subscription is set to cancel (show "Access until" not "Renews") */
   subscriptionCanceled: boolean;
+  /** Set when Stripe's last renewal attempt failed. Null once the customer updates their card. */
+  paymentFailedAt: Date | null;
   loading: boolean;
   error: string | null;
 };
@@ -35,6 +37,7 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
     remaining: { d: 3, h: 0, m: 0, s: 0 },
     accountStatus: "trial",
     subscriptionCanceled: false,
+    paymentFailedAt: null,
     loading: true,
     error: null,
   });
@@ -52,7 +55,7 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
     try {
       const { data, error } = await supabase
         .from("user_trials")
-        .select("trial_start, trial_end, trial_days, account_status, subscription_ends_at, subscription_canceled")
+        .select("trial_start, trial_end, trial_days, account_status, subscription_ends_at, subscription_canceled, payment_failed_at")
         .eq("user_id", userId)
         .single();
 
@@ -155,6 +158,7 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
     accountStatus: string;
     subscriptionEndsAt: Date | null;
     subscriptionCanceled: boolean;
+    paymentFailedAt: Date | null;
   } | null>(null);
 
   const notAuthenticatedState: TrialStatus = {
@@ -167,6 +171,7 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
     remaining: { d: 3, h: 0, m: 0, s: 0 },
     accountStatus: "trial",
     subscriptionCanceled: false,
+    paymentFailedAt: null,
     loading: false,
     error: "User not authenticated",
   };
@@ -199,6 +204,8 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
       const subEnd = (userTrial as { subscription_ends_at?: string | null }).subscription_ends_at;
       const subscriptionEndsAt = subEnd ? new Date(subEnd) : null;
       const subscriptionCanceled = !!(userTrial as { subscription_canceled?: boolean }).subscription_canceled;
+      const paymentFailedAtRaw = (userTrial as { payment_failed_at?: string | null }).payment_failed_at;
+      const paymentFailedAt = paymentFailedAtRaw ? new Date(paymentFailedAtRaw) : null;
 
       setTrialData({
         trialDays,
@@ -207,6 +214,7 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
         accountStatus: userTrial.account_status || "trial",
         subscriptionEndsAt,
         subscriptionCanceled,
+        paymentFailedAt,
       });
       setTrialStatus((prev) => ({ ...prev, loading: false }));
     } catch (e) {
@@ -227,7 +235,7 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
   useEffect(() => {
     if (!trialData || trialStatus.loading) return;
 
-    const { trialDays, start, end, accountStatus, subscriptionEndsAt, subscriptionCanceled } = trialData;
+    const { trialDays, start, end, accountStatus, subscriptionEndsAt, subscriptionCanceled, paymentFailedAt } = trialData;
     const nowTs = now.getTime();
 
     // Paid: expire only when subscription_ends_at is past; show subscription end as "end"
@@ -251,6 +259,7 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
         trialDays,
         accountStatus: "paid",
         subscriptionCanceled,
+        paymentFailedAt,
         loading: false,
         error: null,
       });
@@ -269,6 +278,7 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
         trialDays,
         accountStatus: accountStatus ?? "trial",
         subscriptionCanceled: false,
+        paymentFailedAt,
         loading: false,
         error: null,
       });
@@ -303,6 +313,7 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
       trialDays,
       accountStatus: accountStatus ?? "trial",
       subscriptionCanceled: false,
+      paymentFailedAt,
       loading: false,
       error: null,
     });

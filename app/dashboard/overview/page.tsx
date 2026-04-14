@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
-import { Activity, ArrowRight, MessageSquare, Gift, Copy, Share2 } from "lucide-react";
+import { Activity, ArrowRight, MessageSquare, Gift, Copy, Share2, AlertTriangle } from "lucide-react";
 import type { SymptomLog, Symptom } from "@/lib/symptom-tracker-constants";
 import { useSymptomLogs } from "@/hooks/useSymptomLogs";
 import DeleteConfirmationDialog from "@/components/DeleteConfirmationDialog";
@@ -245,6 +245,55 @@ function ReferralCard() {
         </div>
       </div>
     </AnimatedCard>
+  );
+}
+
+function PaymentFailedBanner() {
+  const trialStatus = useDashboardTrialStatus();
+  const [busy, setBusy] = useState(false);
+
+  if (!trialStatus.paymentFailedAt) return null;
+
+  const openPortal = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/stripe/create-portal", { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data?.url) {
+        window.location.href = data.url;
+        return;
+      }
+    } catch {
+      // fall through
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div
+      role="alert"
+      className="mb-4 rounded-xl border-2 border-red-300 bg-red-50 p-4 shadow-sm dark:border-red-900/60 dark:bg-red-950/30"
+    >
+      <div className="flex items-start gap-3">
+        <AlertTriangle className="h-5 w-5 shrink-0 text-red-600 dark:text-red-400 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-red-900 dark:text-red-200">
+            We couldn&apos;t charge your card
+          </p>
+          <p className="mt-0.5 text-sm text-red-800/90 dark:text-red-300/90">
+            Update your payment method to keep your subscription active.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={openPortal}
+          disabled={busy}
+          className="shrink-0 inline-flex items-center rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60 transition-colors"
+        >
+          {busy ? "Opening…" : "Update card"}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -715,6 +764,8 @@ export default function OverviewPage() {
           What would you like to do today?
         </p>
       </header>
+
+      <PaymentFailedBanner />
 
       {/* Bento Grid - Simplified and more compact */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
