@@ -2,8 +2,10 @@
 
 import Image from "next/image";
 import { useState, useEffect } from "react";
+import { usePathname } from "next/navigation";
 
 export default function AppDownloadWidget() {
+  const pathname = usePathname();
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
@@ -11,7 +13,7 @@ export default function AppDownloadWidget() {
     return () => clearTimeout(t);
   }, []);
 
-  if (!visible) return null;
+  if (!visible || pathname === "/dashboard/account") return null;
 
   return (
     <div className=" fixed bottom-32 right-5 z-50 bg-white rounded-2xl shadow-xl border border-gray-100 p-3 w-44 flex-col gap-2">

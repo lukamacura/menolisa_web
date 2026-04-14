@@ -2,17 +2,23 @@
 
 import React from "react";
 import { CheckCircle2, X } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { useNotificationContext } from "./NotificationProvider";
 import NotificationCard from "./NotificationCard";
 
 export default function NotificationContainer() {
+  const pathname = usePathname();
   const {
-    notifications,
+    notifications: allNotifications,
     ephemeralToasts,
     dismissNotification,
     dismissEphemeral,
     isMobileToastLayout,
   } = useNotificationContext();
+
+  const notifications = pathname === "/dashboard/account"
+    ? allNotifications.filter((n) => n.type !== "trial")
+    : allNotifications;
 
   const hasStack = notifications.length > 0;
   const hasEphemeral = ephemeralToasts.length > 0;
