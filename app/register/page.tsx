@@ -1,4 +1,4 @@
-/* eslint-disable react-hooks/set-state-in-effect */
+ 
 "use client";
 
 import React, { useState, useCallback, useEffect, Suspense } from "react";
@@ -1135,7 +1135,7 @@ function RegisterPageContent() {
                   </div>
                 </div>
 
-                {/* What happens next — fixed to bottom, always visible */}
+                {/* What happens next - fixed to bottom, always visible */}
                 <motion.section
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -1411,7 +1411,7 @@ function RegisterPageContent() {
                 alt=""
                 width={280}
                 height={160}
-                className="object-contain w-full max-h-[130px] sm:max-h-[160px]"
+                className="object-contain w-full max-h-[130px] sm:max-h-40"
               />
             </div>
 
@@ -1428,7 +1428,7 @@ function RegisterPageContent() {
                 Try Lisa free for 3 days
               </h2>
               <p className="text-sm sm:text-base text-[#5A5A5A]">
-                Your card is held securely by Stripe. <strong>We charge nothing until day 4</strong> — and you get a reminder before then.
+                Your card is held securely by Stripe. <strong>We charge nothing until day 4</strong> - and you get a reminder before then.
               </p>
             </div>
 
@@ -1507,11 +1507,11 @@ function RegisterPageContent() {
               </li>
               <li className="flex items-center gap-2">
                 <Check className="w-4 h-4 text-green-600 shrink-0" />
-                <span>We&apos;ll <strong>email you 24h before</strong> the trial ends — no surprises</span>
+                <span>We&apos;ll <strong>email you 24h before</strong> the trial ends - no surprises</span>
               </li>
               <li className="flex items-center gap-2">
                 <Check className="w-4 h-4 text-green-600 shrink-0" />
-                <span><strong>Cancel in 2 taps</strong> in Settings &rarr; Subscription — no hoops</span>
+                <span><strong>Cancel in 2 taps</strong> in Settings &rarr; Subscription - no hoops</span>
               </li>
               <li className="flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-green-600 shrink-0" />
@@ -1565,7 +1565,7 @@ function RegisterPageContent() {
               {firstName.trim() ? `${firstName.trim()}, you're all set!` : "You're all set!"}
             </h2>
             <p className="text-sm sm:text-base text-[#5A5A5A] mb-8 leading-relaxed">
-              Download the Menolisa app to start tracking your symptoms and chatting with Lisa — your 24/7 menopause companion.
+              Download the Menolisa app to start tracking your symptoms and chatting with Lisa - your 24/7 menopause companion.
             </p>
 
             <div className="flex flex-col items-center gap-3 mb-6">
@@ -1811,7 +1811,7 @@ function RegisterPageContent() {
                 </div>
               )}
 
-              {/* Q4: Symptoms — Lucide icons only (same pattern as Q3/Q5) for consistent alignment */}
+              {/* Q4: Symptoms - Lucide icons only (same pattern as Q3/Q5) for consistent alignment */}
               {currentStep === "q4_symptoms" && (
                 <div className="flex-1 flex flex-col min-h-0 space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
