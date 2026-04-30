@@ -32,6 +32,12 @@ export async function checkTrialExpired(userId: string): Promise<boolean> {
       return true;
     }
 
+    // pending_payment: user signed up but hasn't completed Stripe checkout.
+    // Block until webhook flips status to "paid".
+    if (data.account_status === "pending_payment") {
+      return true;
+    }
+
     // Check if trial_end has passed
     if (data.trial_end) {
       const trialEnd = new Date(data.trial_end);

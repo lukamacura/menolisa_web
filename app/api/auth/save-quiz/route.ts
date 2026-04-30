@@ -95,18 +95,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create user_trials entry
+    // Create user_trials entry in pending_payment state.
+    // Trial only starts once Stripe checkout completes; webhook flips status to "paid".
     try {
       const nowIso = new Date().toISOString();
       const { error: trialError } = await supabaseAdmin.from("user_trials").insert({
         user_id: userId,
         trial_start: nowIso,
         trial_days: 3,
-        account_status: "trial",
+        account_status: "pending_payment",
       });
 
       if (trialError) {
-        // Trial may already exist, which is fine
         console.warn("Trial creation error (may already exist):", trialError);
       }
     } catch (e) {

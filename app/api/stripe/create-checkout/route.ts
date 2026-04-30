@@ -63,6 +63,7 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const plan = body?.plan as string | undefined;
+    const fromRegistration = body?.from_registration === true;
     const returnOrigin = (body?.return_origin as string | undefined) || req.headers.get("origin") || req.headers.get("referer");
     if (plan !== "monthly" && plan !== "annual") {
       return NextResponse.json(
@@ -150,15 +151,27 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const defaultSuccess = fromRegistration
+      ? `${baseUrl}/register?phase=download`
+      : `${baseUrl}/checkout/success`;
+    const defaultCancel = fromRegistration
+      ? `${baseUrl}/register?phase=paywall`
+      : `${baseUrl}/dashboard`;
+
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: "subscription",
       payment_method_types: ["card"],
+      payment_method_collection: "always",
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: useMobileReturns ? customSuccess : `${baseUrl}/checkout/success`,
-      cancel_url: useMobileReturns ? customCancel : `${baseUrl}/dashboard`,
+      success_url: useMobileReturns ? customSuccess : defaultSuccess,
+      cancel_url: useMobileReturns ? customCancel : defaultCancel,
       client_reference_id: user.id,
       customer_email: user.email ?? undefined,
       subscription_data: {
+        trial_period_days: 3,
+        trial_settings: {
+          end_behavior: { missing_payment_method: "cancel" },
+        },
         metadata: { user_id: user.id },
       },
     };

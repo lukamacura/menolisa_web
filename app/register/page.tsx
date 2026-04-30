@@ -43,6 +43,8 @@ import {
   Compass,
   BookOpen,
   Ellipsis,
+  Lock,
+  ShieldCheck,
 } from "lucide-react";
 import {
   SYMPTOM_LABELS,
@@ -169,7 +171,7 @@ function deriveSeverity(
   return "mild";
 }
 
-type Phase = "quiz" | "gate" | "results" | "email" | "download";
+type Phase = "quiz" | "gate" | "results" | "email" | "paywall" | "download";
 
 const APP_STORE_URL = "https://apps.apple.com/de/app/menolisa/id6761130271?l=en-GB";
 const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.menolisa.app&pcampaignid=web_share";
@@ -284,8 +286,17 @@ function RegisterPageContent() {
     }
   }, [searchParams]);
 
-  // Always start with quiz
+  // Always start with quiz; URL ?phase=download|paywall lets Stripe redirect skip back into the funnel.
   const [phase, setPhase] = useState<Phase>("quiz");
+
+  useEffect(() => {
+    const phaseParam = searchParams.get("phase");
+    if (phaseParam === "download" || phaseParam === "paywall") {
+      setPhase(phaseParam);
+    }
+    // Only on mount; subsequent param changes shouldn't override user navigation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [stepIndex, setStepIndex] = useState(0);
   const currentStep = STEPS[stepIndex];
   const [, setBrowserInfo] = useState<ReturnType<typeof detectBrowser> | null>(null);
@@ -644,12 +655,12 @@ function RegisterPageContent() {
           // Continue anyway - user is registered
         }
 
-        // Registration successful! Clear sessionStorage and show download screen
+        // Registration successful! Clear sessionStorage and require card before download.
         console.log("=== REGISTRATION COMPLETE ===");
         console.log("User created:", authData.user.id);
         sessionStorage.removeItem("pending_quiz_answers");
         if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(REFERRAL_STORAGE_KEY);
-        setPhase("download");
+        setPhase("paywall");
       }
       
       setLoading(false);
@@ -682,17 +693,54 @@ function RegisterPageContent() {
         sessionStorage.removeItem(REFERRAL_STORAGE_KEY);
         sessionStorage.removeItem("pending_quiz_answers");
       }
-      setPhase("download");
+      setPhase("paywall");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
     }
     setLoading(false);
   };
 
+  const [selectedPlan, setSelectedPlan] = useState<"annual" | "monthly">("annual");
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+
+  const handleStartTrialCheckout = async (plan: "annual" | "monthly") => {
+    if (checkoutLoading) return;
+    setError(null);
+    setCheckoutLoading(true);
+    try {
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const res = await fetch("/api/stripe/create-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plan,
+          from_registration: true,
+          return_origin: origin || undefined,
+        }),
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error ?? "Could not start checkout. Please try again.");
+        setCheckoutLoading(false);
+        return;
+      }
+      if (data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      setError("Checkout could not be started. Please try again.");
+      setCheckoutLoading(false);
+    } catch {
+      setError("Network error. Please try again.");
+      setCheckoutLoading(false);
+    }
+  };
+
   // Check for authenticated session and redirect if profile exists.
   // Do not redirect when: results, gate, or email (set-password) so user can finish the flow.
   useEffect(() => {
-    if (phase === "results" || phase === "gate" || phase === "download") {
+    if (phase === "results" || phase === "gate" || phase === "paywall" || phase === "download") {
       return;
     }
     if (phase === "email" && signedUpAtGate) {
@@ -1343,6 +1391,162 @@ function RegisterPageContent() {
                   </Link>
                 </p>
               </motion.form>
+            )}
+          </motion.div>
+        </div>
+      )}
+
+      {/* Paywall Phase - card required to start free trial via Stripe */}
+      {phase === "paywall" && (
+        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 py-4 sm:py-6">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-md mx-auto w-full flex-1 flex flex-col justify-center min-h-0"
+          >
+            {/* Hero image */}
+            <div className="flex justify-center mb-4 sm:mb-5">
+              <Image
+                src="/paywall.png"
+                alt=""
+                width={280}
+                height={160}
+                className="object-contain w-full max-h-[130px] sm:max-h-[160px]"
+              />
+            </div>
+
+            {/* No-charge badge */}
+            <div className="flex items-center justify-center gap-2 mb-3">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-100 border border-green-300 text-green-700 text-xs sm:text-sm font-semibold">
+                <Check className="w-3.5 h-3.5" />
+                $0 charged today &mdash; cancel anytime
+              </span>
+            </div>
+
+            <div className="text-center mb-4 sm:mb-5">
+              <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-1.5">
+                Try Lisa free for 3 days
+              </h2>
+              <p className="text-sm sm:text-base text-[#5A5A5A]">
+                Your card is held securely by Stripe. <strong>We charge nothing until day 4</strong> — and you get a reminder before then.
+              </p>
+            </div>
+
+            {/* Plan toggle */}
+            <div
+              className="flex rounded-xl p-1 border mb-4"
+              style={{ backgroundColor: "#F5EFEC", borderColor: "#E8DDD9" }}
+              role="tablist"
+              aria-label="Billing period"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={selectedPlan === "annual"}
+                onClick={() => setSelectedPlan("annual")}
+                className="flex-1 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all"
+                style={{
+                  backgroundColor: selectedPlan === "annual" ? "#FFFFFF" : "transparent",
+                  color: "#3D3D3D",
+                  boxShadow: selectedPlan === "annual" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                }}
+              >
+                Annual
+                <span className="block text-xs font-normal mt-0.5 text-[#5A5A5A]">
+                  Save 45%
+                </span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={selectedPlan === "monthly"}
+                onClick={() => setSelectedPlan("monthly")}
+                className="flex-1 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all"
+                style={{
+                  backgroundColor: selectedPlan === "monthly" ? "#FFFFFF" : "transparent",
+                  color: "#3D3D3D",
+                  boxShadow: selectedPlan === "monthly" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                }}
+              >
+                Monthly
+                <span className="block text-xs font-normal mt-0.5 text-[#5A5A5A]">
+                  Flexible
+                </span>
+              </button>
+            </div>
+
+            {/* Price summary */}
+            <div className="rounded-xl border border-[#E8DDD9] bg-white p-4 mb-4">
+              <div className="flex items-baseline justify-between mb-1">
+                <span className="text-sm text-[#5A5A5A]">After your 3-day free trial</span>
+              </div>
+              {selectedPlan === "annual" ? (
+                <div className="flex items-baseline gap-1">
+                  <span className="text-3xl font-bold text-[#3D3D3D]">$6.58</span>
+                  <span className="text-sm text-[#5A5A5A]">/ month</span>
+                  <span className="ml-auto text-xs text-[#5A5A5A]">
+                    Billed $79/year
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-baseline gap-1">
+                  <span className="text-3xl font-bold text-[#3D3D3D]">$12</span>
+                  <span className="text-sm text-[#5A5A5A]">/ month</span>
+                  <span className="ml-auto text-xs text-[#5A5A5A]">
+                    Billed monthly
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Trust labels */}
+            <ul className="space-y-2 mb-5 text-sm text-[#3D3D3D]">
+              <li className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-green-600 shrink-0" />
+                <span><strong>Nothing charged today</strong> &mdash; trial starts the moment you sign up</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-green-600 shrink-0" />
+                <span>We&apos;ll <strong>email you 24h before</strong> the trial ends — no surprises</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-green-600 shrink-0" />
+                <span><strong>Cancel in 2 taps</strong> in Settings &rarr; Subscription — no hoops</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-green-600 shrink-0" />
+                <span>Stripe handles your card &mdash; <strong>we never see the number</strong></span>
+              </li>
+            </ul>
+
+            <button
+              type="button"
+              disabled={checkoutLoading}
+              onClick={() => handleStartTrialCheckout(selectedPlan)}
+              className="w-full py-3 sm:py-4 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] hover:shadow-lg"
+              style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)", boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)" }}
+            >
+              {checkoutLoading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Redirecting to checkout&hellip;
+                </>
+              ) : (
+                <>
+                  <Lock className="w-4 h-4" />
+                  Start my free 3-day trial
+                </>
+              )}
+            </button>
+
+            <p className="text-xs text-[#9A9A9A] text-center mt-3">
+              <strong>$0 due now.</strong> After 3 days: {selectedPlan === "annual" ? "$79/year ($6.58/mo)" : "$12/month"}. Cancel before then and pay nothing.
+            </p>
+
+            {error && (
+              <div className="mt-3 rounded-xl border border-error/30 bg-error/10 p-3 text-sm text-error">
+                {error}
+              </div>
             )}
           </motion.div>
         </div>

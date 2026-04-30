@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
+import { X } from "lucide-react";
 
 export default function AppDownloadWidget() {
   const pathname = usePathname();
@@ -17,7 +18,14 @@ export default function AppDownloadWidget() {
 
   return (
     <div className=" fixed bottom-32 right-5 z-50 bg-white rounded-2xl shadow-xl border border-gray-100 p-3 w-44 flex-col gap-2">
-      <div className="flex flex-col items-center justify-between">
+      <div className="flex flex-col items-center justify-between relative">
+        <button
+          onClick={() => setVisible(false)}
+          className="absolute -top-1 -right-1 text-gray-400 hover:text-gray-600"
+          aria-label="Close"
+        >
+          <X size={14} />
+        </button>
         <span className="text-sm font-semibold text-gray-800">Download App</span>
         <span className="text-[8px] font-bold text-center text-green-600 bg-green-100 rounded-full px-2 py-1 leading-tight">
           1 min needed
