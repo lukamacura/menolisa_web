@@ -9,41 +9,45 @@ const CORS_HEADERS = {
   "Access-Control-Max-Age": "86400",
 };
 
-export async function middleware(req: NextRequest) {
-  const res = NextResponse.next();
+// Single source of truth for protected routes (also used by `config.matcher` below).
+const PROTECTED_PREFIXES = [
+  "/dashboard",
+  "/chat/lisa",
+  "/api/vectorshift",
+  "/api/langchain-rag",
+  "/api/symptoms",
+] as const;
 
+function isProtectedPath(pathname: string): boolean {
+  return PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
+}
+
+function applyCors(response: NextResponse) {
+  Object.entries(CORS_HEADERS).forEach(([key, value]) => {
+    response.headers.set(key, value);
+  });
+  return response;
+}
+
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // CORS preflight: must return 200 with CORS headers, no redirect (browser blocks redirect on preflight)
+  // CORS preflight: must return 200 with CORS headers, no redirect.
   if (req.method === "OPTIONS") {
     return new NextResponse(null, { status: 200, headers: CORS_HEADERS });
   }
 
-  // API routes called with Bearer token (e.g. mobile app): skip cookie check; the route will validate the token
+  // API calls with Bearer token (mobile app): skip cookie check, route validates token.
+  // CORS headers only apply on this branch — same-origin cookie requests don't need them.
   if (pathname.startsWith("/api/") && req.headers.get("Authorization")?.startsWith("Bearer ")) {
-    const response = NextResponse.next();
-    Object.entries(CORS_HEADERS).forEach(([key, value]) => {
-      response.headers.set(key, value);
-    });
-    return response;
+    return applyCors(NextResponse.next());
   }
 
-  // ✅ define protected areas
-  const isProtected =
-    pathname.startsWith("/dashboard") ||
-    pathname.startsWith("/chat/lisa") ||
-    pathname.startsWith("/api/vectorshift") ||
-    pathname.startsWith("/api/langchain-rag") ||
-    pathname.startsWith("/api/symptoms");
-
-  // allow everything else (including auth callback)
-  if (!isProtected) return res;
-  
-  // Allow auth callback path - session will be restored client-side
-  if (pathname.startsWith("/auth/callback")) {
-    return res;
+  if (!isProtectedPath(pathname)) {
+    return NextResponse.next();
   }
 
+  const res = NextResponse.next();
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -67,9 +71,7 @@ export async function middleware(req: NextRequest) {
     error: authError,
   } = await supabase.auth.getUser();
 
-  // Only allow if we have a valid user (no error and user exists)
   if (authError || !user) {
-    // No valid session - redirect to login
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("redirectedFrom", pathname);
@@ -79,7 +81,6 @@ export async function middleware(req: NextRequest) {
   return res;
 }
 
-// ✅ run middleware only where needed
 export const config = {
   matcher: [
     "/dashboard/:path*",

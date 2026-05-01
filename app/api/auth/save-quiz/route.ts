@@ -1,65 +1,76 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { getAuthenticatedUser } from "@/lib/getAuthenticatedUser";
 
 export const runtime = "nodejs";
 
-/**
- * Save quiz answers for a newly registered user
- * Called after password-based registration
- */
+const VALID_GOALS = [
+  "sleep_through_night",
+  "think_clearly",
+  "feel_like_myself",
+  "understand_patterns",
+  "data_for_doctor",
+  "get_body_back",
+] as const;
+
+const QuizSchema = z.object({
+  name: z.string().min(1).max(100).nullable().optional(),
+  top_problems: z.array(z.string().max(50)).max(20).optional(),
+  severity: z.string().max(50).nullable().optional(),
+  timing: z.string().max(50).nullable().optional(),
+  tried_options: z.array(z.string().max(50)).max(20).optional(),
+  doctor_status: z.string().max(50).nullable().optional(),
+  goal: z.union([z.string(), z.array(z.string())]).nullable().optional(),
+});
+
+const BodySchema = z.object({
+  quizAnswers: QuizSchema,
+  referralCode: z.string().max(64).optional(),
+});
+
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { userId, quizAnswers, referralCode } = body;
-
-    if (!userId) {
-      return NextResponse.json({ error: "User ID is required" }, { status: 400 });
+    const user = await getAuthenticatedUser(request);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!quizAnswers) {
-      return NextResponse.json({ error: "Quiz answers are required" }, { status: 400 });
+    const parsed = BodySchema.safeParse(await request.json());
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid quiz payload", issues: parsed.error.flatten() },
+        { status: 400 }
+      );
     }
 
+    const { quizAnswers, referralCode } = parsed.data;
+    const userId = user.id;
     const supabaseAdmin = getSupabaseAdmin();
 
-    // Prepare profile data
-    const validGoals = [
-      "sleep_through_night",
-      "think_clearly",
-      "feel_like_myself",
-      "understand_patterns",
-      "data_for_doctor",
-      "get_body_back",
-    ];
-
-    let goalValue = null;
+    let goalValue: string | null = null;
     if (quizAnswers.goal) {
       if (Array.isArray(quizAnswers.goal)) {
-        const firstValidGoal = (quizAnswers.goal as string[]).find((g: string) =>
-          validGoals.includes(g)
-        );
-        goalValue = firstValidGoal || null;
-      } else if (
-        typeof quizAnswers.goal === "string" &&
-        validGoals.includes(quizAnswers.goal)
-      ) {
+        goalValue =
+          quizAnswers.goal.find((g) => (VALID_GOALS as readonly string[]).includes(g)) ??
+          null;
+      } else if ((VALID_GOALS as readonly string[]).includes(quizAnswers.goal)) {
         goalValue = quizAnswers.goal;
       }
     }
 
     const profileData = {
       user_id: userId,
-      name: (quizAnswers.name as string) || null,
-      top_problems: (quizAnswers.top_problems as string[]) || [],
-      severity: (quizAnswers.severity as string) || null,
-      timing: (quizAnswers.timing as string) || null,
-      tried_options: (quizAnswers.tried_options as string[]) || [],
-      doctor_status: (quizAnswers.doctor_status as string) || null,
+      name: quizAnswers.name ?? null,
+      top_problems: quizAnswers.top_problems ?? [],
+      severity: quizAnswers.severity ?? null,
+      timing: quizAnswers.timing ?? null,
+      tried_options: quizAnswers.tried_options ?? [],
+      doctor_status: quizAnswers.doctor_status ?? null,
       goal: goalValue,
     };
 
-    // Check if profile exists
     const { data: existingProfile } = await supabaseAdmin
       .from("user_profiles")
       .select("user_id")
@@ -67,7 +78,6 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (existingProfile) {
-      // Update existing profile
       const { error: updateError } = await supabaseAdmin
         .from("user_profiles")
         .update(profileData)
@@ -75,23 +85,16 @@ export async function POST(request: NextRequest) {
 
       if (updateError) {
         console.error("Error updating profile:", updateError);
-        return NextResponse.json(
-          { error: "Failed to update profile" },
-          { status: 500 }
-        );
+        return NextResponse.json({ error: "Failed to update profile" }, { status: 500 });
       }
     } else {
-      // Insert new profile
       const { error: insertError } = await supabaseAdmin
         .from("user_profiles")
         .insert(profileData);
 
       if (insertError) {
         console.error("Error inserting profile:", insertError);
-        return NextResponse.json(
-          { error: "Failed to create profile" },
-          { status: 500 }
-        );
+        return NextResponse.json({ error: "Failed to create profile" }, { status: 500 });
       }
     }
 
@@ -113,7 +116,7 @@ export async function POST(request: NextRequest) {
       console.warn("Trial creation error:", e);
     }
 
-    if (referralCode && typeof referralCode === "string" && referralCode.trim()) {
+    if (referralCode && referralCode.trim()) {
       try {
         const origin =
           request.nextUrl?.origin ||
@@ -135,17 +138,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log("Quiz answers saved successfully for user:", userId);
-
-    return NextResponse.json({
-      success: true,
-      message: "Quiz answers saved",
-    });
+    return NextResponse.json({ success: true, message: "Quiz answers saved" });
   } catch (error) {
     console.error("Error in save-quiz:", error);
-    return NextResponse.json(
-      { error: "An unexpected error occurred" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 });
   }
 }

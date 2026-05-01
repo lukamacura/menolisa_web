@@ -130,7 +130,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Redirect: use ?next= path for recovery (e.g. /reset-password), otherwise dashboard
+    // Redirect: use ?next= path if provided (e.g. mobile bridge), otherwise dashboard
     const nextPath = requestUrl.searchParams.get("next");
     const safeNext = nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : null;
     const redirectUrl = safeNext

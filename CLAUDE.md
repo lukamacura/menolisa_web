@@ -35,7 +35,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Scheduled cron jobs (Vercel Cron)
 
 ### Key Design Decisions
-- **Passwordless auth only** — magic link via Supabase OTP; no password-based login
+- **Passwordless auth only** — 6-digit email OTP via Supabase (`signInWithOtp` + `verifyOtp`). No passwords, no magic links. Shared `<OtpForm />` (`components/auth/OtpForm.tsx`) is the only auth UI.
 - **Dual auth paths** — cookie (web) and Bearer token (mobile) coexist in every API route via `getAuthenticatedUser()`
 - **Verbatim KB-first RAG** — AI chat tries to return exact knowledge base content before falling back to LLM generation; this ensures medically accurate, consistent answers
 - **Persona-based routing** — queries are classified into 4 personas before retrieval to ensure the right tone and knowledge domain
@@ -84,12 +84,9 @@ web app/
 │   │   ├── settings/
 │   │   └── symptoms/        # Main home/tracker page
 │   ├── delete-account/      # Account deletion flow
-│   ├── forgot-password/
-│   ├── login/
-│   ├── magic-link/          # Magic link confirmation page
+│   ├── login/               # OTP sign-in
 │   ├── privacy/
-│   ├── register/            # Onboarding quiz (8 steps)
-│   ├── reset-password/
+│   ├── register/            # Onboarding quiz (8 steps) + OTP sign-up
 │   └── terms/
 ├── components/              # Shared React components
 │   ├── fitness/
@@ -240,7 +237,11 @@ const supabaseAdmin = getSupabaseAdmin(); // lazy singleton
 
 ### Authentication
 - `lib/getAuthenticatedUser.ts` — **always use this** in API routes; it handles both cookie-based (web) and Bearer token (mobile) auth
-- Registration flow: quiz form → `POST /api/auth/send-magic-link` (creates account + saves quiz + starts trial) → email → `/auth/callback` → session
+- Auth UI: shared `components/auth/OtpForm.tsx` used by `app/login/page.tsx` and the email phase of `app/register/page.tsx`
+- Login flow: email → `signInWithOtp({ shouldCreateUser: false })` → 6-digit code → `verifyOtp` → session → honor `?redirectedFrom=` (validated, must start with `/` and not `//`)
+- Registration flow: quiz → `signInWithOtp({ shouldCreateUser: true })` → 6-digit code → `verifyOtp` → `POST /api/auth/save-quiz` (server reads `userId` from session, validates payload with zod, creates `user_trials` row in `pending_payment`) → results → paywall → Stripe checkout → webhook flips `account_status` to `paid`
+- Mobile bridge (`app/auth/mobile-bridge/page.tsx`) is a session handoff (mobile → web token via `#hash`), not a login — leave it alone
+- Email template: paste branded HTML into Supabase Dashboard → Auth → Email Templates → Magic Link, with `{{ .Token }}` for the 6-digit code
 - Middleware at `middleware.ts` protects `/dashboard/*` and `/chat/lisa/*` routes
 
 ### Database Schema (key tables)
@@ -336,7 +337,7 @@ Custom CSS variables for fonts: `--font-satoshi`, `--font-script`, `--font-poppi
 
 ### Do Not Refactor Without Discussion
 - `lib/rag/` — the entire RAG pipeline is carefully tuned with specific thresholds (semantic: 0.30/0.35, hybrid: 0.44-0.50, intent: 0.80); changing values affects AI response quality
-- Auth flow in `app/api/auth/send-magic-link/route.ts` — creates account + trial in one atomic flow; breaking this disrupts onboarding
+- Auth flow in `app/api/auth/save-quiz/route.ts` — creates user profile + trial in one atomic call right after OTP verification; breaking this disrupts onboarding
 - `middleware.ts` matcher config — must stay in sync with protected route list
 
 ---
@@ -427,7 +428,11 @@ Custom CSS variables for fonts: `--font-satoshi`, `--font-script`, `--font-poppi
 
 **Trial not starting after registration**
 - Check `user_trials` table has a row for the user
-- `send-magic-link` route creates the trial row; if it failed, create manually via Supabase dashboard
+- `/api/auth/save-quiz` creates the trial row right after OTP verification; if it failed, create manually via Supabase dashboard
+
+**Magic link OTP code not arriving**
+- Check Supabase Dashboard → Auth → Email Templates → Magic Link is enabled and template includes `{{ .Token }}`
+- Supabase rate-limits OTP requests (1 per 60s per email); the OtpForm component shows a countdown
 
 ---
 

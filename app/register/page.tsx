@@ -21,8 +21,6 @@ import {
   ArrowLeft,
   CheckCircle2,
   Loader2,
-  Eye,
-  EyeOff,
   Goal,
   AlertTriangle,
   UserCircle,
@@ -46,6 +44,7 @@ import {
   Lock,
   ShieldCheck,
 } from "lucide-react";
+import OtpForm from "@/components/auth/OtpForm";
 import {
   SYMPTOM_LABELS,
 } from "@/lib/quiz-results-helpers";
@@ -171,7 +170,7 @@ function deriveSeverity(
   return "mild";
 }
 
-type Phase = "quiz" | "gate" | "results" | "email" | "paywall" | "download";
+type Phase = "quiz" | "email" | "results" | "paywall" | "download";
 
 const APP_STORE_URL = "https://apps.apple.com/de/app/menolisa/id6761130271?l=en-GB";
 const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.menolisa.app&pcampaignid=web_share";
@@ -324,14 +323,10 @@ function RegisterPageContent() {
   const [qualifier, setQualifier] = useState<string>("");
   const [firstName, setFirstName] = useState<string>("");
 
-  // Email & Password state
+  // Email state
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [userExists, setUserExists] = useState(false);
-  const [signedUpAtGate, setSignedUpAtGate] = useState(false);
+  const [savingQuiz, setSavingQuiz] = useState(false);
 
   const derivedSeverity = deriveSeverity(topProblems.length, timing);
 
@@ -411,11 +406,7 @@ function RegisterPageContent() {
     }
   }, [phase, isResultsLoading, topProblems, derivedSeverity, timing, triedOptions]);
 
-  // Validation
-  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  const passwordValid = password.length >= 8;
-  const canSubmit = emailValid && passwordValid && !loading;
-  const canSubmitGate = emailValid && !loading;
+  // (validation handled inside OtpForm)
 
   // Check if current step is answered
   const stepIsAnswered = useCallback(
@@ -464,9 +455,9 @@ function RegisterPageContent() {
     if (stepIndex < STEPS.length - 1) {
       setStepIndex(stepIndex + 1);
     } else {
-      // Quiz complete - move to gate (capture email before showing results)
-      setPhase("gate");
+      // Quiz complete - move to email (verify before showing results)
       saveQuizAnswers();
+      setPhase("email");
     }
   }, [currentStep, stepIndex, stepIsAnswered, saveQuizAnswers]);
 
@@ -476,27 +467,11 @@ function RegisterPageContent() {
     }
   }, [stepIndex]);
 
-  const generateTempPassword = (): string => {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%";
-    const arr = new Uint8Array(16);
-    if (typeof crypto !== "undefined" && crypto.getRandomValues) {
-      crypto.getRandomValues(arr);
-    }
-    return Array.from(arr, (b) => chars[b % chars.length]).join("");
-  };
-
-  const handleGateSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!canSubmitGate) return;
-
+  // Called by OtpForm after Supabase verifyOtp succeeds (session is live).
+  const handleOtpSuccess = useCallback(async () => {
     setError(null);
-    setUserExists(false);
-    setLoading(true);
-
+    setSavingQuiz(true);
     try {
-      const emailLower = email.toLowerCase().trim();
-      const tempPassword = generateTempPassword();
-
       const quizAnswers = {
         top_problems: topProblems,
         severity: derivedSeverity,
@@ -506,53 +481,31 @@ function RegisterPageContent() {
         name: firstName.trim() || null,
       };
 
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: emailLower,
-        password: tempPassword,
-        options: {
-          data: {
-            quiz_completed: true,
-            temp_password: true,
-          },
-        },
+      const res = await fetch("/api/auth/save-quiz", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          quizAnswers,
+          ...(ref ? { referralCode: ref } : {}),
+        }),
       });
 
-      if (authError) {
-        if (authError.message.includes("User already registered")) {
-          setUserExists(true);
-          setLoading(false);
-          return;
-        }
-        setError(authError.message);
-        setLoading(false);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(typeof data.error === "string" ? data.error : "Couldn't save your answers. Please try again.");
         return;
       }
 
-      if (authData.user) {
-        try {
-          await fetch("/api/auth/save-quiz", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              userId: authData.user.id,
-              quizAnswers,
-              ...(ref ? { referralCode: ref } : {}),
-            }),
-          });
-        } catch (quizError) {
-          console.warn("Failed to save quiz answers:", quizError);
-        }
-        sessionStorage.removeItem("pending_quiz_answers");
-        setSignedUpAtGate(true);
-        setPhase("results");
-      }
-      setLoading(false);
+      sessionStorage.removeItem("pending_quiz_answers");
+      if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(REFERRAL_STORAGE_KEY);
+      setPhase("results");
     } catch (e) {
-      console.error("Unexpected error during gate sign-up:", e);
-      setError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
-      setLoading(false);
+      setError(e instanceof Error ? e.message : "Network error. Please try again.");
+    } finally {
+      setSavingQuiz(false);
     }
-  };
+  }, [topProblems, derivedSeverity, timing, triedOptions, goal, firstName, ref]);
 
   const toggleProblem = (problemId: string) => {
     setTopProblems((prev) => {
@@ -579,125 +532,6 @@ function RegisterPageContent() {
       }
       return [...prev, optionId];
     });
-  };
-
-  // Handle registration with password
-  const handleEmailSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!canSubmit) return;
-
-    setError(null);
-    setUserExists(false);
-    setLoading(true);
-
-    try {
-      const emailLower = email.toLowerCase().trim();
-      
-      // Prepare quiz answers
-      const quizAnswers = {
-        top_problems: topProblems,
-        severity: derivedSeverity,
-        timing,
-        tried_options: triedOptions,
-        goal,
-        name: firstName.trim() || null,
-      };
-
-      console.log("=== REGISTRATION START ===");
-      console.log("Email:", emailLower);
-      console.log("Quiz answers:", quizAnswers);
-
-      // Create account with Supabase password auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: emailLower,
-        password,
-        options: {
-          data: {
-            quiz_completed: true,
-          },
-        },
-      });
-
-      if (authError) {
-        console.error("Registration error:", authError);
-        
-        // Handle specific Supabase error messages
-        if (authError.message.includes("User already registered")) {
-          setUserExists(true);
-          setLoading(false);
-          return;
-        } else if (authError.message.includes("Password")) {
-          setError("Password must be at least 8 characters long.");
-        } else if (authError.message.includes("email")) {
-          setError("Please enter a valid email address.");
-        } else {
-          setError(authError.message);
-        }
-        setLoading(false);
-        return;
-      }
-
-      // If we have a user, save quiz answers
-      if (authData.user) {
-        try {
-          // Save quiz answers via API
-          await fetch("/api/auth/save-quiz", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              userId: authData.user.id,
-              quizAnswers,
-              ...(ref ? { referralCode: ref } : {}),
-            }),
-          });
-        } catch (quizError) {
-          console.warn("Failed to save quiz answers:", quizError);
-          // Continue anyway - user is registered
-        }
-
-        // Registration successful! Clear sessionStorage and require card before download.
-        console.log("=== REGISTRATION COMPLETE ===");
-        console.log("User created:", authData.user.id);
-        sessionStorage.removeItem("pending_quiz_answers");
-        if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(REFERRAL_STORAGE_KEY);
-        setPhase("paywall");
-      }
-      
-      setLoading(false);
-    } catch (e) {
-      console.error("Unexpected error during registration:", e);
-      
-      // Check if it's a network error
-      if (e instanceof TypeError && e.message.includes("fetch")) {
-        setError("Network error. Please check your connection and try again.");
-      } else {
-        setError(e instanceof Error ? e.message : "An error occurred. Please try again.");
-      }
-      setLoading(false);
-    }
-  };
-
-  const handleSetPassword = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!passwordValid || loading) return;
-    setError(null);
-    setLoading(true);
-    try {
-      const { error: updateError } = await supabase.auth.updateUser({ password });
-      if (updateError) {
-        setError(updateError.message);
-        setLoading(false);
-        return;
-      }
-      if (typeof sessionStorage !== "undefined") {
-        sessionStorage.removeItem(REFERRAL_STORAGE_KEY);
-        sessionStorage.removeItem("pending_quiz_answers");
-      }
-      setPhase("paywall");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong.");
-    }
-    setLoading(false);
   };
 
   const [selectedPlan, setSelectedPlan] = useState<"annual" | "monthly">("annual");
@@ -738,13 +572,15 @@ function RegisterPageContent() {
   };
 
   // Check for authenticated session and redirect if profile exists.
-  // Do not redirect when: results, gate, or email (set-password) so user can finish the flow.
+  // Do not redirect when in a registration phase that requires the user to keep going.
   useEffect(() => {
-    if (phase === "results" || phase === "gate" || phase === "paywall" || phase === "download") {
+    if (
+      phase === "email" ||
+      phase === "results" ||
+      phase === "paywall" ||
+      phase === "download"
+    ) {
       return;
-    }
-    if (phase === "email" && signedUpAtGate) {
-      return; // User must set password first; redirect only after handleSetPassword succeeds
     }
 
     let mounted = true;
@@ -809,117 +645,10 @@ function RegisterPageContent() {
     return () => {
       mounted = false;
     };
-  }, [router, phase, signedUpAtGate]);
+  }, [router, phase]);
 
   return (
     <main className="overflow-hidden relative mx-auto p-3 sm:p-4 h-screen flex flex-col pt-20 sm:pt-24 max-w-3xl min-h-0">
-
-      {/* Gate Phase - capture email before showing results */}
-      {phase === "gate" && (
-        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 py-4 sm:py-6">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="max-w-md mx-auto w-full flex-1 flex flex-col justify-center min-h-0"
-          >
-            {/* Gate / email illustration */}
-            <div className="flex justify-center mb-4 sm:mb-6">
-              <Image
-                src={`/quiz/${QUIZ_ILLUSTRATION.email}`}
-                alt=""
-                width={280}
-                height={140}
-                className="object-contain w-full max-h-[120px] sm:max-h-[140px]"
-              />
-            </div>
-            {userExists ? (
-              <div className="space-y-4 sm:space-y-6 text-center">
-                <div className="rounded-full bg-primary/10 p-6 w-fit mx-auto">
-                  <CheckCircle2 className="w-12 h-12 text-primary" />
-                </div>
-                <div>
-                  <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-2 sm:mb-3">
-                    You already have an account
-                  </h2>
-                  <p className="text-sm sm:text-base text-[#5A5A5A] mb-2">
-                    An account with <strong>{email}</strong> already exists. Log in to see your results.
-                  </p>
-                </div>
-                <Link
-                  href="/login"
-                  className="w-full py-3 sm:py-4 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
-                  style={{ background: 'linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)', boxShadow: '0 4px 15px rgba(255, 116, 177, 0.4)' }}
-                >
-                  Go to Login
-                  <ArrowRight className="w-5 h-5" />
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => { setUserExists(false); setEmail(""); }}
-                  className="text-sm text-[#5A5A5A] hover:text-primary underline"
-                >
-                  Use a different email
-                </button>
-              </div>
-            ) : (
-              <form onSubmit={handleGateSubmit} className="space-y-4 sm:space-y-6">
-                <div>
-                  <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] text-center mb-2 sm:mb-3">
-                    Your personalized Menopause Score is ready.
-                  </h2>
-                  <p className="text-sm sm:text-base text-[#5A5A5A] text-center">
-                    Enter your email to see your results.
-                  </p>
-                </div>
-                {firstName.trim() && (
-                  <p className="text-center text-sm text-[#5A5A5A]">
-                    We&apos;ll call you <strong>{firstName.trim()}</strong>.
-                  </p>
-                )}
-                <div>
-                  <label htmlFor="gate-email" className="mb-2 block text-sm font-medium text-[#3D3D3D]">
-                    Email
-                  </label>
-                  <input
-                    id="gate-email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@example.com"
-                    required
-                    autoComplete="email"
-                    className="w-full px-4 py-3 sm:py-4 rounded-xl border border-[#E8DDD9] bg-white text-[#3D3D3D] placeholder:text-[#9A9A9A] focus:outline-none focus:ring-2 focus:ring-[#ff74b1]/50 focus:border-[#ff74b1] text-base sm:text-lg"
-                    autoFocus
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={!canSubmitGate}
-                  className="w-full py-3 sm:py-4 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] hover:shadow-lg"
-                  style={{ background: 'linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)', boxShadow: '0 4px 15px rgba(255, 116, 177, 0.4)' }}
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Loading…
-                    </>
-                  ) : (
-                    <>
-                      Show my results
-                      <ArrowRight className="w-5 h-5" />
-                    </>
-                  )}
-                </button>
-                {error && (
-                  <div className="rounded-xl border border-error/30 bg-error/10 p-3 text-sm text-error">
-                    {error}
-                  </div>
-                )}
-              </form>
-            )}
-          </motion.div>
-        </div>
-      )}
 
       {/* Results Phase */}
       {phase === "results" && (
@@ -1147,16 +876,16 @@ function RegisterPageContent() {
                     What happens next
                   </h2>
                   <p className="text-sm sm:text-base text-[#5A5A5A] text-center mb-4">
-                    Set a password to save your results and use the dashboard.
+                    Start your free 3-day trial to unlock Lisa.
                   </p>
                   <div className="max-w-md mx-auto">
                     <button
                       type="button"
-                      onClick={() => setPhase("email")}
+                      onClick={() => setPhase("paywall")}
                       className="w-full min-h-12 py-3 sm:py-4 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
                       style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)", boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)" }}
                     >
-                      Set my password & continue
+                      Continue to my plan
                       <ArrowRight className="w-5 h-5" />
                     </button>
                   </div>
@@ -1167,7 +896,7 @@ function RegisterPageContent() {
         </div>
       )}
 
-      {/* Email Phase - full signup or set password (after gate) */}
+      {/* Email Phase - OTP sign-in / sign-up */}
       {phase === "email" && (
         <div className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 py-4 sm:py-6">
           <motion.div
@@ -1175,7 +904,6 @@ function RegisterPageContent() {
             animate={{ opacity: 1, y: 0 }}
             className="max-w-md mx-auto w-full flex-1 flex flex-col justify-center min-h-0"
           >
-            {/* Email phase illustration */}
             <div className="flex justify-center mb-4 sm:mb-6">
               <Image
                 src={`/quiz/${QUIZ_ILLUSTRATION.email}`}
@@ -1185,213 +913,49 @@ function RegisterPageContent() {
                 className="object-contain w-full max-h-[120px] sm:max-h-[140px]"
               />
             </div>
-            {/* Set password only (came from gate → results → here) */}
-            {signedUpAtGate ? (
-              <motion.form
-                onSubmit={handleSetPassword}
-                className="space-y-4 sm:space-y-6"
-              >
-                <div>
-                  <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] text-center mb-2 sm:mb-3">
-                    Set your password
-                  </h2>
-                  <p className="text-sm sm:text-base text-[#5A5A5A] text-center mb-4 sm:mb-6">
-                    Create a password so you can sign in and track your progress with Lisa.
-                  </p>
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-[#3D3D3D]">Email</label>
-                  <input
-                    type="email"
-                    value={email}
-                    readOnly
-                    className="w-full px-4 py-3 sm:py-4 rounded-xl border border-[#E8DDD9] bg-gray-100 text-[#5A5A5A] text-base sm:text-lg"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="set-password" className="mb-2 block text-sm font-medium text-[#3D3D3D]">
-                    Password
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="set-password"
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Create a password (8+ characters)"
-                      required
-                      autoComplete="new-password"
-                      className="w-full px-4 py-3 sm:py-4 pr-12 rounded-xl border border-[#E8DDD9] bg-white text-[#3D3D3D] placeholder:text-[#9A9A9A] focus:outline-none focus:ring-2 focus:ring-[#ff74b1]/50 focus:border-[#ff74b1] text-base sm:text-lg"
-                      autoFocus
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9A9A9A] hover:text-[#5A5A5A] transition-colors p-1"
-                      aria-label={showPassword ? "Hide password" : "Show password"}
-                    >
-                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </div>
-                  {password.length > 0 && password.length < 8 && (
-                    <p className="text-xs text-[#9A9A9A] mt-1">Password must be at least 8 characters</p>
-                  )}
-                </div>
-                <button
-                  type="submit"
-                  disabled={!passwordValid || loading}
-                  className="w-full py-3 sm:py-4 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] hover:shadow-lg"
-                  style={{ background: 'linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)', boxShadow: '0 4px 15px rgba(255, 116, 177, 0.4)' }}
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Saving…
-                    </>
-                  ) : (
-                    <>
-                      Continue to my account
-                      <ArrowRight className="w-5 h-5" />
-                    </>
-                  )}
-                </button>
-                {error && (
-                  <div className="rounded-xl border border-error/30 bg-error/10 p-3 text-sm text-error">
-                    {error}
-                  </div>
-                )}
-              </motion.form>
-            ) : userExists ? (
-              <div className="space-y-4 sm:space-y-6 text-center">
-                <div className="rounded-full bg-primary/10 p-6 w-fit mx-auto">
-                  <CheckCircle2 className="w-12 h-12 text-primary" />
-                </div>
-                <div>
-                  <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-2 sm:mb-3">
-                    You already have an account!
-                  </h2>
-                  <p className="text-sm sm:text-base text-[#5A5A5A] mb-2">
-                    An account with <strong>{email}</strong> already exists.
-                  </p>
-                  <p className="text-sm text-[#5A5A5A]">
-                    Log in to continue your journey.
-                  </p>
-                </div>
-                <Link
-                  href="/login"
-                  className="w-full py-3 sm:py-4 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
-                  style={{ background: 'linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)', boxShadow: '0 4px 15px rgba(255, 116, 177, 0.4)' }}
-                >
-                  Go to Login
-                  <ArrowRight className="w-5 h-5" />
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setUserExists(false);
-                    setEmail("");
-                  }}
-                  className="text-sm text-[#5A5A5A] hover:text-primary underline"
-                >
-                  Use a different email
-                </button>
-              </div>
-            ) : (
-              /* Account Creation Form with Email and Password */
-              <motion.form
-                onSubmit={handleEmailSubmit}
-                className="space-y-4 sm:space-y-6"
-              >
-                <div>
-                  <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] text-center mb-2 sm:mb-3">
-                    Create your account
-                  </h2>
-                  <p className="text-sm sm:text-base text-[#5A5A5A] text-center mb-4 sm:mb-6">
-                    Set up your login to start your free 3-day trial. No credit card required.
-                  </p>
-                </div>
-
-                {/* Email Input */}
-                <div>
-                  <label htmlFor="email" className="mb-2 block text-sm font-medium text-[#3D3D3D]">
-                    Email
-                  </label>
-                  <input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@example.com"
-                    required
-                    autoComplete="email"
-                    className="w-full px-4 py-3 sm:py-4 rounded-xl border border-[#E8DDD9] bg-white text-[#3D3D3D] placeholder:text-[#9A9A9A] focus:outline-none focus:ring-2 focus:ring-[#ff74b1]/50 focus:border-[#ff74b1] text-base sm:text-lg"
-                    autoFocus
-                  />
-                </div>
-
-                {/* Password Input */}
-                <div>
-                  <label htmlFor="password" className="mb-2 block text-sm font-medium text-[#3D3D3D]">
-                    Password
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="password"
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Create a password (8+ characters)"
-                      required
-                      autoComplete="new-password"
-                      className="w-full px-4 py-3 sm:py-4 pr-12 rounded-xl border border-[#E8DDD9] bg-white text-[#3D3D3D] placeholder:text-[#9A9A9A] focus:outline-none focus:ring-2 focus:ring-[#ff74b1]/50 focus:border-[#ff74b1] text-base sm:text-lg"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9A9A9A] hover:text-[#5A5A5A] transition-colors p-1"
-                      aria-label={showPassword ? "Hide password" : "Show password"}
-                    >
-                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </div>
-                  {password.length > 0 && password.length < 8 && (
-                    <p className="text-xs text-[#9A9A9A] mt-1">Password must be at least 8 characters</p>
-                  )}
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={!canSubmit}
-                  className="w-full py-3 sm:py-4 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] hover:shadow-lg"
-                  style={{ background: 'linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)', boxShadow: '0 4px 15px rgba(255, 116, 177, 0.4)' }}
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Creating account...
-                    </>
-                  ) : (
-                    <>
-                      Start my free trial
-                      <ArrowRight className="w-5 h-5" />
-                    </>
-                  )}
-                </button>
-
-                {error && (
-                  <div className="rounded-xl border border-error/30 bg-error/10 p-3 text-sm text-error">
-                    {error}
-                  </div>
-                )}
-
-                <p className="text-sm text-[#5A5A5A] text-center">
-                  Already have an account?{" "}
-                  <Link href="/login" className="text-primary font-semibold hover:underline">
-                    Log in
-                  </Link>
+            <div className="mb-4 sm:mb-6 text-center">
+              <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-2 sm:mb-3">
+                Your personalized Menopause Score is ready.
+              </h2>
+              <p className="text-sm sm:text-base text-[#5A5A5A]">
+                Enter your email and we&apos;ll send a 6-digit code to unlock your results. No password needed.
+              </p>
+              {firstName.trim() && (
+                <p className="text-sm text-[#5A5A5A] mt-2">
+                  We&apos;ll call you <strong>{firstName.trim()}</strong>.
                 </p>
-              </motion.form>
+              )}
+            </div>
+
+            <OtpForm
+              mode="register"
+              variant="gradient"
+              initialEmail={email}
+              submitLabel="Send my code"
+              onSuccess={async (user) => {
+                setEmail(user.email ?? email);
+                await handleOtpSuccess();
+              }}
+            />
+
+            {savingQuiz && (
+              <p className="mt-3 text-sm text-[#5A5A5A] text-center flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" /> Saving your answers…
+              </p>
             )}
+
+            {error && (
+              <div className="mt-3 rounded-xl border border-error/30 bg-error/10 p-3 text-sm text-error">
+                {error}
+              </div>
+            )}
+
+            <p className="mt-4 text-sm text-[#5A5A5A] text-center">
+              Already have an account?{" "}
+              <Link href="/login" className="text-primary font-semibold hover:underline">
+                Log in
+              </Link>
+            </p>
           </motion.div>
         </div>
       )}
