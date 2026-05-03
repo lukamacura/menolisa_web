@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle } from "lucide-react";
@@ -29,8 +30,17 @@ function LoginForm() {
       </div>
 
       <div className="flex-1 flex flex-col justify-center">
-        <div className="mb-8">
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-3 text-balance">
+        <div className="flex justify-center mb-6">
+          <Image
+            src="/quiz/illustration_email.png"
+            alt="Email illustration"
+            width={120}
+            height={120}
+          />
+        </div>
+
+        <div className="mb-8 text-center">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight mb-3 text-balance">
             Welcome back
           </h1>
           <p className="text-lg text-muted-foreground">

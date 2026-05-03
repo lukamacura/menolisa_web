@@ -170,7 +170,7 @@ function deriveSeverity(
   return "mild";
 }
 
-type Phase = "quiz" | "email" | "results" | "paywall" | "download";
+type Phase = "quiz" | "calculating" | "email" | "results" | "paywall" | "download";
 
 const APP_STORE_URL = "https://apps.apple.com/de/app/menolisa/id6761130271?l=en-GB";
 const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.menolisa.app&pcampaignid=web_share";
@@ -330,8 +330,7 @@ function RegisterPageContent() {
 
   const derivedSeverity = deriveSeverity(topProblems.length, timing);
 
-  // Results loading state
-  const [isResultsLoading, setIsResultsLoading] = useState(true);
+  // Loading screen state (between quiz and email)
   const [messageIndex, setMessageIndex] = useState(0);
   const [displayScore, setDisplayScore] = useState(0);
 
@@ -355,10 +354,9 @@ function RegisterPageContent() {
     "#1D3557", // navy
   ];
 
-  // Results loading: ~3s then show results
+  // Calculating screen: ~3s loader between quiz and email phases
   useEffect(() => {
-    if (phase !== "results") return;
-    setIsResultsLoading(true);
+    if (phase !== "calculating") return;
     setMessageIndex(0);
     setDisplayScore(0);
 
@@ -367,8 +365,8 @@ function RegisterPageContent() {
     }, 600);
 
     const loadingTimer = setTimeout(() => {
-      setIsResultsLoading(false);
       clearInterval(messageInterval);
+      setPhase("email");
     }, 3000);
 
     return () => {
@@ -379,7 +377,7 @@ function RegisterPageContent() {
 
   // Animate score counting up
   useEffect(() => {
-    if (phase === "results" && !isResultsLoading) {
+    if (phase === "results") {
       const targetScore = calculateQualityScore(
         topProblems,
         derivedSeverity,
@@ -404,7 +402,7 @@ function RegisterPageContent() {
 
       return () => clearInterval(timer);
     }
-  }, [phase, isResultsLoading, topProblems, derivedSeverity, timing, triedOptions]);
+  }, [phase, topProblems, derivedSeverity, timing, triedOptions]);
 
   // (validation handled inside OtpForm)
 
@@ -455,9 +453,9 @@ function RegisterPageContent() {
     if (stepIndex < STEPS.length - 1) {
       setStepIndex(stepIndex + 1);
     } else {
-      // Quiz complete - move to email (verify before showing results)
+      // Quiz complete - show calculating loader, then move to email (verify before showing results)
       saveQuizAnswers();
-      setPhase("email");
+      setPhase("calculating");
     }
   }, [currentStep, stepIndex, stepIsAnswered, saveQuizAnswers]);
 
@@ -534,6 +532,8 @@ function RegisterPageContent() {
     });
   };
 
+  const [otpStep, setOtpStep] = useState<"email" | "code">("email");
+
   const [selectedPlan, setSelectedPlan] = useState<"annual" | "monthly">("annual");
   const [checkoutLoading, setCheckoutLoading] = useState(false);
 
@@ -575,6 +575,7 @@ function RegisterPageContent() {
   // Do not redirect when in a registration phase that requires the user to keep going.
   useEffect(() => {
     if (
+      phase === "calculating" ||
       phase === "email" ||
       phase === "results" ||
       phase === "paywall" ||
@@ -628,7 +629,7 @@ function RegisterPageContent() {
 
         // Profile doesn't exist - user might need to complete quiz
         // Only send back to quiz when not in the middle of registration (results -> email flow)
-        if (mounted && phase !== "results" && phase !== "email") {
+        if (mounted && phase !== "results" && phase !== "email" && phase !== "calculating") {
           // User has confirmed email but profile wasn't created
           setPhase("quiz");
           setStepIndex(0);
@@ -650,82 +651,85 @@ function RegisterPageContent() {
   return (
     <main className="overflow-hidden relative mx-auto p-3 sm:p-4 h-screen flex flex-col pt-20 sm:pt-24 max-w-3xl min-h-0">
 
+      {/* Calculating Phase - loader between quiz and email */}
+      {phase === "calculating" && (
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden -mx-4 sm:-mx-6 px-4 sm:px-6">
+          <motion.div
+            key="calculating"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.4, ease: [0.42, 0, 0.58, 1] }}
+            className="flex-1 flex flex-col items-center justify-center px-4"
+          >
+            <motion.div
+              className="relative mb-8"
+              animate={{
+                rotate: 360,
+                scale: [0.9, 1, 0.9],
+              }}
+              transition={{
+                rotate: { duration: 2.4, repeat: Infinity, ease: "linear" },
+                scale: { duration: 2.4, repeat: Infinity, ease: [0.42, 0, 0.58, 1] },
+              }}
+            >
+              <Image
+                src={`/quiz/${QUIZ_ILLUSTRATION.loading}`}
+                alt=""
+                width={200}
+                height={120}
+                className="w-32 h-20 sm:w-40 sm:h-24 object-contain"
+              />
+            </motion.div>
+
+            <h2 className="text-xl font-semibold text-[#3D3D3D] mb-3">
+              Getting to know you better...
+            </h2>
+
+            <AnimatePresence mode="wait">
+              <motion.p
+                key={messageIndex}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.28, ease: [0.42, 0, 0.58, 1] }}
+                className="h-6 font-medium min-w-48 text-center"
+                style={{ color: loadingMessageColors[messageIndex] ?? "#6B7280" }}
+              >
+                {loadingMessages[messageIndex]}
+              </motion.p>
+            </AnimatePresence>
+          </motion.div>
+        </div>
+      )}
+
       {/* Results Phase */}
       {phase === "results" && (
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden -mx-4 sm:-mx-6 px-4 sm:px-6">
           <AnimatePresence mode="wait">
-            {isResultsLoading ? (
-              // Loading Screen - quiz loading illustration, smooth spin/scale, colored messages
-              <motion.div
-                key="loading"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.4, ease: [0.42, 0, 0.58, 1] }}
-                className="flex-1 flex flex-col items-center justify-center px-4"
-              >
-                <motion.div
-                  className="relative mb-8"
-                  animate={{
-                    rotate: 360,
-                    scale: [0.9, 1, 0.9],
-                  }}
-                  transition={{
-                    rotate: { duration: 2.4, repeat: Infinity, ease: "linear" },
-                    scale: { duration: 2.4, repeat: Infinity, ease: [0.42, 0, 0.58, 1] },
-                  }}
-                >
-                  <Image
-                    src={`/quiz/${QUIZ_ILLUSTRATION.loading}`}
-                    alt=""
-                    width={200}
-                    height={120}
-                    className="w-32 h-20 sm:w-40 sm:h-24 object-contain"
-                  />
-                </motion.div>
-
-                <h2 className="text-xl font-semibold text-[#3D3D3D] mb-3">
-                  Getting to know you better...
-                </h2>
-
-                {/* Rotating message with crossfade and per-state color */}
-                <AnimatePresence mode="wait">
-                  <motion.p
-                    key={messageIndex}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.28, ease: [0.42, 0, 0.58, 1] }}
-                    className="h-6 font-medium min-w-48 text-center"
-                    style={{ color: loadingMessageColors[messageIndex] ?? "#6B7280" }}
-                  >
-                    {loadingMessages[messageIndex]}
-                  </motion.p>
-                </AnimatePresence>
-              </motion.div>
-            ) : (
-              // Results Page - Scrollable content with Next button
-              <motion.div
+            <motion.div
                 key="results"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 className="flex-1 flex flex-col min-h-0 overflow-hidden"
               >
-                <div className="flex-1 min-h-0 overflow-y-auto pb-0">
-                  <div className="max-w-md mx-auto w-full pt-4 sm:pt-6">
+                <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-y-hidden lg:flex lg:items-center lg:justify-center pb-0">
+                  <div className="max-w-md lg:max-w-5xl mx-auto w-full pt-4 sm:pt-6 lg:py-4 lg:grid lg:grid-cols-2 lg:gap-x-10 lg:items-center">
+                    {/* Left column on lg: illustration + headline + paragraphs */}
+                    <div className="lg:flex lg:flex-col">
                     {/* Results illustration (from public/quiz/) */}
                     <motion.div
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.2 }}
-                      className="flex justify-center mb-4 sm:mb-6"
+                      className="flex justify-center mb-4 sm:mb-6 lg:mb-4"
                     >
                       <Image
                         src={`/quiz/${QUIZ_ILLUSTRATION.results}`}
                         alt=""
                         width={320}
                         height={180}
-                        className="object-contain w-full max-h-40 sm:max-h-[180px]"
+                        className="object-contain w-full max-h-40 sm:max-h-[180px] lg:max-h-40"
                       />
                     </motion.div>
 
@@ -734,7 +738,7 @@ function RegisterPageContent() {
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.4 }}
-                      className="text-xl sm:text-2xl font-semibold text-[#3D3D3D] text-center mb-3 sm:mb-4"
+                      className="text-xl sm:text-2xl lg:text-3xl font-semibold text-[#3D3D3D] text-center lg:text-left mb-3 sm:mb-4"
                     >
                       {getSeverityHeadline(derivedSeverity, firstName || "you")}
                     </motion.h1>
@@ -744,7 +748,7 @@ function RegisterPageContent() {
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.6 }}
-                      className="text-sm sm:text-md text-[#5A5A5A] text-center leading-relaxed mb-4 sm:mb-6"
+                      className="text-sm sm:text-md lg:text-base text-[#5A5A5A] text-center lg:text-left leading-relaxed mb-4 sm:mb-6 lg:mb-3"
                     >
                       {getSeverityPainText(
                         derivedSeverity,
@@ -758,26 +762,29 @@ function RegisterPageContent() {
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.7 }}
-                      className="text-sm text-[#5A5A5A] text-center leading-relaxed mb-4 sm:mb-6 italic"
+                      className="text-sm lg:text-[15px] text-[#5A5A5A] text-center lg:text-left leading-relaxed mb-4 sm:mb-6 lg:mb-0 italic"
                     >
                       Lisa is the menopause companion who gets what you&apos;re going through-available 24/7, never dismisses you.
                     </motion.p>
+                    </div>
 
+                    {/* Right column on lg: score + pills + social */}
+                    <div className="lg:flex lg:flex-col">
                 {/* Quality of Life Score */}
-                {!isResultsLoading && (() => {
+                {(() => {
                   const score = calculateQualityScore(
                     topProblems,
                     derivedSeverity,
                     timing,
                     triedOptions
                   );
-                  
+
                   return (
                     <motion.div
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.8 }}
-                      className="rounded-2xl bg-card border-2 p-4 sm:p-5 border-[#E8DDD9] mb-4 sm:mb-6 shadow-lg shadow-primary/5"
+                      className="rounded-2xl bg-card border-2 p-4 sm:p-5 border-[#E8DDD9] mb-4 sm:mb-6 lg:mb-4 shadow-lg shadow-primary/5"
                     >
                       {/* Header */}
                       <div className="flex items-center justify-between mb-3 sm:mb-4">
@@ -854,13 +861,14 @@ function RegisterPageContent() {
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 1.4 }}
-                      className="mb-4 text-center"
+                      className="mb-4 lg:mb-0 text-center"
                     >
                       <div className="flex items-center justify-center gap-2 text-xs sm:text-sm text-[#5A5A5A]">
                         <Users className="w-3 h-3 sm:w-4 sm:h-4 text-info" />
                         <span>8,382 women joined this month</span>
                       </div>
                     </motion.div>
+                    </div>
                   </div>
                 </div>
 
@@ -878,7 +886,7 @@ function RegisterPageContent() {
                   <p className="text-sm sm:text-base text-[#5A5A5A] text-center mb-4">
                     Start your free 3-day trial to unlock Lisa.
                   </p>
-                  <div className="max-w-md mx-auto">
+                  <div className="max-w-md lg:max-w-xl mx-auto">
                     <button
                       type="button"
                       onClick={() => setPhase("paywall")}
@@ -891,7 +899,6 @@ function RegisterPageContent() {
                   </div>
                 </motion.section>
               </motion.div>
-            )}
           </AnimatePresence>
         </div>
       )}
@@ -908,22 +915,28 @@ function RegisterPageContent() {
               <Image
                 src={`/quiz/${QUIZ_ILLUSTRATION.email}`}
                 alt=""
-                width={280}
-                height={140}
+                width={120}
+                height={120}
                 className="object-contain w-full max-h-[120px] sm:max-h-[140px]"
               />
             </div>
+
             <div className="mb-4 sm:mb-6 text-center">
               <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-2 sm:mb-3">
-                Your personalized Menopause Score is ready.
+                Your personalized Menopause Score{" "}
+                <span className="text-primary uppercase">is ready</span>
               </h2>
-              <p className="text-sm sm:text-base text-[#5A5A5A]">
-                Enter your email and we&apos;ll send a 6-digit code to unlock your results. No password needed.
-              </p>
-              {firstName.trim() && (
-                <p className="text-sm text-[#5A5A5A] mt-2">
-                  We&apos;ll call you <strong>{firstName.trim()}</strong>.
-                </p>
+              {otpStep === "email" && (
+                <>
+                  <p className="text-sm sm:text-base text-[#5A5A5A]">
+                    Enter your email and we&apos;ll send a 6-digit code to unlock your results. No password needed.
+                  </p>
+                  {firstName.trim() && (
+                    <p className="text-sm text-[#5A5A5A] mt-2">
+                      We&apos;ll call you <strong>{firstName.trim()}</strong>.
+                    </p>
+                  )}
+                </>
               )}
             </div>
 
@@ -932,6 +945,7 @@ function RegisterPageContent() {
               variant="gradient"
               initialEmail={email}
               submitLabel="Send my code"
+              onStepChange={setOtpStep}
               onSuccess={async (user) => {
                 setEmail(user.email ?? email);
                 await handleOtpSuccess();

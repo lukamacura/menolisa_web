@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { evaluateTrialStatus, type TrialRow } from "@/lib/checkTrialStatus";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -76,6 +77,28 @@ export async function middleware(req: NextRequest) {
     url.pathname = "/login";
     url.searchParams.set("redirectedFrom", pathname);
     return NextResponse.redirect(url);
+  }
+
+  // Payment gate: only enforce on UI routes (cookie-auth API routes do their own check).
+  const needsPaymentGate =
+    pathname.startsWith("/dashboard") || pathname.startsWith("/chat/lisa");
+
+  if (needsPaymentGate) {
+    const { data: trialRow } = await supabase
+      .from("user_trials")
+      .select("trial_start, trial_end, trial_days, account_status, subscription_ends_at")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const decision = evaluateTrialStatus((trialRow as TrialRow | null) ?? null);
+
+    if (decision !== "allow") {
+      const url = req.nextUrl.clone();
+      url.pathname = "/register";
+      url.search = "";
+      url.searchParams.set("phase", decision === "no-onboarding" ? "quiz" : "paywall");
+      return NextResponse.redirect(url);
+    }
   }
 
   return res;

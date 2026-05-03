@@ -95,7 +95,7 @@ export default function LandingPricing() {
             ))}
           </div>
           <p className="text-sm font-bold italic mb-1" style={{ color: "var(--foreground)" }}>
-            &quot;I used to spend hours on Google getting more confused and scared. Now I just ask Lisa. Last week I asked her about night sweats and HRT — she explained it so clearly that I finally felt ready to talk to my doctor. My appointment was the best one I&apos;ve ever had.&quot;
+            {"“I used to spend hours on Google getting more confused and scared. Now I just ask Lisa. Last week I asked her about night sweats and HRT — she explained it so clearly that I finally felt ready to talk to my doctor. My appointment was the best one I’ve ever had.”"}
           </p>
           <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>- Michelle, 52</p>
         </div>

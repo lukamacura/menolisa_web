@@ -2,6 +2,8 @@
 import "./globals.css";
 
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 import ConditionalNavbar from "@/components/ConditionalNavbar";
 import AppDownloadWidget from "@/components/AppDownloadWidget";
 import PreloaderGate from "@/components/PreloaderGate";
@@ -50,13 +52,29 @@ export const metadata: Metadata = {
   },
 };
 
-// Sync layout for faster TTFB: auth is resolved on client by ConditionalNavbar
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  let isAuthenticated = false;
+  if (supabaseUrl && supabaseAnonKey) {
+    const cookieStore = await cookies();
+    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+        set() {},
+        remove() {},
+      },
+    });
+    const { data: { user } } = await supabase.auth.getUser();
+    isAuthenticated = !!user;
+  }
 
   return (
     <html lang="en" className={`${satoshi.variable} ${dancingScript.variable} ${poppins.variable} ${lora.variable}`}>
@@ -72,7 +90,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen flex flex-col font-sans text-foreground bg-background">
         <PreloaderGate />
-        <ConditionalNavbar isAuthenticated={false} />
+        <ConditionalNavbar isAuthenticated={isAuthenticated} />
 
         <main className="flex-1 w-full">{children}</main>
 

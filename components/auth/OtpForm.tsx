@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
-import { AlertCircle, ArrowRight, Loader2, Mail } from "lucide-react";
+import { AlertCircle, ArrowRight, Loader2 } from "lucide-react";
 
 type Mode = "login" | "register";
 type Variant = "default" | "gradient";
@@ -14,6 +14,7 @@ type OtpFormProps = {
   initialEmail?: string;
   variant?: Variant;
   submitLabel?: string;
+  onStepChange?: (step: "email" | "code") => void;
 };
 
 const RESEND_COOLDOWN_SECONDS = 60;
@@ -72,8 +73,14 @@ export default function OtpForm({
   initialEmail = "",
   variant = "default",
   submitLabel,
+  onStepChange,
 }: OtpFormProps) {
   const [step, setStep] = useState<"email" | "code">("email");
+
+  function changeStep(next: "email" | "code") {
+    setStep(next);
+    onStepChange?.(next);
+  }
   const [email, setEmail] = useState(initialEmail);
   const [code, setCode] = useState<string[]>(["", "", "", "", "", ""]);
   const [loading, setLoading] = useState(false);
@@ -135,7 +142,7 @@ export default function OtpForm({
     e.preventDefault();
     if (!emailValid || loading) return;
     const ok = await sendCode(email.toLowerCase().trim(), false);
-    if (ok) setStep("code");
+    if (ok) changeStep("code");
   }
 
   async function handleVerify() {
@@ -263,9 +270,7 @@ export default function OtpForm({
   return (
     <div className="space-y-5">
       <div className="text-center">
-        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 mb-3">
-          <Mail className="w-6 h-6 text-primary" />
-        </div>
+
         <h2 className="text-xl font-semibold text-foreground mb-1">Check your email</h2>
         <p className="text-sm text-muted-foreground">
           We sent a 6-digit code to <strong className="text-foreground">{email}</strong>
@@ -331,7 +336,7 @@ export default function OtpForm({
         <button
           type="button"
           onClick={() => {
-            setStep("email");
+            changeStep("email");
             setCode(["", "", "", "", "", ""]);
             setErr(null);
             setInfo(null);
