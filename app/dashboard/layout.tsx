@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, LogOut, ChevronDown, Bell, MessageSquare, Settings, UserCircle } from "lucide-react";
+import { Activity, LogOut, ChevronDown, Bell, MessageSquare, UserCircle } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import SwipeButton from "@/components/SwipeButton";
 import {
@@ -95,12 +95,6 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
       href: "/dashboard/account",
       label: "Account",
       icon: UserCircle,
-      requiresActiveTrial: false,
-    },
-    {
-      href: "/dashboard/settings",
-      label: "Settings",
-      icon: Settings,
       requiresActiveTrial: false,
     },
   ];
@@ -247,8 +241,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
                 const isActive =
                   pathname === item.href ||
                   (item.href !== "/dashboard" && item.href !== "/chat/lisa" && pathname?.startsWith(item.href)) ||
-                  (item.href === "/chat/lisa" && pathname === "/chat/lisa") ||
-                  (item.href === "/dashboard/settings" && pathname?.startsWith("/dashboard/settings"));
+                  (item.href === "/chat/lisa" && pathname === "/chat/lisa");
 
                 const isDisabled = item.requiresActiveTrial && trialStatus.expired;
                 return (
@@ -295,7 +288,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
       <main className="flex-1 pt-[144px] sm:pt-[148px]">{children}</main>
 
       {/* Fixed Lisa Swipe Button */}
-      {pathname !== "/dashboard/account" && (
+      {pathname !== "/dashboard/account" && !pathname?.startsWith("/dashboard/settings") && (
         <SwipeButton variant="lisa" trialExpired={trialStatus.expired} />
       )}
 

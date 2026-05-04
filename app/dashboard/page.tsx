@@ -13,11 +13,8 @@ function DashboardRedirect() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    const checkout = searchParams.get("checkout");
-    const target = checkout === "success"
-      ? "/dashboard/symptoms?checkout=success"
-      : "/dashboard/symptoms";
-    router.replace(target);
+    const qs = searchParams.toString();
+    router.replace(qs ? `/dashboard/symptoms?${qs}` : "/dashboard/symptoms");
   }, [router, searchParams]);
 
   return null;
@@ -25,7 +22,6 @@ function DashboardRedirect() {
 
 /**
  * Dashboard root: redirect to Home (symptoms page).
- * Home = symptoms; My Overview = /dashboard/overview.
  */
 export default function DashboardPage() {
   return (

@@ -113,7 +113,7 @@ export const EMAIL_SEQUENCE_TEMPLATES: Record<StepId, EmailTemplate> = {
     subject: "Your free access ends tonight. Here's what happens next.",
     html: `<p>{{name}}, your 3-day free access ends tonight. Lisa's only beginning to learn your patterns. By week 2, she usually finds 3 to 5 connections most women miss. If you're finding this useful, you can keep going for less than a copay a month. 💙</p>
 <p>$12/month or $79/year, and you can cancel anytime. Staying with Lisa means she keeps connecting the dots and you always have a summary ready for your doctor when you need it.</p>
-<p><a href="${DASHBOARD_URL}/dashboard/settings">Continue with Lisa</a></p>
+<p><a href="${DASHBOARD_URL}/dashboard/account">Continue with Lisa</a></p>
 <p>Not ready yet? You can resubscribe anytime from the app or menolisa.com.</p>
 <p>With love, the MenoLisa team 💕</p>`,
   },
@@ -129,7 +129,7 @@ export const EMAIL_SEQUENCE_TEMPLATES: Record<StepId, EmailTemplate> = {
     subject: "What to tell your doctor (and how Lisa helps)",
     html: `<p>{{name}}, if you've ever left a doctor's office feeling unheard, you're not alone. Lisa builds a summary from your symptoms and patterns so you can walk in with something concrete: "Here's what's been going on." No more leaving the appointment feeling like you weren't heard. 💙</p>
 <p>Whenever you're ready, you can pick up right where you left off and keep building that summary.</p>
-<p><a href="${DASHBOARD_URL}/dashboard/settings">Continue with Lisa</a></p>
+<p><a href="${DASHBOARD_URL}/dashboard/account">Continue with Lisa</a></p>
 <p>With care, the MenoLisa team 💕</p>`,
   },
   "2B3": {
@@ -165,8 +165,8 @@ export const EMAIL_SEQUENCE_TEMPLATES: Record<StepId, EmailTemplate> = {
     subject: "Give a friend 7 days with Lisa and get 50% off your next month 🎁",
     html: `<p>{{name}}, if you know someone who's going through menopause and could use a companion who actually gets it, share Lisa. They get a 7-day free trial. You get 50% off your next month when they sign up with your link. 🎁</p>
 <p>So many women feel alone in this. You're not. And neither does she have to be. 💛</p>
-<p>Send them your link from the app (Settings &gt; Invite friends). When they start their trial, you'll get your discount automatically.</p>
-<p><a href="${DASHBOARD_URL}/dashboard/settings">Get your invite link</a></p>
+<p>Send them your link from the app (Account &gt; Invite friends). When they start their trial, you'll get your discount automatically.</p>
+<p><a href="${DASHBOARD_URL}/dashboard/account">Get your invite link</a></p>
 <p>With love, the MenoLisa team 💕</p>`,
   },
   "3-4": {
@@ -181,7 +181,7 @@ export const EMAIL_SEQUENCE_TEMPLATES: Record<StepId, EmailTemplate> = {
     html: `<p>{{name}}, just a heads up: your MenoLisa subscription will renew on {{subscription_ends_at}}. 💙</p>
 <p>You'll keep full access to Lisa, Pattern Intelligence, and your doctor note. If you ever want to change or cancel, it's easy, just head to your dashboard.</p>
 <p>Thanks for staying with us. We're really glad you're here. 💕</p>
-<p><a href="${DASHBOARD_URL}/dashboard/settings">Manage subscription</a></p>
+<p><a href="${DASHBOARD_URL}/dashboard/account">Manage subscription</a></p>
 <p>With love, the MenoLisa team 💕</p>`,
   },
 };

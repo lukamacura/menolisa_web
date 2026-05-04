@@ -3,13 +3,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { Gift, Copy, Share2 } from "lucide-react";
 
-type InviteCopyState = "eligible" | "already_used" | "already_subscribed" | "no_referrals";
+type InviteCopyState = "eligible" | "already_used" | "no_referrals" | "subscribed";
 
 const INVITE_COPY_KEYS: InviteCopyState[] = [
   "eligible",
   "already_used",
-  "already_subscribed",
   "no_referrals",
+  "subscribed",
 ];
 
 function isInviteCopyState(s: unknown): s is InviteCopyState {
@@ -21,22 +21,22 @@ const INVITE_COPY: Record<
   { title: string; subtitle: string; shareText: string }
 > = {
   eligible: {
-    title: "Give 3 days free. Get 50% off.",
+    title: "50% off your next invoice.",
     subtitle:
-      "Invite friends to try MenoLisa. They get 3 days free; you get 50% off your first subscription when you upgrade.",
-    shareText: "Give 3 days free. Get 50% off. Invite friends to try MenoLisa.",
+      "Your friend gets 3 days free; you get 50% off your next MenoLisa invoice — applied automatically.",
+    shareText: "Try MenoLisa - 3 days free.",
   },
   already_used: {
     title: "Invite friends - they get 3 days free.",
     subtitle: "Your friends get 3 days free when they sign up with your link.",
     shareText: "Invite friends to try MenoLisa. They get 3 days free.",
   },
-  already_subscribed: {
+  no_referrals: {
     title: "Invite friends - they get 3 days free.",
     subtitle: "Your friends get 3 days free when they sign up with your link.",
     shareText: "Invite friends to try MenoLisa. They get 3 days free.",
   },
-  no_referrals: {
+  subscribed: {
     title: "Invite friends - they get 3 days free.",
     subtitle: "Your friends get 3 days free when they sign up with your link.",
     shareText: "Invite friends to try MenoLisa. They get 3 days free.",

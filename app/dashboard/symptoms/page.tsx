@@ -25,7 +25,6 @@ import GoodDayCard from "@/components/symptom-tracker/GoodDayCard";
 import DeleteConfirmationDialog from "@/components/DeleteConfirmationDialog";
 import TriggerPromptModal from "@/components/symptom-tracker/TriggerPromptModal";
 import WeekView from "@/components/symptom-tracker/WeekView";
-import { InviteReferralSection } from "@/components/InviteReferralSection";
 import type { Symptom, LogSymptomData, SymptomLog } from "@/lib/symptom-tracker-constants";
 import { orderSymptoms } from "@/lib/symptomOrdering";
 import { useDailyMood } from "@/hooks/useDailyMood";
@@ -701,11 +700,6 @@ export default function SymptomsPage() {
 
   return (
     <div className="mx-auto max-w-7xl p-4 sm:p-6 md:p-8 pb-12 sm:pb-16 space-y-6 sm:space-y-8 min-h-screen">
-      {/* Invite friends */}
-      <section className="opacity-0 animate-[fadeInDown_0.6s_ease-out_forwards]">
-        <InviteReferralSection />
-      </section>
-
       {/* Header */}
       <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between opacity-0 animate-[fadeInDown_0.6s_ease-out_forwards]">
         <div className="flex-1">

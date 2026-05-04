@@ -163,7 +163,7 @@ export async function GET(req: NextRequest) {
               weekEnd: weekEnd.toISOString().split('T')[0],
               primaryAction: {
                 label: "See my insights",
-                route: "/dashboard/overview",
+                route: "/dashboard/symptoms",
                 actionType: "navigate",
               },
             },

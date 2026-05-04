@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import Stripe from "stripe";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 const MAX_REFERRED_AGE_MINUTES = 10;
 
 /**
@@ -119,9 +121,34 @@ export async function POST(req: NextRequest) {
       user_id: referrerId,
       type: "referral_reward",
       title: "Your friend signed up!",
-      message: "You've earned 50% off your first subscription when you upgrade.",
+      message: "You've earned 50% off your next MenoLisa invoice.",
       priority: "medium",
     });
+
+    const couponId = process.env.STRIPE_REFERRAL_COUPON_ID;
+    if (couponId) {
+      const { data: referrerTrial } = await supabaseAdmin
+        .from("user_trials")
+        .select("stripe_customer_id, referral_discount_used_at")
+        .eq("user_id", referrerId)
+        .maybeSingle();
+
+      if (referrerTrial?.referral_discount_used_at) {
+        // One reward per lifetime — already consumed a referral discount.
+      } else if (!referrerTrial?.stripe_customer_id) {
+        console.warn(`Referral: referrer ${referrerId} has no stripe_customer_id; skipping coupon attach`);
+      } else {
+        try {
+          // `coupon` is still accepted by the REST API but absent from typed CustomerUpdateParams in newer SDKs.
+          await stripe.customers.update(
+            referrerTrial.stripe_customer_id,
+            { coupon: couponId } as Stripe.CustomerUpdateParams
+          );
+        } catch (stripeErr) {
+          console.error("Referral: failed to attach coupon to referrer customer:", stripeErr);
+        }
+      }
+    }
 
     return NextResponse.json({ success: true });
   } catch (e) {

@@ -102,15 +102,15 @@ export default function DeleteAccountPage() {
             Ready to delete your account?
           </h2>
           <p className="text-muted-foreground mb-4">
-            Sign in, then go to Settings to delete your account and all
+            Sign in, then go to Account to delete your account and all
             associated data.
           </p>
           <Link
-            href="/login?redirectedFrom=/dashboard/settings"
+            href="/login?redirectedFrom=/dashboard/account"
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-card! hover:opacity-90 transition-opacity"
           >
             <LogIn className="h-4 w-4" aria-hidden />
-            Log in and go to Settings
+            Log in and go to Account
           </Link>
         </section>
 

@@ -131,26 +131,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    let referralCouponId: string | null = null;
-    const couponId = process.env.STRIPE_REFERRAL_COUPON_ID;
-    if (couponId) {
-      const supabaseAdmin = getSupabaseAdmin();
-      const [refRes, trialRes] = await Promise.all([
-        supabaseAdmin.from("referrals").select("id").eq("referrer_id", user.id).limit(1),
-        supabaseAdmin
-          .from("user_trials")
-          .select("referral_discount_used_at, account_status")
-          .eq("user_id", user.id)
-          .maybeSingle(),
-      ]);
-      const hasReferred = (refRes.data?.length ?? 0) > 0;
-      const discountNotUsed = trialRes.data?.referral_discount_used_at == null;
-      const notPaid = trialRes.data?.account_status !== "paid";
-      if (hasReferred && discountNotUsed && notPaid) {
-        referralCouponId = couponId;
-      }
-    }
-
     const defaultSuccess = fromRegistration
       ? `${baseUrl}/register?phase=download`
       : `${baseUrl}/checkout/success`;
@@ -175,12 +155,6 @@ export async function POST(req: NextRequest) {
         metadata: { user_id: user.id },
       },
     };
-    if (referralCouponId) {
-      sessionParams.discounts = [{ coupon: referralCouponId }];
-      // Tag the session so the webhook knows the referral coupon was actually applied.
-      // Without this, the webhook would mark the discount as used for every subscriber.
-      sessionParams.metadata = { referral_discount_applied: "true" };
-    }
     const session = await stripe.checkout.sessions.create(sessionParams);
 
     if (!session.url) {

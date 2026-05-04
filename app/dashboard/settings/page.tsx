@@ -1,68 +1,17 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { Bell, ArrowRight, Trash2, CreditCard } from "lucide-react";
-import { InviteReferralSection } from "@/components/InviteReferralSection";
+import { Bell, ArrowRight, Trash2 } from "lucide-react";
 import DeleteConfirmationDialog from "@/components/DeleteConfirmationDialog";
-import { TrialCard } from "@/components/TrialCard";
-import { useDashboardTrialStatus } from "@/lib/dashboardTrialContext";
-import { useSymptomLogs } from "@/hooks/useSymptomLogs";
-import { usePricingModal } from "@/lib/PricingModalContext";
 import { supabase } from "@/lib/supabaseClient";
 
+export const dynamic = "force-dynamic";
+
 export default function SettingsPage() {
-  const trialStatus = useDashboardTrialStatus();
-  const { logs } = useSymptomLogs(30);
-  const [patternCount, setPatternCount] = useState(0);
-
-  const fetchPatternCount = useCallback(async () => {
-    try {
-      const response = await fetch("/api/tracker-insights?days=30", {
-        method: "GET",
-        cache: "no-store",
-      });
-      if (!response.ok) return;
-      const { data } = await response.json();
-      const patterns =
-        data?.plainLanguageInsights?.filter(
-          (insight: { type: string }) => insight.type === "pattern"
-        ) || [];
-      setPatternCount(patterns.length);
-    } catch {
-      setPatternCount(0);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchPatternCount();
-  }, [fetchPatternCount]);
-  const { openModal } = usePricingModal();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [isPortalLoading, setIsPortalLoading] = useState(false);
-
-  const isSubscriber = trialStatus.accountStatus === "paid";
-
-  async function handleSubscriptionClick() {
-    if (isSubscriber) {
-      setIsPortalLoading(true);
-      try {
-        const res = await fetch("/api/stripe/create-portal", { method: "POST" });
-        const data = await res.json();
-        if (res.ok && data?.url) {
-          window.location.href = data.url;
-          return;
-        }
-      } catch {
-        // fall through to modal
-      } finally {
-        setIsPortalLoading(false);
-      }
-    }
-    openModal();
-  }
 
   async function handleDeleteAccount() {
     setDeleteError(null);
@@ -84,106 +33,49 @@ export default function SettingsPage() {
     }
   }
 
-  const settingsSections = [
-    {
-      title: isSubscriber ? (isPortalLoading ? "Opening…" : "Manage subscription") : "Upgrade to full access",
-      description: isSubscriber
-        ? "View billing, change plan, or cancel"
-        : "Unlock all features and keep your progress",
-      icon: CreditCard,
-      onClick: handleSubscriptionClick,
-    },
-    {
-      title: "Notifications",
-      description: "Manage when and how you receive reminders",
-      href: "/dashboard/settings/notifications",
-      icon: Bell,
-    },
-  ];
-
   return (
-    <div className="mx-auto max-w-4xl w-full p-4 sm:p-6 md:p-8 pb-12 sm:pb-16 md:pb-20 min-h-screen">
+    <div className="mx-auto max-w-4xl w-full p-4 sm:p-6 md:p-8 pb-24 min-h-screen">
       <div className="mb-6 sm:mb-8">
         <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight text-foreground mb-2 sm:mb-3">
           Settings
         </h1>
-        <p className="text-sm sm:text-base md:text-lg text-muted-foreground">
-          Manage your account preferences and notifications
+        <p className="text-sm sm:text-base text-muted-foreground max-w-xl">
+          Preferences and privacy controls.
         </p>
       </div>
 
-      {!trialStatus.loading && (
-        <section className="mb-6 sm:mb-8" aria-label="Plan and subscription">
-          <TrialCard
-            trial={{
-              expired: trialStatus.expired,
-              start: trialStatus.start,
-              end: trialStatus.end,
-              daysLeft: trialStatus.daysLeft,
-              elapsedDays: trialStatus.elapsedDays,
-              progressPct: trialStatus.progressPct,
-              remaining: trialStatus.remaining,
-              trialDays: trialStatus.trialDays,
-            }}
-            accountStatus={trialStatus.accountStatus}
-            subscriptionCanceled={trialStatus.subscriptionCanceled}
-            symptomCount={logs.length}
-            patternCount={patternCount}
-          />
-        </section>
-      )}
-
-      <p className="text-sm text-muted-foreground mb-6 sm:mb-8">
-        For a dedicated plan page with more context, open{" "}
-        <Link href="/dashboard/account" className="text-primary font-semibold hover:underline">
-          Account
-        </Link>
-        .
-      </p>
-
-      {/* Invite friends / referral */}
-      <InviteReferralSection className="mb-6 sm:mb-8" />
-
-      <div className="space-y-3 sm:space-y-4">
-        {settingsSections.map((section) => {
-          const Icon = section.icon;
-          const inner = (
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                <div className="shrink-0 p-2.5 sm:p-3 rounded-xl shadow-md" style={{ background: 'linear-gradient(135deg, #ff74b1 0%, #d85a9a 100%)' }}>
-                  <Icon className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-lg sm:text-xl font-bold text-foreground mb-0.5 sm:mb-1 truncate">
-                    {section.title}
-                  </h3>
-                  <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2">
-                    {section.description}
-                  </p>
-                </div>
+      <section className="space-y-3 sm:space-y-4" aria-label="Preferences">
+        <Link
+          href="/dashboard/settings/notifications"
+          className="group relative overflow-hidden block rounded-xl sm:rounded-2xl border border-border/30 bg-card backdrop-blur-lg p-4 sm:p-6 shadow-xl transition-all duration-300 hover:shadow-2xl hover:scale-[1.01] active:scale-[0.99]"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+              <div
+                className="shrink-0 p-2.5 sm:p-3 rounded-xl shadow-md"
+                style={{ background: "linear-gradient(135deg, #ff74b1 0%, #d85a9a 100%)" }}
+              >
+                <Bell className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
               </div>
-              <ArrowRight className="h-5 w-5 text-primary shrink-0 transition-transform group-hover:translate-x-1" />
+              <div className="min-w-0">
+                <h3 className="text-lg sm:text-xl font-bold text-foreground mb-0.5 sm:mb-1 truncate">
+                  Notification preferences
+                </h3>
+                <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2">
+                  Choose which reminders and weekly insights you receive
+                </p>
+              </div>
             </div>
-          );
-          const sharedClass = "group relative overflow-hidden block rounded-xl sm:rounded-2xl border border-border/30 bg-card backdrop-blur-lg p-4 sm:p-6 shadow-xl transition-all duration-300 hover:shadow-2xl hover:scale-[1.01] active:scale-[0.99]";
-          if ("onClick" in section) {
-            return (
-              <button key={section.title} type="button" onClick={section.onClick} className={`w-full text-left ${sharedClass}`}>
-                {inner}
-              </button>
-            );
-          }
-          return (
-            <Link key={section.href} href={section.href} className={sharedClass}>
-              {inner}
-            </Link>
-          );
-        })}
-      </div>
+            <ArrowRight className="h-5 w-5 text-primary shrink-0 transition-transform group-hover:translate-x-1" />
+          </div>
+        </Link>
+      </section>
 
-      {/* Delete account */}
-      <div className="mt-8 sm:mt-10 pt-6 sm:pt-8 border-t border-border/50 pb-24">
-        <div className="rounded-xl sm:rounded-2xl border bg-red-200 border-red-200/60  p-4 sm:p-6">
+      <div className="mt-8 sm:mt-10 pt-6 sm:pt-8 border-t border-border/50">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3 sm:mb-4">
+          Privacy
+        </h2>
+        <div className="rounded-xl sm:rounded-2xl border bg-red-200 border-red-200/60 p-4 sm:p-6">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             <div className="flex items-start gap-3 sm:gap-4 sm:flex-1 min-w-0">
               <div className="min-w-0 flex-1">
@@ -207,7 +99,7 @@ export default function SettingsPage() {
                 setDeleteError(null);
                 setDeleteDialogOpen(true);
               }}
-              className="w-full flex items-center gap-2 sm:w-auto sm:shrink-0 rounded-lg px-4 py-2.5 text-sm font-semibold text-red-800  bg-red-300 hover:bg-red-400 transition-colors border border-red-200 dark:border-red-800/50 touch-manipulation"
+              className="w-full flex items-center gap-2 sm:w-auto sm:shrink-0 rounded-lg px-4 py-2.5 text-sm font-semibold text-red-800 bg-red-300 hover:bg-red-400 transition-colors border border-red-200 dark:border-red-800/50 touch-manipulation"
             >
               <Trash2 className="h-5 w-5 text-red-800" />
               Delete account

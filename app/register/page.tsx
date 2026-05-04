@@ -43,6 +43,10 @@ import {
   Ellipsis,
   Lock,
   ShieldCheck,
+  Star,
+  Sparkles,
+  TrendingUp,
+  Zap,
 } from "lucide-react";
 import OtpForm from "@/components/auth/OtpForm";
 import {
@@ -649,7 +653,7 @@ function RegisterPageContent() {
   }, [router, phase]);
 
   return (
-    <main className="overflow-hidden relative mx-auto p-3 sm:p-4 h-screen flex flex-col pt-20 sm:pt-24 max-w-3xl min-h-0">
+    <main className="overflow-hidden relative mx-auto p-3 sm:p-4 h-dvh flex flex-col pt-20 sm:pt-24 max-w-3xl min-h-0">
 
       {/* Calculating Phase - loader between quiz and email */}
       {phase === "calculating" && (
@@ -976,62 +980,133 @@ function RegisterPageContent() {
 
       {/* Paywall Phase - card required to start free trial via Stripe */}
       {phase === "paywall" && (
-        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 py-4 sm:py-6">
+        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 py-4 sm:py-6 relative">
+          {/* Ambient color glows */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 -z-10 overflow-hidden"
+          >
+            <div
+              className="absolute -top-24 -left-16 w-72 h-72 rounded-full blur-3xl opacity-40"
+              style={{ background: "radial-gradient(circle, #ff74b1 0%, transparent 70%)" }}
+            />
+            <div
+              className="absolute top-1/3 -right-20 w-80 h-80 rounded-full blur-3xl opacity-30"
+              style={{ background: "radial-gradient(circle, #65dbff 0%, transparent 70%)" }}
+            />
+            <div
+              className="absolute bottom-0 left-1/4 w-72 h-72 rounded-full blur-3xl opacity-30"
+              style={{ background: "radial-gradient(circle, #ffeb76 0%, transparent 70%)" }}
+            />
+          </div>
+
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
             className="max-w-md mx-auto w-full flex-1 flex flex-col justify-center min-h-0"
           >
-            {/* Hero image */}
-            <div className="flex justify-center mb-4 sm:mb-5">
+            {/* Hero image with colorful halo */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.1, duration: 0.5 }}
+              className="relative flex justify-center mb-3 sm:mb-4"
+            >
+              <div
+                aria-hidden
+                className="absolute inset-0 blur-2xl opacity-50"
+                style={{ background: "radial-gradient(ellipse at center, rgba(255,116,177,0.5) 0%, rgba(255,235,118,0.3) 40%, transparent 70%)" }}
+              />
               <Image
                 src="/paywall.png"
                 alt=""
                 width={280}
                 height={160}
-                className="object-contain w-full max-h-[130px] sm:max-h-40"
+                className="relative object-contain w-full max-h-[130px] sm:max-h-40"
               />
-            </div>
+            </motion.div>
 
-            {/* No-charge badge */}
-            <div className="flex items-center justify-center gap-2 mb-3">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-100 border border-green-300 text-green-700 text-xs sm:text-sm font-semibold">
-                <Check className="w-3.5 h-3.5" />
-                $0 charged today &mdash; cancel anytime
+            {/* Social proof: stars + count */}
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="flex items-center justify-center gap-2 mb-3"
+            >
+              <div className="flex">
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                ))}
+              </div>
+              <span className="text-xs sm:text-sm font-semibold text-[#3D3D3D]">
+                4.9 &middot; 12,000+ women
               </span>
-            </div>
+            </motion.div>
 
-            <div className="text-center mb-4 sm:mb-5">
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-1.5">
-                Try Lisa free for 3 days
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.25 }}
+              className="text-center mb-4 sm:mb-5"
+            >
+              <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-1.5 leading-tight">
+                Try Lisa free for{" "}
+                <span
+                  className="bg-clip-text text-transparent"
+                  style={{ backgroundImage: "linear-gradient(135deg, #ff74b1, #65dbff)" }}
+                >
+                  3 days
+                </span>
               </h2>
               <p className="text-sm sm:text-base text-[#5A5A5A]">
-                Your card is held securely by Stripe. <strong>We charge nothing until day 4</strong> - and you get a reminder before then.
+                <strong className="text-[#3D3D3D]">$0 charged today.</strong> We&apos;ll remind you 24h before your trial ends.
               </p>
-            </div>
+            </motion.div>
 
             {/* Plan toggle */}
-            <div
-              className="flex rounded-xl p-1 border mb-4"
-              style={{ backgroundColor: "#F5EFEC", borderColor: "#E8DDD9" }}
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="relative flex rounded-2xl p-1 border mb-3 shadow-sm"
+              style={{
+                backgroundColor: "#FFFFFF",
+                borderColor: "#E8DDD9",
+              }}
               role="tablist"
               aria-label="Billing period"
             >
+              {/* "Best deal" floating tag on annual */}
+              <span
+                className="absolute -top-2.5 left-1/2 -translate-x-1/2 sm:left-[25%] px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-bold tracking-wide text-white shadow-md flex items-center gap-1"
+                style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ff9d6c 100%)" }}
+              >
+                <Sparkles className="w-3 h-3" />
+                MOST POPULAR &middot; SAVE 45%
+              </span>
+
               <button
                 type="button"
                 role="tab"
                 aria-selected={selectedPlan === "annual"}
                 onClick={() => setSelectedPlan("annual")}
-                className="flex-1 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all"
+                className="flex-1 py-3 px-3 rounded-xl text-sm font-semibold transition-all relative"
                 style={{
-                  backgroundColor: selectedPlan === "annual" ? "#FFFFFF" : "transparent",
+                  background:
+                    selectedPlan === "annual"
+                      ? "linear-gradient(135deg, rgba(255,116,177,0.15) 0%, rgba(101,219,255,0.15) 100%)"
+                      : "transparent",
                   color: "#3D3D3D",
-                  boxShadow: selectedPlan === "annual" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                  boxShadow:
+                    selectedPlan === "annual"
+                      ? "inset 0 0 0 2px #ff74b1, 0 2px 8px rgba(255,116,177,0.2)"
+                      : "none",
                 }}
               >
                 Annual
-                <span className="block text-xs font-normal mt-0.5 text-[#5A5A5A]">
-                  Save 45%
+                <span className="block text-xs font-medium mt-0.5 text-[#ff74b1]">
+                  $6.58/mo
                 </span>
               </button>
               <button
@@ -1039,71 +1114,170 @@ function RegisterPageContent() {
                 role="tab"
                 aria-selected={selectedPlan === "monthly"}
                 onClick={() => setSelectedPlan("monthly")}
-                className="flex-1 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all"
+                className="flex-1 py-3 px-3 rounded-xl text-sm font-semibold transition-all"
                 style={{
-                  backgroundColor: selectedPlan === "monthly" ? "#FFFFFF" : "transparent",
+                  backgroundColor: selectedPlan === "monthly" ? "#F5EFEC" : "transparent",
                   color: "#3D3D3D",
-                  boxShadow: selectedPlan === "monthly" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                  boxShadow:
+                    selectedPlan === "monthly"
+                      ? "inset 0 0 0 2px #65dbff, 0 2px 8px rgba(101,219,255,0.18)"
+                      : "none",
                 }}
               >
                 Monthly
-                <span className="block text-xs font-normal mt-0.5 text-[#5A5A5A]">
-                  Flexible
+                <span className="block text-xs font-medium mt-0.5 text-[#5A5A5A]">
+                  $12/mo
                 </span>
               </button>
-            </div>
+            </motion.div>
 
-            {/* Price summary */}
-            <div className="rounded-xl border border-[#E8DDD9] bg-white p-4 mb-4">
-              <div className="flex items-baseline justify-between mb-1">
-                <span className="text-sm text-[#5A5A5A]">After your 3-day free trial</span>
+            {/* Price summary card */}
+            <motion.div
+              key={selectedPlan}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25 }}
+              className="rounded-2xl border bg-white p-4 mb-4 shadow-sm"
+              style={{
+                borderColor: selectedPlan === "annual" ? "#ff74b1" : "#E8DDD9",
+                backgroundImage:
+                  selectedPlan === "annual"
+                    ? "linear-gradient(135deg, rgba(255,116,177,0.06) 0%, rgba(255,235,118,0.04) 50%, rgba(101,219,255,0.06) 100%)"
+                    : "none",
+              }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs sm:text-sm font-medium text-[#5A5A5A]">
+                  After your 3-day free trial
+                </span>
+                {selectedPlan === "annual" && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold text-green-700 bg-green-100">
+                    <TrendingUp className="w-3 h-3" />
+                    Save $65/yr
+                  </span>
+                )}
               </div>
+
               {selectedPlan === "annual" ? (
-                <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-bold text-[#3D3D3D]">$6.58</span>
-                  <span className="text-sm text-[#5A5A5A]">/ month</span>
-                  <span className="ml-auto text-xs text-[#5A5A5A]">
-                    Billed $79/year
-                  </span>
-                </div>
+                <>
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="text-sm text-[#9A9A9A] line-through font-medium">
+                      $12
+                    </span>
+                    <span
+                      className="text-4xl font-extrabold bg-clip-text text-transparent"
+                      style={{ backgroundImage: "linear-gradient(135deg, #ff74b1 0%, #65dbff 100%)" }}
+                    >
+                      $6.58
+                    </span>
+                    <span className="text-sm text-[#5A5A5A] font-medium">/ month</span>
+                  </div>
+                  <p className="text-xs text-[#5A5A5A] mt-1">
+                    Billed $79 once a year &middot; less than a coffee per week
+                  </p>
+                </>
               ) : (
-                <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-bold text-[#3D3D3D]">$12</span>
-                  <span className="text-sm text-[#5A5A5A]">/ month</span>
-                  <span className="ml-auto text-xs text-[#5A5A5A]">
-                    Billed monthly
-                  </span>
-                </div>
+                <>
+                  <div className="flex items-baseline gap-1">
+                    <span
+                      className="text-4xl font-extrabold bg-clip-text text-transparent"
+                      style={{ backgroundImage: "linear-gradient(135deg, #65dbff 0%, #ff74b1 100%)" }}
+                    >
+                      $12
+                    </span>
+                    <span className="text-sm text-[#5A5A5A] font-medium">/ month</span>
+                  </div>
+                  <p className="text-xs text-[#5A5A5A] mt-1">
+                    Billed monthly &middot; cancel anytime
+                  </p>
+                </>
               )}
-            </div>
+            </motion.div>
 
             {/* Trust labels */}
             <ul className="space-y-2 mb-5 text-sm text-[#3D3D3D]">
-              <li className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-green-600 shrink-0" />
-                <span><strong>Nothing charged today</strong> &mdash; trial starts the moment you sign up</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-green-600 shrink-0" />
-                <span>We&apos;ll <strong>email you 24h before</strong> the trial ends - no surprises</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-green-600 shrink-0" />
-                <span><strong>Cancel in 2 taps</strong> in Settings &rarr; Subscription - no hoops</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-green-600 shrink-0" />
-                <span>Stripe handles your card &mdash; <strong>we never see the number</strong></span>
-              </li>
+              {[
+                {
+                  icon: Zap,
+                  bg: "bg-pink-100",
+                  fg: "text-pink-600",
+                  text: (
+                    <>
+                      <strong>Nothing charged today.</strong> Trial starts the moment you sign up
+                    </>
+                  ),
+                },
+                {
+                  icon: Clock,
+                  bg: "bg-yellow-100",
+                  fg: "text-yellow-700",
+                  text: (
+                    <>
+                      We&apos;ll <strong>email you 24h before</strong> the trial ends. No surprises
+                    </>
+                  ),
+                },
+                {
+                  icon: Check,
+                  bg: "bg-sky-100",
+                  fg: "text-sky-600",
+                  text: (
+                    <>
+                      <strong>Cancel in 2 taps.</strong> No calls, no hoops
+                    </>
+                  ),
+                },
+                {
+                  icon: ShieldCheck,
+                  bg: "bg-green-100",
+                  fg: "text-green-700",
+                  text: (
+                    <>
+                      Stripe-secured. <strong>We never see your card</strong>
+                    </>
+                  ),
+                },
+              ].map((item, i) => {
+                const Icon = item.icon;
+                return (
+                  <motion.li
+                    key={i}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.35 + i * 0.05 }}
+                    className="flex items-center gap-2.5"
+                  >
+                    <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full shrink-0 ${item.bg}`}>
+                      <Icon className={`w-3.5 h-3.5 ${item.fg}`} />
+                    </span>
+                    <span className="leading-snug">{item.text}</span>
+                  </motion.li>
+                );
+              })}
             </ul>
 
-            <button
+            <motion.button
               type="button"
               disabled={checkoutLoading}
               onClick={() => handleStartTrialCheckout(selectedPlan)}
-              className="w-full py-3 sm:py-4 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] hover:shadow-lg"
-              style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)", boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)" }}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className="relative w-full py-3.5 sm:py-4 font-bold text-foreground rounded-2xl transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden group"
+              style={{
+                background:
+                  "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)",
+                boxShadow: "0 8px 24px rgba(255, 116, 177, 0.4), 0 2px 8px rgba(101, 219, 255, 0.25)",
+              }}
             >
+              {/* Shimmer */}
+              <span
+                aria-hidden
+                className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out"
+                style={{
+                  background:
+                    "linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.55) 50%, transparent 70%)",
+                }}
+              />
               {checkoutLoading ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
@@ -1113,12 +1287,14 @@ function RegisterPageContent() {
                 <>
                   <Lock className="w-4 h-4" />
                   Start my free 3-day trial
+                  <ArrowRight className="w-4 h-4" />
                 </>
               )}
-            </button>
+            </motion.button>
 
-            <p className="text-xs text-[#9A9A9A] text-center mt-3">
-              <strong>$0 due now.</strong> After 3 days: {selectedPlan === "annual" ? "$79/year ($6.58/mo)" : "$12/month"}. Cancel before then and pay nothing.
+            <p className="text-xs text-[#7A7A7A] text-center mt-3 leading-relaxed">
+              <strong className="text-[#3D3D3D]">$0 due now.</strong> After 3 days:{" "}
+              {selectedPlan === "annual" ? "$79/year ($6.58/mo)" : "$12/month"}. Cancel before then and pay nothing.
             </p>
 
             {error && (
@@ -1191,7 +1367,7 @@ function RegisterPageContent() {
 
       {/* Quiz Phase */}
       {phase === "quiz" && (
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden pb-[calc(72px+env(safe-area-inset-bottom))]">
           {/* Quiz entry headline (step 0 only) - strategy: curiosity-driven, 2-min assessment */}
           {stepIndex === 0 && (
             <div className="shrink-0 text-center mb-2 sm:mb-3 px-2">
@@ -1239,7 +1415,7 @@ function RegisterPageContent() {
 
           {/* Question Content - Scrollable area */}
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden mb-1">
-            <div className="rounded-xl sm:rounded-2xl border border-foreground/10 bg-card backdrop-blur-sm p-2.5 mx-2 my-2 sm:p-3 space-y-1.5 sm:space-y-2 flex-1 min-h-0 shadow-lg shadow-primary/5 overflow-y-auto flex flex-col">
+            <div className="rounded-xl sm:rounded-2xl border border-foreground/10 bg-card backdrop-blur-sm p-2.5 mx-2 my-2 sm:p-3 space-y-1.5 sm:space-y-2 flex-1 min-h-0 shadow-lg shadow-primary/5 overflow-hidden flex flex-col">
               {/* Quiz step illustration (from public/quiz/, same as mobile assets/quiz/) */}
               {QUIZ_ILLUSTRATION[currentStep] && (
                 <div className="shrink-0 flex justify-center mb-2 sm:mb-3">
@@ -1248,7 +1424,7 @@ function RegisterPageContent() {
                     alt=""
                     width={320}
                     height={currentStep === "breather" || currentStep === "q8_name" ? 140 : 160}
-                    className="object-contain w-full max-h-[90px] sm:max-h-28"
+                    className="object-contain w-full max-h-[120px] sm:max-h-40"
                   />
                 </div>
               )}
@@ -1261,7 +1437,7 @@ function RegisterPageContent() {
                     </h2>
                     <p className="text-sm text-muted-foreground">Choose one</p>
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
+                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-2 pr-1 -mr-1 pb-1 [scrollbar-width:thin]">
                     {AGE_OPTIONS.map((option) => {
                       const isSelected = ageBand === option.id;
                       return (
@@ -1305,7 +1481,7 @@ function RegisterPageContent() {
                     </h2>
                     <p className="text-sm text-muted-foreground">Choose one</p>
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
+                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-2 pr-1 -mr-1 pb-1 [scrollbar-width:thin]">
                     {HERE_FOR_OPTIONS.map((option) => {
                       const isSelected = hereFor === option.id;
                       return (
@@ -1354,7 +1530,7 @@ function RegisterPageContent() {
                       </p>
                     )}
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
+                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-2 pr-1 -mr-1 pb-1 [scrollbar-width:thin]">
                     {GOAL_OPTIONS.map((option) => {
                       const isSelected = goal.includes(option.id);
                       return (
@@ -1403,7 +1579,7 @@ function RegisterPageContent() {
                       </p>
                     )}
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
+                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-2 pr-1 -mr-1 pb-1 [scrollbar-width:thin]">
                     {PROBLEM_OPTIONS.map((option) => {
                       const isSelected = topProblems.includes(option.id);
                       return (
@@ -1464,7 +1640,7 @@ function RegisterPageContent() {
                       </p>
                     )}
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
+                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-2 pr-1 -mr-1 pb-1 [scrollbar-width:thin]">
                     {TRIED_OPTIONS.map((option) => {
                       const isSelected = triedOptions.includes(option.id);
                       return (
@@ -1508,7 +1684,7 @@ function RegisterPageContent() {
                     </h2>
                     <p className="text-sm text-muted-foreground">Choose one</p>
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
+                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-2 pr-1 -mr-1 pb-1 [scrollbar-width:thin]">
                     {TIMING_OPTIONS.map((option) => {
                       const isSelected = timing === option.id;
                       return (
@@ -1552,7 +1728,7 @@ function RegisterPageContent() {
                     </h2>
                     <p className="text-sm text-muted-foreground">Choose one</p>
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
+                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-2 pr-1 -mr-1 pb-1 [scrollbar-width:thin]">
                     {QUALIFIER_OPTIONS.map((option) => {
                       const isSelected = qualifier === option.id;
                       return (
@@ -1619,26 +1795,28 @@ function RegisterPageContent() {
             </div>
           </div>
 
-          {/* Navigation Buttons - min 48px height for easy tapping */}
-          <div className="flex items-center justify-between gap-2 shrink-0 py-3 px-2 border-t border-foreground/10 bg-background">
-            <button
-              type="button"
-              onClick={goBack}
-              disabled={stepIndex === 0}
-              className="min-h-12 flex items-center gap-1.5 px-4 py-3 rounded-lg border-2 border-foreground/15 hover:bg-foreground/5 hover:border-foreground/25 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent font-medium text-sm sm:text-base"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              Back
-            </button>
-            <button
-              type="button"
-              onClick={goNext}
-              disabled={!stepIsAnswered(currentStep)}
-              className="min-h-12 flex items-center gap-1.5 px-4 py-3 rounded-lg bg-primary text-primary-foreground hover:brightness-110 hover:shadow-lg hover:shadow-primary/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100 disabled:hover:shadow-none font-semibold text-sm sm:text-base"
-            >
-              {currentStep === "breather" || stepIndex === STEPS.length - 1 ? "Continue" : "Next"}
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+          {/* Navigation Buttons - fixed to bottom of viewport, safe-area aware */}
+          <div className="fixed bottom-0 inset-x-0 z-30 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 pb-[env(safe-area-inset-bottom)]">
+            <div className="mx-auto max-w-3xl flex items-center justify-between gap-3 px-4 sm:px-6 py-3">
+              <button
+                type="button"
+                onClick={goBack}
+                disabled={stepIndex === 0}
+                className="min-h-12 flex items-center justify-center gap-1.5 px-4 sm:px-5 py-3 rounded-lg border-2 border-foreground/15 hover:bg-foreground/5 hover:border-foreground/25 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent font-medium text-sm sm:text-base"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={goNext}
+                disabled={!stepIsAnswered(currentStep)}
+                className="min-h-12 flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-5 sm:px-6 py-3 rounded-lg bg-primary text-primary-foreground hover:brightness-110 hover:shadow-lg hover:shadow-primary/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100 disabled:hover:shadow-none font-semibold text-sm sm:text-base"
+              >
+                {currentStep === "breather" || stepIndex === STEPS.length - 1 ? "Continue" : "Next"}
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       )}

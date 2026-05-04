@@ -121,15 +121,12 @@ async function handleCheckoutSessionCompleted(
     stripe_customer_id = session.customer;
   }
 
-  const nowIso = new Date().toISOString();
-  const referralDiscountApplied = session.metadata?.referral_discount_applied === "true";
   const extras: Record<string, unknown> = {
     payment_failed_at: null,
     last_stripe_event_at: new Date(eventCreatedSec * 1000).toISOString(),
   };
   if (stripe_customer_id) extras.stripe_customer_id = stripe_customer_id;
   if (stripe_subscription_id) extras.stripe_subscription_id = stripe_subscription_id;
-  if (referralDiscountApplied) extras.referral_discount_used_at = nowIso;
 
   try {
     const result = await writeSubscription(supabaseAdmin, {
@@ -319,6 +316,36 @@ async function handleInvoicePaymentSucceeded(
     ...(subscription_ends_at && { subscription_ends_at }),
     ...(stripe_customer_id && { stripe_customer_id }),
   };
+
+  // If this paid invoice consumed the referral coupon, stamp the referrer's row.
+  const referralCouponId = process.env.STRIPE_REFERRAL_COUPON_ID;
+  if (referralCouponId && (invoice.amount_paid ?? 0) > 0 && userId) {
+    try {
+      const { data: existingTrial } = await supabaseAdmin
+        .from("user_trials")
+        .select("referral_discount_used_at")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (!existingTrial?.referral_discount_used_at) {
+        const fullInvoice = await stripe.invoices.retrieve(invoice.id!, {
+          expand: ["discounts.coupon"],
+        });
+        const discounts = (fullInvoice.discounts ?? []) as Array<{ coupon?: string | { id: string } } | string>;
+        const matched = discounts.some((d) => {
+          if (typeof d === "string") return false;
+          const coupon = d.coupon;
+          if (!coupon) return false;
+          const id = typeof coupon === "string" ? coupon : coupon.id;
+          return id === referralCouponId;
+        });
+        if (matched) {
+          updatePayload.referral_discount_used_at = new Date().toISOString();
+        }
+      }
+    } catch (err) {
+      console.error("Webhook invoice.payment_succeeded: referral coupon check failed:", err);
+    }
+  }
 
   const { data: updated, error } = await supabaseAdmin
     .from("user_trials")

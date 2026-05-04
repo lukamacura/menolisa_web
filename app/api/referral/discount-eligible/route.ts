@@ -9,11 +9,10 @@ export const runtime = "nodejs";
  * Returns whether the current user is eligible for the one-time 50% referral discount.
  *
  * inviteCopyState values:
- *   "no_referrals"      — trial user, no referrals yet → show "50% OFF first subscription" to motivate
- *   "eligible"          — has referrals, discount not used, not paid → "50% OFF first subscription"
- *   "already_subscribed"— has referrals, discount not used, already paid → "50% OFF next payment"
- *   "already_used"      — referral coupon was applied at checkout (one-time, done) → friend benefit only
- *   "subscribed"        — paid subscriber with no referrals → friend benefit only
+ *   "no_referrals"  — no referrals yet, not paid (legacy users) → motivational copy
+ *   "eligible"      — has referrals, discount not yet consumed → coupon sits on Stripe customer for next invoice
+ *   "already_used"  — referral discount has already been consumed by an invoice → friend benefit only
+ *   "subscribed"    — paid subscriber with no referrals → friend benefit only
  *
  * Auth: cookie (web) or Bearer (mobile).
  */
@@ -39,22 +38,16 @@ export async function GET(req: NextRequest) {
     const accountStatus = trialRes.data?.account_status ?? null;
     const isPaid = accountStatus === "paid";
 
-    // eligible = can use discount at next checkout
-    const eligible = hasReferred && discountNotUsed && !isPaid;
+    // eligible = a referral coupon is (or will be) sitting on the Stripe customer waiting for the next invoice
+    const eligible = hasReferred && discountNotUsed;
 
-    let inviteCopyState: "eligible" | "already_used" | "already_subscribed" | "no_referrals" | "subscribed";
+    let inviteCopyState: "eligible" | "already_used" | "no_referrals" | "subscribed";
 
     if (!hasReferred) {
-      // No friends signed up yet
       inviteCopyState = isPaid ? "subscribed" : "no_referrals";
     } else if (!discountNotUsed) {
-      // referral_discount_used_at is set — coupon was applied at checkout, one-time done
       inviteCopyState = "already_used";
-    } else if (isPaid) {
-      // Earned the discount but subscribed before using it — pending for next payment
-      inviteCopyState = "already_subscribed";
     } else {
-      // Has referrals, discount not used, not yet paid — will be applied at next checkout
       inviteCopyState = "eligible";
     }
 
