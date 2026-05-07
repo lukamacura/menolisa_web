@@ -291,11 +291,18 @@ function RegisterPageContent() {
 
   // Always start with quiz; URL ?phase=download|paywall lets Stripe redirect skip back into the funnel.
   const [phase, setPhase] = useState<Phase>("quiz");
+  // /quiz1 traffic skips the register quiz entirely and jumps straight to email + paywall.
+  const [fromQuiz1, setFromQuiz1] = useState(false);
 
   useEffect(() => {
     const phaseParam = searchParams.get("phase");
     if (phaseParam === "download" || phaseParam === "paywall") {
       setPhase(phaseParam);
+      return;
+    }
+    if (typeof sessionStorage !== "undefined" && sessionStorage.getItem("quiz1_completed") === "true") {
+      setFromQuiz1(true);
+      setPhase("email");
     }
     // Only on mount; subsequent param changes shouldn't override user navigation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -474,7 +481,7 @@ function RegisterPageContent() {
     setError(null);
     setSavingQuiz(true);
     try {
-      const quizAnswers = {
+      let quizAnswers: Record<string, unknown> = {
         top_problems: topProblems,
         severity: derivedSeverity,
         timing,
@@ -482,6 +489,18 @@ function RegisterPageContent() {
         goal,
         name: firstName.trim() || null,
       };
+
+      // /quiz1 hand-off: prefer the quiz1-derived profile when present.
+      if (fromQuiz1 && typeof sessionStorage !== "undefined") {
+        const raw = sessionStorage.getItem("quiz1_profile");
+        if (raw) {
+          try {
+            quizAnswers = JSON.parse(raw);
+          } catch {
+            // fall through to register-quiz payload
+          }
+        }
+      }
 
       const res = await fetch("/api/auth/save-quiz", {
         method: "POST",
@@ -501,13 +520,23 @@ function RegisterPageContent() {
 
       sessionStorage.removeItem("pending_quiz_answers");
       if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(REFERRAL_STORAGE_KEY);
-      setPhase("results");
+      if (fromQuiz1) {
+        // Quiz1 already showed her the result - skip /register results and head to paywall.
+        if (typeof sessionStorage !== "undefined") {
+          sessionStorage.removeItem("quiz1_completed");
+          sessionStorage.removeItem("quiz1_profile");
+          sessionStorage.removeItem("quiz1_state");
+        }
+        setPhase("paywall");
+      } else {
+        setPhase("results");
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error. Please try again.");
     } finally {
       setSavingQuiz(false);
     }
-  }, [topProblems, derivedSeverity, timing, triedOptions, goal, firstName, ref]);
+  }, [topProblems, derivedSeverity, timing, triedOptions, goal, firstName, ref, fromQuiz1]);
 
   const toggleProblem = (problemId: string) => {
     setTopProblems((prev) => {
@@ -927,13 +956,24 @@ function RegisterPageContent() {
 
             <div className="mb-4 sm:mb-6 text-center">
               <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-2 sm:mb-3">
-                Your personalized Menopause Score{" "}
-                <span className="text-primary uppercase">is ready</span>
+                {fromQuiz1 ? (
+                  <>
+                    Last step -{" "}
+                    <span className="text-primary uppercase">save your plan</span>
+                  </>
+                ) : (
+                  <>
+                    Your personalized Menopause Score{" "}
+                    <span className="text-primary uppercase">is ready</span>
+                  </>
+                )}
               </h2>
               {otpStep === "email" && (
                 <>
                   <p className="text-sm sm:text-base text-[#5A5A5A]">
-                    Enter your email and we&apos;ll send a 6-digit code to unlock your results. No password needed.
+                    {fromQuiz1
+                      ? "Enter your email for a 6-digit code. No password. Your focus pillars are saved."
+                      : "Enter your email and we'll send a 6-digit code to unlock your results. No password needed."}
                   </p>
                   {firstName.trim() && (
                     <p className="text-sm text-[#5A5A5A] mt-2">
