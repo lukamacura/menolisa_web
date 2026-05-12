@@ -132,7 +132,7 @@ export async function POST(req: NextRequest) {
     }
 
     const defaultSuccess = fromRegistration
-      ? `${baseUrl}/register?phase=download`
+      ? `${baseUrl}/register?phase=download&session_id={CHECKOUT_SESSION_ID}`
       : `${baseUrl}/checkout/success`;
     const defaultCancel = fromRegistration
       ? `${baseUrl}/register?phase=paywall`

@@ -569,6 +569,7 @@ function RegisterPageContent() {
 
   const [selectedPlan, setSelectedPlan] = useState<"annual" | "monthly">("annual");
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [syncingPayment, setSyncingPayment] = useState(false);
 
   const handleStartTrialCheckout = async (plan: "annual" | "monthly") => {
     if (checkoutLoading) return;
@@ -1311,7 +1312,7 @@ function RegisterPageContent() {
               onClick={() => handleStartTrialCheckout(selectedPlan)}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              className="relative w-full min-h-[56px] py-4 font-bold text-foreground rounded-2xl transition-all flex items-center justify-center gap-2 text-base sm:text-base disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden group"
+              className="relative w-full min-h-14 py-4 font-bold text-foreground rounded-2xl transition-all flex items-center justify-center gap-2 text-base sm:text-base disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden group"
               style={{
                 background:
                   "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)",
@@ -1398,10 +1399,28 @@ function RegisterPageContent() {
 
             <button
               type="button"
-              onClick={() => router.push("/dashboard")}
-              className="text-sm text-[#9A9A9A] hover:text-[#5A5A5A] underline transition-colors"
+              disabled={syncingPayment}
+              onClick={async () => {
+                const sessionId = searchParams.get("session_id");
+                if (sessionId) {
+                  setSyncingPayment(true);
+                  try {
+                    await fetch("/api/stripe/sync-session", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ session_id: sessionId }),
+                    });
+                  } catch {
+                    // ignore — middleware will handle gracefully if webhook already ran
+                  } finally {
+                    setSyncingPayment(false);
+                  }
+                }
+                router.push("/dashboard");
+              }}
+              className="text-sm text-[#9A9A9A] hover:text-[#5A5A5A] underline transition-colors disabled:opacity-50"
             >
-              Continue to web dashboard instead
+              {syncingPayment ? "Loading…" : "Continue to web dashboard instead"}
             </button>
           </motion.div>
         </div>

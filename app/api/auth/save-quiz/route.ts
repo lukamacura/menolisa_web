@@ -98,22 +98,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create user_trials entry in pending_payment state.
-    // Trial only starts once Stripe checkout completes; webhook flips status to "paid".
-    try {
+    // Ensure a user_trials row exists in pending_payment state.
+    // Upsert so re-registrations (e.g. mobile → web) don't silently fail on duplicate user_id.
+    // The webhook flips account_status to "paid" once Stripe checkout completes.
+    {
       const nowIso = new Date().toISOString();
-      const { error: trialError } = await supabaseAdmin.from("user_trials").insert({
-        user_id: userId,
-        trial_start: nowIso,
-        trial_days: 3,
-        account_status: "pending_payment",
-      });
+      const { data: existingTrial } = await supabaseAdmin
+        .from("user_trials")
+        .select("account_status")
+        .eq("user_id", userId)
+        .maybeSingle();
 
-      if (trialError) {
-        console.warn("Trial creation error (may already exist):", trialError);
+      if (!existingTrial) {
+        const { error: trialError } = await supabaseAdmin.from("user_trials").insert({
+          user_id: userId,
+          trial_start: nowIso,
+          trial_days: 3,
+          account_status: "pending_payment",
+        });
+        if (trialError) {
+          console.error("Trial row creation failed:", trialError);
+        }
       }
-    } catch (e) {
-      console.warn("Trial creation error:", e);
+      // If a row already exists (mobile IAP, prior attempt), leave it untouched —
+      // the Stripe webhook will flip it to "paid" on checkout completion.
     }
 
     if (referralCode && referralCode.trim()) {
