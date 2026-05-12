@@ -1020,7 +1020,7 @@ function RegisterPageContent() {
 
       {/* Paywall Phase - card required to start free trial via Stripe */}
       {phase === "paywall" && (
-        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 py-4 sm:py-6 relative">
+        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pt-4 sm:pt-6 pb-[calc(140px+env(safe-area-inset-bottom))] sm:pb-6 relative">
           {/* Ambient color glows */}
           <div
             aria-hidden
@@ -1044,7 +1044,7 @@ function RegisterPageContent() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, ease: "easeOut" }}
-            className="max-w-md mx-auto w-full flex-1 flex flex-col justify-center min-h-0"
+            className="max-w-md mx-auto w-full flex flex-col sm:flex-1 sm:justify-center sm:min-h-0"
           >
             {/* Hero image with colorful halo */}
             <motion.div
@@ -1296,13 +1296,22 @@ function RegisterPageContent() {
               })}
             </ul>
 
+            {error && (
+              <div className="mb-3 rounded-xl border border-error/30 bg-error/10 p-3 text-sm text-error">
+                {error}
+              </div>
+            )}
+          </motion.div>
+
+          {/* Sticky CTA bar - always visible on mobile, inline on desktop */}
+          <div className="fixed bottom-0 inset-x-0 z-40 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/85 px-4 pt-3 pb-[calc(10px+env(safe-area-inset-bottom))] sm:static sm:bg-transparent sm:backdrop-blur-none sm:border-0 sm:px-0 sm:py-0 sm:max-w-md sm:mx-auto sm:w-full">
             <motion.button
               type="button"
               disabled={checkoutLoading}
               onClick={() => handleStartTrialCheckout(selectedPlan)}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              className="relative w-full py-3.5 sm:py-4 font-bold text-foreground rounded-2xl transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden group"
+              className="relative w-full min-h-[56px] py-4 font-bold text-foreground rounded-2xl transition-all flex items-center justify-center gap-2 text-base sm:text-base disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden group"
               style={{
                 background:
                   "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)",
@@ -1331,18 +1340,11 @@ function RegisterPageContent() {
                 </>
               )}
             </motion.button>
-
-            <p className="text-xs text-[#7A7A7A] text-center mt-3 leading-relaxed">
+            <p className="text-[11px] sm:text-xs text-[#7A7A7A] text-center mt-2 sm:mt-3 leading-relaxed">
               <strong className="text-[#3D3D3D]">$0 due now.</strong> After 3 days:{" "}
-              {selectedPlan === "annual" ? "$79/year ($6.58/mo)" : "$12/month"}. Cancel before then and pay nothing.
+              {selectedPlan === "annual" ? "$79/year ($6.58/mo)" : "$12/month"}. Cancel anytime.
             </p>
-
-            {error && (
-              <div className="mt-3 rounded-xl border border-error/30 bg-error/10 p-3 text-sm text-error">
-                {error}
-              </div>
-            )}
-          </motion.div>
+          </div>
         </div>
       )}
 
@@ -1485,7 +1487,7 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => setAgeBand(option.id)}
-                          className={`h-14 px-3 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
+                          className={`min-h-[60px] sm:min-h-[68px] px-3.5 py-2.5 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
                               : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
@@ -1500,7 +1502,7 @@ function RegisterPageContent() {
                                 className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
                               />
                             </div>
-                            <span className="font-medium flex-1 text-sm">{option.label}</span>
+                            <span className="font-medium flex-1 text-sm sm:text-base leading-snug">{option.label}</span>
                             {isSelected && (
                               <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
                             )}
@@ -1529,7 +1531,7 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => setHereFor(option.id)}
-                          className={`h-14 px-3 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
+                          className={`min-h-[60px] sm:min-h-[68px] px-3.5 py-2.5 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
                               : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
@@ -1544,7 +1546,7 @@ function RegisterPageContent() {
                                 className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
                               />
                             </div>
-                            <span className="font-medium flex-1 text-sm">{option.label}</span>
+                            <span className="font-medium flex-1 text-sm sm:text-base leading-snug">{option.label}</span>
                             {isSelected && (
                               <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
                             )}
@@ -1578,7 +1580,7 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => toggleGoal(option.id)}
-                          className={`h-14 px-3 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
+                          className={`min-h-[60px] sm:min-h-[68px] px-3.5 py-2.5 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
                               : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
@@ -1593,7 +1595,7 @@ function RegisterPageContent() {
                                 className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
                               />
                             </div>
-                            <span className="font-medium flex-1 text-sm">{option.label}</span>
+                            <span className="font-medium flex-1 text-sm sm:text-base leading-snug">{option.label}</span>
                             {isSelected && (
                               <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
                             )}
@@ -1627,7 +1629,7 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => toggleProblem(option.id)}
-                          className={`h-14 px-3 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
+                          className={`min-h-[60px] sm:min-h-[68px] px-3.5 py-2.5 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
                               : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
@@ -1642,7 +1644,7 @@ function RegisterPageContent() {
                                 className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
                               />
                             </div>
-                            <span className="font-medium flex-1 text-sm">{option.label}</span>
+                            <span className="font-medium flex-1 text-sm sm:text-base leading-snug">{option.label}</span>
                             {isSelected && (
                               <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
                             )}
@@ -1688,7 +1690,7 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => toggleTriedOption(option.id)}
-                          className={`h-14 px-3 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
+                          className={`min-h-[60px] sm:min-h-[68px] px-3.5 py-2.5 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
                               : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
@@ -1703,7 +1705,7 @@ function RegisterPageContent() {
                                 className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
                               />
                             </div>
-                            <span className="font-medium flex-1 text-sm">{option.label}</span>
+                            <span className="font-medium flex-1 text-sm sm:text-base leading-snug">{option.label}</span>
                             {isSelected && (
                               <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
                             )}
@@ -1732,7 +1734,7 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => setTiming(option.id)}
-                          className={`w-full h-14 px-3 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
+                          className={`w-full min-h-[60px] sm:min-h-[68px] px-3.5 py-2.5 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
                               : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
@@ -1747,7 +1749,7 @@ function RegisterPageContent() {
                                 className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
                               />
                             </div>
-                            <span className="font-medium flex-1 text-sm">{option.label}</span>
+                            <span className="font-medium flex-1 text-sm sm:text-base leading-snug">{option.label}</span>
                             {isSelected && (
                               <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
                             )}
@@ -1776,7 +1778,7 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => setQualifier(option.id)}
-                          className={`w-full h-14 px-3 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
+                          className={`w-full min-h-[60px] sm:min-h-[68px] px-3.5 py-2.5 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
                               : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
@@ -1791,7 +1793,7 @@ function RegisterPageContent() {
                                 className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
                               />
                             </div>
-                            <span className="font-medium flex-1 text-sm">{option.label}</span>
+                            <span className="font-medium flex-1 text-sm sm:text-base leading-snug">{option.label}</span>
                             {isSelected && (
                               <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
                             )}
