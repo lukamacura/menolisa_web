@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { writeSubscription } from "@/lib/subscriptionWrite";
+import { sendTrialWelcomeEmail, sendChargeConfirmedEmail, sendAdminNotification } from "@/lib/resend";
 
 export const runtime = "nodejs";
 
@@ -141,6 +142,27 @@ async function handleCheckoutSessionCompleted(
       console.warn(
         `Webhook: checkout.session.completed conflict — user ${userId} already has active ${result.existingProvider} sub`
       );
+    } else {
+      // Fire-and-forget: send trial welcome + notify admin that trial started.
+      Promise.all([
+        (async () => {
+          const { data: authData } = await supabaseAdmin.auth.admin.getUserById(userId);
+          const email = authData.user?.email;
+          if (!email) return;
+          const { data: profile } = await supabaseAdmin
+            .from("user_profiles")
+            .select("name")
+            .eq("user_id", userId)
+            .maybeSingle();
+          await Promise.all([
+            sendTrialWelcomeEmail(email, profile?.name ?? null),
+            sendAdminNotification(
+              `New trial signup — ${email}`,
+              `<p>New trial: <strong>${email}</strong>${profile?.name ? ` (${profile.name})` : ""}</p><p>Started: ${new Date().toUTCString()}</p>`
+            ),
+          ]);
+        })(),
+      ]).catch((e) => console.error("Webhook: trial welcome emails failed:", e));
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to upsert";
@@ -357,6 +379,31 @@ async function handleInvoicePaymentSucceeded(
     console.error("Webhook invoice.payment_succeeded: update failed:", error);
     return { ok: false, error: error.message };
   }
+
+  // Fire charge confirmation email once, regardless of which DB path succeeds.
+  const chargeUserId = ((updated && updated.length > 0 ? updated[0]?.user_id : userId) ?? null) as string | null;
+  if (chargeUserId && (invoice.amount_paid ?? 0) > 0) {
+    Promise.all([
+      (async () => {
+        const { data: authData } = await supabaseAdmin.auth.admin.getUserById(chargeUserId);
+        const email = authData.user?.email;
+        if (!email) return;
+        const { data: profile } = await supabaseAdmin
+          .from("user_profiles")
+          .select("name")
+          .eq("user_id", chargeUserId)
+          .maybeSingle();
+        await Promise.all([
+          sendChargeConfirmedEmail(email, profile?.name ?? null),
+          sendAdminNotification(
+            `New payment — ${email}`,
+            `<p>Payment received: <strong>${email}</strong>${profile?.name ? ` (${profile.name})` : ""}</p><p>Amount: $${((invoice.amount_paid ?? 0) / 100).toFixed(2)}</p><p>At: ${new Date().toUTCString()}</p>`
+          ),
+        ]);
+      })(),
+    ]).catch((e) => console.error("Webhook invoice.payment_succeeded: charge emails failed:", e));
+  }
+
   if (updated && updated.length > 0) return { ok: true };
 
   if (!userId) return { ok: true };
