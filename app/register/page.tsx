@@ -291,16 +291,17 @@ function RegisterPageContent() {
   }, [searchParams]);
 
   // Always start with quiz; URL ?phase=download|paywall lets Stripe redirect skip back into the funnel.
-  const [phase, setPhase] = useState<Phase>("quiz");
+  // Initialize synchronously from URL so the auth-redirect effect below sees the correct phase on first render
+  // (otherwise authenticated users sent here by middleware bounce back to /dashboard → infinite loop).
+  const [phase, setPhase] = useState<Phase>(() => {
+    const phaseParam = searchParams.get("phase");
+    if (phaseParam === "download" || phaseParam === "paywall") return phaseParam;
+    return "quiz";
+  });
   // /quiz1 traffic skips the register quiz entirely and jumps straight to email + paywall.
   const [fromQuiz1, setFromQuiz1] = useState(false);
 
   useEffect(() => {
-    const phaseParam = searchParams.get("phase");
-    if (phaseParam === "download" || phaseParam === "paywall") {
-      setPhase(phaseParam);
-      return;
-    }
     if (typeof sessionStorage !== "undefined" && sessionStorage.getItem("quiz1_completed") === "true") {
       setFromQuiz1(true);
       setPhase("email");
@@ -653,11 +654,18 @@ function RegisterPageContent() {
         }
 
         if (existingProfile) {
-          // Profile already exists - redirect to dashboard
+          // Profile already exists. If middleware sent us here (?phase=quiz|paywall), the user already
+          // failed the trial/paywall gate — sending them to /dashboard would just bounce back here (infinite loop).
+          // Show the paywall instead.
           if (mounted) {
             sessionStorage.removeItem("pending_quiz_answers");
-            router.replace("/dashboard");
-            router.refresh();
+            const phaseParam = searchParams.get("phase");
+            if (phaseParam === "quiz" || phaseParam === "paywall") {
+              setPhase("paywall");
+            } else {
+              router.replace("/dashboard");
+              router.refresh();
+            }
           }
           return;
         }
