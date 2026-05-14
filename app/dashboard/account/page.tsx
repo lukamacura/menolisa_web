@@ -1,43 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Settings, ArrowRight } from "lucide-react";
 import { TrialCard } from "@/components/TrialCard";
 import { InviteReferralSection } from "@/components/InviteReferralSection";
 import { useDashboardTrialStatus } from "@/lib/dashboardTrialContext";
-import { useSymptomLogs } from "@/hooks/useSymptomLogs";
 
 export const dynamic = "force-dynamic";
 
 export default function AccountPage() {
   const trialStatus = useDashboardTrialStatus();
-  const { logs } = useSymptomLogs(30);
-  const [patternCount, setPatternCount] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const response = await fetch("/api/tracker-insights?days=30", {
-          method: "GET",
-          cache: "no-store",
-        });
-        if (!response.ok) return;
-        const { data } = await response.json();
-        const patterns =
-          data?.plainLanguageInsights?.filter(
-            (insight: { type: string }) => insight.type === "pattern"
-          ) || [];
-        if (!cancelled) setPatternCount(patterns.length);
-      } catch {
-        if (!cancelled) setPatternCount(0);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   return (
     <div className="mx-auto max-w-4xl w-full p-4 sm:p-6 md:p-8 pb-24 min-h-screen">
@@ -73,10 +45,7 @@ export default function AccountPage() {
             accountStatus={trialStatus.accountStatus}
             subscriptionCanceled={trialStatus.subscriptionCanceled}
             paymentFailedAt={trialStatus.paymentFailedAt}
-            previouslyPaid={trialStatus.previouslyPaid}
             isThirdPartyProvider={trialStatus.isThirdPartyProvider}
-            symptomCount={logs.length}
-            patternCount={patternCount}
           />
         )}
       </section>

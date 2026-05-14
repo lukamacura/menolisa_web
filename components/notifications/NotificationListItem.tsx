@@ -14,9 +14,7 @@ import {
 } from "lucide-react";
 import { formatNotificationTime } from "@/lib/notificationUtils";
 import type { NotificationType } from "./NotificationProvider";
-import { usePricingModal } from "@/lib/PricingModalContext";
-import type { TrialState } from "@/components/TrialCard";
-import { supabase } from "@/lib/supabaseClient";
+import { useDashboardTrialStatus } from "@/lib/dashboardTrialContext";
 
 interface NotificationListItemProps {
   id: string;
@@ -102,7 +100,7 @@ export default function NotificationListItem({
   onMarkAsRead,
 }: NotificationListItemProps) {
   const router = useRouter();
-  const { openModal } = usePricingModal();
+  const trialStatus = useDashboardTrialStatus();
   const iconColor = getIconColor(type);
   const timeText = formatNotificationTime(createdAt);
   const route = metadata?.primaryAction?.route;
@@ -116,47 +114,12 @@ export default function NotificationListItem({
 
     // Handle open_pricing action
     if (actionType === "open_pricing") {
-      // Determine trial state from notification type and title
-      let trialState: TrialState = "calm";
-      if (type === "trial") {
-        if (title.includes("Today") || title.includes("urgent")) {
-          trialState = "urgent";
-        } else if (title.includes("Soon") || title.includes("warning")) {
-          trialState = "warning";
-        } else if (title.includes("Ended") || title.includes("expired")) {
-          trialState = "expired";
-        }
-      }
-      
-      // Extract time remaining from message if available
-      const timeMatch = message?.match(/(\d+h \d+m)/);
-      const timeRemaining = timeMatch ? timeMatch[1] : undefined;
-      
-      // Fetch user's first name
-      const fetchUserName = async () => {
-        try {
-          const { data: { user } } = await supabase.auth.getUser();
-          if (user) {
-            const { data: profile } = await supabase
-              .from("user_profiles")
-              .select("name")
-              .eq("user_id", user.id)
-              .single();
-            
-            if (profile?.name) {
-              // Extract first name from full name
-              const firstName = profile.name.split(' ')[0];
-              return firstName || undefined;
-            }
-          }
-        } catch (error) {
-          console.error("Error fetching user name:", error);
-        }
-        return undefined;
-      };
-      
-      const userName = await fetchUserName();
-      openModal(trialState, timeRemaining, undefined, undefined, userName);
+      const hasAccess =
+        trialStatus.state === "active" ||
+        trialStatus.state === "canceling" ||
+        trialStatus.state === "past_due" ||
+        trialStatus.state === "trialing";
+      router.push(hasAccess ? "/dashboard/account" : "/paywall");
     } else if (route) {
       // Navigate if route exists
       router.push(route);

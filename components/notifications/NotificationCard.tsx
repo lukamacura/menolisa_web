@@ -15,9 +15,7 @@ import {
   Heart
 } from "lucide-react";
 import type { Notification, NotificationAction } from "./NotificationProvider";
-import { usePricingModal } from "@/lib/PricingModalContext";
-import type { TrialState } from "@/components/TrialCard";
-import { supabase } from "@/lib/supabaseClient";
+import { useDashboardTrialStatus } from "@/lib/dashboardTrialContext";
 
 interface NotificationCardProps {
   notification: Notification;
@@ -143,7 +141,7 @@ export default function NotificationCard({
 }: NotificationCardProps) {
   const router = useRouter();
   const styles = getNotificationStyles(notification.type);
-  const { openModal } = usePricingModal();
+  const trialStatus = useDashboardTrialStatus();
 
   const handlePrimaryAction = async () => {
     if (onPrimaryAction) {
@@ -169,47 +167,14 @@ export default function NotificationCard({
         notificationWithMetadata.metadata?.primaryAction?.actionType;
 
       if (actionType === "open_pricing") {
-        // Determine trial state from notification type and title
-        let trialState: TrialState = "calm";
-        if (notification.type === "trial") {
-          if (notification.title.includes("Today") || notification.title.includes("urgent")) {
-            trialState = "urgent";
-          } else if (notification.title.includes("Soon") || notification.title.includes("warning")) {
-            trialState = "warning";
-          } else if (notification.title.includes("Ended") || notification.title.includes("expired")) {
-            trialState = "expired";
-          }
-        }
-        
-        // Extract time remaining from message if available
-        const timeMatch = notification.message?.match(/(\d+h \d+m)/);
-        const timeRemaining = timeMatch ? timeMatch[1] : undefined;
-        
-        // Fetch user's first name
-        const fetchUserName = async () => {
-          try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-              const { data: profile } = await supabase
-                .from("user_profiles")
-                .select("name")
-                .eq("user_id", user.id)
-                .single();
-              
-              if (profile?.name) {
-                // Extract first name from full name
-                const firstName = profile.name.split(' ')[0];
-                return firstName || undefined;
-              }
-            }
-          } catch (error) {
-            console.error("Error fetching user name:", error);
-          }
-          return undefined;
-        };
-        
-        const userName = await fetchUserName();
-        openModal(trialState, timeRemaining, undefined, undefined, userName);
+        // Paid / trialing-with-card users already have a subscription —
+        // route to account page. Anyone else goes to the paywall.
+        const hasAccess =
+          trialStatus.state === "active" ||
+          trialStatus.state === "canceling" ||
+          trialStatus.state === "past_due" ||
+          trialStatus.state === "trialing";
+        router.push(hasAccess ? "/dashboard/account" : "/paywall");
       } else if (actionWithRoute.route) {
         // Navigate using Next.js router
         router.push(actionWithRoute.route);

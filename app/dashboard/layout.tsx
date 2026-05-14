@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import dynamic from "next/dynamic";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Activity, LogOut, ChevronDown, Bell, MessageSquare, UserCircle } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import SwipeButton from "@/components/SwipeButton";
@@ -14,12 +13,6 @@ import {
 import SessionVerification from "@/components/SessionVerification";
 import { NotificationProvider } from "@/components/notifications/NotificationProvider";
 import NotificationContainer from "@/components/notifications/NotificationContainer";
-import { PricingModalProvider, usePricingModal } from "@/lib/PricingModalContext";
-
-const PricingModal = dynamic(
-  () => import("@/components/PricingModal").then((m) => ({ default: m.PricingModal })),
-  { ssr: false, loading: () => null }
-);
 
 // Animated Navigation Item Component
 function AnimatedNavItem({
@@ -56,21 +49,28 @@ export default function DashboardLayout({
 }) {
   return (
     <NotificationProvider>
-      <PricingModalProvider>
-        <DashboardTrialProvider>
-          <DashboardLayoutInner>{children}</DashboardLayoutInner>
-        </DashboardTrialProvider>
-      </PricingModalProvider>
+      <DashboardTrialProvider>
+        <DashboardLayoutInner>{children}</DashboardLayoutInner>
+      </DashboardTrialProvider>
     </NotificationProvider>
   );
 }
 
 function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const trialStatus = useDashboardTrialStatus();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const isDropdownOpenRef = useRef(false);
+
+  // Hard gate: anyone without access (ended | disputed) is redirected to the paywall page.
+  useEffect(() => {
+    if (trialStatus.loading) return;
+    if (trialStatus.state === "ended" || trialStatus.state === "disputed") {
+      router.replace("/paywall");
+    }
+  }, [trialStatus.loading, trialStatus.state, router]);
 
   const navItems = [
     {
@@ -154,7 +154,6 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-        <PricingModalWrapper />
         <div className="min-h-screen flex flex-col bg-background">
         {/* Session Verification - checks for browser mismatch issues */}
         <SessionVerification />
@@ -299,19 +298,3 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Inner component to use PricingModal context
-function PricingModalWrapper() {
-  const { isOpen, closeModal, trialState, timeRemaining, symptomCount, patternCount, userName } = usePricingModal();
-  
-  return (
-    <PricingModal
-      isOpen={isOpen}
-      onClose={closeModal}
-      trialState={trialState}
-      timeRemaining={timeRemaining}
-      symptomCount={symptomCount}
-      patternCount={patternCount}
-      userName={userName}
-    />
-  );
-}

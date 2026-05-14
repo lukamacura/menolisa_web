@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { AlertTriangle, Clock, CreditCard, ShieldAlert } from "lucide-react";
-import { PricingModal } from "./PricingModal";
+import { AlertTriangle, Clock, CreditCard } from "lucide-react";
 import type { AccountState } from "@/lib/getAccountState";
 
 export type { AccountState };
@@ -27,10 +26,7 @@ export interface TrialCardProps {
   accountStatus?: string;
   subscriptionCanceled?: boolean;
   paymentFailedAt?: Date | null;
-  previouslyPaid?: boolean;
   isThirdPartyProvider?: boolean;
-  symptomCount?: number;
-  patternCount?: number;
 }
 
 function formatCountdown(remaining: { d: number; h: number; m: number }): string {
@@ -177,35 +173,15 @@ export function TrialCard({
   accountStatus,
   subscriptionCanceled = false,
   paymentFailedAt = null,
-  previouslyPaid,
   isThirdPartyProvider = false,
-  symptomCount = 0,
-  patternCount = 0,
 }: TrialCardProps) {
   const [now, setNow] = useState(new Date());
-  const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
   const [isPortalLoading, setIsPortalLoading] = useState(false);
-  const [referralDiscountEligible, setReferralDiscountEligible] = useState(false);
+  const [portalError, setPortalError] = useState<string | null>(null);
 
   const state: AccountState =
     accountState ??
     deriveState(accountStatus, trial.expired, subscriptionCanceled, paymentFailedAt);
-
-  // Only fetch referral eligibility when an upgrade CTA may be shown.
-  const showsUpgradeCta = state === "ended";
-  useEffect(() => {
-    if (!showsUpgradeCta) return;
-    let cancelled = false;
-    fetch("/api/referral/discount-eligible", { credentials: "include" })
-      .then((res) => (res.ok ? res.json() : { eligible: false }))
-      .then((data) => {
-        if (!cancelled && data?.eligible) setReferralDiscountEligible(true);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [showsUpgradeCta]);
 
   // Live countdown only when < 24h remain.
   useEffect(() => {
@@ -244,44 +220,42 @@ export function TrialCard({
             ? "Manage in store"
             : "Manage subscription";
       case "ended":
-        return referralDiscountEligible
-          ? "50% off — Resubscribe"
-          : previouslyPaid
-            ? "Resubscribe"
-            : "Choose your plan";
       case "disputed":
-        return "Contact support";
+        // These states are redirected to /paywall by the dashboard layout —
+        // this card should not render for them. Fail-safe label only.
+        return "Open paywall";
     }
   };
 
   const handleCTAClick = async () => {
-    if (state === "disputed") {
-      window.location.href = "mailto:support@menolisa.com?subject=Account%20under%20review";
+    if (state === "ended" || state === "disputed") {
+      // Should not be reachable — layout redirects these states to /paywall.
+      window.location.href = "/paywall";
       return;
     }
-    if (state === "active" || state === "canceling" || state === "past_due" || state === "trialing") {
-      if (isThirdPartyProvider) {
-        // Apple/Google: deep-link to their store; no Stripe portal.
-        window.location.href = "https://apps.apple.com/account/subscriptions";
+    if (isThirdPartyProvider) {
+      // Apple/Google: deep-link to their store; no Stripe portal.
+      window.location.href = "https://apps.apple.com/account/subscriptions";
+      return;
+    }
+    setIsPortalLoading(true);
+    try {
+      const res = await fetch("/api/stripe/create-portal", { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data?.url) {
+        window.location.href = data.url;
         return;
       }
-      setIsPortalLoading(true);
-      try {
-        const res = await fetch("/api/stripe/create-portal", { method: "POST" });
-        const data = await res.json();
-        if (res.ok && data?.url) {
-          window.location.href = data.url;
-          return;
-        }
-        setIsPricingModalOpen(true);
-      } catch {
-        setIsPricingModalOpen(true);
-      } finally {
-        setIsPortalLoading(false);
-      }
-      return;
+      setPortalError(
+        "Couldn't open the billing portal. Please try again or email support@menolisa.com."
+      );
+    } catch {
+      setPortalError(
+        "Couldn't open the billing portal. Please try again or email support@menolisa.com."
+      );
+    } finally {
+      setIsPortalLoading(false);
     }
-    setIsPricingModalOpen(true);
   };
 
   // Header body content per state.
@@ -305,23 +279,8 @@ export function TrialCard({
         </div>
       );
     }
-    if (state === "disputed") {
-      return (
-        <div className="flex items-start gap-2 text-sm text-red-100 mt-2">
-          <ShieldAlert className="h-4 w-4 mt-0.5 shrink-0" />
-          <span>Your account is under review. Contact support to resolve.</span>
-        </div>
-      );
-    }
-    if (state === "ended") {
-      return (
-        <p className="text-sm text-white/80">
-          {previouslyPaid
-            ? "Your subscription is no longer active."
-            : "Your access has ended."}
-        </p>
-      );
-    }
+    // ended / disputed — handled by /paywall redirect; render nothing here.
+    if (state === "ended" || state === "disputed") return null;
     // trialing — card on file, sub already active
     const billingDate = trial.end
       ? trial.end.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
@@ -370,15 +329,6 @@ export function TrialCard({
               {styles.badgeLabel}
             </div>
           </div>
-
-          {state === "ended" && patternCount > 0 && (
-            <div className="mb-4 p-3 rounded-lg bg-white/10 border border-white/20">
-              <p className="text-sm text-white/90">
-                Lisa found {patternCount} {patternCount === 1 ? "pattern" : "patterns"} in your
-                symptoms. Resubscribe to see what she discovered.
-              </p>
-            </div>
-          )}
 
           {showCountdownBlock && (
             <div className="mb-6">
@@ -432,39 +382,20 @@ export function TrialCard({
             </div>
           )}
 
-          {state === "ended" && (
-            <div className="mb-4">
-              <p className="text-sm text-white/70">
-                {previouslyPaid
-                  ? "Resubscribe to unlock Lisa and pick up where you left off."
-                  : "Pick a plan to unlock Lisa and see what she found in your data."}
-              </p>
-            </div>
-          )}
-
           <button
             onClick={handleCTAClick}
-            disabled={
-              (state === "active" || state === "canceling" || state === "past_due") && isPortalLoading
-            }
+            disabled={isPortalLoading}
             className={`px-6 py-3 rounded-lg font-semibold text-sm transition-all duration-200 ${styles.buttonStyle}`}
           >
             {getCTAText()}
           </button>
+          {portalError && (
+            <p className="mt-3 text-sm text-red-200" role="alert">
+              {portalError}
+            </p>
+          )}
         </div>
       </div>
-
-      <PricingModal
-        isOpen={isPricingModalOpen}
-        onClose={() => setIsPricingModalOpen(false)}
-        accountState={state}
-        previouslyPaid={previouslyPaid ?? (state === "ended" && !!accountStatus && accountStatus !== "pending_payment")}
-        timeRemaining={
-          state === "trialing" && trial.daysLeft <= 0 ? countdownText : undefined
-        }
-        symptomCount={symptomCount}
-        patternCount={patternCount}
-      />
     </>
   );
 }
