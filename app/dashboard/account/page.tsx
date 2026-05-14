@@ -69,8 +69,12 @@ export default function AccountPage() {
               remaining: trialStatus.remaining,
               trialDays: trialStatus.trialDays,
             }}
+            accountState={trialStatus.state}
             accountStatus={trialStatus.accountStatus}
             subscriptionCanceled={trialStatus.subscriptionCanceled}
+            paymentFailedAt={trialStatus.paymentFailedAt}
+            previouslyPaid={trialStatus.previouslyPaid}
+            isThirdPartyProvider={trialStatus.isThirdPartyProvider}
             symptomCount={logs.length}
             patternCount={patternCount}
           />

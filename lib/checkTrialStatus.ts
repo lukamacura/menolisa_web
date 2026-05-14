@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "./supabaseAdmin";
+import { getAccountState, stateAllowsAccess, type AccountStateRow } from "./getAccountState";
 
 export type TrialRow = {
   trial_start: string | null;
@@ -6,40 +7,22 @@ export type TrialRow = {
   trial_days: number | null;
   account_status: string | null;
   subscription_ends_at: string | null;
+  subscription_canceled?: boolean | null;
+  payment_failed_at?: string | null;
+  dispute_flagged_at?: string | null;
+  stripe_subscription_id?: string | null;
+  provider?: string | null;
 };
 
 export type TrialDecision = "allow" | "paywall" | "no-onboarding";
 
+const SELECT_COLS =
+  "trial_start, trial_end, trial_days, account_status, subscription_ends_at, subscription_canceled, payment_failed_at, dispute_flagged_at, stripe_subscription_id, provider";
+
 export function evaluateTrialStatus(row: TrialRow | null): TrialDecision {
   if (!row) return "no-onboarding";
-
-  const status = row.account_status;
-
-  if (status === "paid") {
-    if (row.subscription_ends_at) {
-      const end = new Date(row.subscription_ends_at);
-      if (end < new Date()) return "paywall";
-    }
-    return "allow";
-  }
-
-  if (status === "expired") return "paywall";
-  if (status === "pending_payment") return "paywall";
-
-  if (row.trial_end) {
-    if (new Date(row.trial_end) < new Date()) return "paywall";
-    return "allow";
-  }
-
-  if (row.trial_start) {
-    const trialDays = row.trial_days ?? 3;
-    const trialEnd = new Date(row.trial_start);
-    trialEnd.setDate(trialEnd.getDate() + trialDays);
-    if (trialEnd < new Date()) return "paywall";
-    return "allow";
-  }
-
-  return "allow";
+  const { state } = getAccountState(row as AccountStateRow);
+  return stateAllowsAccess(state) ? "allow" : "paywall";
 }
 
 export async function checkTrialExpired(userId: string): Promise<boolean> {
@@ -47,9 +30,9 @@ export async function checkTrialExpired(userId: string): Promise<boolean> {
     const supabaseAdmin = getSupabaseAdmin();
     const { data, error } = await supabaseAdmin
       .from("user_trials")
-      .select("trial_start, trial_end, trial_days, account_status, subscription_ends_at")
+      .select(SELECT_COLS)
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
 
     if (error) {
       if (error.code === "PGRST116" || error.message?.toLowerCase().includes("does not exist")) {
@@ -58,7 +41,7 @@ export async function checkTrialExpired(userId: string): Promise<boolean> {
       return false;
     }
 
-    return evaluateTrialStatus(data as TrialRow) === "paywall";
+    return evaluateTrialStatus(data as TrialRow | null) === "paywall";
   } catch {
     return false;
   }

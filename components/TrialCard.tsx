@@ -1,10 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { AlertTriangle, Clock } from "lucide-react";
+import { AlertTriangle, Clock, CreditCard, ShieldAlert } from "lucide-react";
 import { PricingModal } from "./PricingModal";
+import type { AccountState } from "@/lib/getAccountState";
 
-export type TrialState = "calm" | "warning" | "urgent" | "expired" | "subscriber";
+export type { AccountState };
+
+// Legacy export — superset that still accepts old visual names from older callers.
+// New code should use AccountState directly.
+export type TrialState = AccountState | "calm" | "warning" | "urgent" | "subscriber" | "expired";
 
 export interface TrialCardProps {
   trial: {
@@ -17,56 +22,179 @@ export interface TrialCardProps {
     remaining: { d: number; h: number; m: number; s: number };
     trialDays?: number;
   };
+  /** Canonical state — preferred. If omitted, derived from accountStatus + flags. */
+  accountState?: AccountState;
   accountStatus?: string;
-  /** When true, subscription is set to cancel (show "Access until" not "Renews") */
   subscriptionCanceled?: boolean;
+  paymentFailedAt?: Date | null;
+  previouslyPaid?: boolean;
+  isThirdPartyProvider?: boolean;
   symptomCount?: number;
   patternCount?: number;
 }
 
-// Helper function to determine trial state
-export function getTrialState(
-  expired: boolean,
-  daysLeft: number,
-  remaining: { d: number; h: number; m: number }
-): TrialState {
-  if (expired) return "expired";
-  // Urgent: less than 24 hours (0 days and any hours/minutes remaining)
-  if (remaining.d === 0) return "urgent";
-  // Warning: 1-2 days remaining
-  if (daysLeft >= 1 && daysLeft <= 2) return "warning";
-  // Calm: 3+ days remaining
-  if (daysLeft >= 3) return "calm";
-  return "calm"; // Default to calm
+function formatCountdown(remaining: { d: number; h: number; m: number }): string {
+  if (remaining.d === 0) return `${remaining.h}h ${remaining.m}m remaining`;
+  return `${remaining.d}d ${remaining.h}h ${remaining.m}m`;
 }
 
-// Format countdown text
-export function formatCountdown(
-  state: TrialState,
-  remaining: { d: number; h: number; m: number; s: number },
-  subscriptionCanceled?: boolean
-): string {
-  if (state === "subscriber") {
-    return subscriptionCanceled
-      ? `Access ends in ${remaining.d}d ${remaining.h}h ${remaining.m}m`
-      : `Renews in ${remaining.d}d ${remaining.h}h ${remaining.m}m`;
+type Visuals = {
+  background: string;
+  badgeBg: string;
+  badgeText: string;
+  badgeBorder: string;
+  badgeLabel: string;
+  progressBar: string;
+  buttonStyle: string;
+  title: string;
+};
+
+function visualsFor(state: AccountState, daysLeft: number): Visuals {
+  if (state === "trialing") {
+    if (daysLeft <= 0) {
+      return {
+        background: "from-red-900 via-red-950 to-gray-900",
+        badgeBg: "bg-red-500/30",
+        badgeText: "text-red-300",
+        badgeBorder: "border-red-500/50",
+        badgeLabel: "Trial ends today",
+        progressBar: "from-red-500 to-red-600",
+        buttonStyle: "bg-red-500 hover:bg-red-600 !text-white border border-red-400/50 w-full",
+        title: "Your free trial",
+      };
+    }
+    if (daysLeft <= 2) {
+      return {
+        background: "from-orange-800 to-gray-900",
+        badgeBg: "bg-orange-500/30",
+        badgeText: "text-orange-300",
+        badgeBorder: "border-orange-500/50",
+        badgeLabel: "Last days",
+        progressBar: "from-orange-500 to-amber-500",
+        buttonStyle: "bg-orange-500/80 hover:bg-orange-500 !text-white border border-orange-400/50 w-full",
+        title: "Your free trial",
+      };
+    }
+    return {
+      background: "from-gray-900 via-blue-900 to-pink-900",
+      badgeBg: "bg-green-500/30",
+      badgeText: "text-green-300",
+      badgeBorder: "border-green-500/50",
+      badgeLabel: "Free trial",
+      progressBar: "from-primary via-accent to-secondary",
+      buttonStyle: "bg-white/10 hover:bg-white/20 !text-white border border-white/30 w-full",
+      title: "Your free trial",
+    };
   }
-  if (state === "urgent") {
-    return `${remaining.h}h ${remaining.m}m remaining`;
+
+  if (state === "active") {
+    return {
+      background: "from-gray-900 via-blue-900 to-pink-900",
+      badgeBg: "bg-green-500/30",
+      badgeText: "text-green-300",
+      badgeBorder: "border-green-500/50",
+      badgeLabel: "Subscriber",
+      progressBar: "from-primary via-accent to-secondary",
+      buttonStyle: "bg-white/10 hover:bg-white/20 !text-white border border-white/30 w-full",
+      title: "Your plan",
+    };
   }
-  return `Ends in ${remaining.d}d ${remaining.h}h ${remaining.m}m`;
+
+  if (state === "canceling") {
+    return {
+      background: "from-amber-900 via-gray-900 to-gray-900",
+      badgeBg: "bg-amber-500/30",
+      badgeText: "text-amber-200",
+      badgeBorder: "border-amber-500/50",
+      badgeLabel: "Canceling",
+      progressBar: "from-amber-500 to-orange-500",
+      buttonStyle: "bg-white/10 hover:bg-white/20 !text-white border border-white/30 w-full",
+      title: "Your plan",
+    };
+  }
+
+  if (state === "past_due") {
+    return {
+      background: "from-red-900 via-gray-900 to-gray-900",
+      badgeBg: "bg-red-500/30",
+      badgeText: "text-red-200",
+      badgeBorder: "border-red-500/50",
+      badgeLabel: "Payment failed",
+      progressBar: "from-red-500 to-red-600",
+      buttonStyle: "bg-red-500 hover:bg-red-600 !text-white border border-red-400/50 w-full",
+      title: "Update payment",
+    };
+  }
+
+  if (state === "disputed") {
+    return {
+      background: "from-gray-950 to-gray-900",
+      badgeBg: "bg-red-500/30",
+      badgeText: "text-red-300",
+      badgeBorder: "border-red-500/50",
+      badgeLabel: "Under review",
+      progressBar: "from-red-600 to-red-700",
+      buttonStyle: "bg-white/10 hover:bg-white/20 !text-white border border-white/30 w-full",
+      title: "Account under review",
+    };
+  }
+
+  // ended
+  return {
+    background: "from-red-950 via-red-900 to-red-950",
+    badgeBg: "bg-red-500/30",
+    badgeText: "text-red-300",
+    badgeBorder: "border-red-500/50",
+    badgeLabel: "Ended",
+    progressBar: "from-red-600 to-red-700",
+    buttonStyle: "bg-red-600 hover:bg-red-700 !text-white border border-red-500/50 w-full",
+    title: "Subscription ended",
+  };
 }
 
-export function TrialCard({ trial, accountStatus, subscriptionCanceled = false, symptomCount = 0, patternCount = 0 }: TrialCardProps) {
+function deriveState(
+  accountStatus: string | undefined,
+  trialExpired: boolean,
+  subscriptionCanceled: boolean,
+  paymentFailedAt: Date | null
+): AccountState {
+  if (accountStatus === "paid") {
+    if (paymentFailedAt) return "past_due";
+    if (subscriptionCanceled) return "canceling";
+    if (trialExpired) return "ended"; // shouldn't happen, fail-safe
+    return "active";
+  }
+  if (trialExpired || accountStatus === "expired" || accountStatus === "pending_payment") {
+    return "ended";
+  }
+  // No explicit state — default safe.
+  return "ended";
+}
+
+export function TrialCard({
+  trial,
+  accountState,
+  accountStatus,
+  subscriptionCanceled = false,
+  paymentFailedAt = null,
+  previouslyPaid,
+  isThirdPartyProvider = false,
+  symptomCount = 0,
+  patternCount = 0,
+}: TrialCardProps) {
   const [now, setNow] = useState(new Date());
   const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
   const [isPortalLoading, setIsPortalLoading] = useState(false);
   const [referralDiscountEligible, setReferralDiscountEligible] = useState(false);
 
-  const isSubscriber = accountStatus === "paid";
+  const state: AccountState =
+    accountState ??
+    deriveState(accountStatus, trial.expired, subscriptionCanceled, paymentFailedAt);
 
+  // Only fetch referral eligibility when an upgrade CTA may be shown.
+  const showsUpgradeCta = state === "trialing" || state === "ended" || state === "canceling";
   useEffect(() => {
-    if (isSubscriber) return;
+    if (!showsUpgradeCta) return;
     let cancelled = false;
     fetch("/api/referral/discount-eligible", { credentials: "include" })
       .then((res) => (res.ok ? res.json() : { eligible: false }))
@@ -74,119 +202,67 @@ export function TrialCard({ trial, accountStatus, subscriptionCanceled = false, 
         if (!cancelled && data?.eligible) setReferralDiscountEligible(true);
       })
       .catch(() => {});
-    return () => { cancelled = true; };
-  }, [isSubscriber]);
+    return () => {
+      cancelled = true;
+    };
+  }, [showsUpgradeCta]);
 
-  // Live countdown for urgent state (updates every minute)
+  // Live countdown only when < 24h remain.
   useEffect(() => {
-    const state = isSubscriber ? "subscriber" : getTrialState(trial.expired, trial.daysLeft, trial.remaining);
-    if (state === "urgent" && !trial.expired) {
-      const interval = setInterval(() => {
-        setNow(new Date());
-      }, 60000); // Update every minute
+    if (trial.remaining.d === 0 && !trial.expired) {
+      const interval = setInterval(() => setNow(new Date()), 60_000);
       return () => clearInterval(interval);
     }
-  }, [isSubscriber, trial.expired, trial.daysLeft, trial.remaining]);
+  }, [trial.remaining.d, trial.expired]);
 
-  // Recalculate remaining time for urgent state
-  const currentRemaining = trial.expired
-    ? trial.remaining
-    : trial.end
-    ? (() => {
-        const remainingMs = Math.max(0, trial.end.getTime() - now.getTime());
-        return {
-          d: Math.floor(remainingMs / 86400000),
-          h: Math.floor((remainingMs % 86400000) / 3600000),
-          m: Math.floor((remainingMs % 3600000) / 60000),
-          s: Math.floor((remainingMs % 60000) / 1000),
-        };
-      })()
-    : trial.remaining;
+  const currentRemaining = (() => {
+    if (!trial.end) return trial.remaining;
+    const remainingMs = Math.max(0, trial.end.getTime() - now.getTime());
+    return {
+      d: Math.floor(remainingMs / 86_400_000),
+      h: Math.floor((remainingMs % 86_400_000) / 3_600_000),
+      m: Math.floor((remainingMs % 3_600_000) / 60_000),
+      s: Math.floor((remainingMs % 60_000) / 1000),
+    };
+  })();
 
-  const state = isSubscriber ? "subscriber" : getTrialState(trial.expired, trial.daysLeft, currentRemaining);
-  const countdownText = formatCountdown(state, currentRemaining, subscriptionCanceled);
+  const styles = visualsFor(state, trial.daysLeft);
+  const countdownText = formatCountdown(currentRemaining);
 
-  // Get state-specific styling
-  const getStateStyles = () => {
-    switch (state) {
-      case "subscriber":
-        return {
-          background: "from-gray-900 via-blue-900 to-pink-900",
-          badgeBg: "bg-green-500/30",
-          badgeText: "text-green-300",
-          badgeBorder: "border-green-500/50",
-          badgeLabel: "Subscriber",
-          progressBar: "from-primary via-accent to-secondary",
-          buttonStyle: "bg-white/10 hover:bg-white/20 !text-white border border-white/30 w-full",
-          title: "Your plan",
-        };
-      case "calm":
-        return {
-          background: "from-gray-900 via-blue-900 to-pink-900",
-          badgeBg: "bg-green-500/30",
-          badgeText: "text-green-300",
-          badgeBorder: "border-green-500/50",
-          badgeLabel: "Active",
-          progressBar: "from-primary via-accent to-secondary",
-          buttonStyle: "bg-white/10 hover:bg-white/20 !text-white border border-white/30 w-full",
-          title: "Your Trial",
-        };
-      case "warning":
-        return {
-          background: "from-orange-800 to-gray-900",
-          badgeBg: "bg-orange-500/30",
-          badgeText: "text-orange-300",
-          badgeBorder: "border-orange-500/50",
-          badgeLabel: "Last day",
-          progressBar: "from-orange-500 to-amber-500",
-          buttonStyle: "bg-orange-500/80 hover:bg-orange-500 !text-white border border-orange-400/50 w-full",
-          title: "Your Trial",
-        };
-      case "urgent":
-        return {
-          background: "from-red-900 via-red-950 to-gray-900",
-          badgeBg: "bg-red-500/30",
-          badgeText: "text-red-300",
-          badgeBorder: "border-red-500/50",
-          badgeLabel: "Ends today",
-          progressBar: "from-red-500 to-red-600",
-          buttonStyle: "bg-red-500 hover:bg-red-600 !text-white border border-red-400/50 w-full",
-          title: "Trial Ending Soon",
-        };
-      case "expired":
-        return {
-          background: "from-red-950 via-red-900 to-red-950",
-          badgeBg: "bg-red-500/30",
-          badgeText: "text-red-300",
-          badgeBorder: "border-red-500/50",
-          badgeLabel: "Expired",
-          progressBar: "from-red-600 to-red-700",
-          buttonStyle: "bg-red-600 hover:bg-red-700 !text-white border border-red-500/50 w-full",
-          title: "Trial Ended",
-        };
-    }
-  };
-
-  const styles = getStateStyles();
-
-  // Get CTA button text based on state (plan-agnostic so users choose monthly/annual in the modal)
   const getCTAText = () => {
     switch (state) {
-      case "subscriber":
-        return isPortalLoading ? "Opening…" : "Manage subscription";
-      case "calm":
-        return referralDiscountEligible ? "You have 50% off — Choose your plan" : "Choose your plan";
-      case "warning":
-        return referralDiscountEligible ? "50% off — Keep your progress" : "Keep your progress — Choose plan";
-      case "urgent":
-        return referralDiscountEligible ? "50% off — Save your progress" : "Save your progress";
-      case "expired":
-        return referralDiscountEligible ? "50% off — Unlock your patterns" : "Unlock your patterns";
+      case "active":
+        return isPortalLoading ? "Opening…" : isThirdPartyProvider ? "Manage in store" : "Manage subscription";
+      case "canceling":
+        return isPortalLoading ? "Opening…" : "Resume subscription";
+      case "past_due":
+        return isPortalLoading ? "Opening…" : "Update payment";
+      case "trialing":
+        if (trial.daysLeft <= 0) return referralDiscountEligible ? "50% off — Continue" : "Choose your plan";
+        if (trial.daysLeft <= 2) return referralDiscountEligible ? "50% off — Keep your progress" : "Choose your plan";
+        return referralDiscountEligible ? "50% off — Choose your plan" : "Choose your plan";
+      case "ended":
+        return referralDiscountEligible
+          ? "50% off — Resubscribe"
+          : previouslyPaid
+            ? "Resubscribe"
+            : "Choose your plan";
+      case "disputed":
+        return "Contact support";
     }
   };
 
   const handleCTAClick = async () => {
-    if (state === "subscriber") {
+    if (state === "disputed") {
+      window.location.href = "mailto:support@menolisa.com?subject=Account%20under%20review";
+      return;
+    }
+    if (state === "active" || state === "canceling" || state === "past_due") {
+      if (isThirdPartyProvider) {
+        // Apple/Google: deep-link to their store; no Stripe portal.
+        window.location.href = "https://apps.apple.com/account/subscriptions";
+        return;
+      }
       setIsPortalLoading(true);
       try {
         const res = await fetch("/api/stripe/create-portal", { method: "POST" });
@@ -195,17 +271,87 @@ export function TrialCard({ trial, accountStatus, subscriptionCanceled = false, 
           window.location.href = data.url;
           return;
         }
-        // Fallback if no portal (e.g. no stripe_customer_id)
         setIsPricingModalOpen(true);
       } catch {
         setIsPricingModalOpen(true);
       } finally {
         setIsPortalLoading(false);
       }
-    } else {
-      setIsPricingModalOpen(true);
+      return;
     }
+    setIsPricingModalOpen(true);
   };
+
+  // Header body content per state.
+  const headerBody = (() => {
+    if (state === "active" || state === "canceling") {
+      return (
+        <p className="text-sm text-white/80">
+          {trial.end
+            ? state === "canceling"
+              ? `Access until ${trial.end.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`
+              : `Renews ${trial.end.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`
+            : "Your subscription is active"}
+        </p>
+      );
+    }
+    if (state === "past_due") {
+      return (
+        <div className="flex items-start gap-2 text-sm text-red-100 mt-2">
+          <CreditCard className="h-4 w-4 mt-0.5 shrink-0" />
+          <span>We couldn&apos;t charge your card. Update payment to keep access.</span>
+        </div>
+      );
+    }
+    if (state === "disputed") {
+      return (
+        <div className="flex items-start gap-2 text-sm text-red-100 mt-2">
+          <ShieldAlert className="h-4 w-4 mt-0.5 shrink-0" />
+          <span>Your account is under review. Contact support to resolve.</span>
+        </div>
+      );
+    }
+    if (state === "ended") {
+      return (
+        <p className="text-sm text-white/80">
+          {previouslyPaid
+            ? "Your subscription is no longer active."
+            : "Your access has ended."}
+        </p>
+      );
+    }
+    // trialing
+    if (trial.daysLeft <= 0) {
+      return (
+        <ul className="text-sm text-white/90 mt-3 space-y-1.5 list-disc list-inside">
+          <li>Your logged symptoms will be locked</li>
+          <li>Lisa&apos;s patterns will be hidden</li>
+          <li>You&apos;ll lose access to insights</li>
+        </ul>
+      );
+    }
+    if (trial.daysLeft <= 2) {
+      return (
+        <div className="flex items-center gap-2 text-sm text-amber-300 mt-2">
+          <AlertTriangle className="h-4 w-4" />
+          <span>Your patterns will be locked when the trial ends</span>
+        </div>
+      );
+    }
+    return (
+      <p className="text-sm text-white/80">
+        {trial.start && (
+          <>
+            Started {trial.start.toLocaleDateString()} · Ends{" "}
+            {trial.end?.toLocaleDateString()}
+          </>
+        )}
+      </p>
+    );
+  })();
+
+  const showCountdownBlock =
+    state === "trialing" || state === "active" || state === "canceling" || state === "past_due";
 
   return (
     <>
@@ -218,39 +364,7 @@ export function TrialCard({ trial, accountStatus, subscriptionCanceled = false, 
               <h2 className="text-2xl lg:text-3xl font-extrabold text-white! mb-2">
                 {styles.title}
               </h2>
-              {state === "subscriber" ? (
-                <p className="text-sm text-white/80">
-                  {trial.end
-                    ? subscriptionCanceled
-                      ? `Access until ${trial.end.toLocaleDateString(undefined, { month: "numeric", day: "numeric", year: "numeric" })}`
-                      : `Active until ${trial.end.toLocaleDateString(undefined, { month: "numeric", day: "numeric", year: "numeric" })}`
-                    : "Your subscription is active"}
-                </p>
-              ) : state === "expired" ? (
-                <p className="text-sm text-white/80">
-                  Your data is saved for 30 days
-                </p>
-              ) : state === "warning" ? (
-                <div className="flex items-center gap-2 text-sm text-amber-300 mt-2">
-                  <AlertTriangle className="h-4 w-4" />
-                  <span>Your patterns and data will be locked tomorrow</span>
-                </div>
-              ) : state === "urgent" ? (
-                <ul className="text-sm text-white/90 mt-3 space-y-1.5 list-disc list-inside">
-                  <li>Your logged symptoms will be locked</li>
-                  <li>Lisa&apos;s patterns will be hidden</li>
-                  <li>You&apos;ll lose access to insights</li>
-                </ul>
-              ) : state === "calm" ? (
-                <p className="text-sm text-white/80">
-                  {trial.start && (
-                    <>
-                      Started {trial.start.toLocaleDateString()} · Ends{" "}
-                      {trial.end?.toLocaleDateString()}
-                    </>
-                  )}
-                </p>
-              ) : null}
+              {headerBody}
             </div>
             <div
               className={`rounded-full px-3 py-1.5 text-xs font-semibold shrink-0 ml-2 ${styles.badgeBg} ${styles.badgeText} ${styles.badgeBorder} border`}
@@ -259,19 +373,19 @@ export function TrialCard({ trial, accountStatus, subscriptionCanceled = false, 
             </div>
           </div>
 
-          {state === "expired" && patternCount > 0 && (
+          {state === "ended" && patternCount > 0 && (
             <div className="mb-4 p-3 rounded-lg bg-white/10 border border-white/20">
               <p className="text-sm text-white/90">
                 Lisa found {patternCount} {patternCount === 1 ? "pattern" : "patterns"} in your
-                symptoms. Upgrade to see what she discovered.
+                symptoms. Resubscribe to see what she discovered.
               </p>
             </div>
           )}
 
-          {!trial.expired && (
+          {showCountdownBlock && (
             <div className="mb-6">
               <div className="flex items-baseline gap-2 mb-3">
-                {state === "urgent" ? (
+                {trial.daysLeft <= 0 && state === "trialing" ? (
                   <span className="text-4xl lg:text-5xl font-extrabold text-white tracking-tight">
                     {currentRemaining.h}h {currentRemaining.m}m
                   </span>
@@ -281,41 +395,37 @@ export function TrialCard({ trial, accountStatus, subscriptionCanceled = false, 
                       {trial.daysLeft}
                     </span>
                     <span className="text-lg text-white/80">
-                      {state === "subscriber"
-                        ? subscriptionCanceled
+                      {state === "trialing"
+                        ? "days left"
+                        : state === "canceling"
                           ? "days of access left"
-                          : "days until renewal"
-                        : "days left"}
+                          : state === "past_due"
+                            ? "days to update card"
+                            : "days until renewal"}
                     </span>
                   </>
                 )}
               </div>
-              <div className="h-3 w-full overflow-hidden rounded-full bg-white/10">
-                <div
-                  className={`h-full transition-[width] duration-500 bg-linear-to-r ${styles.progressBar}`}
-                  style={{
-                    width: `${Math.max(0, Math.min(100, trial.progressPct))}%`,
-                  }}
-                />
-              </div>
-              <div className="mt-2 flex items-center justify-between text-xs text-white/70">
-                {state === "subscriber" ? (
-                  <span>
-                    {subscriptionCanceled ? "Access until" : "Renews"}{" "}
-                    {trial.end?.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
-                  </span>
-                ) : (
-                  <span>
-                    {Math.min(trial.trialDays || 3, trial.elapsedDays)} / {trial.trialDays || 3}{" "}
-                    days used
-                  </span>
-                )}
-                <span>{trial.progressPct.toFixed(0)}%</span>
-              </div>
+              {state === "trialing" && (
+                <>
+                  <div className="h-3 w-full overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className={`h-full transition-[width] duration-500 bg-linear-to-r ${styles.progressBar}`}
+                      style={{ width: `${Math.max(0, Math.min(100, trial.progressPct))}%` }}
+                    />
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-xs text-white/70">
+                    <span>
+                      {Math.min(trial.trialDays || 3, trial.elapsedDays)} / {trial.trialDays || 3} days used
+                    </span>
+                    <span>{trial.progressPct.toFixed(0)}%</span>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
-          {!trial.expired && (
+          {showCountdownBlock && (
             <div className="text-sm text-white/80 mb-4">
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4" />
@@ -324,18 +434,21 @@ export function TrialCard({ trial, accountStatus, subscriptionCanceled = false, 
             </div>
           )}
 
-          {state === "expired" && (
+          {state === "ended" && (
             <div className="mb-4">
               <p className="text-sm text-white/70">
-                Your data is saved for 30 days. Upgrade to unlock everything and see what Lisa
-                found.
+                {previouslyPaid
+                  ? "Resubscribe to unlock Lisa and pick up where you left off."
+                  : "Pick a plan to unlock Lisa and see what she found in your data."}
               </p>
             </div>
           )}
 
           <button
             onClick={handleCTAClick}
-            disabled={state === "subscriber" && isPortalLoading}
+            disabled={
+              (state === "active" || state === "canceling" || state === "past_due") && isPortalLoading
+            }
             className={`px-6 py-3 rounded-lg font-semibold text-sm transition-all duration-200 ${styles.buttonStyle}`}
           >
             {getCTAText()}
@@ -346,12 +459,14 @@ export function TrialCard({ trial, accountStatus, subscriptionCanceled = false, 
       <PricingModal
         isOpen={isPricingModalOpen}
         onClose={() => setIsPricingModalOpen(false)}
-        trialState={state}
-        timeRemaining={state === "urgent" ? countdownText : undefined}
+        accountState={state}
+        previouslyPaid={previouslyPaid ?? (state === "ended" && !!accountStatus && accountStatus !== "pending_payment")}
+        timeRemaining={
+          state === "trialing" && trial.daysLeft <= 0 ? countdownText : undefined
+        }
         symptomCount={symptomCount}
         patternCount={patternCount}
       />
     </>
   );
 }
-

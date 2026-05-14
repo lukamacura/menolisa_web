@@ -1,5 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "./supabaseClient";
+import {
+  getAccountState,
+  type AccountState,
+  type AccountStateRow,
+} from "./getAccountState";
 
 const MS = {
   SECOND: 1000,
@@ -9,6 +14,9 @@ const MS = {
 };
 
 export type TrialStatus = {
+  /** Canonical state — branch UI on this, not on `accountStatus`. */
+  state: AccountState;
+  /** True iff the user has no access (state === ended | disputed). */
   expired: boolean;
   start: Date | null;
   end: Date | null;
@@ -22,159 +30,63 @@ export type TrialStatus = {
   subscriptionCanceled: boolean;
   /** Set when Stripe's last renewal attempt failed. Null once the customer updates their card. */
   paymentFailedAt: Date | null;
+  /** True when the user has ever had a paid Stripe sub — switches "trial ended" vs "subscription ended" copy. */
+  previouslyPaid: boolean;
+  /** True for Apple/Google IAP. Web should not show "Manage subscription" (Stripe portal). */
+  isThirdPartyProvider: boolean;
   loading: boolean;
   error: string | null;
 };
 
+const SELECT_COLS =
+  "trial_start, trial_end, trial_days, account_status, subscription_ends_at, subscription_canceled, payment_failed_at, dispute_flagged_at, stripe_subscription_id, provider";
+
 export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> } {
   const [trialStatus, setTrialStatus] = useState<TrialStatus>({
-    expired: false,
+    state: "ended",
+    expired: true,
     start: null,
     end: null,
-    daysLeft: 3,
+    daysLeft: 0,
     elapsedDays: 0,
     progressPct: 0,
-    remaining: { d: 3, h: 0, m: 0, s: 0 },
-    accountStatus: "trial",
+    remaining: { d: 0, h: 0, m: 0, s: 0 },
+    accountStatus: "pending_payment",
     subscriptionCanceled: false,
     paymentFailedAt: null,
+    previouslyPaid: false,
+    isThirdPartyProvider: false,
     loading: true,
     error: null,
   });
   const [now, setNow] = useState<Date>(new Date());
 
-  // Ticker for live countdown — 1s precision only when < 1 day remaining, else 1 min
   useEffect(() => {
-    const interval =
-      trialStatus.remaining.d === 0 ? MS.SECOND : MS.MINUTE;
+    const interval = trialStatus.remaining.d === 0 ? MS.SECOND : MS.MINUTE;
     const id = setInterval(() => setNow(new Date()), interval);
     return () => clearInterval(id);
   }, [trialStatus.remaining.d]);
 
-  const fetchUserTrial = useCallback(async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from("user_trials")
-        .select("trial_start, trial_end, trial_days, account_status, subscription_ends_at, subscription_canceled, payment_failed_at")
-        .eq("user_id", userId)
-        .single();
-
-      if (error) {
-        // Check if table doesn't exist
-        const errorMsg = error.message?.toLowerCase() || "";
-        const isTableMissing = errorMsg.includes("does not exist") || 
-                               errorMsg.includes("relation") ||
-                               error.code === "42P01";
-        
-        if (isTableMissing) {
-          // Table doesn't exist yet - return defaults silently
-          return {
-            trial_start: new Date().toISOString(),
-            trial_end: null,
-            trial_days: 3,
-            account_status: "trial",
-          };
-        }
-        
-        // If row doesn't exist (PGRST116), try to create it
-        if (error.code === "PGRST116") {
-          const nowIso = new Date().toISOString();
-          const { data: newTrial, error: insertError } = await supabase
-            .from("user_trials")
-            .insert([
-              {
-                user_id: userId,
-                trial_start: nowIso,
-                trial_days: 3,
-                account_status: "trial",
-              },
-            ])
-            .select("trial_start, trial_end, trial_days, account_status")
-            .single();
-
-          if (insertError) {
-            // If insert fails, return defaults
-            return {
-              trial_start: nowIso,
-              trial_end: null,
-              trial_days: 3,
-              account_status: "trial",
-            };
-          }
-          return newTrial;
-        }
-        
-        // Any other error - return defaults silently
-        return {
-          trial_start: new Date().toISOString(),
-          trial_end: null,
-          trial_days: 3,
-          account_status: "trial",
-        };
-      }
-
-      // If trial_start is null, initialize it
-      if (!data.trial_start) {
-        const nowIso = new Date().toISOString();
-        const { data: updated, error: updateError } = await supabase
+  const fetchUserTrial = useCallback(
+    async (userId: string): Promise<AccountStateRow | null> => {
+      try {
+        const { data, error } = await supabase
           .from("user_trials")
-          .update({
-            trial_start: nowIso,
-            trial_days: data.trial_days || 3,
-            account_status: "trial",
-          })
+          .select(SELECT_COLS)
           .eq("user_id", userId)
-          .select("trial_start, trial_end, trial_days, account_status")
-          .single();
+          .maybeSingle();
 
-        if (updateError) {
-          return {
-            trial_start: nowIso,
-            trial_end: null,
-            trial_days: data.trial_days || 3,
-            account_status: "trial",
-          };
-        }
-        return updated;
+        if (error) return null;
+        return (data as AccountStateRow | null) ?? null;
+      } catch {
+        return null;
       }
+    },
+    []
+  );
 
-      return data;
-    } catch {
-      // Silently return defaults on any error
-      return {
-        trial_start: new Date().toISOString(),
-        trial_end: null,
-        trial_days: 3,
-        account_status: "trial",
-      };
-    }
-  }, []);
-
-  // Store the raw trial data separately from calculated values
-  const [trialData, setTrialData] = useState<{
-    trialDays: number;
-    start: Date | null;
-    end: Date | null;
-    accountStatus: string;
-    subscriptionEndsAt: Date | null;
-    subscriptionCanceled: boolean;
-    paymentFailedAt: Date | null;
-  } | null>(null);
-
-  const notAuthenticatedState: TrialStatus = {
-    expired: false,
-    start: null,
-    end: null,
-    daysLeft: 3,
-    elapsedDays: 0,
-    progressPct: 0,
-    remaining: { d: 3, h: 0, m: 0, s: 0 },
-    accountStatus: "trial",
-    subscriptionCanceled: false,
-    paymentFailedAt: null,
-    loading: false,
-    error: "User not authenticated",
-  };
+  const [trialData, setTrialData] = useState<AccountStateRow | null>(null);
+  const [didSync, setDidSync] = useState(false);
 
   const loadTrial = useCallback(async () => {
     setTrialStatus((prev) => ({ ...prev, loading: true, error: null }));
@@ -184,38 +96,30 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
 
       const userId = data.user?.id;
       if (!userId) {
-        setTrialStatus(notAuthenticatedState);
+        setTrialData(null);
+        setTrialStatus((prev) => ({
+          ...prev,
+          loading: false,
+          error: "User not authenticated",
+        }));
         return;
       }
 
-      let userTrial = await fetchUserTrial(userId);
-      // Sync subscription from Stripe for paid users so "Access until" is correct even if webhook missed
-      if (userTrial.account_status === "paid") {
+      let row = await fetchUserTrial(userId);
+      // One-shot Stripe sync for paid rows so endsAt is fresh after a missed webhook.
+      if (!didSync && row?.account_status === "paid") {
         try {
-          await fetch("/api/stripe/sync-subscription", { method: "POST", credentials: "include" });
-          userTrial = await fetchUserTrial(userId);
+          await fetch("/api/stripe/sync-subscription", {
+            method: "POST",
+            credentials: "include",
+          });
+          row = await fetchUserTrial(userId);
         } catch {
-          // ignore sync errors; use existing data
+          // ignore — fall through with stale row
         }
+        setDidSync(true);
       }
-      const trialDays = userTrial.trial_days || 3;
-      const start = userTrial.trial_start ? new Date(userTrial.trial_start) : null;
-      const end = userTrial.trial_end ? new Date(userTrial.trial_end) : null;
-      const subEnd = (userTrial as { subscription_ends_at?: string | null }).subscription_ends_at;
-      const subscriptionEndsAt = subEnd ? new Date(subEnd) : null;
-      const subscriptionCanceled = !!(userTrial as { subscription_canceled?: boolean }).subscription_canceled;
-      const paymentFailedAtRaw = (userTrial as { payment_failed_at?: string | null }).payment_failed_at;
-      const paymentFailedAt = paymentFailedAtRaw ? new Date(paymentFailedAtRaw) : null;
-
-      setTrialData({
-        trialDays,
-        start,
-        end,
-        accountStatus: userTrial.account_status || "trial",
-        subscriptionEndsAt,
-        subscriptionCanceled,
-        paymentFailedAt,
-      });
+      setTrialData(row);
       setTrialStatus((prev) => ({ ...prev, loading: false }));
     } catch (e) {
       setTrialStatus((prev) => ({
@@ -224,96 +128,57 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
         error: e instanceof Error ? e.message : "Unknown error",
       }));
     }
-  }, [fetchUserTrial]);
+  }, [fetchUserTrial, didSync]);
 
-  // Fetch trial data on mount
   useEffect(() => {
     loadTrial();
-  }, [loadTrial]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Update calculations based on current time (runs every second but doesn't re-fetch)
+  // Recompute derived values whenever data or `now` change.
   useEffect(() => {
-    if (!trialData || trialStatus.loading) return;
+    if (trialStatus.loading) return;
 
-    const { trialDays, start, end, accountStatus, subscriptionEndsAt, subscriptionCanceled, paymentFailedAt } = trialData;
+    const account = getAccountState(trialData, now);
+    const trialDays = trialData?.trial_days ?? 3;
+    const start = trialData?.trial_start ? new Date(trialData.trial_start) : null;
+    const subscriptionCanceled = !!trialData?.subscription_canceled;
+    const paymentFailedAt = trialData?.payment_failed_at
+      ? new Date(trialData.payment_failed_at)
+      : null;
+
+    const endsAt = account.endsAt;
     const nowTs = now.getTime();
-
-    // Paid: expire only when subscription_ends_at is past; show subscription end as "end"
-    if (accountStatus === "paid") {
-      const endTs = subscriptionEndsAt ? subscriptionEndsAt.getTime() : nowTs + 365 * MS.DAY;
-      const remainingMs = Math.max(0, endTs - nowTs);
-      const expired = subscriptionEndsAt ? subscriptionEndsAt.getTime() < nowTs : false;
-      const daysLeft = Math.max(0, Math.ceil(remainingMs / MS.DAY));
-      const d = Math.floor(remainingMs / MS.DAY);
-      const h = Math.floor((remainingMs % MS.DAY) / MS.HOUR);
-      const m = Math.floor((remainingMs % MS.HOUR) / MS.MINUTE);
-      const s = Math.floor((remainingMs % MS.MINUTE) / MS.SECOND);
-      setTrialStatus({
-        expired,
-        start: start ?? new Date(nowTs - MS.DAY),
-        end: subscriptionEndsAt ?? new Date(endTs),
-        daysLeft,
-        elapsedDays: 0,
-        progressPct: 0,
-        remaining: { d, h, m, s },
-        trialDays,
-        accountStatus: "paid",
-        subscriptionCanceled,
-        paymentFailedAt,
-        loading: false,
-        error: null,
-      });
-      return;
-    }
-
-    if (!start) {
-      setTrialStatus({
-        expired: false,
-        start: null,
-        end: null,
-        daysLeft: trialDays,
-        elapsedDays: 0,
-        progressPct: 0,
-        remaining: { d: trialDays, h: 0, m: 0, s: 0 },
-        trialDays,
-        accountStatus: accountStatus ?? "trial",
-        subscriptionCanceled: false,
-        paymentFailedAt,
-        loading: false,
-        error: null,
-      });
-      return;
-    }
-
-    const endTs = end ? end.getTime() : start.getTime() + trialDays * MS.DAY;
-    const startTs = start.getTime();
-    const remainingMs = Math.max(0, endTs - nowTs);
-    const expired: boolean =
-      accountStatus === "expired" ||
-      remainingMs === 0 ||
-      (end !== null && end.getTime() < nowTs);
-
-    const elapsedDays = Math.floor((nowTs - startTs) / MS.DAY);
-    const daysLeft = Math.max(0, Math.ceil(remainingMs / MS.DAY));
-    const progressPct = Math.min(100, (elapsedDays / trialDays) * 100);
-
+    const remainingMs = endsAt ? Math.max(0, endsAt.getTime() - nowTs) : 0;
     const d = Math.floor(remainingMs / MS.DAY);
     const h = Math.floor((remainingMs % MS.DAY) / MS.HOUR);
     const m = Math.floor((remainingMs % MS.HOUR) / MS.MINUTE);
     const s = Math.floor((remainingMs % MS.MINUTE) / MS.SECOND);
+    const daysLeft = Math.max(0, Math.ceil(remainingMs / MS.DAY));
+
+    // Progress only meaningful during trialing — based on trial_start + trial_days.
+    let elapsedDays = 0;
+    let progressPct = 0;
+    if (account.state === "trialing" && start) {
+      elapsedDays = Math.floor((nowTs - start.getTime()) / MS.DAY);
+      progressPct = Math.min(100, Math.max(0, (elapsedDays / trialDays) * 100));
+    }
 
     setTrialStatus({
-      expired,
+      state: account.state,
+      expired: !account.hasAccess,
       start,
-      end: new Date(endTs),
+      end: endsAt,
       daysLeft,
       elapsedDays,
       progressPct,
       remaining: { d, h, m, s },
       trialDays,
-      accountStatus: accountStatus ?? "trial",
-      subscriptionCanceled: false,
+      accountStatus: trialData?.account_status ?? "pending_payment",
+      subscriptionCanceled,
       paymentFailedAt,
+      previouslyPaid: account.previouslyPaid,
+      isThirdPartyProvider: account.isThirdPartyProvider,
       loading: false,
       error: null,
     });
@@ -323,4 +188,3 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
 }
 
 export type UseTrialStatusReturn = TrialStatus & { refetch: () => Promise<void> };
-

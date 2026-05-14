@@ -32,6 +32,12 @@ function subscriptionPeriodEndIso(subscription: Stripe.Subscription): string | n
   return endTs ? new Date(endTs * 1000).toISOString() : null;
 }
 
+function subscriptionTrialEndIso(subscription: Stripe.Subscription): string | null {
+  const trialEnd = subscription.trial_end;
+  if (!trialEnd) return null;
+  return new Date(trialEnd * 1000).toISOString();
+}
+
 /**
  * Resolve a user_id either from the stored row (preferred) or from the Stripe object metadata.
  * Returns null when the subscription isn't linked to any known user yet.
@@ -104,6 +110,7 @@ async function handleCheckoutSessionCompleted(
   if (await isStaleEvent(supabaseAdmin, userId, eventCreatedSec)) return { ok: true };
 
   let subscription_ends_at: string | null = null;
+  let trial_end: string | null = null;
   let stripe_customer_id: string | null = null;
   let stripe_subscription_id: string | null = null;
   let subscription_canceled = false;
@@ -112,6 +119,7 @@ async function handleCheckoutSessionCompleted(
     try {
       const subscription = await stripe.subscriptions.retrieve(session.subscription);
       subscription_ends_at = subscriptionPeriodEndIso(subscription);
+      trial_end = subscriptionTrialEndIso(subscription);
       subscription_canceled = !!subscription.cancel_at;
       stripe_customer_id = customerIdOf(subscription.customer);
       stripe_subscription_id = subscription.id;
@@ -128,6 +136,7 @@ async function handleCheckoutSessionCompleted(
   };
   if (stripe_customer_id) extras.stripe_customer_id = stripe_customer_id;
   if (stripe_subscription_id) extras.stripe_subscription_id = stripe_subscription_id;
+  if (trial_end !== null) extras.trial_end = trial_end;
 
   try {
     const result = await writeSubscription(supabaseAdmin, {
@@ -178,6 +187,7 @@ async function handleSubscriptionUpsert(
 ): Promise<HandlerResult> {
   const supabaseAdmin = getSupabaseAdmin();
   const subscription_ends_at = subscriptionPeriodEndIso(subscription);
+  const trial_end = subscriptionTrialEndIso(subscription);
   const subscription_canceled = !!subscription.cancel_at;
   const stripe_customer_id = customerIdOf(subscription.customer);
   const metadataUserId = (subscription.metadata?.user_id as string | undefined) ?? null;
@@ -199,6 +209,7 @@ async function handleSubscriptionUpsert(
     subscription_canceled,
     updated_at: new Date().toISOString(),
     last_stripe_event_at: new Date(eventCreatedSec * 1000).toISOString(),
+    trial_end, // null clears the trial flag once Stripe leaves trialing
     ...(subscription_ends_at && { subscription_ends_at }),
     ...(stripe_customer_id && { stripe_customer_id }),
     ...(isActive && { account_status: "paid", payment_failed_at: null }),
@@ -233,6 +244,7 @@ async function handleSubscriptionUpsert(
       extras: {
         stripe_subscription_id: subscription.id,
         last_stripe_event_at: new Date(eventCreatedSec * 1000).toISOString(),
+        trial_end,
         ...(stripe_customer_id && { stripe_customer_id }),
         ...(isActive && { payment_failed_at: null }),
       },
@@ -318,10 +330,12 @@ async function handleInvoicePaymentSucceeded(
 
   // Refresh period end from the subscription object — invoice.lines isn't a reliable source across API versions.
   let subscription_ends_at: string | null = null;
+  let trial_end: string | null = null;
   let subscription_canceled = false;
   try {
     const subscription = await stripe.subscriptions.retrieve(stripe_subscription_id);
     subscription_ends_at = subscriptionPeriodEndIso(subscription);
+    trial_end = subscriptionTrialEndIso(subscription);
     subscription_canceled = !!subscription.cancel_at;
   } catch (err) {
     console.error("Webhook invoice.payment_succeeded: failed to fetch subscription:", err);
@@ -333,6 +347,7 @@ async function handleInvoicePaymentSucceeded(
     stripe_subscription_id,
     subscription_canceled,
     payment_failed_at: null,
+    trial_end, // null clears once user is no longer trialing
     updated_at: new Date().toISOString(),
     last_stripe_event_at: new Date(eventCreatedSec * 1000).toISOString(),
     ...(subscription_ends_at && { subscription_ends_at }),
