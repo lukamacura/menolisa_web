@@ -192,7 +192,7 @@ export function TrialCard({
     deriveState(accountStatus, trial.expired, subscriptionCanceled, paymentFailedAt);
 
   // Only fetch referral eligibility when an upgrade CTA may be shown.
-  const showsUpgradeCta = state === "trialing" || state === "ended" || state === "canceling";
+  const showsUpgradeCta = state === "ended";
   useEffect(() => {
     if (!showsUpgradeCta) return;
     let cancelled = false;
@@ -238,9 +238,11 @@ export function TrialCard({
       case "past_due":
         return isPortalLoading ? "Opening…" : "Update payment";
       case "trialing":
-        if (trial.daysLeft <= 0) return referralDiscountEligible ? "50% off — Continue" : "Choose your plan";
-        if (trial.daysLeft <= 2) return referralDiscountEligible ? "50% off — Keep your progress" : "Choose your plan";
-        return referralDiscountEligible ? "50% off — Choose your plan" : "Choose your plan";
+        return isPortalLoading
+          ? "Opening…"
+          : isThirdPartyProvider
+            ? "Manage in store"
+            : "Manage subscription";
       case "ended":
         return referralDiscountEligible
           ? "50% off — Resubscribe"
@@ -257,7 +259,7 @@ export function TrialCard({
       window.location.href = "mailto:support@menolisa.com?subject=Account%20under%20review";
       return;
     }
-    if (state === "active" || state === "canceling" || state === "past_due") {
+    if (state === "active" || state === "canceling" || state === "past_due" || state === "trialing") {
       if (isThirdPartyProvider) {
         // Apple/Google: deep-link to their store; no Stripe portal.
         window.location.href = "https://apps.apple.com/account/subscriptions";
@@ -320,32 +322,28 @@ export function TrialCard({
         </p>
       );
     }
-    // trialing
-    if (trial.daysLeft <= 0) {
-      return (
-        <ul className="text-sm text-white/90 mt-3 space-y-1.5 list-disc list-inside">
-          <li>Your logged symptoms will be locked</li>
-          <li>Lisa&apos;s patterns will be hidden</li>
-          <li>You&apos;ll lose access to insights</li>
-        </ul>
-      );
-    }
+    // trialing — card on file, sub already active
+    const billingDate = trial.end
+      ? trial.end.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+      : null;
     if (trial.daysLeft <= 2) {
       return (
-        <div className="flex items-center gap-2 text-sm text-amber-300 mt-2">
-          <AlertTriangle className="h-4 w-4" />
-          <span>Your patterns will be locked when the trial ends</span>
+        <div className="space-y-2 mt-2">
+          {billingDate && (
+            <p className="text-sm text-white/80">First charge on {billingDate}</p>
+          )}
+          <div className="flex items-center gap-2 text-sm text-amber-300">
+            <AlertTriangle className="h-4 w-4" />
+            <span>Your card will be charged soon — cancel anytime below</span>
+          </div>
         </div>
       );
     }
     return (
       <p className="text-sm text-white/80">
-        {trial.start && (
-          <>
-            Started {trial.start.toLocaleDateString()} · Ends{" "}
-            {trial.end?.toLocaleDateString()}
-          </>
-        )}
+        {billingDate
+          ? <>Free until {billingDate}. Your card will be charged then.</>
+          : "Free trial active"}
       </p>
     );
   })();
@@ -396,7 +394,7 @@ export function TrialCard({
                     </span>
                     <span className="text-lg text-white/80">
                       {state === "trialing"
-                        ? "days left"
+                        ? "days until first charge"
                         : state === "canceling"
                           ? "days of access left"
                           : state === "past_due"
