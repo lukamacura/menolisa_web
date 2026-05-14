@@ -85,7 +85,13 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
     []
   );
 
-  const [trialData, setTrialData] = useState<AccountStateRow | null>(null);
+  // `undefined` = not yet fetched (keeps loading=true);
+  // `null` = fetched, no row; object = fetched row.
+  // Distinguishing these prevents a render where loading=false but `state` is still
+  // the stale initial "ended" — which causes dashboard layout's gate to redirect to /paywall
+  // before the derived effect below recomputes state. That redirect ping-pongs with /paywall's
+  // own "has_access → /dashboard" redirect, creating an infinite loop.
+  const [trialData, setTrialData] = useState<AccountStateRow | null | undefined>(undefined);
   const [didSync, setDidSync] = useState(false);
 
   const loadTrial = useCallback(async () => {
@@ -119,8 +125,9 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
         }
         setDidSync(true);
       }
+      // Setting trialData triggers the derived effect, which atomically writes
+      // both the computed `state` and `loading: false` in one setTrialStatus call.
       setTrialData(row);
-      setTrialStatus((prev) => ({ ...prev, loading: false }));
     } catch (e) {
       setTrialStatus((prev) => ({
         ...prev,
@@ -137,7 +144,7 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
 
   // Recompute derived values whenever data or `now` change.
   useEffect(() => {
-    if (trialStatus.loading) return;
+    if (trialData === undefined) return;
 
     const account = getAccountState(trialData, now);
     const trialDays = trialData?.trial_days ?? 3;
@@ -182,7 +189,7 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
       loading: false,
       error: null,
     });
-  }, [trialData, now, trialStatus.loading]);
+  }, [trialData, now]);
 
   return { ...trialStatus, refetch: loadTrial };
 }
