@@ -152,12 +152,10 @@ async function handleCheckoutSessionCompleted(
         `Webhook: checkout.session.completed conflict — user ${userId} already has active ${result.existingProvider} sub`
       );
     } else {
-      // Fire-and-forget: send trial welcome + notify admin that trial started.
-      Promise.all([
-        (async () => {
-          const { data: authData } = await supabaseAdmin.auth.admin.getUserById(userId);
-          const email = authData.user?.email;
-          if (!email) return;
+      try {
+        const { data: authData } = await supabaseAdmin.auth.admin.getUserById(userId);
+        const email = authData.user?.email;
+        if (email) {
           const { data: profile } = await supabaseAdmin
             .from("user_profiles")
             .select("name")
@@ -170,8 +168,10 @@ async function handleCheckoutSessionCompleted(
               `<p>New trial: <strong>${email}</strong>${profile?.name ? ` (${profile.name})` : ""}</p><p>Started: ${new Date().toUTCString()}</p>`
             ),
           ]);
-        })(),
-      ]).catch((e) => console.error("Webhook: trial welcome emails failed:", e));
+        }
+      } catch (e) {
+        console.error("Webhook: trial welcome emails failed:", e);
+      }
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to upsert";
@@ -398,11 +398,10 @@ async function handleInvoicePaymentSucceeded(
   // Fire charge confirmation email once, regardless of which DB path succeeds.
   const chargeUserId = ((updated && updated.length > 0 ? updated[0]?.user_id : userId) ?? null) as string | null;
   if (chargeUserId && (invoice.amount_paid ?? 0) > 0) {
-    Promise.all([
-      (async () => {
-        const { data: authData } = await supabaseAdmin.auth.admin.getUserById(chargeUserId);
-        const email = authData.user?.email;
-        if (!email) return;
+    try {
+      const { data: authData } = await supabaseAdmin.auth.admin.getUserById(chargeUserId);
+      const email = authData.user?.email;
+      if (email) {
         const { data: profile } = await supabaseAdmin
           .from("user_profiles")
           .select("name")
@@ -415,8 +414,10 @@ async function handleInvoicePaymentSucceeded(
             `<p>Payment received: <strong>${email}</strong>${profile?.name ? ` (${profile.name})` : ""}</p><p>Amount: $${((invoice.amount_paid ?? 0) / 100).toFixed(2)}</p><p>At: ${new Date().toUTCString()}</p>`
           ),
         ]);
-      })(),
-    ]).catch((e) => console.error("Webhook invoice.payment_succeeded: charge emails failed:", e));
+      }
+    } catch (e) {
+      console.error("Webhook invoice.payment_succeeded: charge emails failed:", e);
+    }
   }
 
   if (updated && updated.length > 0) return { ok: true };
