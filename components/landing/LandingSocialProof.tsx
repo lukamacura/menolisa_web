@@ -3,6 +3,7 @@
 import { motion, useReducedMotion } from "framer-motion"
 import { useReplayableInView } from "@/hooks/useReplayableInView"
 import { HighlightedTextByRows } from "@/components/landing/HighlightedTextByRows"
+import AnimatedCounter from "@/components/landing/AnimatedCounter"
 
 export default function LandingSocialProof() {
   const prefersReducedMotion = useReducedMotion()
@@ -41,7 +42,7 @@ export default function LandingSocialProof() {
             Women are <HighlightedTextByRows text="finally getting answers" isInView={isInView} prefersReducedMotion={prefersReducedMotion} delayMs={500} />
           </h2>
           <p className="text-lg sm:text-xl text-muted-foreground">
-            Join 10,000+ women who stopped Googling and started understanding
+            Join <AnimatedCounter target={1728} className="font-semibold text-foreground" /> women who stopped Googling and started understanding
           </p>
         </motion.div>
 

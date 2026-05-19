@@ -72,25 +72,12 @@ function QuestionDisplay({
           animate={{ y: 0 }}
           transition={fastSpring}
         >
-          <MessageCircle className="w-5 h-5 sm:w-6 sm:h-6 text-pink-400 mx-auto mb-3" />
+          <MessageCircle className="w-5 h-5 sm:w-6 sm:h-6 text-red-500 mx-auto mb-3" />
           
           {/* Main question */}
-          <p className="text-lg sm:text-xl md:text-2xl font-medium text-foreground leading-relaxed mb-2">
+          <p className="text-lg sm:text-xl md:text-2xl font-medium text-red-500 leading-relaxed">
             {question.text}
           </p>
-          
-          {/* Emotional emphasis */}
-          <motion.p
-            className="text-base sm:text-lg md:text-xl font-semibold text-rose-500 italic"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ 
-              delay: prefersReducedMotion ? 0 : 0.25, 
-              duration: 0.3,
-            }}
-          >
-            {question.emphasis}
-          </motion.p>
         </motion.div>
       </div>
     </motion.div>

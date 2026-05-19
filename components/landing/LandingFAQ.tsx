@@ -18,12 +18,12 @@ export default function LandingFAQ() {
     {
       question: "What can I ask Lisa?",
       answer:
-        "Anything about menopause. Hot flashes, night sweats, mood swings, brain fog, weight gain, sleep problems, HRT, supplements, vaginal dryness, libido changes — nothing is off limits. Lisa is trained on menopause research and gives you clear, calm answers without judgment.",
+        "Anything about menopause. Hot flashes, night sweats, mood swings, brain fog, weight gain, sleep problems, HRT, supplements, vaginal dryness, libido changes - nothing is off limits. Lisa is trained on menopause research and gives you clear, calm answers without judgment.",
     },
     {
       question: "Is Lisa a real person?",
       answer:
-        "Lisa is an AI trained specifically on menopause research and education. She's available 24/7, never rushes you, and never judges. She gives research-backed information — not medical advice. Always consult your doctor for treatment decisions.",
+        "Lisa is an AI trained specifically on menopause research and education. She's available 24/7, never rushes you, and never judges. She gives research-backed information - not medical advice. Always consult your doctor for treatment decisions.",
     },
     {
       question: "How is this different from Googling?",
@@ -42,7 +42,7 @@ export default function LandingFAQ() {
     {
       question: "How does the guarantee work?",
       answer:
-        "Use MenoLisa for 7 days. If you don't feel more informed and in control, email us for a full refund. No questions, no hoops. We can offer this because most women who try Lisa never go back to guessing.",
+        "Your first 3 days are a full-access trial - cancel anytime before day 3 and you're never charged. If you stay on and don't feel more informed within 7 days after billing, email us for a full refund. No questions, no hoops.",
     },
   ]
 

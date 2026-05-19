@@ -14,7 +14,7 @@ const actionTips = [
     icon: Sun,
     category: "Morning Ritual",
     tip: "Get 10–20 minutes of outdoor light within an hour of waking.",
-    motivation: "Every sunrise you meet whispers to your body: it's time to wake, move, and shine again.",
+    motivation: "Your body was built to follow the light.",
     color: "from-amber-400 to-orange-400",
     bgColor: "bg-amber-50",
     iconColor: "text-amber-500",
@@ -24,7 +24,7 @@ const actionTips = [
     icon: Wind,
     category: "Stress Relief",
     tip: "Try 4-7-8 breathing for 2–3 minutes when tension rises.",
-    motivation: "You can't think your way out of stress — but you can breathe your way through it.",
+    motivation: "You can't think your way out - but you can breathe through it.",
     color: "from-sky-400 to-blue-400",
     bgColor: "bg-sky-50",
     iconColor: "text-sky-500",
@@ -34,7 +34,7 @@ const actionTips = [
     icon: Moon,
     category: "Night Waking",
     tip: "If awake at 3am, breathe slowly and let your body feel heavy and supported.",
-    motivation: "Night waking isn't failure — it's feedback. Respond gently, and your body learns safety.",
+    motivation: "Night waking isn't failure. It's feedback.",
     color: "from-indigo-400 to-purple-400",
     bgColor: "bg-indigo-50",
     iconColor: "text-indigo-500",
@@ -43,8 +43,8 @@ const actionTips = [
     id: "movement",
     icon: Heart,
     category: "Daily Movement",
-    tip: "Walk mindfully — focus on sights and sounds, not thoughts.",
-    motivation: "Calm isn't passive — it's a daily practice your body learns to trust again.",
+    tip: "Walk mindfully - focus on sights and sounds, not thoughts.",
+    motivation: "Calm is a practice. Your body will learn it.",
     color: "from-rose-400 to-pink-400",
     bgColor: "bg-rose-50",
     iconColor: "text-rose-500",
@@ -54,7 +54,7 @@ const actionTips = [
     icon: Sparkles,
     category: "Evening Wind Down",
     tip: "Write one gratitude or release note before bed to offload stress.",
-    motivation: "With daily practice, calm becomes your default, not your exception.",
+    motivation: "Release the day. Restore tonight.",
     color: "from-violet-400 to-fuchsia-400",
     bgColor: "bg-violet-50",
     iconColor: "text-violet-500",
@@ -405,9 +405,6 @@ function ChaosToClarityInner({
             delayMs={300}
           />
         </h2>
-        <p className="mt-4 text-muted-foreground text-sm sm:text-base md:text-lg max-w-xl mx-auto">
-          Simple action tips & habits that help your body find its rhythm again
-        </p>
       </motion.div>
 
       {/* Main Animation Container */}
@@ -433,15 +430,6 @@ function ChaosToClarityInner({
         progress={canAdvance ? progress : 0}
       />
 
-      {/* Subtle hint */}
-      <motion.p
-        className="text-center underline text-md text-muted-foreground/60 mt-6"
-        initial={{ opacity: 0 }}
-        animate={isInView ? { opacity: 1 } : { opacity: 0 }}
-        transition={{ delay: 1, duration: 0.5 }}
-      >
-        Evidence-based strategies for your menopause journey
-      </motion.p>
     </div>
   )
 }

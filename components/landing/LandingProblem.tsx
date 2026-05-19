@@ -549,7 +549,7 @@ export default function LandingProblem() {
         </motion.div>
 
         {/* Animation Container */}
-        <div className="relative h-[320px] sm:h-[400px] mb-12 rounded-2xl overflow-hidden">
+        <div className="relative h-80 sm:h-[400px] mb-12 rounded-2xl overflow-hidden">
           <AnimatePresence mode="wait">
             {currentStep === 1 && (
               <motion.div

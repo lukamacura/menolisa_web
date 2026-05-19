@@ -68,10 +68,10 @@ export default function LandingPricing() {
           transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
         >
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 text-foreground">
-            <HighlightedTextByRows text="Start free. Ask Lisa anything." isInView={isInView} prefersReducedMotion={prefersReducedMotion} delayMs={500} />
+            <HighlightedTextByRows text="Try Lisa for 3 days. Ask anything." isInView={isInView} prefersReducedMotion={prefersReducedMotion} delayMs={500} />
           </h2>
           <p className="text-xl sm:text-2xl text-center text-muted-foreground mb-4">
-            <strong>3-day full access. No credit card.</strong> See if Lisa helps you.
+            <strong>3-day full access. Cancel before day 3 - no charge.</strong> See if Lisa helps you.
           </p>
           <Badge 
             variant="outline" 
@@ -95,7 +95,7 @@ export default function LandingPricing() {
             ))}
           </div>
           <p className="text-sm font-bold italic mb-1" style={{ color: "var(--foreground)" }}>
-            {"“I used to spend hours on Google getting more confused and scared. Now I just ask Lisa. Last week I asked her about night sweats and HRT — she explained it so clearly that I finally felt ready to talk to my doctor. My appointment was the best one I’ve ever had.”"}
+            {"“I used to spend hours on Google getting more confused and scared. Now I just ask Lisa. Last week I asked her about night sweats and HRT - she explained it so clearly that I finally felt ready to talk to my doctor. My appointment was the best one I’ve ever had.”"}
           </p>
           <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>- Michelle, 52</p>
         </div>
@@ -329,7 +329,7 @@ export default function LandingPricing() {
           </h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {[
-              { text: "Ask Lisa unlimited menopause questions — 24/7", color: "var(--chart-1)" },
+              { text: "Ask Lisa unlimited menopause questions - 24/7", color: "var(--chart-1)" },
               { text: "Get research-backed answers in seconds", color: "var(--chart-2)" },
               { text: "Track symptoms in 30 seconds daily", color: "var(--chart-3)" },
               { text: "See weekly summaries of your patterns", color: "var(--chart-4)" },
@@ -372,10 +372,10 @@ export default function LandingPricing() {
             }}
           >
             <h4 className="text-xl sm:text-2xl font-bold mb-3 text-center" style={{ color: "var(--foreground)" }}>
-              The &quot;Clarity or Free&quot; Guarantee
+              The &quot;Clarity or Refund&quot; Guarantee
             </h4>
             <p className="text-sm sm:text-base text-center max-w-2xl mx-auto leading-relaxed" style={{ color: "var(--muted-foreground)" }}>
-              Use MenoLisa for 7 days. If you don&apos;t feel more informed about your menopause than you have in months of confusion, we&apos;ll refund every penny. No questions asked. We offer this because most women who try Lisa never want to go back to guessing.
+              Try Lisa for 3 days. If you decide to keep going and don&apos;t feel more informed within the first 7 days after billing, we&apos;ll refund every penny. No questions asked. We offer this because most women who try Lisa never want to go back to guessing.
             </p>
           </div>
         </div>

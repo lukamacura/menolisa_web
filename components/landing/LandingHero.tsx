@@ -1,12 +1,11 @@
 "use client"
 
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useState } from "react"
+import Image from "next/image"
 import { BookOpen, Target, Users } from "lucide-react"
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion"
+import { motion, useReducedMotion } from "framer-motion"
 import { useReplayableInView } from "@/hooks/useReplayableInView"
-
-const VIDEO_POSTER_DATA =
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='12' viewBox='0 0 16 12'%3E%3Crect fill='%23f9a8d4' width='16' height='12'/%3E%3C/svg%3E"
+import AnimatedCounter from "@/components/landing/AnimatedCounter"
 
 // Breakpoint detection for tablet-specific optimizations
 function useDeviceType(): "mobile" | "tablet" | "desktop" {
@@ -16,7 +15,7 @@ function useDeviceType(): "mobile" | "tablet" | "desktop" {
     const check = () => {
       const width = window.innerWidth
       const isCoarse = window.matchMedia("(pointer: coarse)").matches
-      
+
       if (width < 768 || (isCoarse && width < 768)) {
         setDeviceType("mobile")
       } else if (width < 1024 || (isCoarse && width < 1280)) {
@@ -33,34 +32,16 @@ function useDeviceType(): "mobile" | "tablet" | "desktop" {
   return deviceType
 }
 
-// Hero content variations - high-converting, outcome-based copy
+// Single high-converting headline - pain point + relief framing
 // highlight: use \n to separate rows; each row gets its own highlight sweep
-const heroContent = [
-  {
-    headline: {
-      before: "Ask Lisa anything about menopause.",
-      highlight: "Get answers\nin seconds.",
-      after: ""
-    },
-    subheadline: "Lisa is your AI menopause companion. Ask her anything, track how you feel, and see your patterns clearly - all in one place."
+const heroContent = {
+  headline: {
+    before: "Finally understand",
+    highlight: "what's happening\nto your body",
+    after: ""
   },
-  {
-    headline: {
-      before: "Your menopause questions answered,",
-      highlight: "24/7,\njudgement-free",
-      after: ""
-    },
-    subheadline: "No more scary Google rabbit holes. Get clear, research-backed answers to your menopause questions anytime you need them."
-  },
-  {
-    headline: {
-      before: "Finally understand",
-      highlight: "what's happening\nto your body",
-      after: ""
-    },
-    subheadline: "Ask unlimited questions, log symptoms in 30 seconds, and walk into your doctor's office with real data."
-  },
-]
+  subheadline: "Stop second-guessing every symptom. Get research-backed answers in seconds, track patterns in 30 seconds a day, and walk into your doctor's office with real data - not guesses."
+}
 
 // Animated highlight per row with sweep effect - row by row
 // Using will-change for GPU acceleration
@@ -99,12 +80,12 @@ function HighlightedRow({
 // Headline component with animation - optimized for LCP
 // CRITICAL: h1 starts VISIBLE (opacity: 1) for fast LCP
 // Only animate on content change (exit/enter), not initial render
-function AnimatedHeadline({ 
-  content, 
+function AnimatedHeadline({
+  content,
   isActive,
-  prefersReducedMotion 
-}: { 
-  content: typeof heroContent[0]['headline']
+  prefersReducedMotion
+}: {
+  content: typeof heroContent['headline']
   isActive: boolean
   prefersReducedMotion: boolean
 }) {
@@ -178,96 +159,6 @@ function AnimatedSubheadline({
   )
 }
 
-// Progress dots indicator - Tablet/Touch optimized with proper touch targets (min 44px)
-function ProgressDots({ 
-  total, 
-  current, 
-  onSelect 
-}: { 
-  total: number
-  current: number
-  onSelect: (index: number) => void
-}) {
-  return (
-    <div className="flex items-center gap-0 pt-3 sm:pt-4" role="tablist" aria-label="Hero content navigation">
-      {Array.from({ length: total }).map((_, index) => (
-        <button
-          key={index}
-          onClick={() => onSelect(index)}
-          role="tab"
-          aria-selected={index === current}
-          aria-label={`Go to slide ${index + 1}`}
-          className="min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation"
-        >
-          <span
-            className={`block rounded-full transition-all duration-500 ease-out ${
-              index === current
-                ? "w-7 sm:w-8 h-2 bg-primary"
-                : "w-2 h-2 bg-muted-foreground/30 hover:bg-muted-foreground/50 active:bg-muted-foreground/60"
-            }`}
-          />
-        </button>
-      ))}
-    </div>
-  )
-}
-
-// Video overlay text component - triggered after video ends
-function VideoOverlayText({
-  show,
-  prefersReducedMotion,
-}: {
-  show: boolean
-  prefersReducedMotion: boolean
-}) {
-  return (
-    <AnimatePresence>
-      {show && (
-        <motion.div
-          className="absolute inset-0 z-20 flex items-center justify-center bg-linear-to-t from-black/60 via-black/30 to-transparent overflow-hidden"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: prefersReducedMotion ? 0.1 : 0.4 }}
-        >
-          <motion.span
-            className="relative text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-white px-4 text-center"
-            style={{
-              willChange: "opacity, transform",
-            }}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{
-              duration: prefersReducedMotion ? 0.15 : 0.6,
-              delay: prefersReducedMotion ? 0 : 0.15,
-              ease: [0.16, 1, 0.3, 1],
-            }}
-          >
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute left-1/2 top-1/2 z-[-1] block aspect-9/1 -translate-x-1/2 -translate-y-1/2 select-none"
-              style={{
-                width: "280%",
-                minWidth: "0",
-                maxWidth: "100vw",
-                filter: `
-                  drop-shadow(0 6px 28px rgba(0,0,0,0.82))
-                  drop-shadow(0 2px 38px #fee44088)
-                  drop-shadow(0px 15px 48px #3a86ff80)
-                  drop-shadow(0px -6px 34px #ff5ebf99)
-                `,
-              }}
-            >
-              24/7 here for you
-            </span>
-          </motion.span>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  )
-}
-
 export default function LandingHero() {
   const prefersReducedMotion = useReducedMotion()
   const { ref: sectionRef, isInView, resetKey } = useReplayableInView<HTMLElement>({ amount: 0.35 })
@@ -307,84 +198,13 @@ function LandingHeroInner({
   prefersReducedMotion: boolean
   deviceType: "mobile" | "tablet" | "desktop"
 }) {
-  const [currentIndex, setCurrentIndex] = useState(0)
-  const [isPaused, setIsPaused] = useState(false)
-  const [showVideoText, setShowVideoText] = useState(false)
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Optimize video preload based on device type
-  const videoPreload = deviceType === "mobile" ? "none" : "metadata"
-  const isTouch = deviceType === "mobile" || deviceType === "tablet"
-
-  // Handle video ended event - show overlay text on every loop
-  const handleVideoEnded = useCallback(() => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current)
-      timerRef.current = null
-    }
-    setShowVideoText(true)
-
-    timerRef.current = setTimeout(() => {
-      timerRef.current = null
-      setShowVideoText(false)
-      if (videoRef.current) {
-        videoRef.current.currentTime = 0
-        videoRef.current.play().catch(() => {})
-      }
-    }, 3000)
-  }, [])
-
-  // Clean up timer on unmount to avoid setState on unmounted component
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
-    }
-  }, [])
-
-  // Setup video event listener with proper cleanup
-  useEffect(() => {
-    const video = videoRef.current
-    if (!video) return
-
-    video.addEventListener("ended", handleVideoEnded)
-    
-    return () => {
-      video.removeEventListener("ended", handleVideoEnded)
-    }
-  }, [handleVideoEnded])
-
-  // Auto-rotate headlines - optimized interval management
-  // Pause on interaction for touch devices, hover for desktop
-  useEffect(() => {
-    if (!isInView || isPaused || prefersReducedMotion) return
-
-    const interval = setInterval(() => {
-      setCurrentIndex((prev) => (prev + 1) % heroContent.length)
-    }, 2400)
-
-    return () => clearInterval(interval)
-  }, [isPaused, prefersReducedMotion, isInView])
-
-  // Handle manual selection with touch-optimized pause
-  const handleSelect = useCallback((index: number) => {
-    setCurrentIndex(index)
-    // Pause rotation briefly on selection for touch devices
-    setIsPaused(true)
-    const timer = setTimeout(() => setIsPaused(false), 4000)
-    return () => clearTimeout(timer)
-  }, [])
-
-  // Hover handlers - only active on non-touch devices
-  const handleMouseEnter = useCallback(() => {
-    if (!isTouch) setIsPaused(true)
-  }, [isTouch])
-
-  const handleMouseLeave = useCallback(() => {
-    if (!isTouch) setIsPaused(false)
-  }, [isTouch])
-
-  const currentContent = heroContent[currentIndex]
+  // Per-device sizing for the hero image
+  const imageSizes =
+    deviceType === "mobile"
+      ? "(max-width: 640px) 90vw, 70vw"
+      : deviceType === "tablet"
+      ? "(max-width: 1024px) 50vw, 45vw"
+      : "(max-width: 1280px) 45vw, 640px"
 
   return (
     <>
@@ -417,41 +237,32 @@ function LandingHeroInner({
       <div className="relative z-10 w-full" style={{ width: '100%', maxWidth: 'min(100vw, 80rem)', minWidth: '0', marginLeft: 'auto', marginRight: 'auto', paddingLeft: '0', paddingRight: '0' }}>
         <div className="grid md:grid-cols-2 gap-6 sm:gap-8 md:gap-10 lg:gap-12 items-center w-full" style={{ width: '100%', maxWidth: '100%', minWidth: '0', boxSizing: 'border-box' }}>
           {/* Left: Text Content */}
-          <div 
+          <div
             className="text-center md:text-left space-y-4 sm:space-y-5 md:space-y-6 relative z-20 w-full"
             style={{ width: '100%', minWidth: '0', maxWidth: '100%' }}
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
           >
-            {/* Rotating Headlines - Tablet-optimized min-heights to prevent CLS */}
-            <div className="text-left min-h-[110px] sm:min-h-[130px] md:min-h-[160px] lg:min-h-[180px]">
-              <AnimatePresence mode="wait">
-                <AnimatedHeadline 
-                  key={`headline-${currentIndex}`}
-                  content={currentContent.headline}
-                  isActive={isInView}
-                  prefersReducedMotion={prefersReducedMotion}
-                />
-              </AnimatePresence>
-            </div>
-
-            {/* Rotating Subheadlines - Tablet-optimized */}
-            <div className="text-left min-h-[60px] sm:min-h-[70px] md:min-h-[85px] lg:min-h-[90px]">
-              <AnimatePresence mode="wait">
-                <AnimatedSubheadline 
-                  key={`subheadline-${currentIndex}`}
-                  text={currentContent.subheadline}
-                  prefersReducedMotion={prefersReducedMotion}
-                />
-              </AnimatePresence>
-            </div>
-
-            {/* Progress Dots */}
+            {/* Audience badge */}
             <div className="flex justify-center md:justify-start">
-              <ProgressDots 
-                total={heroContent.length} 
-                current={currentIndex} 
-                onSelect={handleSelect}
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-primary/10 text-primary border border-primary/20">
+                <span>🌸</span>
+                For women in perimenopause &amp; menopause
+              </span>
+            </div>
+
+            {/* Headline */}
+            <div className="text-left">
+              <AnimatedHeadline
+                content={heroContent.headline}
+                isActive={isInView}
+                prefersReducedMotion={prefersReducedMotion}
+              />
+            </div>
+
+            {/* Subheadline */}
+            <div className="text-left">
+              <AnimatedSubheadline
+                text={heroContent.subheadline}
+                prefersReducedMotion={prefersReducedMotion}
               />
             </div>
 
@@ -469,7 +280,7 @@ function LandingHeroInner({
               <div className="hidden sm:block w-px h-3 sm:h-4 bg-border opacity-30" />
               <div className="flex items-center gap-1.5 sm:gap-2">
                 <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4 md:h-5 md:w-5 text-primary shrink-0" />
-                <span className="whitespace-nowrap">10,000+ trust Lisa</span>
+                <span className="whitespace-nowrap"><AnimatedCounter target={1728} /> trust Lisa</span>
               </div>
             </div>
 
@@ -490,116 +301,36 @@ function LandingHeroInner({
                 ))}
               </div>
               <span className="text-xs sm:text-sm md:text-base text-muted-foreground text-center sm:text-left">
-                Join 10,000+ women who stopped guessing
+                Join <AnimatedCounter target={1728} className="font-semibold text-foreground" /> women who stopped guessing
               </span>
             </div>
           </div>
 
-          {/* Right: Hero Video – Tablet mockup with entrance animation */}
+          {/* Right: Hero Image – per-device optimized */}
           <div className="relative z-10 w-full flex justify-center md:justify-end" style={{ width: '100%', maxWidth: '100%', minWidth: '0' }}>
-            <div className="w-full" style={{ width: '100%', maxWidth: '100%', minWidth: '0' }}>
-              <motion.div
-                className="relative w-full overflow-hidden"
-                style={{
-                  width: '100%',
-                  maxWidth: '100%',
-                  minWidth: '0',
-                  borderRadius: deviceType === "tablet" ? "2rem" : "2.5rem",
-                  border: `${deviceType === "tablet" ? 6 : 8}px solid #111827`,
-                  backgroundColor: "#111827",
-                  boxShadow:
-                    "0 28px 70px -22px rgba(0,0,0,0.35), 0 0 0 1px rgba(0,0,0,0.08)",
-                  willChange: "opacity, transform",
-                  boxSizing: 'border-box',
-                }}
-                // LCP optimized: Start visible, slight entrance animation
-                initial={{ opacity: 0.9, y: 8, scale: 0.99 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{
-                  duration: prefersReducedMotion ? 0.15 : 0.4,
-                  delay: 0,
-                  ease: [0.16, 1, 0.3, 1],
-                }}
-              >
-                {/* Bezel highlight (inner edge) */}
-                <div
-                  className="pointer-events-none absolute inset-0 z-10"
-                  style={{
-                    borderRadius: deviceType === "tablet" ? "2rem" : "2.5rem",
-                    boxShadow:
-                      "inset 0 1px 0 rgba(255,255,255,0.16), inset 0 -1px 0 rgba(255,255,255,0.08)",
-                  }}
-                  aria-hidden
-                />
-
-                {/* Camera (top center) */}
-                <div
-                  className="pointer-events-none absolute left-1/2 z-20 -translate-x-1/2"
-                  style={{ top: "0.75rem" }}
-                  aria-hidden
-                >
-                  <div
-                    className="rounded-full"
-                    style={{
-                      width: 10,
-                      height: 10,
-                      backgroundColor: "rgba(0,0,0,0.7)",
-                    }}
-                  />
-                  <div
-                    className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
-                    style={{
-                      width: 4,
-                      height: 4,
-                      backgroundColor: "rgba(255,255,255,0.2)",
-                    }}
-                  />
-                </div>
-
-                {/* Screen */}
-                <div
-                  className="relative overflow-hidden"
-                  style={{
-                    aspectRatio: "4 / 3",
-                    minHeight: deviceType === "tablet" ? 300 : 260,
-                    borderRadius: deviceType === "tablet" ? "1.75rem" : "2.25rem",
-                    background: "linear-gradient(135deg, #f9a8d4 0%, #fde047 50%, #93c5fd 100%)",
-                  }}
-                >
-                  <video
-                    ref={videoRef}
-                    className="relative z-0 h-full w-full object-contain"
-                    autoPlay
-                    muted
-                    playsInline
-                    preload={videoPreload}
-                    poster={VIDEO_POSTER_DATA}
-                    aria-label="Lisa demo video"
-                  >
-                    <source src="/test2.webm" type="video/webm" />
-                  </video>
-
-                  {/* Video-triggered overlay text */}
-                  <VideoOverlayText 
-                    show={showVideoText} 
-                    prefersReducedMotion={prefersReducedMotion} 
-                  />
-
-                  {/* Home indicator (bottom center) */}
-                  <div
-                    className="pointer-events-none absolute left-1/2 z-30 -translate-x-1/2 rounded-full"
-                    style={{
-                      bottom: "0.75rem",
-                      width: 160,
-                      height: 6,
-                      backgroundColor: "#000",
-                      boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
-                    }}
-                    aria-hidden
-                  />
-                </div>
-              </motion.div>
-            </div>
+            <motion.div
+              className="relative w-full"
+              style={{
+                maxWidth: deviceType === "mobile" ? "22rem" : deviceType === "tablet" ? "28rem" : "40rem",
+                aspectRatio: "1 / 1",
+                willChange: "opacity, transform",
+              }}
+              initial={{ opacity: 0.9, y: 8, scale: 0.99 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{
+                duration: prefersReducedMotion ? 0.15 : 0.4,
+                ease: [0.16, 1, 0.3, 1],
+              }}
+            >
+              <Image
+                src="/hero.png"
+                alt="Lisa app on phone"
+                fill
+                priority
+                sizes={imageSizes}
+                className="object-contain"
+              />
+            </motion.div>
           </div>
         </div>
       </div>

@@ -122,7 +122,7 @@ function HowItWorksStepsInner({
 
         {/* Phone Frame Container */}
         <div className="flex justify-center my-6 sm:my-10">
-          <div className="relative w-full max-w-[240px] sm:max-w-[260px]">
+          <div className="relative w-full max-w-60 sm:max-w-[260px]">
             <AnimatePresence mode="wait">
               {currentStep === 1 && (
                 <ChatInterfacePhone
@@ -216,7 +216,7 @@ function StepLabels({
   ]
 
   return (
-    <div className="mt-6 sm:mt-10 min-h-[56px] flex items-center justify-center">
+    <div className="mt-6 sm:mt-10 min-h-14 flex items-center justify-center">
       <AnimatePresence mode="wait">
         <motion.div
           key={`label-${currentStep}`}
@@ -608,7 +608,7 @@ function ChatInterfacePhone({
     },
     { 
       type: "highlight", 
-      content: "As estrogen drops, you become **more insulin resistant** — storing more around the belly." 
+      content: "As estrogen drops, you become **more insulin resistant** - storing more around the belly." 
     },
     { 
       type: "tips", 
@@ -620,7 +620,7 @@ function ChatInterfacePhone({
     },
     { 
       type: "outro", 
-      content: "Your metabolism isn't broken — it's adaptive 🌿" 
+      content: "Your metabolism isn't broken - it's adaptive 🌿" 
     },
   ], [])
 

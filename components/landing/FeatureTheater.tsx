@@ -145,7 +145,7 @@ function FeatureTheaterInner({
 
         {/* Phone Frame Container */}
         <div className="flex justify-center my-6 sm:my-10">
-          <div className="relative w-full max-w-[240px] sm:max-w-[260px]">
+          <div className="relative w-full max-w-60 sm:max-w-[260px]">
             <AnimatePresence mode="wait">
               {currentFeature === 0 && (
                 <AskAnythingPhone
@@ -249,7 +249,7 @@ function FeatureLabels({
   isInView: boolean
 }) {
   return (
-    <div className="mt-6 sm:mt-10 min-h-[56px] flex items-center justify-center">
+    <div className="mt-6 sm:mt-10 min-h-14 flex items-center justify-center">
       <AnimatePresence mode="wait">
         <motion.div
           key={`label-${currentFeature}`}
