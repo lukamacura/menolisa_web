@@ -41,7 +41,6 @@ import {
   Compass,
   BookOpen,
   Ellipsis,
-  Lock,
   ShieldCheck,
   Star,
   Sparkles,
@@ -224,12 +223,6 @@ const getScoreColor = (score: number): string => {
   return "text-orange-500";
 };
 
-const getScoreLabel = (score: number): string => {
-  if (score < 40) return "Needs attention - symptoms are controlling your daily life";
-  if (score < 50) return "Below average - symptoms are significantly impacting daily life";
-  return "Room to improve - symptoms are affecting your quality of life";
-};
-
 const getSeverityHeadline = (severity: string, name: string): string => {
   const displayName = name || "you";
   switch (severity) {
@@ -264,6 +257,37 @@ const getSeverityPainText = (
   }
 };
 
+
+type Pillar = { id: string; title: string; preview: string; symptoms: string[] };
+
+const PILLAR_WEEKS = ["Week 1–2", "Week 3–5", "Week 6–8"];
+
+const PILLAR_BLUEPRINTS: Pillar[] = [
+  { id: "sleep", title: "Sleep & cooling protocol", preview: "Track sleep patterns and pinpoint what's triggering night sweats.", symptoms: ["sleep_issues", "hot_flashes"] },
+  { id: "energy", title: "Energy & mental clarity", preview: "Rebuild focus with targeted nutrition and recovery windows.", symptoms: ["brain_fog", "low_energy"] },
+  { id: "mood", title: "Mood regulation", preview: "Spot the patterns behind your mood shifts before they escalate.", symptoms: ["mood_swings", "anxiety"] },
+  { id: "body", title: "Body composition reset", preview: "Adjust intake and movement for your changing metabolism.", symptoms: ["weight_changes"] },
+  { id: "joints", title: "Joint & inflammation care", preview: "Reduce stiffness with daily anti-inflammatory routines.", symptoms: ["joint_pain"] },
+];
+
+function buildPillars(topProblems: string[]): Pillar[] {
+  const matched = PILLAR_BLUEPRINTS.filter((p) => p.symptoms.some((s) => topProblems.includes(s)));
+  if (matched.length >= 3) return matched.slice(0, 3);
+  const fillers = PILLAR_BLUEPRINTS.filter((p) => !matched.includes(p));
+  return [...matched, ...fillers].slice(0, 3);
+}
+
+function getCtaCopy(qualifier: string): { label: string; sub: string } {
+  switch (qualifier) {
+    case "ready_to_act":
+      return { label: "Start my plan - free for 3 days", sub: "Cancel anytime. No charge if you cancel before day 3." };
+    case "exploring":
+      return { label: "Try Lisa free for 3 days", sub: "Browse without commitment. Most members keep going." };
+    case "understand_first":
+    default:
+      return { label: "See my full plan - free for 3 days", sub: "Understand what's happening, then decide." };
+  }
+}
 
 const REFERRAL_STORAGE_KEY = "pending_referral_code";
 
@@ -655,7 +679,7 @@ function RegisterPageContent() {
 
         if (existingProfile) {
           // Profile already exists. If middleware sent us here (?phase=quiz|paywall), the user already
-          // failed the trial/paywall gate — sending them to /dashboard would just bounce back here (infinite loop).
+          // failed the trial/paywall gate - sending them to /dashboard would just bounce back here (infinite loop).
           // Show the paywall instead.
           if (mounted) {
             sessionStorage.removeItem("pending_quiz_answers");
@@ -748,201 +772,160 @@ function RegisterPageContent() {
 
       {/* Results Phase */}
       {phase === "results" && (
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden -mx-4 sm:-mx-6 px-4 sm:px-6">
-          <AnimatePresence mode="wait">
-            <motion.div
-                key="results"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="flex-1 flex flex-col min-h-0 overflow-hidden"
-              >
-                <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-y-hidden lg:flex lg:items-center lg:justify-center pb-0">
-                  <div className="max-w-md lg:max-w-5xl mx-auto w-full pt-4 sm:pt-6 lg:py-4 lg:grid lg:grid-cols-2 lg:gap-x-10 lg:items-center">
-                    {/* Left column on lg: illustration + headline + paragraphs */}
-                    <div className="lg:flex lg:flex-col">
-                    {/* Results illustration (from public/quiz/) */}
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.2 }}
-                      className="flex justify-center mb-4 sm:mb-6 lg:mb-4"
-                    >
-                      <Image
-                        src={`/quiz/${QUIZ_ILLUSTRATION.results}`}
-                        alt=""
-                        width={320}
-                        height={180}
-                        className="object-contain w-full max-h-40 sm:max-h-[180px] lg:max-h-40"
-                      />
-                    </motion.div>
+        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pb-[calc(120px+env(safe-area-inset-bottom))]">
+          <motion.div
+            key="results"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="max-w-md mx-auto w-full pt-2"
+          >
+            {/* Headline */}
+            <motion.h1
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="text-xl sm:text-2xl font-semibold text-[#3D3D3D] text-center mb-2"
+            >
+              {getSeverityHeadline(derivedSeverity, firstName || "you")}
+            </motion.h1>
 
-                    {/* Headline */}
-                    <motion.h1
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.4 }}
-                      className="text-xl sm:text-2xl lg:text-3xl font-semibold text-[#3D3D3D] text-center lg:text-left mb-3 sm:mb-4"
-                    >
-                      {getSeverityHeadline(derivedSeverity, firstName || "you")}
-                    </motion.h1>
+            {/* Pain paragraph */}
+            <motion.p
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="text-xs text-[#5A5A5A] text-center leading-relaxed mb-4"
+            >
+              {getSeverityPainText(derivedSeverity, topProblems.length, firstName || "you")}
+            </motion.p>
 
-                    {/* Pain Paragraph */}
-                    <motion.p
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.6 }}
-                      className="text-sm sm:text-md lg:text-base text-[#5A5A5A] text-center lg:text-left leading-relaxed mb-4 sm:mb-6 lg:mb-3"
-                    >
-                      {getSeverityPainText(
-                        derivedSeverity,
-                        topProblems.length,
-                        firstName || "you"
-                      )}
-                    </motion.p>
-
-                    {/* Primary messaging: companion, not clinical */}
-                    <motion.p
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.7 }}
-                      className="text-sm lg:text-[15px] text-[#5A5A5A] text-center lg:text-left leading-relaxed mb-4 sm:mb-6 lg:mb-0 italic"
-                    >
-                      Lisa is the menopause companion who gets what you&apos;re going through-available 24/7, never dismisses you.
-                    </motion.p>
+            {/* Compact score card */}
+            {(() => {
+              const score = calculateQualityScore(topProblems, derivedSeverity, timing, triedOptions);
+              return (
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-4 shadow-md shadow-primary/5"
+                >
+                  <div className="flex items-center justify-between mb-2.5">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 text-orange-500" />
+                      <span className="text-sm font-bold text-gray-900!">Your Menopause Score</span>
                     </div>
-
-                    {/* Right column on lg: score + pills + social */}
-                    <div className="lg:flex lg:flex-col">
-                {/* Quality of Life Score */}
-                {(() => {
-                  const score = calculateQualityScore(
-                    topProblems,
-                    derivedSeverity,
-                    timing,
-                    triedOptions
-                  );
-
-                  return (
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.8 }}
-                      className="rounded-2xl bg-card border-2 p-4 sm:p-5 border-[#E8DDD9] mb-4 sm:mb-6 lg:mb-4 shadow-lg shadow-primary/5"
-                    >
-                      {/* Header */}
-                      <div className="flex items-center justify-between mb-3 sm:mb-4">
-                        <div className="flex items-center gap-2 w-full">
-                          <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-orange-500" />
-                          <span className="text-base sm:text-lg font-bold text-gray-900!">Your Menopause Score</span>
-                        </div>
-                      </div>
-
-                      {/* Score Display */}
-                      <div className="flex items-end gap-2 mb-2 sm:mb-3">
-                        <span className={`text-4xl sm:text-5xl font-bold ${getScoreColor(score)}`}>
-                          {displayScore}
-                        </span>
-                        <span className="text-xl sm:text-2xl text-gray-900! font-medium mb-1">/100</span>
-                      </div>
-
-                      {/* Score Label */}
-                      <p className="text-xs sm:text-sm text-orange-600 mb-3 sm:mb-4">
-                        {getScoreLabel(score)}
-                      </p>
-
-                      {/* Progress Bar */}
-                      <div className="relative h-2 sm:h-6 border-2 border-foreground/10 bg-white/20 backdrop-blur-2xl rounded-full mb-3 sm:mb-4 overflow-hidden">
-                        {/* Current score */}
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${score}%` }}
-                          transition={{ duration: 1.5, ease: "easeOut" }}
-                          className="absolute left-0 top-0  h-full bg-linear-to-r from-red-400 via-orange-400 to-orange-300 rounded-full"
-                        />
-                        {/* Target marker at 80% */}
-                        <div
-                          className="absolute top-0 h-full w-1 bg-green-500 rounded-full"
-                          style={{ left: "80%" }}
-                        />
-                      </div>
-
-                      {/* Target Text */}
-                      <div className="flex items-center gap-2 text-xs sm:text-sm">
-                        <Goal className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
-                        <span className="text-[#5A5A5A] font-medium">
-                          Your target: <span className="font-bold">80+</span> (reachable in 8 weeks)
-                        </span>
-                      </div>
-                    </motion.div>
-                  );
-                })()}
-
-                    {/* Symptom Pills - Smaller, muted, under score card */}
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 1.0 }}
-                      className="mb-3 sm:mb-4"
-                    >
-                      <div className="flex flex-wrap gap-2 justify-center">
-                        {topProblems.map((symptom, index) => (
-                          <motion.span
-                            key={symptom}
-                            initial={{ opacity: 0, scale: 0.8 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={{ delay: 1.2 + index * 0.1 }}
-                            className="px-2 py-1 bg-red-200 text-red-800 border border-red-800 font-bold text-xs sm:text-sm rounded-full"
-                          >
-                            {SYMPTOM_LABELS[symptom] || symptom}
-                          </motion.span>
-                        ))}
-                      </div>
-                    </motion.div>
-
-                    {/* Social Proof */}
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 1.4 }}
-                      className="mb-4 lg:mb-0 text-center"
-                    >
-                      <div className="flex items-center justify-center gap-2 text-xs sm:text-sm text-[#5A5A5A]">
-                        <Users className="w-3 h-3 sm:w-4 sm:h-4 text-info" />
-                        <span>8,382 women joined this month</span>
-                      </div>
-                    </motion.div>
+                    <div className="flex items-baseline gap-1">
+                      <span className={`text-3xl font-bold ${getScoreColor(score)}`}>{displayScore}</span>
+                      <span className="text-sm text-gray-500">/100</span>
                     </div>
                   </div>
-                </div>
+                  <div className="relative h-2 bg-foreground/10 rounded-full mb-2 overflow-hidden">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${score}%` }}
+                      transition={{ duration: 1.2, ease: "easeOut" }}
+                      className="absolute left-0 top-0 h-full bg-linear-to-r from-red-400 via-orange-400 to-orange-300 rounded-full"
+                    />
+                    <div className="absolute top-0 h-full w-1 bg-green-500 rounded-full" style={{ left: "80%" }} />
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-[#5A5A5A]">
+                    <Goal className="w-4 h-4 text-green-600 shrink-0" />
+                    <span>Target: <span className="font-bold">80+</span> in 8 weeks</span>
+                  </div>
+                </motion.div>
+              );
+            })()}
 
-                {/* What happens next - fixed to bottom, always visible */}
-                <motion.section
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 1.4 }}
-                  className="shrink-0 border-t-2 border-[#E8DDD9]/70 bg-background pt-4 pb-6 sm:pb-8 px-4"
-                  aria-labelledby="what-happens-next-heading"
-                >
-                  <h2 id="what-happens-next-heading" className="text-lg sm:text-xl font-bold text-[#3D3D3D] text-center mb-2">
-                    What happens next
-                  </h2>
-                  <p className="text-sm sm:text-base text-[#5A5A5A] text-center mb-4">
-                    Start your free 3-day trial to unlock Lisa.
-                  </p>
-                  <div className="max-w-md lg:max-w-xl mx-auto">
+            {/* Symptom pills */}
+            {topProblems.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.4 }}
+                className="flex flex-wrap gap-1.5 justify-center mb-6"
+              >
+                {topProblems.map((s) => (
+                  <span key={s} className="px-2 py-1 bg-red-100 text-red-800 border border-red-300 font-medium text-xs rounded-full">
+                    {SYMPTOM_LABELS[s] || s}
+                  </span>
+                ))}
+              </motion.div>
+            )}
+
+            {/* Personalized plan */}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="mb-5"
+            >
+              <h2 className="text-base font-bold text-[#3D3D3D] mb-1">
+                What Lisa will focus on with you
+              </h2>
+              <p className="text-xs text-[#5A5A5A] mb-3">
+                Based on your answers - 3 areas, across 8 weeks.
+              </p>
+              <div className="space-y-2">
+                {buildPillars(topProblems).map((pillar, i) => (
+                  <div
+                    key={pillar.id}
+                    className="rounded-xl border-2 border-primary/30 bg-primary/5 p-3 flex items-start gap-3"
+                  >
+                    <div className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-primary text-primary-foreground">
+                      {i + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <h3 className="text-sm font-bold text-[#3D3D3D]">{pillar.title}</h3>
+                        <span className="text-[10px] font-medium shrink-0 text-primary">{PILLAR_WEEKS[i]}</span>
+                      </div>
+                      <p className="text-xs mt-0.5 leading-snug text-[#5A5A5A]">{pillar.preview}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+
+            {/* Outcome stat */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.7 }}
+              className="flex items-center justify-center gap-2 text-xs text-[#5A5A5A] mb-5 px-2 text-center"
+            >
+              <TrendingUp className="w-4 h-4 text-info shrink-0" />
+              <span><strong className="text-[#3D3D3D]">73%</strong> of women with your pattern report better sleep within 14 days</span>
+            </motion.div>
+
+          </motion.div>
+
+          {/* Fixed bottom CTA */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.8 }}
+            className="fixed bottom-0 inset-x-0 z-30 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 pb-[env(safe-area-inset-bottom)]"
+          >
+            <div className="mx-auto max-w-md w-full px-4 sm:px-6 py-3">
+              {(() => {
+                const cta = getCtaCopy(qualifier);
+                return (
+                  <>
                     <button
                       type="button"
                       onClick={() => setPhase("paywall")}
-                      className="w-full min-h-12 py-3 sm:py-4 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
+                      className="w-full min-h-12 py-3.5 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
                       style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)", boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)" }}
                     >
-                      Continue to my plan
-                      <ArrowRight className="w-5 h-5" />
+                      {cta.label}
+                      <ArrowRight className="w-4 h-4" />
                     </button>
-                  </div>
-                </motion.section>
-              </motion.div>
-          </AnimatePresence>
+                    <p className="text-[11px] text-[#9A9A9A] text-center mt-1.5">{cta.sub}</p>
+                  </>
+                );
+              })()}
+            </div>
+          </motion.div>
         </div>
       )}
 
@@ -1101,7 +1084,7 @@ function RegisterPageContent() {
                       body: JSON.stringify({ session_id: sessionId }),
                     });
                   } catch {
-                    // ignore — middleware will handle gracefully if webhook already ran
+                    // ignore - middleware will handle gracefully if webhook already ran
                   } finally {
                     setSyncingPayment(false);
                   }

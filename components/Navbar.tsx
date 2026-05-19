@@ -53,7 +53,7 @@ const Navbar: React.FC<NavbarProps> = ({ isAuthenticated }) => {
             {/* Desktop: Center Nav links */}
             <div className="hidden items-center gap-6 lg:gap-8 text-sm lg:text-base font-medium lg:flex">
               <Link
-                href="/"
+                href="/#LandingHero"
                 prefetch={false}
                 className="transition-colors duration-200 text-white!  hover:text-primary!"
               >
@@ -141,7 +141,7 @@ const Navbar: React.FC<NavbarProps> = ({ isAuthenticated }) => {
           {/* Navigation Links */}
           <div className="flex flex-col gap-2">
             <Link 
-              href="/" 
+              href="/#LandingHero" 
               prefetch={false}
               className="px-4 py-3 rounded-lg text-white! text-center hover:bg-white/10 transition-colors text-md font-medium"
               onClick={() => setMobileMenuOpen(false)}
