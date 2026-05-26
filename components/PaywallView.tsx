@@ -16,6 +16,7 @@ import {
   TrendingUp,
   Zap,
 } from "lucide-react";
+import AnimatedCounter from "@/components/landing/AnimatedCounter";
 
 export type PaywallPlan = "annual" | "monthly";
 
@@ -38,22 +39,13 @@ export function PaywallView({
   banner,
 }: PaywallViewProps) {
   return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pt-4 sm:pt-6 pb-[calc(140px+env(safe-area-inset-bottom))] sm:pb-6 relative">
-      {/* Ambient color glows */}
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-        <div
-          className="absolute -top-24 -left-16 w-72 h-72 rounded-full blur-3xl opacity-40"
-          style={{ background: "radial-gradient(circle, #ff74b1 0%, transparent 70%)" }}
-        />
-        <div
-          className="absolute top-1/3 -right-20 w-80 h-80 rounded-full blur-3xl opacity-30"
-          style={{ background: "radial-gradient(circle, #65dbff 0%, transparent 70%)" }}
-        />
-        <div
-          className="absolute bottom-0 left-1/4 w-72 h-72 rounded-full blur-3xl opacity-30"
-          style={{ background: "radial-gradient(circle, #ffeb76 0%, transparent 70%)" }}
-        />
-      </div>
+    <div
+      className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pt-4 sm:pt-6 pb-[calc(140px+env(safe-area-inset-bottom))] sm:pb-6 relative"
+      style={{
+        background:
+          "radial-gradient(ellipse at 15% 5%, rgba(255,116,177,0.22) 0%, transparent 45%), radial-gradient(ellipse at 85% 55%, rgba(101,219,255,0.18) 0%, transparent 45%), radial-gradient(ellipse at 50% 95%, rgba(255,235,118,0.18) 0%, transparent 45%)",
+      }}
+    >
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -100,7 +92,12 @@ export function PaywallView({
             ))}
           </div>
           <span className="text-xs sm:text-sm font-semibold text-[#3D3D3D]">
-            4.9 &middot; 12,000+ women
+            4.9 &middot;{" "}
+            <AnimatedCounter
+              target={12000}
+              formatter={(n) => `${n.toLocaleString("en-US")}+`}
+            />{" "}
+            women
           </span>
         </motion.div>
 
