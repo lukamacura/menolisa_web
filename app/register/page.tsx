@@ -891,10 +891,10 @@ function RegisterPageContent() {
                   </p>
                   <div className="flex items-center gap-3 mb-2.5 text-[11px] text-[#5A5A5A]">
                     <span className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full bg-primary" /> You
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#2563EB]" /> You
                     </span>
                     <span className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full bg-[#C2553F]" /> Typical
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#16A34A]" /> Typical
                     </span>
                   </div>
                   <div className="space-y-3">
@@ -910,7 +910,7 @@ function RegisterPageContent() {
                                 initial={{ width: 0 }}
                                 animate={{ width: `${you}%` }}
                                 transition={{ duration: 1, ease: "easeOut" }}
-                                className="h-full bg-primary rounded-full"
+                                className="h-full bg-[#2563EB] rounded-full"
                               />
                             </div>
                             <div className="h-2.5 bg-foreground/10 rounded-full overflow-hidden">
@@ -918,7 +918,7 @@ function RegisterPageContent() {
                                 initial={{ width: 0 }}
                                 animate={{ width: `${avg}%` }}
                                 transition={{ duration: 1, ease: "easeOut" }}
-                                className="h-full bg-[#C2553F] rounded-full"
+                                className="h-full bg-[#16A34A] rounded-full"
                               />
                             </div>
                           </div>
