@@ -95,9 +95,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ url: session.url });
   } catch (err) {
     console.error("Stripe create-portal error:", err);
-    return NextResponse.json(
-      { error: "Failed to open subscription management." },
-      { status: 500 }
-    );
+    const message =
+      err instanceof Stripe.errors.StripeError
+        ? err.message
+        : "Failed to open subscription management.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

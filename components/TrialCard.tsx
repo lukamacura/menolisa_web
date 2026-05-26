@@ -247,7 +247,8 @@ export function TrialCard({
         return;
       }
       setPortalError(
-        "Couldn't open the billing portal. Please try again or email support@menolisa.com."
+        data?.error ||
+          "Couldn't open the billing portal. Please try again or email support@menolisa.com."
       );
     } catch {
       setPortalError(

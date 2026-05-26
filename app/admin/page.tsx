@@ -2,12 +2,21 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+type RecentSubscriber = {
+  user_id: string;
+  name: string | null;
+  trial_start: string | null;
+  account_status: string | null;
+  plan_type: string | null;
+};
+
 type Stats = {
   totalSubscribers: number;
   monthly: { count: number; mrr: number; percent: number };
   annual: { count: number; mrr: number; percent: number };
   unknownCount: number;
   totalMrr: number;
+  recentSubscribers: RecentSubscriber[];
 };
 
 const SESSION_KEY = "admin_panel_pw";
@@ -159,7 +168,38 @@ export default function AdminPage() {
           </div>
         </div>
 
-      
+        {/* Recent subscribers */}
+        <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6 space-y-4">
+          <h2 className="text-lg font-semibold text-slate-800">Recent subscribers</h2>
+          <ul className="divide-y divide-slate-100">
+            {stats.recentSubscribers.length === 0 && (
+              <li className="py-3 text-sm text-slate-400">No subscribers yet.</li>
+            )}
+            {stats.recentSubscribers.map((s) => (
+              <li key={s.user_id} className="flex items-center justify-between py-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
+                    {(s.name ?? "?").charAt(0).toUpperCase()}
+                  </div>
+                  <span className="text-sm font-medium text-slate-800">{s.name ?? "Unknown"}</span>
+                </div>
+                <div className="flex items-center gap-3 text-right">
+                  <StatusBadge status={s.account_status} planType={s.plan_type} />
+                  <span className="text-xs text-slate-400 w-24">
+                    {s.trial_start
+                      ? new Date(s.trial_start).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })
+                      : "—"}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+
       </div>
     </main>
   );
@@ -189,6 +229,21 @@ function StatCard({
       <p className="mt-1 text-3xl font-bold">{value}</p>
       <p className="mt-1 text-sm opacity-70">{sub}</p>
     </div>
+  );
+}
+
+function StatusBadge({ status, planType }: { status: string | null; planType: string | null }) {
+  const label = status === "paid" ? (planType ?? "paid") : (status ?? "—");
+  const colors =
+    status === "paid"
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : status === "trial"
+      ? "bg-blue-50 text-blue-700 border-blue-200"
+      : "bg-slate-100 text-slate-500 border-slate-200";
+  return (
+    <span className={`rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize ${colors}`}>
+      {label}
+    </span>
   );
 }
 
