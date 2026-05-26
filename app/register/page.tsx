@@ -1,7 +1,7 @@
  
 "use client";
 
-import React, { useState, useCallback, useEffect, Suspense } from "react";
+import React, { useState, useCallback, useEffect, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -41,16 +41,17 @@ import {
   Compass,
   BookOpen,
   Ellipsis,
-  ShieldCheck,
-  Star,
-  Sparkles,
   TrendingUp,
-  Zap,
 } from "lucide-react";
 import OtpForm from "@/components/auth/OtpForm";
 import { PaywallView } from "@/components/PaywallView";
+import AnimatedCounter from "@/components/landing/AnimatedCounter";
 import {
   SYMPTOM_LABELS,
+  AGE_BAND_LABELS,
+  TYPICAL_SYMPTOM_SEVERITY,
+  getScoreBenchmark,
+  getScoreVerdict,
 } from "@/lib/quiz-results-helpers";
 
 /** Quiz step/phase -> illustration filename (from public/quiz/, same as mobile app assets/quiz/). */
@@ -59,7 +60,6 @@ const QUIZ_ILLUSTRATION: Record<string, string> = {
   q2_here_for: "illustration_q2_here_for.png",
   q3_goals: "illustration_q3_goals.png",
   q4_symptoms: "illustration_q4_symptoms.png",
-  breather: "illustration_breather.png",
   q5_what_tried: "illustration_q5_what_tried.png",
   q6_how_long: "illustration_q6_how_long.png",
   q7_qualifier: "illustration_q7_qualifier.png",
@@ -140,6 +140,13 @@ const PROBLEM_OPTIONS = [
   { id: "joint_pain", label: "Joint pain", icon: Bone },
 ];
 
+// Non-zero severity levels for selected symptoms. Not selected = "Not at all" (0).
+const SEVERITY_LEVELS = [
+  { value: 1, label: "A little" },
+  { value: 2, label: "Quite a bit" },
+  { value: 3, label: "Extremely" },
+];
+
 const TIMING_OPTIONS = [
   { id: "just_started", label: "Just started (0-6 months)", icon: Clock },
   { id: "been_while", label: "Been a while (6-12 months)", icon: Calendar },
@@ -165,12 +172,12 @@ const QUALIFIER_OPTIONS = [
 
 /** Derive severity for results copy from symptoms count + duration (same as mobile). */
 function deriveSeverity(
-  symptomCount: number,
+  totalBurden: number,
   howLong: string
 ): "mild" | "moderate" | "severe" {
   const longDuration = howLong === "over_year" || howLong === "several_years";
-  if (symptomCount >= 4 && longDuration) return "severe";
-  if (symptomCount >= 3 || longDuration) return "moderate";
+  if (totalBurden >= 10 && longDuration) return "severe";
+  if (totalBurden >= 6 || longDuration) return "moderate";
   return "mild";
 }
 
@@ -179,26 +186,16 @@ type Phase = "quiz" | "calculating" | "email" | "results" | "paywall" | "downloa
 const APP_STORE_URL = "https://apps.apple.com/de/app/menolisa/id6761130271?l=en-GB";
 const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.menolisa.app&pcampaignid=web_share";
 
-// Quality of Life Score calculation
+// Quality of Life Score (higher = better). Severity-weighted: an "Extremely" symptom
+// hurts the score far more than an "A little" one, which is the point of rating symptoms.
 const calculateQualityScore = (
-  symptoms: string[],
-  severity: string,
+  symptomSeverity: Record<string, number>,
   timing: string,
   triedOptions: string[]
 ): number => {
-  // Start at 100, subtract based on answers
-  let score = 100;
+  const totalBurden = Object.values(symptomSeverity).reduce((a, b) => a + b, 0); // 0..24
 
-  // Subtract for each symptom (5-8 points each)
-  score -= symptoms.length * 7;
-
-  // Subtract for severity
-  const severityPenalty: Record<string, number> = {
-    mild: 5,
-    moderate: 15,
-    severe: 25,
-  };
-  score -= severityPenalty[severity] || 10;
+  let score = 100 - totalBurden * 2.5;
 
   // Subtract for duration (longer = worse)
   const durationPenalty: Record<string, number> = {
@@ -207,15 +204,15 @@ const calculateQualityScore = (
     over_year: 10, // over a year
     several_years: 15, // several years
   };
-  score -= durationPenalty[timing] || 5;
+  score -= durationPenalty[timing] ?? 5;
 
   // Small bonus if they've tried things (shows effort)
   if (triedOptions.length > 0 && !triedOptions.includes("nothing")) {
     score += 3;
   }
 
-  // Clamp between 31-52 (warning zone, not too comfortable, not hopeless)
-  return Math.max(31, Math.min(52, Math.round(score)));
+  // Clamp to the warning zone (not too comfortable, not hopeless)
+  return Math.max(20, Math.min(60, Math.round(score)));
 };
 
 const getScoreColor = (score: number): string => {
@@ -331,7 +328,7 @@ function RegisterPageContent() {
       setPhase("email");
     }
     // Only on mount; subsequent param changes shouldn't override user navigation.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
   const [stepIndex, setStepIndex] = useState(0);
   const currentStep = STEPS[stepIndex];
@@ -354,18 +351,29 @@ function RegisterPageContent() {
   const [ageBand, setAgeBand] = useState<string>("");
   const [hereFor, setHereFor] = useState<string>("");
   const [goal, setGoal] = useState<string[]>([]);
-  const [topProblems, setTopProblems] = useState<string[]>([]);
+  // id -> severity (1=A little, 2=Quite a bit, 3=Extremely). Absent = "Not at all".
+  const [symptomSeverity, setSymptomSeverity] = useState<Record<string, number>>({});
   const [triedOptions, setTriedOptions] = useState<string[]>([]);
   const [timing, setTiming] = useState<string>("");
   const [qualifier, setQualifier] = useState<string>("");
   const [firstName, setFirstName] = useState<string>("");
+
+  // Derived for funnel compatibility: save-quiz / user_profiles still consume top_problems[].
+  const topProblems = useMemo(
+    () => Object.keys(symptomSeverity).filter((id) => symptomSeverity[id] > 0),
+    [symptomSeverity]
+  );
+  const totalBurden = useMemo(
+    () => Object.values(symptomSeverity).reduce((a, b) => a + b, 0),
+    [symptomSeverity]
+  );
 
   // Email state
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [savingQuiz, setSavingQuiz] = useState(false);
 
-  const derivedSeverity = deriveSeverity(topProblems.length, timing);
+  const derivedSeverity = deriveSeverity(totalBurden, timing);
 
   // Loading screen state (between quiz and email)
   const [messageIndex, setMessageIndex] = useState(0);
@@ -416,12 +424,11 @@ function RegisterPageContent() {
   useEffect(() => {
     if (phase === "results") {
       const targetScore = calculateQualityScore(
-        topProblems,
-        derivedSeverity,
+        symptomSeverity,
         timing,
         triedOptions
       );
-      
+
       const duration = 1500; // 1.5 seconds
       const steps = 30;
       const increment = targetScore / steps;
@@ -439,7 +446,7 @@ function RegisterPageContent() {
 
       return () => clearInterval(timer);
     }
-  }, [phase, topProblems, derivedSeverity, timing, triedOptions]);
+  }, [phase, symptomSeverity, timing, triedOptions]);
 
   // (validation handled inside OtpForm)
 
@@ -565,12 +572,18 @@ function RegisterPageContent() {
   }, [topProblems, derivedSeverity, timing, triedOptions, goal, firstName, ref, fromQuiz1]);
 
   const toggleProblem = (problemId: string) => {
-    setTopProblems((prev) => {
-      if (prev.includes(problemId)) {
-        return prev.filter((id) => id !== problemId);
+    setSymptomSeverity((prev) => {
+      if (prev[problemId]) {
+        const next = { ...prev };
+        delete next[problemId];
+        return next;
       }
-      return [...prev, problemId];
+      return { ...prev, [problemId]: 1 };
     });
+  };
+
+  const setSymptomLevel = (problemId: string, value: number) => {
+    setSymptomSeverity((prev) => ({ ...prev, [problemId]: value }));
   };
 
   const toggleGoal = (goalId: string) => {
@@ -713,7 +726,7 @@ function RegisterPageContent() {
     return () => {
       mounted = false;
     };
-  }, [router, phase]);
+  }, [router, phase, searchParams]);
 
   return (
     <main className="overflow-hidden relative mx-auto p-3 sm:p-4 h-dvh flex flex-col pt-20 sm:pt-24 max-w-3xl min-h-0">
@@ -801,7 +814,10 @@ function RegisterPageContent() {
 
             {/* Compact score card */}
             {(() => {
-              const score = calculateQualityScore(topProblems, derivedSeverity, timing, triedOptions);
+              const score = calculateQualityScore(symptomSeverity, timing, triedOptions);
+              const benchmark = getScoreBenchmark(ageBand);
+              const verdict = getScoreVerdict(score, benchmark);
+              const cohortLabel = AGE_BAND_LABELS[ageBand] ?? "women your age";
               return (
                 <motion.div
                   initial={{ opacity: 0, y: 16 }}
@@ -826,8 +842,12 @@ function RegisterPageContent() {
                       transition={{ duration: 1.2, ease: "easeOut" }}
                       className="absolute left-0 top-0 h-full bg-linear-to-r from-red-400 via-orange-400 to-orange-300 rounded-full"
                     />
+                    <div className="absolute top-0 h-full w-0.5 bg-foreground/50" style={{ left: `${benchmark}%` }} />
                     <div className="absolute top-0 h-full w-1 bg-green-500 rounded-full" style={{ left: "80%" }} />
                   </div>
+                  <p className="text-xs text-[#5A5A5A] mb-1.5">
+                    That&apos;s <span className="font-bold">{verdict}</span> for {cohortLabel}.
+                  </p>
                   <div className="flex items-center gap-1.5 text-xs text-[#5A5A5A]">
                     <Goal className="w-4 h-4 text-green-600 shrink-0" />
                     <span>Target: <span className="font-bold">80+</span> in 8 weeks</span>
@@ -851,6 +871,70 @@ function RegisterPageContent() {
                 ))}
               </motion.div>
             )}
+
+            {/* You're not alone - top-3 symptom comparison vs typical cohort */}
+            {topProblems.length > 0 && (() => {
+              const cohortLabel = AGE_BAND_LABELS[ageBand] ?? "women your age";
+              const top3 = [...topProblems]
+                .sort((a, b) => (symptomSeverity[b] ?? 0) - (symptomSeverity[a] ?? 0))
+                .slice(0, 3);
+              return (
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.45 }}
+                  className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-5 shadow-md shadow-primary/5"
+                >
+                  <h2 className="text-base font-bold text-[#3D3D3D] mb-0.5">You&apos;re not alone</h2>
+                  <p className="text-xs text-[#5A5A5A] mb-3">
+                    How your top symptoms compare to {cohortLabel}.
+                  </p>
+                  <div className="flex items-center gap-3 mb-2.5 text-[11px] text-[#5A5A5A]">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-primary" /> You
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#C2553F]" /> Typical
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {top3.map((id) => {
+                      const you = Math.round(((symptomSeverity[id] ?? 0) / 3) * 100);
+                      const avg = Math.round(((TYPICAL_SYMPTOM_SEVERITY[id] ?? 1.5) / 3) * 100);
+                      return (
+                        <div key={id}>
+                          <div className="text-xs font-medium text-[#3D3D3D] mb-1">{SYMPTOM_LABELS[id] || id}</div>
+                          <div className="space-y-1">
+                            <div className="h-2.5 bg-foreground/10 rounded-full overflow-hidden">
+                              <motion.div
+                                initial={{ width: 0 }}
+                                animate={{ width: `${you}%` }}
+                                transition={{ duration: 1, ease: "easeOut" }}
+                                className="h-full bg-primary rounded-full"
+                              />
+                            </div>
+                            <div className="h-2.5 bg-foreground/10 rounded-full overflow-hidden">
+                              <motion.div
+                                initial={{ width: 0 }}
+                                animate={{ width: `${avg}%` }}
+                                transition={{ duration: 1, ease: "easeOut" }}
+                                className="h-full bg-[#C2553F] rounded-full"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[10px] text-[#9A9A9A] mt-3">
+                    Compared to typical symptom patterns for your age.
+                  </p>
+                  <p className="text-xs text-[#5A5A5A] mt-2 text-center">
+                    Join <AnimatedCounter target={1728} className="font-semibold text-[#3D3D3D]" /> women tracking with Lisa
+                  </p>
+                </motion.div>
+              );
+            })()}
 
             {/* Personalized plan */}
             <motion.div
@@ -1306,7 +1390,7 @@ function RegisterPageContent() {
                     <h2 className="text-lg sm:text-xl font-bold mb-0.5">
                       What&apos;s making life hardest right now?
                     </h2>
-                    <p className="text-sm text-muted-foreground">Select all that apply</p>
+                    <p className="text-sm text-muted-foreground">Select all that apply, then rate how much each bothers you</p>
                     {topProblems.length > 0 && (
                       <p className="text-sm text-primary font-medium mt-0.5">
                         {topProblems.length} selected
@@ -1315,33 +1399,59 @@ function RegisterPageContent() {
                   </div>
                   <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-2 pr-1 -mr-1 pb-1 [scrollbar-width:thin]">
                     {PROBLEM_OPTIONS.map((option) => {
-                      const isSelected = topProblems.includes(option.id);
+                      const level = symptomSeverity[option.id] ?? 0;
+                      const isSelected = level > 0;
                       return (
-                        <button
+                        <div
                           key={option.id}
-                          type="button"
-                          onClick={() => toggleProblem(option.id)}
-                          className={`min-h-[60px] sm:min-h-[68px] px-3.5 py-2.5 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
+                          className={`rounded-lg border-2 transition-all duration-200 ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
                               : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
                           }`}
                         >
-                          <div className="flex items-center gap-2 w-full">
-                            <div className={`p-1 rounded-md transition-colors shrink-0 ${
-                              isSelected ? "bg-primary/20" : "bg-foreground/5 group-hover:bg-primary/10"
-                            }`}>
-                              <OptionIcon
-                                icon={option.icon}
-                                className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
-                              />
+                          <button
+                            type="button"
+                            onClick={() => toggleProblem(option.id)}
+                            className="w-full min-h-[52px] px-3.5 py-2.5 flex items-center text-left cursor-pointer group"
+                          >
+                            <div className="flex items-center gap-2 w-full">
+                              <div className={`p-1 rounded-md transition-colors shrink-0 ${
+                                isSelected ? "bg-primary/20" : "bg-foreground/5 group-hover:bg-primary/10"
+                              }`}>
+                                <OptionIcon
+                                  icon={option.icon}
+                                  className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
+                                />
+                              </div>
+                              <span className="font-medium flex-1 text-sm sm:text-base leading-snug">{option.label}</span>
+                              {isSelected && (
+                                <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
+                              )}
                             </div>
-                            <span className="font-medium flex-1 text-sm sm:text-base leading-snug">{option.label}</span>
-                            {isSelected && (
-                              <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
-                            )}
-                          </div>
-                        </button>
+                          </button>
+                          {isSelected && (
+                            <div className="flex gap-1.5 px-3 pb-2.5 animate-in fade-in duration-200">
+                              {SEVERITY_LEVELS.map((lvl) => {
+                                const active = level === lvl.value;
+                                return (
+                                  <button
+                                    key={lvl.value}
+                                    type="button"
+                                    onClick={() => setSymptomLevel(option.id, lvl.value)}
+                                    className={`flex-1 min-h-9 px-1 rounded-md text-[11px] sm:text-xs font-medium border transition-all duration-150 cursor-pointer ${
+                                      active
+                                        ? "bg-primary text-primary-foreground border-primary"
+                                        : "bg-background text-muted-foreground border-foreground/15 hover:border-primary/40"
+                                    }`}
+                                  >
+                                    {lvl.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
@@ -1351,6 +1461,15 @@ function RegisterPageContent() {
               {/* Breather */}
               {currentStep === "breather" && (
                 <div className="flex-1 flex flex-col justify-center space-y-3 sm:space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                  <div className="flex justify-center">
+                    <Image
+                      src="/quiz/illustration_social_proof.png"
+                      alt=""
+                      width={320}
+                      height={140}
+                      className="object-contain w-full max-h-40 sm:max-h-40"
+                    />
+                  </div>
                   <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-center">
                     You&apos;re in good company
                   </h2>

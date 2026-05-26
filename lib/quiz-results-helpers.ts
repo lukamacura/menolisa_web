@@ -298,3 +298,45 @@ export const SYMPTOM_LABELS: Record<string, string> = {
   joint_pain: "Joint pain",
 };
 
+// Age band -> human label for cohort comparison copy.
+export const AGE_BAND_LABELS: Record<string, string> = {
+  under_40: "women under 40",
+  "40_45": "women aged 40–45",
+  "46_50": "women aged 46–50",
+  "51_plus": "women aged 51+",
+  prefer_not: "women your age",
+};
+
+// Typical symptom intensity (0–3 scale) for the "you're not alone" comparison.
+// A defensible model profile of common menopause symptom load — NOT a claimed survey average.
+export const TYPICAL_SYMPTOM_SEVERITY: Record<string, number> = {
+  hot_flashes: 1.7,
+  sleep_issues: 1.9,
+  brain_fog: 1.5,
+  mood_swings: 1.6,
+  weight_changes: 1.7,
+  low_energy: 1.9,
+  anxiety: 1.5,
+  joint_pain: 1.4,
+};
+
+// Typical quality score per age band (higher = better), on the same 20–60 scale as the user's score.
+const TYPICAL_SCORE_BY_AGE: Record<string, number> = {
+  under_40: 54,
+  "40_45": 49,
+  "46_50": 45,
+  "51_plus": 43,
+  prefer_not: 48,
+};
+
+export function getScoreBenchmark(ageBand: string): number {
+  return TYPICAL_SCORE_BY_AGE[ageBand] ?? TYPICAL_SCORE_BY_AGE.prefer_not;
+}
+
+// Higher score = better, so a score below the cohort benchmark means symptoms are hitting harder.
+export function getScoreVerdict(score: number, benchmark: number): string {
+  if (score <= benchmark - 4) return "lower than average";
+  if (score >= benchmark + 4) return "higher than average";
+  return "about average";
+}
+
