@@ -77,7 +77,7 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang="en" className={`${satoshi.variable} ${dancingScript.variable} ${poppins.variable} ${lora.variable}`}>
+    <html lang="en" data-scroll-behavior="smooth" className={`${satoshi.variable} ${dancingScript.variable} ${poppins.variable} ${lora.variable}`}>
       <head>
         {/* LCP: preload critical fonts for hero text */}
         <link rel="preload" href="/fonts/Satoshi-Bold.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />

@@ -30,7 +30,7 @@ function applyCors(response: NextResponse) {
   return response;
 }
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // CORS preflight: must return 200 with CORS headers, no redirect.

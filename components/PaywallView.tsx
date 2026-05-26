@@ -41,10 +41,7 @@ export function PaywallView({
   return (
     <div
       className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pt-4 sm:pt-6 pb-[calc(140px+env(safe-area-inset-bottom))] sm:pb-6 relative"
-      style={{
-        background:
-          "radial-gradient(ellipse at 15% 5%, rgba(255,116,177,0.22) 0%, transparent 45%), radial-gradient(ellipse at 85% 55%, rgba(101,219,255,0.18) 0%, transparent 45%), radial-gradient(ellipse at 50% 95%, rgba(255,235,118,0.18) 0%, transparent 45%)",
-      }}
+
     >
 
       <motion.div
@@ -94,7 +91,7 @@ export function PaywallView({
           <span className="text-xs sm:text-sm font-semibold text-[#3D3D3D]">
             4.9 &middot;{" "}
             <AnimatedCounter
-              target={12000}
+              target={1728}
               formatter={(n) => `${n.toLocaleString("en-US")}+`}
             />{" "}
             women

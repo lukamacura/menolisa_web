@@ -1243,6 +1243,7 @@ function RegisterPageContent() {
                     width={320}
                     height={currentStep === "breather" || currentStep === "q8_name" ? 140 : 160}
                     className="object-contain w-full max-h-[120px] sm:max-h-40"
+                    style={{ height: 'auto' }}
                   />
                 </div>
               )}

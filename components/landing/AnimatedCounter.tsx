@@ -41,11 +41,11 @@ function emit(s: Store) {
 
 function scheduleTick(s: Store) {
   if (s.timeout) return
-  // Slower cadence: 4–9s between ticks
-  const delay = randInt(4000, 9000)
+  // ~1 new user every 30–90s
+  const delay = randInt(30000, 90000)
   s.timeout = setTimeout(() => {
     s.timeout = null
-    s.value += randInt(1, 3)
+    s.value += 1
     emit(s)
     if (s.viewers > 0) scheduleTick(s)
   }, delay)

@@ -38,6 +38,17 @@ function subscriptionTrialEndIso(subscription: Stripe.Subscription): string | nu
   return new Date(trialEnd * 1000).toISOString();
 }
 
+/** Derive billing interval + amount (cents) from the subscription's first price. */
+function planFromSubscription(
+  subscription: Stripe.Subscription
+): { plan_type: "monthly" | "annual" | null; plan_amount: number | null } {
+  const price = subscription.items?.data?.[0]?.price;
+  const interval = price?.recurring?.interval ?? null;
+  const plan_type = interval === "year" ? "annual" : interval === "month" ? "monthly" : null;
+  const plan_amount = typeof price?.unit_amount === "number" ? price.unit_amount : null;
+  return { plan_type, plan_amount };
+}
+
 /**
  * Resolve a user_id either from the stored row (preferred) or from the Stripe object metadata.
  * Returns null when the subscription isn't linked to any known user yet.
@@ -114,6 +125,8 @@ async function handleCheckoutSessionCompleted(
   let stripe_customer_id: string | null = null;
   let stripe_subscription_id: string | null = null;
   let subscription_canceled = false;
+  let plan_type: "monthly" | "annual" | null = null;
+  let plan_amount: number | null = null;
 
   if (session.subscription && typeof session.subscription === "string") {
     try {
@@ -123,6 +136,7 @@ async function handleCheckoutSessionCompleted(
       subscription_canceled = !!subscription.cancel_at;
       stripe_customer_id = customerIdOf(subscription.customer);
       stripe_subscription_id = subscription.id;
+      ({ plan_type, plan_amount } = planFromSubscription(subscription));
     } catch (err) {
       console.error("Webhook: failed to fetch subscription:", err);
     }
@@ -137,6 +151,8 @@ async function handleCheckoutSessionCompleted(
   if (stripe_customer_id) extras.stripe_customer_id = stripe_customer_id;
   if (stripe_subscription_id) extras.stripe_subscription_id = stripe_subscription_id;
   if (trial_end !== null) extras.trial_end = trial_end;
+  if (plan_type) extras.plan_type = plan_type;
+  if (plan_amount !== null) extras.plan_amount = plan_amount;
 
   try {
     const result = await writeSubscription(supabaseAdmin, {
@@ -190,6 +206,7 @@ async function handleSubscriptionUpsert(
   const trial_end = subscriptionTrialEndIso(subscription);
   const subscription_canceled = !!subscription.cancel_at;
   const stripe_customer_id = customerIdOf(subscription.customer);
+  const { plan_type, plan_amount } = planFromSubscription(subscription);
   const metadataUserId = (subscription.metadata?.user_id as string | undefined) ?? null;
 
   const userId = await resolveUserId(supabaseAdmin, {
@@ -212,6 +229,8 @@ async function handleSubscriptionUpsert(
     trial_end, // null clears the trial flag once Stripe leaves trialing
     ...(subscription_ends_at && { subscription_ends_at }),
     ...(stripe_customer_id && { stripe_customer_id }),
+    ...(plan_type && { plan_type }),
+    ...(plan_amount !== null && { plan_amount }),
     ...(isActive && { account_status: "paid", payment_failed_at: null }),
   };
 
@@ -246,6 +265,8 @@ async function handleSubscriptionUpsert(
         last_stripe_event_at: new Date(eventCreatedSec * 1000).toISOString(),
         trial_end,
         ...(stripe_customer_id && { stripe_customer_id }),
+        ...(plan_type && { plan_type }),
+        ...(plan_amount !== null && { plan_amount }),
         ...(isActive && { payment_failed_at: null }),
       },
     });

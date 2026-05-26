@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
           user_id: userId,
           trial_start: nowIso,
           trial_days: 3,
-          account_status: "pending_payment",
+          account_status: "expired",
         });
         if (trialError) {
           console.error("Trial row creation failed:", trialError);
