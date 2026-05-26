@@ -18,7 +18,7 @@ import { sendPushNotification } from "@/lib/sendPushNotification";
 // Import RAG orchestrator
 import { orchestrateRAG } from "@/lib/rag/orchestrator";
 import { getPersonaSystemPrompt } from "@/lib/rag/persona-prompts";
-import { addMessage, getConversationHistory } from "@/lib/rag/conversation-memory";
+import { addMessage } from "@/lib/rag/conversation-memory";
 import type { RetrievalMode } from "@/lib/rag/types";
 
 /** Asset keys used by mobile app assets/symptoms/ (snake_case filenames without extension). */
@@ -386,11 +386,10 @@ export async function POST(req: NextRequest) {
     }
     const user_id = authUser.id;
 
-    const { message, userInput, sessionId, history, mode, stream: streamParam } = (await req.json()) as {
+    const { message, userInput, sessionId, mode, stream: streamParam } = (await req.json()) as {
       message?: string; // New parameter name
       userInput?: string; // Legacy support
       sessionId?: string;
-      history?: string;
       mode?: RetrievalMode;
       stream?: boolean;
     };
@@ -439,6 +438,7 @@ export async function POST(req: NextRequest) {
         .from("conversations")
         .select("user_message, assistant_message, created_at")
         .eq("user_id", user_id)
+        .eq("session_id", sessionId)
         .order("created_at", { ascending: false })
         .limit(10),
       fetchTrackerData(user_id, 30),
@@ -454,26 +454,22 @@ export async function POST(req: NextRequest) {
     const trackerContext = formatTrackerSummary(trackerSummary);
 
     // 3. Use RAG orchestrator for persona-based retrieval and response generation
-    // Get conversation history from memory
-    const memoryHistory = getConversationHistory(sessionId);
-    
-    // Build conversation history for orchestrator (legacy support + memory)
-    const dbHistoryMessages: Array<["user" | "assistant", string]> = [];
+    // Build conversation history from the DB, scoped to THIS session (chronological order).
+    // The conversations table is the single source of truth: every turn is persisted via
+    // storeConversation before the SSE stream closes, so it is reliable across serverless
+    // invocations and never mixes turns from the user's other chat sessions.
+    const allHistoryMessages: Array<["user" | "assistant", string]> = [];
     if (recentConversations && recentConversations.length > 0) {
       const chronological = [...recentConversations].reverse();
       for (const conv of chronological) {
         if (conv.user_message) {
-          dbHistoryMessages.push(["user", conv.user_message]);
+          allHistoryMessages.push(["user", conv.user_message]);
         }
         if (conv.assistant_message) {
-          dbHistoryMessages.push(["assistant", conv.assistant_message]);
+          allHistoryMessages.push(["assistant", conv.assistant_message]);
         }
       }
     }
-
-    const sessionHistoryMessages = parseHistory(history || "");
-    const memoryHistoryArray = memoryHistory.map(msg => [msg.role, msg.content] as ["user" | "assistant", string]);
-    const allHistoryMessages = [...dbHistoryMessages, ...sessionHistoryMessages, ...memoryHistoryArray];
 
     // Call orchestrator with new signature
     const orchestrationResult = await orchestrateRAG(
@@ -1214,41 +1210,6 @@ IMPORTANT: The user is engaging in casual conversation, not asking for informati
       { status: 500 }
     );
   }
-}
-
-// Helper: Parse history string into LangChain message format
-function parseHistory(history: string): Array<["user" | "assistant", string]> {
-  if (!history.trim()) return [];
-
-  const messages: Array<["user" | "assistant", string]> = [];
-  const lines = history.split("\n");
-
-  let currentRole: "user" | "assistant" | null = null;
-  let currentContent: string[] = [];
-
-  for (const line of lines) {
-    if (line.startsWith("User:")) {
-      if (currentRole && currentContent.length > 0) {
-        messages.push([currentRole, currentContent.join("\n").trim()]);
-      }
-      currentRole = "user";
-      currentContent = [line.replace(/^User:\s*/, "")];
-    } else if (line.startsWith("Assistant:")) {
-      if (currentRole && currentContent.length > 0) {
-        messages.push([currentRole, currentContent.join("\n").trim()]);
-      }
-      currentRole = "assistant";
-      currentContent = [line.replace(/^Assistant:\s*/, "")];
-    } else if (currentRole && line.trim()) {
-      currentContent.push(line);
-    }
-  }
-
-  if (currentRole && currentContent.length > 0) {
-    messages.push([currentRole, currentContent.join("\n").trim()]);
-  }
-
-  return messages;
 }
 
 const MAX_SESSION_TITLE_LENGTH = 48;

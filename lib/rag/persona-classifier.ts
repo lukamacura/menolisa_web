@@ -20,11 +20,14 @@ async function hasMenopauseKBIntentMatch(query: string): Promise<boolean> {
     
     // Query documents with persona = "menopause" to check intent patterns
     // Limit to reasonable number for performance (checking intent patterns in-memory)
+    // Must cover ALL menopause docs, not a sample: the persona KB has >100 sections, and a
+    // cap here silently drops intent patterns for docs past the limit (no ORDER BY = arbitrary
+    // subset), causing menopause queries to mis-route. 1000 is PostgREST's default max-rows.
     const { data: menopauseDocs, error } = await supabaseClient
       .from('documents')
       .select('metadata')
       .eq('metadata->>persona', 'menopause')
-      .limit(100); // Get sample of menopause docs to check intent patterns
+      .limit(1000);
     
     if (error || !menopauseDocs || menopauseDocs.length === 0) {
       // If query fails or no docs found, return false (fall back to keyword matching)

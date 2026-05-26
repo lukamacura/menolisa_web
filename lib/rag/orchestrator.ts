@@ -622,7 +622,7 @@ async function handleKBStrictMode(
 
   // No KB match - check safety (mode-aware)
   const hasKBAnswer = retrievalResult.hasMatch && retrievalResult.kbEntries.length > 0;
-  const safetyCheck = validateMenopauseQuery(userQuery, mode, hasKBAnswer);
+  const safetyCheck = validateMenopauseQuery(userQuery, hasKBAnswer);
 
   if (safetyCheck.refused) {
     console.log(`[KB Strict Mode] Query refused, returning refusal response`);

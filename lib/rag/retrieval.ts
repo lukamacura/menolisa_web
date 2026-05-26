@@ -747,12 +747,13 @@ export async function checkExactIntentMatchAcrossAllPersonas(
     
     console.log(`[Exact Intent Check] Checking for exact intent pattern matches across ALL personas`);
     
-    // Query ALL documents (no persona filter) to check intent patterns
-    // Use a reasonable limit to avoid performance issues (300 should cover most cases)
+    // Query ALL documents (no persona filter) to check intent patterns.
+    // Must cover the whole KB: a cap below the document count silently drops exact-intent
+    // matches for docs past the limit. 1000 is PostgREST's default max-rows ceiling.
     const { data: allDocs, error: queryError } = await supabaseClient
       .from('documents')
       .select('id, content, metadata')
-      .limit(300);
+      .limit(1000);
     
     if (queryError || !allDocs || allDocs.length === 0) {
       if (queryError) {
@@ -866,13 +867,14 @@ export async function retrieveFromKBByIntentOnly(
     
     console.log(`[Intent-Only Retrieval] Checking for exact intent pattern matches in persona: ${metadataPersona}`);
     
-    // Query all documents with this persona to check intent patterns
-    // Use a reasonable limit to avoid performance issues (200 should cover most cases)
+    // Query all documents with this persona to check intent patterns.
+    // Must cover every doc in the persona: a cap below the count silently drops exact-intent
+    // matches for docs past the limit. 1000 is PostgREST's default max-rows ceiling.
     const { data: personaDocs, error: personaError } = await supabaseClient
       .from('documents')
       .select('id, content, metadata')
       .eq('metadata->>persona', metadataPersona)
-      .limit(200);
+      .limit(1000);
     
     if (!personaError && personaDocs && personaDocs.length > 0) {
       console.log(`[Intent-Only Retrieval] Checking ${personaDocs.length} documents for exact intent pattern matches`);

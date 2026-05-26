@@ -4,7 +4,7 @@
  * Mode-aware: only refuses in llm_reasoning mode without KB answer
  */
 
-import type { RetrievalMode, SafetyResult } from "./types";
+import type { SafetyResult } from "./types";
 
 /**
  * List of refused medication names (case-insensitive matching)
@@ -54,17 +54,21 @@ const ALLOWED_PATTERNS = [
 ];
 
 /**
- * Validate a query for medication/dosage safety
- * Mode-aware: only refuses in llm_reasoning mode without KB answer
- * 
+ * Validate a query for medication/dosage safety.
+ *
+ * Policy: vetted KB content is trusted, so if the KB has an answer we always allow.
+ * Otherwise, prescription-medication / dosage / prescription-advice questions are
+ * REFUSED in every mode — we never let the free-form LLM invent dosing or prescribing
+ * advice. (Previously this only refused in llm_reasoning mode, which meant the
+ * menopause_specialist persona — always kb_strict — never refused and fell through to
+ * the temp-0.7 LLM.)
+ *
  * @param query - User query to validate
- * @param mode - Retrieval mode (kb_strict, hybrid, llm_reasoning)
  * @param hasKBAnswer - Whether KB has an answer for this query
  * @returns SafetyResult with allowed/refused status and reason
  */
 export function validateMenopauseQuery(
   query: string,
-  mode: RetrievalMode,
   hasKBAnswer: boolean
 ): SafetyResult {
   const lowerQuery = query.toLowerCase();
@@ -77,34 +81,13 @@ export function validateMenopauseQuery(
     };
   }
 
-  // Check for medication dosage questions
   const isDosageQuestion = DOSAGE_PATTERNS.some(pattern => pattern.test(query));
   const mentionsMedication = REFUSED_MEDICATIONS.some(med => lowerQuery.includes(med));
   const isPrescriptionAdvice = /(prescription|prescribe|doctor.*prescribe|should.*prescribe)/i.test(query);
 
-  // If query mentions medication or asks for dosage/prescription advice
-  if (isDosageQuestion || mentionsMedication || isPrescriptionAdvice) {
-    // In llm_reasoning mode without KB answer: REFUSE
-    if (mode === "llm_reasoning" && !hasKBAnswer) {
-      return {
-        allowed: false,
-        refused: true,
-        reason: generateRefusalResponse(query),
-      };
-    }
-
-    // In kb_strict or hybrid mode with KB answer: ALLOW (KB is trusted source)
-    // Also allow if KB was checked and has answer (even in llm_reasoning mode)
-    if (hasKBAnswer || mode === "kb_strict" || mode === "hybrid") {
-      return {
-        allowed: true,
-        refused: false,
-      };
-    }
-  }
-
-  // Check for general supplement dosage (calcium, vitamin D, etc.) - allow these
-  if (isDosageQuestion) {
+  // Allow general supplement dosage (calcium, vitamin D, magnesium) — these are not
+  // prescription medications and are safe to discuss in general terms.
+  if (isDosageQuestion && !mentionsMedication && !isPrescriptionAdvice) {
     const generalSupplements = ["calcium", "vitamin d", "vitamin", "magnesium", "supplement"];
     if (generalSupplements.some(supp => lowerQuery.includes(supp))) {
       return {
@@ -112,6 +95,22 @@ export function validateMenopauseQuery(
         refused: false,
       };
     }
+  }
+
+  // Prescription medication / dosage / prescription-advice questions:
+  // trust the KB if it has a vetted answer, otherwise REFUSE in every mode.
+  if (isDosageQuestion || mentionsMedication || isPrescriptionAdvice) {
+    if (hasKBAnswer) {
+      return {
+        allowed: true,
+        refused: false,
+      };
+    }
+    return {
+      allowed: false,
+      refused: true,
+      reason: generateRefusalResponse(query),
+    };
   }
 
   // Default: allow (will be handled by KB or LLM with safety boundaries)
