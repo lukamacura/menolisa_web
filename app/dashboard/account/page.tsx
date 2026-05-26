@@ -24,10 +24,10 @@ export default function AccountPage() {
 
       <section className="mb-8 sm:mb-10" aria-label="Plan and subscription">
         {trialStatus.loading ? (
-          <div className="animate-pulse space-y-3 rounded-2xl border border-border p-4 sm:p-6">
-            <div className="h-6 w-40 rounded bg-muted" />
-            <div className="h-32 rounded-xl bg-muted" />
-            <div className="h-12 w-full rounded-xl bg-muted" />
+          <div className="animate-pulse space-y-3 rounded-2xl border border-white/10 bg-gray-900 p-4 sm:p-6">
+            <div className="h-6 w-40 rounded bg-white/10" />
+            <div className="h-32 rounded-xl bg-white/10" />
+            <div className="h-12 w-full rounded-xl bg-white/10" />
           </div>
         ) : (
           <TrialCard

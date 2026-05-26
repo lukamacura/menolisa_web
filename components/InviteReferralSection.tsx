@@ -109,26 +109,29 @@ export function InviteReferralSection({ className = "" }: { className?: string }
 
   return (
     <div className={className}>
-      <div className="rounded-2xl  bg-orange-200 p-6 shadow-xl">
-        <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-          <div className="p-3 rounded-xl shrink-0 bg-orange-300 w-14 h-14 flex items-center justify-center">
-            <Gift className="h-7 w-7 text-orange-800 " />
+      <div className="rounded-xl sm:rounded-2xl border border-border/30 bg-card backdrop-blur-lg p-4 sm:p-6 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4">
+          <div
+            className="shrink-0 p-2.5 sm:p-3 rounded-xl shadow-md w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center"
+            style={{ background: "linear-gradient(135deg, #fb923c 0%, #ea580c 100%)" }}
+          >
+            <Gift className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="text-lg font-bold text-foreground mb-1">
+            <h3 className="text-lg sm:text-xl font-bold text-foreground mb-0.5 sm:mb-1">
               {copy.title}
             </h3>
-            <p className="text-sm text-muted-foreground mb-4">
+            <p className="text-xs sm:text-sm text-muted-foreground mb-4">
               {copy.subtitle}
             </p>
             {loading ? (
-              <div className="h-9 w-24 rounded-lg bg-amber-200/50 dark:bg-amber-800/30 animate-pulse" />
+              <div className="h-9 w-24 rounded-lg bg-muted animate-pulse" />
             ) : link ? (
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={copyLink}
-                  className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-orange-300 text-orange-800! px-3 py-2 text-sm font-medium  dark:text-amber-200 hover:bg-orange-400  transition-colors"
+                  className="inline-flex items-center gap-2 rounded-lg border border-border/50 bg-muted text-foreground px-3 py-2 text-sm font-medium hover:bg-muted/80 transition-colors"
                 >
                   <Copy className="h-4 w-4" />
                   {copied ? "Copied!" : "Copy link"}
@@ -136,7 +139,7 @@ export function InviteReferralSection({ className = "" }: { className?: string }
                 <button
                   type="button"
                   onClick={share}
-                  className="inline-flex items-center gap-2 rounded-lg border  bg-amber-800 text-orange-200 px-3 py-2 text-sm font-medium hover:bg-amber-600 dark:hover:bg-amber-500 transition-colors"
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-3 py-2 text-sm font-medium hover:bg-primary/90 transition-colors"
                 >
                   <Share2 className="h-4 w-4" />
                   Share

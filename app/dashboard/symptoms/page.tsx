@@ -17,7 +17,6 @@ import LogSymptomModal from "@/components/symptom-tracker/LogSymptomModal";
 import QuickLogModal from "@/components/symptom-tracker/QuickLogModal";
 import RecentLogs from "@/components/symptom-tracker/RecentLogs";
 import PersonalizedGreeting from "@/components/symptom-tracker/PersonalizedGreeting";
-import EmptyState from "@/components/symptom-tracker/EmptyState";
 import HealthSummaryButton from "@/components/symptom-tracker/HealthSummaryButton";
 import DailyMoodSelector from "@/components/symptom-tracker/DailyMoodSelector";
 import WhatLisaNoticed from "@/components/symptom-tracker/WhatLisaNoticed";
@@ -722,11 +721,6 @@ export default function SymptomsPage() {
 
       {/* Main Content */}
       <div className="space-y-8">
-
-        {/* Empty State */}
-        <AnimatedSection delay={150}>
-          <EmptyState />
-        </AnimatedSection>
 
         {/* Daily Mood Selector */}
         <AnimatedSection delay={200}>
