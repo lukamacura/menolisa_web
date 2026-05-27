@@ -356,9 +356,19 @@ Custom CSS variables for fonts: `--font-satoshi`, `--font-script`, `--font-poppi
 1. Create table via Supabase Dashboard SQL editor or create a migration script in `scripts/`
 2. Enable Row Level Security (RLS) on the table
 3. Add RLS policy: `auth.uid() = user_id` for user-owned data
-4. Access from API routes via `getSupabaseAdmin()` (bypasses RLS for server operations)
-5. Access from client components via `supabase` from `lib/supabaseClient.ts` (respects RLS)
-6. Document the table schema in this file's "Database Schema" section
+4. **Grant Data API access** (required for new tables as of Oct 30, 2026 — without it, client-side queries via the anon key get a permission error):
+   ```sql
+   ALTER TABLE public.new_table ENABLE ROW LEVEL SECURITY;
+
+   CREATE POLICY "own rows" ON public.new_table
+     FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.new_table TO authenticated;
+   ```
+   Grant to `authenticated` only — not `anon` — unless the table must be readable while logged out. The GRANT is the access gate; RLS is the row filter — you need both. Server-side access via `getSupabaseAdmin()` (service role) bypasses grants and is unaffected.
+5. Access from API routes via `getSupabaseAdmin()` (bypasses RLS for server operations)
+6. Access from client components via `supabase` from `lib/supabaseClient.ts` (respects RLS)
+7. Document the table schema in this file's "Database Schema" section
 
 ### Adding a New Dashboard Page
 
