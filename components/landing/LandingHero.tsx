@@ -40,7 +40,7 @@ const heroContent = {
     highlight: "what's happening\nto your body",
     after: ""
   },
-  subheadline: "Stop second-guessing every symptom. Get research-backed answers in seconds, track patterns in 30 seconds a day, and walk into your doctor's office with real data - not guesses."
+  subheadline: "Stop second-guessing every symptom. Get research-backed answers in seconds, track symptoms in 30 seconds a day, and walk into your doctor's office with real data - not guesses."
 }
 
 // Animated highlight per row with sweep effect - row by row

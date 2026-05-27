@@ -785,7 +785,7 @@ function RegisterPageContent() {
 
       {/* Results Phase */}
       {phase === "results" && (
-        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pb-[calc(120px+env(safe-area-inset-bottom))]">
+        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pb-[calc(120px+env(safe-area-inset-bottom))] [scrollbar-width:thin] [scrollbar-color:rgba(255,141,161,0.35)_transparent] [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-primary/30 hover:[&::-webkit-scrollbar-thumb]:bg-primary/50">
           <motion.div
             key="results"
             initial={{ opacity: 0 }}
@@ -1021,14 +1021,18 @@ function RegisterPageContent() {
             animate={{ opacity: 1, y: 0 }}
             className="max-w-md mx-auto w-full flex-1 flex flex-col justify-center min-h-0"
           >
-            <div className="flex justify-center mb-4 sm:mb-6">
-              <Image
-                src={`/quiz/${QUIZ_ILLUSTRATION.email}`}
-                alt=""
-                width={120}
-                height={120}
-                className="object-contain w-full max-h-[120px] sm:max-h-[140px]"
-              />
+            {/* Blurred preview of the results she's about to unlock */}
+            <div aria-hidden className="flex justify-center mb-4 sm:mb-6 pointer-events-none">
+              <div className="w-full sm:w-78 max-h-[200px] sm:max-h-[200px] overflow-hidden rounded-xl">
+                <Image
+                  src="/quiz/results_blur.png"
+                  alt=""
+                  width={437}
+                  height={951}
+                  priority={false}
+                  className="w-full object-cover object-top opacity-90 blur-[2px] select-none"
+                />
+              </div>
             </div>
 
             <div className="mb-4 sm:mb-6 text-center">

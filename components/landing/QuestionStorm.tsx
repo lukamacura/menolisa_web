@@ -75,7 +75,7 @@ function QuestionDisplay({
           <MessageCircle className="w-5 h-5 sm:w-6 sm:h-6 text-red-500 mx-auto mb-3" />
           
           {/* Main question */}
-          <p className="text-lg sm:text-xl md:text-2xl font-medium text-red-500 leading-relaxed">
+          <p className="text-lg sm:text-xl md:text-2xl font-medium leading-relaxed">
             {question.text}
           </p>
         </motion.div>
