@@ -13,6 +13,8 @@ type TrialRow = {
   subscription_ends_at: string | null;
   plan_type: string | null;
   plan_amount: number | null;
+  trial_end: string | null;
+  subscription_canceled: boolean | null;
 };
 
 type RecentSubscriber = {
@@ -33,7 +35,7 @@ export async function POST(req: NextRequest) {
   const [trialsResult, recentTrialsResult] = await Promise.all([
     supabaseAdmin
       .from("user_trials")
-      .select("account_status, subscription_ends_at, plan_type, plan_amount")
+      .select("account_status, subscription_ends_at, plan_type, plan_amount, trial_end, subscription_canceled")
       .eq("account_status", "paid"),
     supabaseAdmin
       .from("user_trials")
@@ -68,8 +70,10 @@ export async function POST(req: NextRequest) {
   }));
 
   const now = Date.now();
-  // "Currently subscribed" = card on file, not past the period end (active + in trial).
+  // MRR = real paying users only: past trial, not canceled, period not ended.
   const rows = ((data ?? []) as TrialRow[]).filter((r) => {
+    if (r.subscription_canceled) return false;
+    if (r.trial_end && new Date(r.trial_end).getTime() > now) return false;
     const endsMs = r.subscription_ends_at ? new Date(r.subscription_ends_at).getTime() : 0;
     return !endsMs || endsMs > now;
   });
