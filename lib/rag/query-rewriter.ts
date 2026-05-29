@@ -23,6 +23,12 @@ const FOLLOW_UP_PATTERNS = /^(yes|yeah|yep|yup|sure|ok|okay|no|nah|nope|not real
 
 const GREETING_PATTERNS = /^(hi|hey|hello|good morning|good evening|good afternoon|howdy|sup|yo)$/i;
 
+// Referential terms (pronouns/demonstratives) that point back to earlier turns.
+// When one appears AND we have history, the message depends on context regardless
+// of length — e.g. "does that one also cause weight gain?", "is it worse at night?".
+// This is the fix for mid-length follow-ups silently skipping the rewriter.
+const REFERENTIAL_PATTERNS = /\b(it|its|it's|that|this|those|these|they|them|their|the same|the other|the first|the second)\b/i;
+
 /**
  * Determines whether a user message is likely a follow-up that needs
  * conversation context to be meaningful for retrieval.
@@ -34,6 +40,10 @@ function isLikelyFollowUp(query: string): boolean {
   if (GREETING_PATTERNS.test(lower)) return false;
 
   if (FOLLOW_UP_PATTERNS.test(lower)) return true;
+
+  // Pronoun/demonstrative referencing a prior turn — fires at ANY length.
+  // Catches mid-length contextual follow-ups the old length/regex gate missed.
+  if (REFERENTIAL_PATTERNS.test(lower)) return true;
 
   // Very short messages (< 12 chars) that aren't greetings are likely follow-ups
   // e.g. "yes please", "go on", "why not"

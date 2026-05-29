@@ -13,6 +13,8 @@ import { OpenAIEmbeddings } from "@langchain/openai";
 import type { Document } from "@langchain/core/documents";
 import type { KBEntry, Persona, RetrievalResult, ContentSections } from "./types";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { generateHypotheticalAnswer } from "./hyde";
+import { decomposeQuery, looksMultiTopic } from "./multi-query";
 
 // Type for match results from Supabase RPC
 interface MatchResult {
@@ -1508,4 +1510,109 @@ export async function retrieveFromKB(
       hasMatch: false,
     };
   }
+}
+
+/**
+ * Stable de-dupe key for a KB entry. Prefers the document id; falls back to
+ * persona/topic/subtopic so entries from different retrieval passes that point at
+ * the same KB section collapse into one.
+ */
+function entryDedupeKey(entry: KBEntry): string {
+  if (entry.id) return entry.id;
+  const m = entry.metadata;
+  return `${m.persona}|${m.topic}|${m.subtopic}`;
+}
+
+/**
+ * Fuse several retrieval result lists into one.
+ *
+ * De-dupes by document, keeping the copy with the higher semantic similarity, then
+ * ranks by hybrid score (entry.similarity). Used to merge multi-query and HyDE
+ * passes back into a single ranked list.
+ */
+function fuseRetrievalResults(results: RetrievalResult[], topK: number): RetrievalResult {
+  const byKey = new Map<string, KBEntry>();
+
+  for (const result of results) {
+    if (!result.hasMatch) continue;
+    for (const entry of result.kbEntries) {
+      const key = entryDedupeKey(entry);
+      const existing = byKey.get(key);
+      if (!existing) {
+        byKey.set(key, entry);
+        continue;
+      }
+      // Keep the higher-confidence copy (semantic first, then hybrid).
+      const existingSem = existing.semanticSimilarity ?? 0;
+      const candidateSem = entry.semanticSimilarity ?? 0;
+      if (
+        candidateSem > existingSem ||
+        (candidateSem === existingSem && (entry.similarity ?? 0) > (existing.similarity ?? 0))
+      ) {
+        byKey.set(key, entry);
+      }
+    }
+  }
+
+  const merged = [...byKey.values()].sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
+  const sliced = merged.slice(0, topK);
+
+  return {
+    kbEntries: sliced,
+    hasMatch: sliced.length > 0,
+    topScore: sliced[0]?.similarity,
+    topSemanticScore: sliced.reduce((max, e) => Math.max(max, e.semanticSimilarity ?? 0), 0) || undefined,
+  };
+}
+
+// Below this semantic confidence, the raw-query embedding is considered weak and
+// the HyDE branch is triggered to close the phrasing gap.
+const HYDE_TRIGGER_THRESHOLD = 0.45;
+
+/**
+ * Advanced retrieval for hybrid-mode personas (nutrition / exercise).
+ *
+ * Adds two query-intelligence layers on top of {@link retrieveFromKB}, both gated
+ * so single-topic, well-phrased queries pay no extra latency:
+ *  1. Multi-query — decompose a two-topic question and fuse per-topic retrievals.
+ *  2. HyDE — when confidence is low, embed a hypothetical answer and fuse it in.
+ *
+ * kb_strict (menopause specialist) intentionally keeps its tuned intent-only path
+ * and does not use this.
+ */
+export async function retrieveFromKBAdvanced(
+  query: string,
+  persona: Persona,
+  topK: number = 5,
+  similarityThreshold: number = 0.5
+): Promise<RetrievalResult> {
+  // Layer 1: multi-query decomposition (gated by a cheap rule check)
+  const subQueries = looksMultiTopic(query) ? await decomposeQuery(query) : [query];
+
+  const passes = await Promise.all(
+    subQueries.map((q) => retrieveFromKB(q, persona, topK, similarityThreshold))
+  );
+
+  let fused =
+    subQueries.length > 1
+      ? fuseRetrievalResults(passes, topK)
+      : passes[0];
+
+  // Layer 2: HyDE — only when the best result so far is weak or missing
+  const topSemantic = fused.topSemanticScore ?? 0;
+  if (!fused.hasMatch || topSemantic < HYDE_TRIGGER_THRESHOLD) {
+    console.log(
+      `[Advanced Retrieval] Low confidence (semantic ${topSemantic.toFixed(3)} < ${HYDE_TRIGGER_THRESHOLD}) — invoking HyDE`
+    );
+    const hypothetical = await generateHypotheticalAnswer(query);
+    if (hypothetical !== query) {
+      const hydeResult = await retrieveFromKB(hypothetical, persona, topK, similarityThreshold);
+      fused = fuseRetrievalResults([fused, hydeResult], topK);
+      console.log(
+        `[Advanced Retrieval] After HyDE fusion: top semantic ${(fused.topSemanticScore ?? 0).toFixed(3)}, ${fused.kbEntries.length} entries`
+      );
+    }
+  }
+
+  return fused;
 }

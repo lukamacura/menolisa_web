@@ -18,6 +18,7 @@ import { sendPushNotification } from "@/lib/sendPushNotification";
 // Import RAG orchestrator
 import { orchestrateRAG } from "@/lib/rag/orchestrator";
 import { getPersonaSystemPrompt } from "@/lib/rag/persona-prompts";
+import { enforceFaithfulness } from "@/lib/rag/faithfulness";
 import { addMessage } from "@/lib/rag/conversation-memory";
 import type { RetrievalMode } from "@/lib/rag/types";
 
@@ -777,9 +778,16 @@ IMPORTANT: The user is engaging in casual conversation, not asking for informati
 
     // 6. Select appropriate LLM based on retrieval mode
     // For hybrid mode with KB, use lower temperature; for llm_reasoning, use standard
-    const llmToUse = (orchestrationResult.retrievalMode === "hybrid" && orchestrationResult.usedKB) 
-      ? llmKnowledgeBase 
+    const llmToUse = (orchestrationResult.retrievalMode === "hybrid" && orchestrationResult.usedKB)
+      ? llmKnowledgeBase
       : llm;
+
+    // Faithfulness/hallucination gate applies only to hybrid KB-grounded answers.
+    // Verbatim KB and pure-LLM (empathy) turns are returned earlier or have no chunk to check against.
+    const shouldCheckFaithfulness =
+      orchestrationResult.retrievalMode === "hybrid" &&
+      orchestrationResult.usedKB &&
+      !!orchestrationResult.kbContext;
 
     // 7. Build messages array using LangChain message classes
     // CRITICAL: Messages must be in chronological order: [SystemMessage, ...History, CurrentUserInput]
@@ -1079,6 +1087,17 @@ IMPORTANT: The user is engaging in casual conversation, not asking for informati
                 responseText = String(response.content || '');
               }
 
+              // Faithfulness gate: verify the generated answer stayed within the KB
+              // context before it reaches the user; reground it if claims were invented.
+              // Runs here because invoke() already returned the full text (we fake-stream below).
+              if (shouldCheckFaithfulness && responseText) {
+                const { answer, wasCorrected } = await enforceFaithfulness(
+                  orchestrationResult.kbContext!,
+                  responseText
+                );
+                if (wasCorrected) responseText = answer;
+              }
+
               // Stream the response word by word for natural effect
               if (responseText) {
                 fullResponse = responseText;
@@ -1206,6 +1225,15 @@ IMPORTANT: The user is engaging in casual conversation, not asking for informati
         responseText = typeof response.content === 'string'
           ? response.content
           : String(response.content);
+      }
+
+      // Faithfulness gate (hybrid KB-grounded path only) — reground invented claims.
+      if (shouldCheckFaithfulness && responseText) {
+        const { answer, wasCorrected } = await enforceFaithfulness(
+          orchestrationResult.kbContext!,
+          responseText
+        );
+        if (wasCorrected) responseText = answer;
       }
 
       // Store conversation in memory

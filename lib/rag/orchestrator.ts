@@ -5,7 +5,7 @@
 import type { Persona, RetrievalMode, OrchestrationResult, FollowUpLink, KBEntry, ContentSections } from "./types";
 import { classifyPersona } from "./persona-classifier";
 import { validateMenopauseQuery, generateRefusalResponse } from "./safety-validator";
-import { retrieveFromKB, retrieveFromKBByIntentOnly, normalizeTextForIntentMatching, checkExactIntentMatchAcrossAllPersonas, hasPerfectIntentMatch } from "./retrieval";
+import { retrieveFromKB, retrieveFromKBByIntentOnly, retrieveFromKBAdvanced, normalizeTextForIntentMatching, checkExactIntentMatchAcrossAllPersonas, hasPerfectIntentMatch } from "./retrieval";
 import { formatVerbatimResponse, formatKBContextForLLM } from "./response-formatter";
 import { getConversationHistory } from "./conversation-memory";
 import { shouldRouteWhyToMenopause, isWhyHormoneQuestion } from "./classifier/whyRouter";
@@ -659,10 +659,12 @@ async function handleHybridMode(
   _conversationHistory?: Array<["user" | "assistant", string]>
 ): Promise<OrchestrationResult> {
   console.log(`[Hybrid Mode] Active for query: "${userQuery}"`);
-  
-  // Retrieve KB entries with lower threshold for hybrid mode
+
+  // Retrieve KB entries with lower threshold for hybrid mode.
+  // Advanced retrieval adds multi-query decomposition + HyDE (both score/rule-gated)
+  // to handle two-topic questions and novel phrasings that the raw embedding misses.
   const similarityThreshold = 0.5;
-  const retrievalResult = await retrieveFromKB(userQuery, persona, 5, similarityThreshold);
+  const retrievalResult = await retrieveFromKBAdvanced(userQuery, persona, 5, similarityThreshold);
 
   // IMPROVED: Dual threshold system for hybrid mode verbatim responses
   // Slightly lower thresholds than kb_strict since hybrid mode is more flexible
