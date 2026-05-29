@@ -7,16 +7,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { supabase } from "@/lib/supabaseClient";
+import { getAccountState, stateAllowsAccess } from "@/lib/getAccountState";
 import { detectBrowser, hasBrowserMismatchIssue } from "@/lib/browserUtils";
 import {
-  Flame,
-  Moon,
-  Brain,
-  Heart,
-  Scale,
-  Battery,
-  AlertCircle,
-  Bone,
   ArrowRight,
   ArrowLeft,
   CheckCircle2,
@@ -25,23 +18,9 @@ import {
   AlertTriangle,
   UserCircle,
   Check,
-  Users,
-  Calendar,
-  Pause,
-  Flower2,
-  HelpCircle,
-  Clock,
-  XCircle,
-  UtensilsCrossed,
-  Dumbbell,
-  Pill,
-  MessageCircle,
-  Smartphone,
-  Rocket,
-  Compass,
-  BookOpen,
-  Ellipsis,
   TrendingUp,
+  Ruler,
+  Weight,
 } from "lucide-react";
 import OtpForm from "@/components/auth/OtpForm";
 import { PaywallView } from "@/components/PaywallView";
@@ -52,42 +31,25 @@ import {
   TYPICAL_SYMPTOM_SEVERITY,
   getScoreBenchmark,
   getScoreVerdict,
+  calculateWellbeingScore,
 } from "@/lib/quiz-results-helpers";
 
 /** Quiz step/phase -> illustration filename (from public/quiz/, same as mobile app assets/quiz/). */
 const QUIZ_ILLUSTRATION: Record<string, string> = {
-  q1_age: "illustration_q1_age.png",
-  q2_here_for: "illustration_q2_here_for.png",
-  q3_goals: "illustration_q3_goals.png",
-  q4_symptoms: "illustration_q4_symptoms.png",
-  q5_what_tried: "illustration_q5_what_tried.png",
-  q6_how_long: "illustration_q6_how_long.png",
-  q7_qualifier: "illustration_q7_qualifier.png",
   q8_name: "illustration_q8_name.png",
   loading: "illustration_loading.png",
-  results: "illustration_results.png",
-  email: "illustration_email.png",
 };
 
-/** Renders option icon or Check if icon is undefined (avoids "Element type is invalid" crash). */
-function OptionIcon({
-  icon,
-  className,
-}: {
-  icon: unknown;
-  className: string;
-}) {
-  const ValidIcon = icon && (typeof icon === "function" || typeof icon === "object") ? (icon as React.ComponentType<{ className?: string }>) : Check;
-  return <ValidIcon className={className} />;
-}
 
 type Step =
   | "q1_age"
+  | "q_height"
+  | "q_weight"
   | "q2_here_for"
   | "q3_goals"
   | "q4_symptoms"
   | "breather"
-  | "q5_what_tried"
+  | "q5_hrt"
   | "q6_how_long"
   | "q7_qualifier"
   | "q8_name";
@@ -95,79 +57,79 @@ type Step =
 const STEPS: Step[] = [
   "q1_age",
   "q2_here_for",
-  "q3_goals",
   "q4_symptoms",
+  "q3_goals",
   "breather",
-  "q5_what_tried",
+  "q_height",
+  "q_weight",
+  "q5_hrt",
   "q6_how_long",
   "q7_qualifier",
   "q8_name",
 ];
 
+// Numbered progress excludes the breather (it's a pause, not a question).
+const QUESTION_STEPS: Step[] = STEPS.filter((s) => s !== "breather");
+
 // Question options - same as mobile app
 const AGE_OPTIONS = [
-  { id: "under_40", label: "Under 40", icon: Calendar },
-  { id: "40_45", label: "40-45", icon: Calendar },
-  { id: "46_50", label: "46-50", icon: Calendar },
-  { id: "51_plus", label: "51+", icon: Calendar },
-  { id: "prefer_not", label: "Prefer not to say", icon: Ellipsis },
+  { id: "under_40", label: "Under 40", image: "/quiz/age/u40.png" },
+  { id: "40_45", label: "40–45", image: "/quiz/age/41-45.png" },
+  { id: "46_50", label: "46–50", image: "/quiz/age/46-50.png" },
+  { id: "51_plus", label: "50+", image: "/quiz/age/a50.png" },
 ];
 
 const HERE_FOR_OPTIONS = [
-  { id: "perimenopause", label: "Perimenopause", icon: Pause },
-  { id: "menopause", label: "Menopause", icon: Flower2 },
-  { id: "supporting", label: "Supporting someone", icon: Users },
-  { id: "curious", label: "Just curious", icon: HelpCircle },
+  { id: "pre_menopausal", label: "Pre-menopausal (not started)", image: "/quiz/status/pre.png" },
+  { id: "perimenopausal", label: "Perimenopausal (irregular periods)", image: "/quiz/status/peri.png" },
+  { id: "post_menopausal", label: "Post-menopausal (periods stopped)", image: "/quiz/status/post.png" },
+  { id: "not_sure", label: "I'm not sure", image: "/quiz/status/notsure.png" },
 ];
 
 const GOAL_OPTIONS = [
-  { id: "sleep_through_night", label: "Sleep through the night", icon: Moon },
-  { id: "think_clearly", label: "Think clearly again", icon: Brain },
-  { id: "feel_like_myself", label: "Feel like myself", icon: Heart },
-  { id: "understand_patterns", label: "See what Lisa notices", icon: Scale },
-  { id: "data_for_doctor", label: "Have data for my doctor", icon: CheckCircle2 },
-  { id: "get_body_back", label: "Get my body back", icon: Battery },
+  { id: "sleep_through_night", label: "Sleep through the night", image: "/quiz/goals/sleep.png" },
+  { id: "think_clearly", label: "Think clearly again", image: "/quiz/goals/thinkclearly.png" },
+  { id: "feel_like_myself", label: "Feel like myself", image: "/quiz/goals/feelmyself.png" },
+  { id: "understand_patterns", label: "Understand my patterns", image: "/quiz/goals/patterns.png" },
+  { id: "data_for_doctor", label: "Have data for my doctor", image: "/quiz/goals/data.png" },
+  { id: "get_body_back", label: "Get my body back", image: "/quiz/goals/body.png" },
 ];
 
+// Image-based symptom tiles (same style as Q1 age / Q2 status). 9 options, multi-select.
+// IDs reuse the existing downstream keys (SYMPTOM_LABELS, pillars, comparison) so results keep working.
 const PROBLEM_OPTIONS = [
-  { id: "hot_flashes", label: "Hot flashes / Night sweats", icon: Flame },
-  { id: "sleep_issues", label: "Can't sleep well", icon: Moon },
-  { id: "brain_fog", label: "Brain fog / Memory issues", icon: Brain },
-  { id: "mood_swings", label: "Mood swings / Irritability", icon: Heart },
-  { id: "weight_changes", label: "Weight changes", icon: Scale },
-  { id: "low_energy", label: "Low energy / Fatigue", icon: Battery },
-  { id: "anxiety", label: "Anxiety", icon: AlertCircle },
-  { id: "joint_pain", label: "Joint pain", icon: Bone },
+  { id: "hot_flashes", label: "Hot flashes", image: "/symptoms/hot_flashes.png" },
+  { id: "sleep_issues", label: "Can't sleep", image: "/symptoms/insomnia.png" },
+  { id: "brain_fog", label: "Brain fog", image: "/symptoms/brain_fog.png" },
+  { id: "mood_swings", label: "Mood swings", image: "/symptoms/mood_swings.png" },
+  { id: "weight_changes", label: "Weight changes", image: "/symptoms/weight_gain.png" },
+  { id: "low_energy", label: "Fatigue", image: "/symptoms/fatigue.png" },
+  { id: "anxiety", label: "Anxiety", image: "/symptoms/anxiety.png" },
+  { id: "joint_pain", label: "Joint pain", image: "/symptoms/joint_pain.png" },
+  { id: "bloating", label: "Bloating", image: "/symptoms/bloating.png" },
 ];
 
-// Non-zero severity levels for selected symptoms. Not selected = "Not at all" (0).
-const SEVERITY_LEVELS = [
-  { value: 1, label: "A little" },
-  { value: 2, label: "Quite a bit" },
-  { value: 3, label: "Extremely" },
-];
+// Weight applied to each selected symptom (pure select, no per-symptom rating).
+// 2.5 keeps the Menopause Score spread and "you vs typical" comparison reading as before.
+const SELECTED_SEVERITY = 2.5;
 
 const TIMING_OPTIONS = [
-  { id: "just_started", label: "Just started (0-6 months)", icon: Clock },
-  { id: "been_while", label: "Been a while (6-12 months)", icon: Calendar },
-  { id: "over_year", label: "Over a year", icon: Calendar },
-  { id: "several_years", label: "Several years", icon: Calendar },
+  { id: "just_started", label: "Under 6 months", image: "/quiz/how-long/u6m.png" },
+  { id: "been_while", label: "6–12 months", image: "/quiz/how-long/6to12m.png" },
+  { id: "over_year", label: "Over a year", image: "/quiz/how-long/o1y.png" },
+  { id: "several_years", label: "Several years", image: "/quiz/how-long/severaly.png" },
 ];
 
-const TRIED_OPTIONS = [
-  { id: "nothing", label: "Nothing yet", icon: XCircle },
-  { id: "supplements", label: "Supplements / Vitamins", icon: Pill },
-  { id: "diet", label: "Diet changes", icon: UtensilsCrossed },
-  { id: "exercise", label: "Exercise", icon: Dumbbell },
-  { id: "hrt", label: "HRT / Medication", icon: Pill },
-  { id: "doctor_talk", label: "Talked to doctor", icon: MessageCircle },
-  { id: "apps", label: "Apps / Tracking", icon: Smartphone },
+const HRT_OPTIONS = [
+  { id: "currently", label: "I am currently taking HRT", image: "/quiz/hrt/current.png" },
+  { id: "past", label: "I have taken HRT in the past", image: "/quiz/hrt/past.png" },
+  { id: "never", label: "I have never taken HRT", image: "/quiz/hrt/never.png" },
 ];
 
 const QUALIFIER_OPTIONS = [
-  { id: "ready_to_act", label: "Ready to take action", icon: Rocket },
-  { id: "exploring", label: "Exploring options", icon: Compass },
-  { id: "understand_first", label: "Want to understand first", icon: BookOpen },
+  { id: "ready_to_act", label: "Ready to start", image: "/quiz/readiness/ready.png" },
+  { id: "exploring", label: "Still figuring it out", image: "/quiz/readiness/figuring.png" },
+  { id: "understand_first", label: "Just learning for now", image: "/quiz/readiness/learning.png" },
 ];
 
 /** Derive severity for results copy from symptoms count + duration (same as mobile). */
@@ -185,35 +147,6 @@ type Phase = "quiz" | "calculating" | "email" | "results" | "paywall" | "downloa
 
 const APP_STORE_URL = "https://apps.apple.com/de/app/menolisa/id6761130271?l=en-GB";
 const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.menolisa.app&pcampaignid=web_share";
-
-// Quality of Life Score (higher = better). Severity-weighted: an "Extremely" symptom
-// hurts the score far more than an "A little" one, which is the point of rating symptoms.
-const calculateQualityScore = (
-  symptomSeverity: Record<string, number>,
-  timing: string,
-  triedOptions: string[]
-): number => {
-  const totalBurden = Object.values(symptomSeverity).reduce((a, b) => a + b, 0); // 0..24
-
-  let score = 100 - totalBurden * 2.5;
-
-  // Subtract for duration (longer = worse)
-  const durationPenalty: Record<string, number> = {
-    just_started: 0, // 0-6 months
-    been_while: 5, // 6-12 months
-    over_year: 10, // over a year
-    several_years: 15, // several years
-  };
-  score -= durationPenalty[timing] ?? 5;
-
-  // Small bonus if they've tried things (shows effort)
-  if (triedOptions.length > 0 && !triedOptions.includes("nothing")) {
-    score += 3;
-  }
-
-  // Clamp to the warning zone (not too comfortable, not hopeless)
-  return Math.max(20, Math.min(60, Math.round(score)));
-};
 
 const getScoreColor = (score: number): string => {
   if (score < 40) return "text-red-500";
@@ -263,7 +196,7 @@ const PILLAR_BLUEPRINTS: Pillar[] = [
   { id: "sleep", title: "Sleep & cooling protocol", preview: "Track sleep patterns and pinpoint what's triggering night sweats.", symptoms: ["sleep_issues", "hot_flashes"] },
   { id: "energy", title: "Energy & mental clarity", preview: "Rebuild focus with targeted nutrition and recovery windows.", symptoms: ["brain_fog", "low_energy"] },
   { id: "mood", title: "Mood regulation", preview: "Spot the patterns behind your mood shifts before they escalate.", symptoms: ["mood_swings", "anxiety"] },
-  { id: "body", title: "Body composition reset", preview: "Adjust intake and movement for your changing metabolism.", symptoms: ["weight_changes"] },
+  { id: "body", title: "Body composition reset", preview: "Adjust intake and movement for your changing metabolism.", symptoms: ["weight_changes", "bloating"] },
   { id: "joints", title: "Joint & inflammation care", preview: "Reduce stiffness with daily anti-inflammatory routines.", symptoms: ["joint_pain"] },
 ];
 
@@ -332,6 +265,12 @@ function RegisterPageContent() {
   }, []);
   const [stepIndex, setStepIndex] = useState(0);
   const currentStep = STEPS[stepIndex];
+  // Question position for the progress label/dots (breather excluded; during the
+  // breather we keep the last answered question's dot lit).
+  const activeQuestionIndex =
+    currentStep === "breather"
+      ? STEPS.slice(0, stepIndex).filter((s) => s !== "breather").length - 1
+      : QUESTION_STEPS.indexOf(currentStep);
   const [, setBrowserInfo] = useState<ReturnType<typeof detectBrowser> | null>(null);
 
 
@@ -349,11 +288,22 @@ function RegisterPageContent() {
 
   // Quiz answers - same structure as mobile
   const [ageBand, setAgeBand] = useState<string>("");
+  // Height: stored per-unit as raw strings; normalized to cm on save.
+  const [heightUnit, setHeightUnit] = useState<"cm" | "ft">("cm");
+  const [heightCm, setHeightCm] = useState<string>("");
+  const [heightFt, setHeightFt] = useState<string>("");
+  const [heightIn, setHeightIn] = useState<string>("");
+  // Weight: stored per-unit as raw strings; normalized to kg on save.
+  const [weightUnit, setWeightUnit] = useState<"kg" | "lb">("kg");
+  const [weightKg, setWeightKg] = useState<string>("");
+  const [weightLb, setWeightLb] = useState<string>("");
   const [hereFor, setHereFor] = useState<string>("");
   const [goal, setGoal] = useState<string[]>([]);
   // id -> severity (1=A little, 2=Quite a bit, 3=Extremely). Absent = "Not at all".
   const [symptomSeverity, setSymptomSeverity] = useState<Record<string, number>>({});
-  const [triedOptions, setTriedOptions] = useState<string[]>([]);
+  // "What have you tried" step removed; kept empty so the score calc + save-quiz payload stay intact.
+  const [triedOptions] = useState<string[]>([]);
+  const [hrtStatus, setHrtStatus] = useState<string>("");
   const [timing, setTiming] = useState<string>("");
   const [qualifier, setQualifier] = useState<string>("");
   const [firstName, setFirstName] = useState<string>("");
@@ -368,12 +318,58 @@ function RegisterPageContent() {
     [symptomSeverity]
   );
 
+  // Normalized body metrics (canonical cm/kg) derived from the per-unit inputs.
+  const bodyMetrics = useMemo(() => {
+    let height_cm: number | null = null;
+    if (heightUnit === "cm") {
+      const v = parseFloat(heightCm);
+      if (Number.isFinite(v) && v > 0) height_cm = Math.round(v);
+    } else {
+      const ft = parseFloat(heightFt);
+      const inch = parseFloat(heightIn) || 0;
+      if (Number.isFinite(ft) && ft > 0) height_cm = Math.round((ft * 12 + inch) * 2.54);
+    }
+
+    let weight_kg: number | null = null;
+    if (weightUnit === "kg") {
+      const v = parseFloat(weightKg);
+      if (Number.isFinite(v) && v > 0) weight_kg = Math.round(v);
+    } else {
+      const v = parseFloat(weightLb);
+      if (Number.isFinite(v) && v > 0) weight_kg = Math.round(v * 0.453592);
+    }
+
+    return {
+      height_cm,
+      weight_kg,
+      height_unit: heightUnit,
+      weight_unit: weightUnit,
+    };
+  }, [heightUnit, heightCm, heightFt, heightIn, weightUnit, weightKg, weightLb]);
+
   // Email state
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [savingQuiz, setSavingQuiz] = useState(false);
 
   const derivedSeverity = deriveSeverity(totalBurden, timing);
+
+  // Menopause Wellbeing Score (0–100, higher = better) — reacts to every answer:
+  // symptoms, duration, stage, HRT, BMI (height+weight) and age.
+  const scoreBreakdown = useMemo(
+    () =>
+      calculateWellbeingScore({
+        symptomSeverity,
+        timing,
+        hereFor,
+        hrtStatus,
+        ageBand,
+        heightCm: bodyMetrics.height_cm,
+        weightKg: bodyMetrics.weight_kg,
+      }),
+    [symptomSeverity, timing, hereFor, hrtStatus, ageBand, bodyMetrics]
+  );
+  const score = scoreBreakdown.score;
 
   // Loading screen state (between quiz and email)
   const [messageIndex, setMessageIndex] = useState(0);
@@ -423,11 +419,7 @@ function RegisterPageContent() {
   // Animate score counting up
   useEffect(() => {
     if (phase === "results") {
-      const targetScore = calculateQualityScore(
-        symptomSeverity,
-        timing,
-        triedOptions
-      );
+      const targetScore = score;
 
       const duration = 1500; // 1.5 seconds
       const steps = 30;
@@ -446,7 +438,7 @@ function RegisterPageContent() {
 
       return () => clearInterval(timer);
     }
-  }, [phase, symptomSeverity, timing, triedOptions]);
+  }, [phase, score]);
 
   // (validation handled inside OtpForm)
 
@@ -456,6 +448,10 @@ function RegisterPageContent() {
       switch (step) {
         case "q1_age":
           return ageBand !== "";
+        case "q_height":
+          return bodyMetrics.height_cm !== null;
+        case "q_weight":
+          return bodyMetrics.weight_kg !== null;
         case "q2_here_for":
           return hereFor !== "";
         case "q3_goals":
@@ -464,8 +460,8 @@ function RegisterPageContent() {
           return topProblems.length > 0;
         case "breather":
           return true;
-        case "q5_what_tried":
-          return triedOptions.length > 0;
+        case "q5_hrt":
+          return hrtStatus !== "";
         case "q6_how_long":
           return timing !== "";
         case "q7_qualifier":
@@ -476,21 +472,29 @@ function RegisterPageContent() {
           return false;
       }
     },
-    [ageBand, hereFor, goal, topProblems, triedOptions, timing, qualifier, firstName]
+    [ageBand, bodyMetrics, hereFor, goal, topProblems, triedOptions, hrtStatus, timing, qualifier, firstName]
   );
 
   // Save quiz answers to sessionStorage (cleared when tab closes)
   const saveQuizAnswers = useCallback(() => {
     const quizAnswers = {
+      age_band: ageBand || null,
       top_problems: topProblems,
-      severity: derivedSeverity,
       timing,
       tried_options: triedOptions,
+      hrt_status: hrtStatus || null,
       goal,
+      goals: goal,
+      qualifier: qualifier || null,
+      here_for: hereFor || null,
       name: firstName.trim() || null,
+      height_cm: bodyMetrics.height_cm,
+      weight_kg: bodyMetrics.weight_kg,
+      height_unit: bodyMetrics.height_unit,
+      weight_unit: bodyMetrics.weight_unit,
     };
     sessionStorage.setItem("pending_quiz_answers", JSON.stringify(quizAnswers));
-  }, [topProblems, derivedSeverity, timing, triedOptions, goal, firstName]);
+  }, [ageBand, topProblems, derivedSeverity, timing, triedOptions, hrtStatus, goal, qualifier, hereFor, firstName, bodyMetrics]);
 
   const goNext = useCallback(() => {
     if (!stepIsAnswered(currentStep)) return;
@@ -514,13 +518,43 @@ function RegisterPageContent() {
     setError(null);
     setSavingQuiz(true);
     try {
+      // Safety net: someone with an already-active account (e.g. existing paid
+      // customer) who slipped past the email check shouldn't be re-onboarded or
+      // shown the paywall — send them straight to the dashboard without touching
+      // their saved quiz/profile.
+      const { data: sessionData } = await supabase.auth.getSession();
+      const sessionUserId = sessionData?.session?.user?.id;
+      if (sessionUserId) {
+        const { data: trialRow } = await supabase
+          .from("user_trials")
+          .select(
+            "trial_start, trial_end, trial_days, account_status, subscription_ends_at, subscription_canceled, payment_failed_at, dispute_flagged_at, stripe_subscription_id, provider"
+          )
+          .eq("user_id", sessionUserId)
+          .maybeSingle();
+        if (trialRow && stateAllowsAccess(getAccountState(trialRow).state)) {
+          sessionStorage.removeItem("pending_quiz_answers");
+          router.replace("/dashboard");
+          router.refresh();
+          return;
+        }
+      }
+
       let quizAnswers: Record<string, unknown> = {
+        age_band: ageBand || null,
         top_problems: topProblems,
-        severity: derivedSeverity,
         timing,
         tried_options: triedOptions,
+        hrt_status: hrtStatus || null,
         goal,
+        goals: goal,
+        qualifier: qualifier || null,
+        here_for: hereFor || null,
         name: firstName.trim() || null,
+        height_cm: bodyMetrics.height_cm,
+        weight_kg: bodyMetrics.weight_kg,
+        height_unit: bodyMetrics.height_unit,
+        weight_unit: bodyMetrics.weight_unit,
       };
 
       // /quiz1 hand-off: prefer the quiz1-derived profile when present.
@@ -569,7 +603,7 @@ function RegisterPageContent() {
     } finally {
       setSavingQuiz(false);
     }
-  }, [topProblems, derivedSeverity, timing, triedOptions, goal, firstName, ref, fromQuiz1]);
+  }, [ageBand, topProblems, derivedSeverity, timing, triedOptions, hrtStatus, goal, qualifier, hereFor, firstName, bodyMetrics, ref, fromQuiz1, router]);
 
   const toggleProblem = (problemId: string) => {
     setSymptomSeverity((prev) => {
@@ -578,12 +612,8 @@ function RegisterPageContent() {
         delete next[problemId];
         return next;
       }
-      return { ...prev, [problemId]: 1 };
+      return { ...prev, [problemId]: SELECTED_SEVERITY };
     });
-  };
-
-  const setSymptomLevel = (problemId: string, value: number) => {
-    setSymptomSeverity((prev) => ({ ...prev, [problemId]: value }));
   };
 
   const toggleGoal = (goalId: string) => {
@@ -592,15 +622,6 @@ function RegisterPageContent() {
         return prev.filter((id) => id !== goalId);
       }
       return [...prev, goalId];
-    });
-  };
-
-  const toggleTriedOption = (optionId: string) => {
-    setTriedOptions((prev) => {
-      if (prev.includes(optionId)) {
-        return prev.filter((id) => id !== optionId);
-      }
-      return [...prev, optionId];
     });
   };
 
@@ -814,7 +835,6 @@ function RegisterPageContent() {
 
             {/* Compact score card */}
             {(() => {
-              const score = calculateQualityScore(symptomSeverity, timing, triedOptions);
               const benchmark = getScoreBenchmark(ageBand);
               const verdict = getScoreVerdict(score, benchmark);
               const cohortLabel = AGE_BAND_LABELS[ageBand] ?? "women your age";
@@ -1071,6 +1091,12 @@ function RegisterPageContent() {
               initialEmail={email}
               submitLabel="Send my code"
               onStepChange={setOtpStep}
+              onExistingAccount={(existingEmail) => {
+                const msg = "You already have an account. Log in to pick up where you left off.";
+                router.push(
+                  `/login?email=${encodeURIComponent(existingEmail)}&message=${encodeURIComponent(msg)}`
+                );
+              }}
               onSuccess={async (user) => {
                 setEmail(user.email ?? email);
                 await handleOtpSuccess();
@@ -1206,17 +1232,16 @@ function RegisterPageContent() {
             <p className="text-center text-base sm:text-lg font-semibold text-[#3D3D3D] mb-2 min-h-6" role="status" aria-live="polite">
               {currentStep === "breather"
                 ? "Quick pause"
-                : stepIndex >= STEPS.length - 2
+                : activeQuestionIndex >= QUESTION_STEPS.length - 2
                   ? "Almost there"
-                  : `Question ${stepIndex + 1} of ${STEPS.length}`}
+                  : `Question ${activeQuestionIndex + 1} of ${QUESTION_STEPS.length}`}
             </p>
             <div className="flex justify-center gap-2 sm:gap-3">
-              {STEPS.map((_, index) => {
-                const stepNumber = index + 1;
-                const isActive = stepIndex === index;
+              {QUESTION_STEPS.map((step, index) => {
+                const isActive = activeQuestionIndex === index;
                 return (
                   <motion.div
-                    key={stepNumber}
+                    key={step}
                     className={`h-2 rounded-full transition-colors duration-300 ${
                       isActive
                         ? "bg-linear-to-r from-primary to-primary/80"
@@ -1253,14 +1278,11 @@ function RegisterPageContent() {
               )}
               {/* Q1: Age */}
               {currentStep === "q1_age" && (
-                <div className="flex-1 flex flex-col min-h-0 space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
-                    <h2 className="text-lg sm:text-xl font-bold mb-0.5">
-                      What&apos;s your age or life stage?
-                    </h2>
-                    <p className="text-sm text-muted-foreground">Choose one</p>
+                    <h2 className="text-lg sm:text-xl font-bold mb-0.5">What&apos;s your age?</h2>
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-2 pr-1 -mr-1 pb-1 [scrollbar-width:thin]">
+                  <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-2 min-h-0">
                     {AGE_OPTIONS.map((option) => {
                       const isSelected = ageBand === option.id;
                       return (
@@ -1268,25 +1290,25 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => setAgeBand(option.id)}
-                          className={`min-h-[60px] sm:min-h-[68px] px-3.5 py-2.5 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
+                          className={`flex flex-col min-h-0 rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer ${
                             isSelected
-                              ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
-                              : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
+                              ? "ring-2 ring-primary shadow-lg shadow-primary/30"
+                              : "hover:opacity-90"
                           }`}
                         >
-                          <div className="flex items-center gap-2 w-full">
-                            <div className={`p-1 rounded-md transition-colors shrink-0 ${
-                              isSelected ? "bg-primary/20" : "bg-foreground/5 group-hover:bg-primary/10"
-                            }`}>
-                              <OptionIcon
-                                icon={option.icon}
-                                className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
-                              />
-                            </div>
-                            <span className="font-medium flex-1 text-sm sm:text-base leading-snug">{option.label}</span>
-                            {isSelected && (
-                              <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
-                            )}
+                          <div className="relative flex-1 min-h-0">
+                            <Image
+                              src={option.image}
+                              alt={option.label}
+                              fill
+                              sizes="50vw"
+                              className="object-cover"
+                            />
+                            {isSelected && <div className="absolute inset-0 bg-primary/15" />}
+                          </div>
+                          <div className={`shrink-0 flex items-center justify-between px-2.5 py-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
+                            <span className="font-semibold text-xs text-white">{option.label}</span>
+                            <ArrowRight className="w-3.5 h-3.5 shrink-0 text-white/70" />
                           </div>
                         </button>
                       );
@@ -1295,16 +1317,149 @@ function RegisterPageContent() {
                 </div>
               )}
 
-              {/* Q2: Here for */}
+              {/* Q height */}
+              {currentStep === "q_height" && (
+                <div className="flex-1 flex flex-col justify-center space-y-3 sm:space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                  <div>
+                    <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-1">
+                      How tall are you?
+                    </h2>
+                    <p className="text-sm sm:text-base text-muted-foreground">
+                      Lisa uses this to personalize your plan
+                    </p>
+                  </div>
+
+                  {/* Unit toggle */}
+                  <div className="flex gap-1.5 p-1 rounded-lg bg-foreground/5 w-fit">
+                    {(["cm", "ft"] as const).map((u) => (
+                      <button
+                        key={u}
+                        type="button"
+                        onClick={() => setHeightUnit(u)}
+                        className={`min-h-9 px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-150 cursor-pointer ${
+                          heightUnit === u
+                            ? "bg-primary text-primary-foreground shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {u === "cm" ? "cm" : "ft / in"}
+                      </button>
+                    ))}
+                  </div>
+
+                  {heightUnit === "cm" ? (
+                    <div className="relative">
+                      <Ruler className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        value={heightCm}
+                        onChange={(e) => setHeightCm(e.target.value)}
+                        placeholder="Height in cm"
+                        min={100}
+                        max={250}
+                        className="w-full pl-10 sm:pl-12 pr-14 py-3 sm:py-4 rounded-lg sm:rounded-xl border-2 border-foreground/15 bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all duration-200 text-base sm:text-lg"
+                        autoFocus
+                      />
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">cm</span>
+                    </div>
+                  ) : (
+                    <div className="flex gap-3">
+                      <div className="relative flex-1">
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          value={heightFt}
+                          onChange={(e) => setHeightFt(e.target.value)}
+                          placeholder="Feet"
+                          min={3}
+                          max={8}
+                          className="w-full pl-4 pr-10 py-3 sm:py-4 rounded-lg sm:rounded-xl border-2 border-foreground/15 bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all duration-200 text-base sm:text-lg"
+                          autoFocus
+                        />
+                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">ft</span>
+                      </div>
+                      <div className="relative flex-1">
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          value={heightIn}
+                          onChange={(e) => setHeightIn(e.target.value)}
+                          placeholder="Inches"
+                          min={0}
+                          max={11}
+                          className="w-full pl-4 pr-10 py-3 sm:py-4 rounded-lg sm:rounded-xl border-2 border-foreground/15 bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all duration-200 text-base sm:text-lg"
+                        />
+                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">in</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Q weight */}
+              {currentStep === "q_weight" && (
+                <div className="flex-1 flex flex-col justify-center space-y-3 sm:space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                  <div>
+                    <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-1">
+                      What&apos;s your weight?
+                    </h2>
+                    <p className="text-sm sm:text-base text-muted-foreground">
+                      This helps Lisa tailor nutrition and movement guidance
+                    </p>
+                  </div>
+
+                  {/* Unit toggle */}
+                  <div className="flex gap-1.5 p-1 rounded-lg bg-foreground/5 w-fit">
+                    {(["kg", "lb"] as const).map((u) => (
+                      <button
+                        key={u}
+                        type="button"
+                        onClick={() => setWeightUnit(u)}
+                        className={`min-h-9 px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-150 cursor-pointer ${
+                          weightUnit === u
+                            ? "bg-primary text-primary-foreground shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {u}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="relative">
+                    <Weight className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={weightUnit === "kg" ? weightKg : weightLb}
+                      onChange={(e) =>
+                        weightUnit === "kg"
+                          ? setWeightKg(e.target.value)
+                          : setWeightLb(e.target.value)
+                      }
+                      placeholder={weightUnit === "kg" ? "Weight in kg" : "Weight in lb"}
+                      min={30}
+                      max={400}
+                      className="w-full pl-10 sm:pl-12 pr-14 py-3 sm:py-4 rounded-lg sm:rounded-xl border-2 border-foreground/15 bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all duration-200 text-base sm:text-lg"
+                      autoFocus
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                      {weightUnit}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Q2: Menopausal status (image grid, same style as Q1 age) */}
               {currentStep === "q2_here_for" && (
-                <div className="flex-1 flex flex-col min-h-0 space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl font-bold mb-0.5">
-                      I&apos;m here for…
+                      What&apos;s your menopausal status?
                     </h2>
-                    <p className="text-sm text-muted-foreground">Choose one</p>
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-2 pr-1 -mr-1 pb-1 [scrollbar-width:thin]">
+                  <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-2 min-h-0">
                     {HERE_FOR_OPTIONS.map((option) => {
                       const isSelected = hereFor === option.id;
                       return (
@@ -1312,25 +1467,28 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => setHereFor(option.id)}
-                          className={`min-h-[60px] sm:min-h-[68px] px-3.5 py-2.5 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
+                          className={`flex flex-col min-h-0 rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer ${
                             isSelected
-                              ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
-                              : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
+                              ? "ring-2 ring-primary shadow-lg shadow-primary/30"
+                              : "hover:opacity-90"
                           }`}
                         >
-                          <div className="flex items-center gap-2 w-full">
-                            <div className={`p-1 rounded-md transition-colors shrink-0 ${
-                              isSelected ? "bg-primary/20" : "bg-foreground/5 group-hover:bg-primary/10"
-                            }`}>
-                              <OptionIcon
-                                icon={option.icon}
-                                className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
-                              />
+                          <div className="relative flex-1 min-h-0">
+                            <Image
+                              src={option.image}
+                              alt={option.label}
+                              fill
+                              sizes="50vw"
+                              className="object-cover"
+                            />
+                            {isSelected && <div className="absolute inset-0 bg-primary/15" />}
+                          </div>
+                          <div className={`shrink-0 px-2.5 py-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="font-semibold text-xs text-white leading-tight">{option.label}</span>
+                              <ArrowRight className="w-3.5 h-3.5 shrink-0 text-white/70" />
                             </div>
-                            <span className="font-medium flex-1 text-sm sm:text-base leading-snug">{option.label}</span>
-                            {isSelected && (
-                              <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
-                            )}
+
                           </div>
                         </button>
                       );
@@ -1341,124 +1499,108 @@ function RegisterPageContent() {
 
               {/* Q3: Goals */}
               {currentStep === "q3_goals" && (
-                <div className="flex-1 flex flex-col min-h-0 space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl font-bold mb-0.5">
-                      What would success look like for you?
+                      What do you want back?
                     </h2>
-                    <p className="text-sm text-muted-foreground">Select all that apply</p>
-                    {goal.length > 0 && (
-                      <p className="text-sm text-primary font-medium mt-0.5">
-                        {goal.length} selected
-                      </p>
-                    )}
+                    <p className="text-sm text-muted-foreground">
+                      {goal.length > 0
+                        ? `${goal.length} selected`
+                        : "Tap all that apply"}
+                    </p>
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-2 pr-1 -mr-1 pb-1 [scrollbar-width:thin]">
-                    {GOAL_OPTIONS.map((option) => {
-                      const isSelected = goal.includes(option.id);
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => toggleGoal(option.id)}
-                          className={`min-h-[60px] sm:min-h-[68px] px-3.5 py-2.5 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
-                            isSelected
-                              ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
-                              : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 w-full">
-                            <div className={`p-1 rounded-md transition-colors shrink-0 ${
-                              isSelected ? "bg-primary/20" : "bg-foreground/5 group-hover:bg-primary/10"
-                            }`}>
-                              <OptionIcon
-                                icon={option.icon}
-                                className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
+                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 -mr-1 pb-1 [scrollbar-width:thin]">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {GOAL_OPTIONS.map((option) => {
+                        const isSelected = goal.includes(option.id);
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() => toggleGoal(option.id)}
+                            className={`flex flex-col rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer outline-none focus:outline-none ${
+                              isSelected
+                                ? "ring-2 ring-inset ring-primary shadow-lg shadow-primary/30"
+                                : "hover:opacity-90"
+                            }`}
+                          >
+                            <div className="relative aspect-square">
+                              <Image
+                                src={option.image}
+                                alt={option.label}
+                                fill
+                                sizes="(min-width: 640px) 33vw, 50vw"
+                                className="object-cover"
                               />
+                              {isSelected && <div className="absolute inset-0 bg-primary/15" />}
+                              {isSelected && (
+                                <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-primary flex items-center justify-center shadow-md animate-in zoom-in duration-200">
+                                  <Check className="w-3 h-3 text-primary-foreground" />
+                                </div>
+                              )}
                             </div>
-                            <span className="font-medium flex-1 text-sm sm:text-base leading-snug">{option.label}</span>
-                            {isSelected && (
-                              <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
+                            <div className={`shrink-0 px-2 py-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
+                              <span className="font-semibold text-xs text-white leading-tight">{option.label}</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* Q4: Symptoms - Lucide icons only (same pattern as Q3/Q5) for consistent alignment */}
+              {/* Q4: Symptoms - image tiles (same style as Q1 age / Q2 status), multi-select up to 9 */}
               {currentStep === "q4_symptoms" && (
-                <div className="flex-1 flex flex-col min-h-0 space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl font-bold mb-0.5">
                       What&apos;s making life hardest right now?
                     </h2>
-                    <p className="text-sm text-muted-foreground">Select all that apply, then rate how much each bothers you</p>
-                    {topProblems.length > 0 && (
-                      <p className="text-sm text-primary font-medium mt-0.5">
-                        {topProblems.length} selected
-                      </p>
-                    )}
+                    <p className="text-sm text-muted-foreground">
+                      {topProblems.length > 0
+                        ? `${topProblems.length} selected`
+                        : "Tap all that apply"}
+                    </p>
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-2 pr-1 -mr-1 pb-1 [scrollbar-width:thin]">
-                    {PROBLEM_OPTIONS.map((option) => {
-                      const level = symptomSeverity[option.id] ?? 0;
-                      const isSelected = level > 0;
-                      return (
-                        <div
-                          key={option.id}
-                          className={`rounded-lg border-2 transition-all duration-200 ${
-                            isSelected
-                              ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
-                              : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
-                          }`}
-                        >
+                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 -mr-1 pb-1 [scrollbar-width:thin]">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {PROBLEM_OPTIONS.map((option) => {
+                        const isSelected = (symptomSeverity[option.id] ?? 0) > 0;
+                        return (
                           <button
+                            key={option.id}
                             type="button"
                             onClick={() => toggleProblem(option.id)}
-                            className="w-full min-h-[52px] px-3.5 py-2.5 flex items-center text-left cursor-pointer group"
+                            className={`flex flex-col rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer outline-none focus:outline-none ${
+                              isSelected
+                                ? "ring-2 ring-inset ring-primary shadow-lg shadow-primary/30"
+                                : "hover:opacity-90"
+                            }`}
                           >
-                            <div className="flex items-center gap-2 w-full">
-                              <div className={`p-1 rounded-md transition-colors shrink-0 ${
-                                isSelected ? "bg-primary/20" : "bg-foreground/5 group-hover:bg-primary/10"
-                              }`}>
-                                <OptionIcon
-                                  icon={option.icon}
-                                  className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
-                                />
-                              </div>
-                              <span className="font-medium flex-1 text-sm sm:text-base leading-snug">{option.label}</span>
+                            <div className="relative aspect-square">
+                              <Image
+                                src={option.image}
+                                alt={option.label}
+                                fill
+                                sizes="(min-width: 640px) 33vw, 50vw"
+                                className="object-cover"
+                              />
+                              {isSelected && <div className="absolute inset-0 bg-primary/15" />}
                               {isSelected && (
-                                <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
+                                <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-primary flex items-center justify-center shadow-md animate-in zoom-in duration-200">
+                                  <Check className="w-3 h-3 text-primary-foreground" />
+                                </div>
                               )}
                             </div>
-                          </button>
-                          {isSelected && (
-                            <div className="flex gap-1.5 px-3 pb-2.5 animate-in fade-in duration-200">
-                              {SEVERITY_LEVELS.map((lvl) => {
-                                const active = level === lvl.value;
-                                return (
-                                  <button
-                                    key={lvl.value}
-                                    type="button"
-                                    onClick={() => setSymptomLevel(option.id, lvl.value)}
-                                    className={`flex-1 min-h-9 px-1 rounded-md text-[11px] sm:text-xs font-medium border transition-all duration-150 cursor-pointer ${
-                                      active
-                                        ? "bg-primary text-primary-foreground border-primary"
-                                        : "bg-background text-muted-foreground border-foreground/15 hover:border-primary/40"
-                                    }`}
-                                  >
-                                    {lvl.label}
-                                  </button>
-                                );
-                              })}
+                            <div className={`shrink-0 px-2 py-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
+                              <span className="font-semibold text-xs text-white leading-tight">{option.label}</span>
                             </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               )}
@@ -1484,47 +1626,41 @@ function RegisterPageContent() {
                 </div>
               )}
 
-              {/* Q5: What tried */}
-              {currentStep === "q5_what_tried" && (
-                <div className="flex-1 flex flex-col min-h-0 space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
+              {/* Q5b: HRT history (image grid, same style as Q1 age / Q2 status) */}
+              {currentStep === "q5_hrt" && (
+                <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl font-bold mb-0.5">
-                      What have you tried so far?
+                      Have you ever taken any form of menopausal hormonal treatment (HRT)?
                     </h2>
-                    <p className="text-sm text-muted-foreground">Select all that apply</p>
-                    {triedOptions.length > 0 && (
-                      <p className="text-sm text-primary font-medium mt-0.5">
-                        {triedOptions.length} selected
-                      </p>
-                    )}
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-2 pr-1 -mr-1 pb-1 [scrollbar-width:thin]">
-                    {TRIED_OPTIONS.map((option) => {
-                      const isSelected = triedOptions.includes(option.id);
+                  <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-2 min-h-0">
+                    {HRT_OPTIONS.map((option) => {
+                      const isSelected = hrtStatus === option.id;
                       return (
                         <button
                           key={option.id}
                           type="button"
-                          onClick={() => toggleTriedOption(option.id)}
-                          className={`min-h-[60px] sm:min-h-[68px] px-3.5 py-2.5 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
+                          onClick={() => setHrtStatus(option.id)}
+                          className={`flex flex-col min-h-0 rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer ${
                             isSelected
-                              ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
-                              : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
+                              ? "ring-2 ring-primary shadow-lg shadow-primary/30"
+                              : "hover:opacity-90"
                           }`}
                         >
-                          <div className="flex items-center gap-2 w-full">
-                            <div className={`p-1 rounded-md transition-colors shrink-0 ${
-                              isSelected ? "bg-primary/20" : "bg-foreground/5 group-hover:bg-primary/10"
-                            }`}>
-                              <OptionIcon
-                                icon={option.icon}
-                                className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
-                              />
-                            </div>
-                            <span className="font-medium flex-1 text-sm sm:text-base leading-snug">{option.label}</span>
-                            {isSelected && (
-                              <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
-                            )}
+                          <div className="relative flex-1 min-h-0">
+                            <Image
+                              src={option.image}
+                              alt={option.label}
+                              fill
+                              sizes="50vw"
+                              className="object-cover"
+                            />
+                            {isSelected && <div className="absolute inset-0 bg-primary/15" />}
+                          </div>
+                          <div className={`shrink-0 flex items-center justify-between px-2.5 py-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
+                            <span className="font-semibold text-xs text-white leading-tight">{option.label}</span>
+                            <ArrowRight className="w-3.5 h-3.5 shrink-0 text-white/70" />
                           </div>
                         </button>
                       );
@@ -1535,14 +1671,13 @@ function RegisterPageContent() {
 
               {/* Q6: How long */}
               {currentStep === "q6_how_long" && (
-                <div className="flex-1 flex flex-col min-h-0 space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl font-bold mb-0.5">
                       How long have symptoms been affecting you?
                     </h2>
-                    <p className="text-sm text-muted-foreground">Choose one</p>
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-2 pr-1 -mr-1 pb-1 [scrollbar-width:thin]">
+                  <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-2 min-h-0">
                     {TIMING_OPTIONS.map((option) => {
                       const isSelected = timing === option.id;
                       return (
@@ -1550,25 +1685,25 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => setTiming(option.id)}
-                          className={`w-full min-h-[60px] sm:min-h-[68px] px-3.5 py-2.5 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
+                          className={`flex flex-col min-h-0 rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer ${
                             isSelected
-                              ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
-                              : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
+                              ? "ring-2 ring-primary shadow-lg shadow-primary/30"
+                              : "hover:opacity-90"
                           }`}
                         >
-                          <div className="flex items-center gap-2 w-full">
-                            <div className={`p-1 rounded-md transition-colors shrink-0 ${
-                              isSelected ? "bg-primary/20" : "bg-foreground/5 group-hover:bg-primary/10"
-                            }`}>
-                              <OptionIcon
-                                icon={option.icon}
-                                className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
-                              />
-                            </div>
-                            <span className="font-medium flex-1 text-sm sm:text-base leading-snug">{option.label}</span>
-                            {isSelected && (
-                              <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
-                            )}
+                          <div className="relative flex-1 min-h-0">
+                            <Image
+                              src={option.image}
+                              alt={option.label}
+                              fill
+                              sizes="50vw"
+                              className="object-cover"
+                            />
+                            {isSelected && <div className="absolute inset-0 bg-primary/15" />}
+                          </div>
+                          <div className={`shrink-0 flex items-center justify-between px-2.5 py-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
+                            <span className="font-semibold text-xs text-white">{option.label}</span>
+                            <ArrowRight className="w-3.5 h-3.5 shrink-0 text-white/70" />
                           </div>
                         </button>
                       );
@@ -1579,14 +1714,13 @@ function RegisterPageContent() {
 
               {/* Q7: Qualifier */}
               {currentStep === "q7_qualifier" && (
-                <div className="flex-1 flex flex-col min-h-0 space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl font-bold mb-0.5">
-                      How ready are you to make a change?
+                      Where are you right now?
                     </h2>
-                    <p className="text-sm text-muted-foreground">Choose one</p>
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-2 pr-1 -mr-1 pb-1 [scrollbar-width:thin]">
+                  <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-2 min-h-0">
                     {QUALIFIER_OPTIONS.map((option) => {
                       const isSelected = qualifier === option.id;
                       return (
@@ -1594,25 +1728,25 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => setQualifier(option.id)}
-                          className={`w-full min-h-[60px] sm:min-h-[68px] px-3.5 py-2.5 flex items-center text-left rounded-lg border-2 transition-all duration-200 group cursor-pointer ${
+                          className={`flex flex-col min-h-0 rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer ${
                             isSelected
-                              ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
-                              : "border-foreground/15 hover:border-primary/50 hover:bg-foreground/5"
+                              ? "ring-2 ring-primary shadow-lg shadow-primary/30"
+                              : "hover:opacity-90"
                           }`}
                         >
-                          <div className="flex items-center gap-2 w-full">
-                            <div className={`p-1 rounded-md transition-colors shrink-0 ${
-                              isSelected ? "bg-primary/20" : "bg-foreground/5 group-hover:bg-primary/10"
-                            }`}>
-                              <OptionIcon
-                                icon={option.icon}
-                                className={`w-4 h-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
-                              />
-                            </div>
-                            <span className="font-medium flex-1 text-sm sm:text-base leading-snug">{option.label}</span>
-                            {isSelected && (
-                              <Check className="w-4 h-4 text-primary animate-in zoom-in duration-200 shrink-0" />
-                            )}
+                          <div className="relative flex-1 min-h-0">
+                            <Image
+                              src={option.image}
+                              alt={option.label}
+                              fill
+                              sizes="50vw"
+                              className="object-cover"
+                            />
+                            {isSelected && <div className="absolute inset-0 bg-primary/15" />}
+                          </div>
+                          <div className={`shrink-0 flex items-center justify-between px-2.5 py-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
+                            <span className="font-semibold text-xs text-white leading-tight">{option.label}</span>
+                            <ArrowRight className="w-3.5 h-3.5 shrink-0 text-white/70" />
                           </div>
                         </button>
                       );

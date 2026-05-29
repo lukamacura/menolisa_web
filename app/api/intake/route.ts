@@ -12,13 +12,11 @@ export async function POST(req: Request) {
     console.log("User ID:", body.user_id);
     console.log("Name:", body.name);
     console.log("Top Problems:", body.top_problems);
-    console.log("Severity:", body.severity);
 
     const {
       user_id,
       name,
       top_problems,
-      severity,
       timing,
       tried_options,
       doctor_status,
@@ -39,15 +37,6 @@ export async function POST(req: Request) {
       if (!Array.isArray(top_problems) || top_problems.length === 0) {
         return NextResponse.json(
           { error: "Please select at least one problem." },
-          { status: 400 }
-        );
-      }
-    }
-
-    if (severity !== undefined && severity !== null) {
-      if (!["mild", "moderate", "severe"].includes(severity)) {
-        return NextResponse.json(
-          { error: "Please select a valid severity level." },
           { status: 400 }
         );
       }
@@ -146,14 +135,13 @@ export async function POST(req: Request) {
     console.log("Intake API: Profile check result:", {
       hasProfile: !!existingProfile,
       userId: user_id,
-      hasQuizData: !!(top_problems || name || severity || timing)
+      hasQuizData: !!(top_problems || name || timing)
     });
 
     // Prepare profile data with new question structure (only include provided fields)
     const profileData: {
       name?: string | null;
       top_problems?: string[];
-      severity?: string | null;
       timing?: string | null;
       tried_options?: string[];
       doctor_status?: string | null;
@@ -165,9 +153,6 @@ export async function POST(req: Request) {
     }
     if (top_problems !== undefined) {
       profileData.top_problems = top_problems;
-    }
-    if (severity !== undefined) {
-      profileData.severity = severity || null;
     }
     if (timing !== undefined) {
       profileData.timing = timing || null;

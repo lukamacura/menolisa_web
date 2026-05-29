@@ -239,13 +239,11 @@ export async function GET(req: NextRequest) {
     const supabaseAdmin = getSupabaseAdmin();
     const { data: profile } = await supabaseAdmin
       .from("user_profiles")
-      .select("first_name, last_name")
+      .select("name")
       .eq("user_id", user.id)
       .single();
 
-    const userName = profile
-      ? `${profile.first_name || ""} ${profile.last_name || ""}`.trim() || null
-      : null;
+    const userName = profile?.name?.trim() || null;
 
     // Format dates
     const reportStartDate = startDateParam

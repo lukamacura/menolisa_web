@@ -255,11 +255,12 @@ function buildUserPrompt(input: {
   const profileText = profile
     ? `Name: ${profile.name ?? 'unknown'}
 Age band: ${profile.age_band ?? 'unknown'}
+Menopause stage: ${profile.here_for ?? 'unknown'}
 Top concerns: ${(profile.top_problems ?? []).join(', ') || 'none listed'}
-Severity self-rating: ${profile.severity ?? 'unknown'}
 Symptom timing: ${profile.timing ?? 'unknown'}
+HRT status: ${profile.hrt_status ?? 'unknown'}
 Things tried: ${(profile.tried_options ?? []).join(', ') || 'none listed'}
-Goal: ${profile.goal ?? 'not specified'}`
+Goal(s): ${((profile.goals?.length ? profile.goals : profile.goal ? [profile.goal] : []) as string[]).join(', ') || 'not specified'}`
     : 'No profile data available.';
 
   const formatLog = (log: SymptomLogRow) =>

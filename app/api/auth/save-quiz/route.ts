@@ -17,12 +17,20 @@ const VALID_GOALS = [
 
 const QuizSchema = z.object({
   name: z.string().min(1).max(100).nullable().optional(),
+  age_band: z.string().max(50).nullable().optional(),
   top_problems: z.array(z.string().max(50)).max(20).optional(),
-  severity: z.string().max(50).nullable().optional(),
   timing: z.string().max(50).nullable().optional(),
+  here_for: z.string().max(50).nullable().optional(),
   tried_options: z.array(z.string().max(50)).max(20).optional(),
+  hrt_status: z.string().max(50).nullable().optional(),
   doctor_status: z.string().max(50).nullable().optional(),
   goal: z.union([z.string(), z.array(z.string())]).nullable().optional(),
+  goals: z.array(z.string().max(50)).max(20).optional(),
+  qualifier: z.string().max(50).nullable().optional(),
+  height_cm: z.number().int().min(50).max(300).nullable().optional(),
+  weight_kg: z.number().int().min(20).max(500).nullable().optional(),
+  height_unit: z.enum(["cm", "ft"]).nullable().optional(),
+  weight_unit: z.enum(["kg", "lb"]).nullable().optional(),
 });
 
 const BodySchema = z.object({
@@ -49,26 +57,30 @@ export async function POST(request: NextRequest) {
     const userId = user.id;
     const supabaseAdmin = getSupabaseAdmin();
 
-    let goalValue: string | null = null;
-    if (quizAnswers.goal) {
-      if (Array.isArray(quizAnswers.goal)) {
-        goalValue =
-          quizAnswers.goal.find((g) => (VALID_GOALS as readonly string[]).includes(g)) ??
-          null;
-      } else if ((VALID_GOALS as readonly string[]).includes(quizAnswers.goal)) {
-        goalValue = quizAnswers.goal;
-      }
-    }
+    // Full multi-select list (validated), preferring the new `goals[]` and falling
+    // back to a `goal` that may arrive as a single string or a legacy array.
+    const goalsRaw = quizAnswers.goals ?? (Array.isArray(quizAnswers.goal) ? quizAnswers.goal : quizAnswers.goal ? [quizAnswers.goal] : []);
+    const goalsValue = goalsRaw.filter((g) => (VALID_GOALS as readonly string[]).includes(g));
+    // Singular column keeps holding the primary goal for backward compatibility.
+    const goalValue = goalsValue[0] ?? null;
 
     const profileData = {
       user_id: userId,
       name: quizAnswers.name ?? null,
+      age_band: quizAnswers.age_band ?? null,
       top_problems: quizAnswers.top_problems ?? [],
-      severity: quizAnswers.severity ?? null,
       timing: quizAnswers.timing ?? null,
+      here_for: quizAnswers.here_for ?? null,
       tried_options: quizAnswers.tried_options ?? [],
+      hrt_status: quizAnswers.hrt_status ?? null,
       doctor_status: quizAnswers.doctor_status ?? null,
       goal: goalValue,
+      goals: goalsValue,
+      qualifier: quizAnswers.qualifier ?? null,
+      height_cm: quizAnswers.height_cm ?? null,
+      weight_kg: quizAnswers.weight_kg ?? null,
+      height_unit: quizAnswers.height_unit ?? null,
+      weight_unit: quizAnswers.weight_unit ?? null,
     };
 
     const { data: existingProfile } = await supabaseAdmin

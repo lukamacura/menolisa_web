@@ -21,6 +21,7 @@ function LoginForm() {
   const errorParam = searchParams.get("error");
   const message = searchParams.get("message");
   const successMsg = !errorParam && message ? message : null;
+  const prefillEmail = searchParams.get("email") ?? "";
 
   return (
     <main className="relative overflow-hidden mx-auto max-w-md p-6 sm:p-8 min-h-screen flex flex-col justify-center">
@@ -60,6 +61,7 @@ function LoginForm() {
 
         <OtpForm
           mode="login"
+          initialEmail={prefillEmail}
           onSuccess={() => {
             const next = safeNextPath(searchParams.get("redirectedFrom"));
             router.push(next);

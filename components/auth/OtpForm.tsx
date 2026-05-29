@@ -15,6 +15,12 @@ type OtpFormProps = {
   variant?: Variant;
   submitLabel?: string;
   onStepChange?: (step: "email" | "code") => void;
+  /**
+   * Register mode only: called when the submitted email already belongs to an
+   * account with active access. The caller should route to /login instead of
+   * sending a signup code. When provided, no OTP is sent for existing accounts.
+   */
+  onExistingAccount?: (email: string) => void;
 };
 
 const RESEND_COOLDOWN_SECONDS = 60;
@@ -74,6 +80,7 @@ export default function OtpForm({
   variant = "default",
   submitLabel,
   onStepChange,
+  onExistingAccount,
 }: OtpFormProps) {
   const [step, setStep] = useState<"email" | "code">("email");
 
@@ -141,7 +148,31 @@ export default function OtpForm({
   async function handleEmailSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!emailValid || loading) return;
-    const ok = await sendCode(email.toLowerCase().trim(), false);
+    const target = email.toLowerCase().trim();
+
+    // Register funnel: don't re-onboard someone who already has active access —
+    // send them to log in instead. Fails open (continues to signup) on any error.
+    if (mode === "register" && onExistingAccount) {
+      setLoading(true);
+      try {
+        const res = await fetch("/api/auth/check-account", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: target }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data?.hasAccount) {
+          onExistingAccount(target);
+          return;
+        }
+      } catch {
+        // ignore — fall through to normal signup
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    const ok = await sendCode(target, false);
     if (ok) changeStep("code");
   }
 

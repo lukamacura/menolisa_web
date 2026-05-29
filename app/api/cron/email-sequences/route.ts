@@ -16,7 +16,6 @@ type RecipientRow = {
   email: string;
   name: string | null;
   top_problems: string[] | null;
-  severity: string | null;
   goal: string | null;
   trial_start: string | null;
   trial_end: string | null;

@@ -584,7 +584,26 @@ export async function POST(req: NextRequest) {
       const profileParts: string[] = [];
 
       if (userProfile.name) profileParts.push(`Name: ${userProfile.name}`);
-      if (userProfile.age) profileParts.push(`Age: ${userProfile.age}`);
+
+      if (userProfile.age_band) {
+        const ageBandLabels: Record<string, string> = {
+          under_40: "Under 40",
+          "40_45": "40–45",
+          "46_50": "46–50",
+          "51_plus": "50+",
+        };
+        profileParts.push(`Age: ${ageBandLabels[userProfile.age_band] || userProfile.age_band}`);
+      }
+
+      if (userProfile.here_for) {
+        const stageLabels: Record<string, string> = {
+          pre_menopausal: "Pre-menopausal (not started)",
+          perimenopausal: "Perimenopausal (irregular periods)",
+          post_menopausal: "Post-menopausal (periods stopped)",
+          not_sure: "Not sure of stage",
+        };
+        profileParts.push(`Menopause stage: ${stageLabels[userProfile.here_for] || userProfile.here_for}`);
+      }
 
       // New User Memory Questions fields
       if (userProfile.top_problems && Array.isArray(userProfile.top_problems) && userProfile.top_problems.length > 0) {
@@ -602,15 +621,6 @@ export async function POST(req: NextRequest) {
         profileParts.push(`Main concerns: ${problems}`);
       }
 
-      if (userProfile.severity) {
-        const severityLabels: Record<string, string> = {
-          mild: "Mild — Annoying but manageable",
-          moderate: "Moderate — Affecting work/relationships",
-          severe: "Severe — Struggling every day",
-        };
-        profileParts.push(`Severity: ${severityLabels[userProfile.severity] || userProfile.severity}`);
-      }
-
       if (userProfile.timing) {
         const timingLabels: Record<string, string> = {
           just_started: "Just started (0-6 months)",
@@ -619,6 +629,15 @@ export async function POST(req: NextRequest) {
           several_years: "Several years",
         };
         profileParts.push(`Symptoms started: ${timingLabels[userProfile.timing] || userProfile.timing}`);
+      }
+
+      if (userProfile.hrt_status) {
+        const hrtLabels: Record<string, string> = {
+          currently: "Currently taking HRT",
+          past: "Has taken HRT in the past",
+          never: "Has never taken HRT",
+        };
+        profileParts.push(`HRT status: ${hrtLabels[userProfile.hrt_status] || userProfile.hrt_status}`);
       }
 
       if (userProfile.tried_options && Array.isArray(userProfile.tried_options) && userProfile.tried_options.length > 0) {
@@ -645,7 +664,7 @@ export async function POST(req: NextRequest) {
         profileParts.push(`Doctor status: ${doctorLabels[userProfile.doctor_status] || userProfile.doctor_status}`);
       }
 
-      if (userProfile.goal) {
+      {
         const goalLabels: Record<string, string> = {
           sleep_through_night: "Sleep through the night",
           think_clearly: "Think clearly again",
@@ -654,7 +673,13 @@ export async function POST(req: NextRequest) {
           data_for_doctor: "Have data for my doctor",
           get_body_back: "Get my body back",
         };
-        profileParts.push(`Primary goal: ${goalLabels[userProfile.goal] || userProfile.goal}`);
+        // Funnel stores multi-select goals[]; fall back to the legacy singular goal.
+        const goalList: string[] = Array.isArray(userProfile.goals) && userProfile.goals.length > 0
+          ? userProfile.goals
+          : userProfile.goal ? [userProfile.goal] : [];
+        if (goalList.length > 0) {
+          profileParts.push(`Goals: ${goalList.map((g: string) => goalLabels[g] || g).join(", ")}`);
+        }
       }
 
       if (profileParts.length > 0) {
@@ -905,13 +930,19 @@ IMPORTANT: The user is engaging in casual conversation, not asking for informati
             // Build update object
             const updateData: Record<string, string | number> = {};
 
-            // Handle different field types
+            // Handle different field types. Age is stored as a banded enum
+            // (age_band), not a raw number — map the provided age into its band.
             if (field_to_update === "age") {
               const ageNum = parseInt(value);
               if (isNaN(ageNum) || ageNum < 0 || ageNum > 150) {
                 return `Error: Invalid age value. Please provide a valid number between 0 and 150.`;
               }
-              updateData[field_to_update] = ageNum;
+              const ageBand =
+                ageNum < 40 ? "under_40" :
+                ageNum <= 45 ? "40_45" :
+                ageNum <= 50 ? "46_50" :
+                "51_plus";
+              updateData.age_band = ageBand;
             } else {
               updateData[field_to_update] = value.trim();
             }
