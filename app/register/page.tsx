@@ -1145,6 +1145,9 @@ function RegisterPageContent() {
             className="max-w-md mx-auto w-full flex-1 flex flex-col justify-center min-h-0 text-center"
           >
 
+            <div className="flex justify-center mb-4">
+              <Image src="/paywall.png" alt="" width={220} height={220} priority />
+            </div>
             <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-3">
               {firstName.trim() ? `${firstName.trim()}, you're all set!` : "You're all set!"}
             </h2>

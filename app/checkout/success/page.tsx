@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { CheckCircle2, Heart, Sparkles, ArrowRight } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +31,9 @@ export default function CheckoutSuccessPage() {
   return (
     <div className="min-h-screen bg-linear-to-br from-background via-primary/5 to-accent/10 flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-md text-center space-y-6">
+        <div className="flex justify-center">
+          <Image src="/paywall.png" alt="" width={220} height={220} priority />
+        </div>
         <div className="flex justify-center">
           <div className="rounded-full bg-primary/15 p-4 ring-4 ring-primary/20">
             <CheckCircle2 className="h-14 w-14 text-primary" strokeWidth={2} aria-hidden />
