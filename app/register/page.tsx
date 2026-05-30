@@ -132,6 +132,26 @@ const QUALIFIER_OPTIONS = [
   { id: "understand_first", label: "Just learning for now", image: "/quiz/readiness/learning.png" },
 ];
 
+// Images shown on each step, so we can preload the *next* step while the user
+// answers the current one (next/image lazy-loads, so otherwise tiles flash blank
+// on every step change — bad for a conversion funnel).
+const STEP_IMAGES: Partial<Record<Step, string[]>> = {
+  q1_age: AGE_OPTIONS.map((o) => o.image),
+  q2_here_for: HERE_FOR_OPTIONS.map((o) => o.image),
+  q4_symptoms: PROBLEM_OPTIONS.map((o) => o.image),
+  q3_goals: GOAL_OPTIONS.map((o) => o.image),
+  breather: ["/quiz/illustration_social_proof.png"],
+  q5_hrt: HRT_OPTIONS.map((o) => o.image),
+  q6_how_long: TIMING_OPTIONS.map((o) => o.image),
+  q7_qualifier: QUALIFIER_OPTIONS.map((o) => o.image),
+  q8_name: [`/quiz/${QUIZ_ILLUSTRATION.q8_name}`],
+};
+
+// Build the same URL next/image requests, so the preload warms both the Vercel
+// optimizer cache and the browser HTTP cache (640/828 cover phone + desktop).
+const optimizedImageUrl = (src: string, w: number) =>
+  `/_next/image?url=${encodeURIComponent(src)}&w=${w}&q=75`;
+
 /** Derive severity for results copy from symptoms count + duration (same as mobile). */
 function deriveSeverity(
   totalBurden: number,
@@ -265,6 +285,28 @@ function RegisterPageContent() {
   }, []);
   const [stepIndex, setStepIndex] = useState(0);
   const currentStep = STEPS[stepIndex];
+
+  // Preload the next step's images (and prewarm the very first step on mount) so
+  // tiles are already cached before the step renders.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const srcs = [
+      ...(stepIndex === 0 ? STEP_IMAGES.q1_age ?? [] : []),
+      ...(STEP_IMAGES[STEPS[stepIndex + 1]] ?? []),
+    ];
+    const imgs = srcs.flatMap((src) =>
+      [640, 828].map((w) => {
+        const img = new window.Image();
+        img.src = optimizedImageUrl(src, w);
+        return img;
+      })
+    );
+    return () => {
+      imgs.forEach((img) => {
+        img.src = "";
+      });
+    };
+  }, [stepIndex]);
   // Question position for the progress label/dots (breather excluded; during the
   // breather we keep the last answered question's dot lit).
   const activeQuestionIndex =
@@ -1305,6 +1347,7 @@ function RegisterPageContent() {
                               alt={option.label}
                               fill
                               sizes="50vw"
+                              priority
                               className="object-cover"
                             />
                             {isSelected && <div className="absolute inset-0 bg-primary/15" />}
