@@ -25,6 +25,7 @@ import {
   ShieldCheck,
   Clock,
   Sparkles,
+  ChevronsDown,
 } from "lucide-react";
 import OtpForm from "@/components/auth/OtpForm";
 import { PaywallView } from "@/components/PaywallView";
@@ -112,6 +113,11 @@ const PROBLEM_OPTIONS = [
   { id: "joint_pain", label: "Joint pain", image: "/symptoms/joint_pain.png" },
   { id: "bloating", label: "Bloating", image: "/symptoms/bloating.png" },
 ];
+
+// id -> tile image, so results can show her actual selected symptoms as visual chips.
+const SYMPTOM_IMAGE: Record<string, string> = Object.fromEntries(
+  PROBLEM_OPTIONS.map((o) => [o.id, o.image])
+);
 
 // Weight applied to each selected symptom (pure select, no per-symptom rating).
 // 2.5 keeps the Menopause Score spread and "you vs typical" comparison reading as before.
@@ -211,25 +217,6 @@ const getSeverityPainText = (
   }
 };
 
-
-type Pillar = { id: string; title: string; preview: string; symptoms: string[] };
-
-const PILLAR_WEEKS = ["Week 1–2", "Week 3–5", "Week 6–8"];
-
-const PILLAR_BLUEPRINTS: Pillar[] = [
-  { id: "sleep", title: "Sleep & cooling protocol", preview: "Track sleep patterns and pinpoint what's triggering night sweats.", symptoms: ["sleep_issues", "hot_flashes"] },
-  { id: "energy", title: "Energy & mental clarity", preview: "Rebuild focus with targeted nutrition and recovery windows.", symptoms: ["brain_fog", "low_energy"] },
-  { id: "mood", title: "Mood regulation", preview: "Spot the patterns behind your mood shifts before they escalate.", symptoms: ["mood_swings", "anxiety"] },
-  { id: "body", title: "Body composition reset", preview: "Adjust intake and movement for your changing metabolism.", symptoms: ["weight_changes", "bloating"] },
-  { id: "joints", title: "Joint & inflammation care", preview: "Reduce stiffness with daily anti-inflammatory routines.", symptoms: ["joint_pain"] },
-];
-
-function buildPillars(topProblems: string[]): Pillar[] {
-  const matched = PILLAR_BLUEPRINTS.filter((p) => p.symptoms.some((s) => topProblems.includes(s)));
-  if (matched.length >= 3) return matched.slice(0, 3);
-  const fillers = PILLAR_BLUEPRINTS.filter((p) => !matched.includes(p));
-  return [...matched, ...fillers].slice(0, 3);
-}
 
 function getCtaCopy(qualifier: string): { label: string; sub: string } {
   switch (qualifier) {
@@ -353,12 +340,22 @@ function TrajectoryChart({ score }: { score: number; ageBand: string }) {
       <path d={toPath(untreated)} fill="none" stroke="#EF4444" strokeWidth="3.5" strokeLinecap="round" />
       <path d={toPath(treated)} fill="none" stroke="#16A34A" strokeWidth="3.5" strokeLinecap="round" />
 
-      {/* Start dot + "You" pill */}
+      {/* Start dot + "You" pill - placed above the dot so it never sits on top of the diverging lines */}
       <circle cx={xAt(0)} cy={yAt(score)} r="4.5" fill="#3D3D3D" />
-      <g transform={`translate(${xAt(0) + 8}, ${yAt(score) - 9})`}>
-        <rect x="0" y="0" width="58" height="18" rx="9" fill="#3D3D3D" />
-        <text x="29" y="13" textAnchor="middle" fontSize="11" fill="#FFFFFF" fontWeight="700">You · {score}</text>
-      </g>
+      {(() => {
+        const pillW = 60;
+        const pillH = 18;
+        const cx = xAt(0);
+        const pillX = Math.min(Math.max(cx - pillW / 2, 0), W - pillW);
+        const pillY = Math.max(2, yAt(score) - pillH - 8);
+        return (
+          <g>
+            <line x1={cx} y1={yAt(score)} x2={cx} y2={pillY + pillH} stroke="#3D3D3D" strokeWidth="1" opacity="0.4" />
+            <rect x={pillX} y={pillY} width={pillW} height={pillH} rx="9" fill="#3D3D3D" />
+            <text x={pillX + pillW / 2} y={pillY + 13} textAnchor="middle" fontSize="11" fill="#FFFFFF" fontWeight="700">You · {score}</text>
+          </g>
+        );
+      })()}
 
       {/* End-of-line labels so each path is self-explanatory */}
       <circle cx={endT[0]} cy={endT[1]} r="4.5" fill="#16A34A" />
@@ -1161,39 +1158,67 @@ function RegisterPageContent() {
               );
             })()}
 
-            {/* Personalized plan */}
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 }}
-              className="mb-5"
-            >
-              <h2 className="text-base font-bold text-[#3D3D3D] mb-1">
-                What Lisa will focus on with you
-              </h2>
-              <p className="text-xs text-[#5A5A5A] mb-3">
-                Based on your answers - 3 areas, across 8 weeks.
-              </p>
-              <div className="space-y-2">
-                {buildPillars(topProblems).map((pillar, i) => (
-                  <div
-                    key={pillar.id}
-                    className="rounded-xl border-2 border-primary/30 bg-primary/5 p-3 flex items-start gap-3"
-                  >
-                    <div className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-primary text-primary-foreground">
-                      {i + 1}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <h3 className="text-sm font-bold text-[#3D3D3D]">{pillar.title}</h3>
-                        <span className="text-[10px] font-medium shrink-0 text-primary">{PILLAR_WEEKS[i]}</span>
+            {/* Why this is happening - root-cause visual: her symptoms all trace
+                back to one hormonal thread (recognition + education, no plan-sell). */}
+            {topProblems.length > 0 && (() => {
+              const chips = topProblems
+                .filter((id) => SYMPTOM_IMAGE[id])
+                .slice(0, 5);
+              return (
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5 }}
+                  className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-5 shadow-md shadow-primary/5"
+                >
+                  <h2 className="text-base font-bold text-[#3D3D3D] mb-0.5">
+                    Why this is happening to you
+                  </h2>
+                  <p className="text-xs text-[#5A5A5A] mb-4">
+                    The symptoms you picked share one root.
+                  </p>
+
+                  {/* Her symptoms as image chips */}
+                  <div className="flex flex-wrap justify-center gap-2 mb-1">
+                    {chips.map((id) => (
+                      <div key={id} className="flex flex-col items-center gap-1 w-16">
+                        <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#E8DDD9] shadow-sm">
+                          <Image
+                            src={SYMPTOM_IMAGE[id]}
+                            alt={SYMPTOM_LABELS[id] || id}
+                            width={48}
+                            height={48}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <span className="text-[9px] leading-tight text-[#9A9A9A] text-center">
+                          {SYMPTOM_LABELS[id] || id}
+                        </span>
                       </div>
-                      <p className="text-xs mt-0.5 leading-snug text-[#5A5A5A]">{pillar.preview}</p>
-                    </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </motion.div>
+
+                  {/* Convergence - everything points down to one cause */}
+                  <div className="flex justify-center -mb-0.5">
+                    <ChevronsDown className="w-5 h-5 text-primary/70" />
+                  </div>
+
+                  {/* The root */}
+                  <div className="rounded-xl bg-primary/5 border-2 border-primary/30 px-4 py-3 text-center">
+                    <p className="text-sm font-bold text-[#3D3D3D]">Shifting estrogen</p>
+                    <p className="text-[11px] text-[#5A5A5A] mt-0.5">
+                      The common thread behind all of them.
+                    </p>
+                  </div>
+
+                  <p className="text-xs text-[#5A5A5A] leading-relaxed mt-3 text-center">
+                    This is biology, not you - and it&apos;s{" "}
+                    <span className="font-bold text-[#3D3D3D]">measurable</span>, which means
+                    it&apos;s workable.
+                  </p>
+                </motion.div>
+              );
+            })()}
 
             {/* Outcome stat */}
             <motion.div
@@ -1359,22 +1384,34 @@ function RegisterPageContent() {
               </h2>
               <p className="text-xs text-[#5A5A5A] mb-3">The outcomes you told Lisa matter most to you.</p>
 
-              <div className="grid grid-cols-2 gap-2.5 mb-4">
-                {getGoalOutcomes(goal).map((outcome) => (
-                  <div
-                    key={outcome.label}
-                    className="flex flex-col items-center text-center gap-2 rounded-xl border border-green-200 bg-green-50 px-3 py-3"
-                  >
-                    <Image
-                      src={outcome.image}
-                      alt=""
-                      width={48}
-                      height={48}
-                      className="w-12 h-12 shrink-0 object-contain"
-                    />
-                    <span className="text-xs font-semibold text-[#3D3D3D] leading-snug">{outcome.label}</span>
-                  </div>
-                ))}
+              {/* Horizontal snap-scroll - big imagery, no cramped grid. Bleeds to the
+                  card edges so a peek of the next card invites the swipe. */}
+              <div className="-mx-4 mb-4">
+                <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory px-4 pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                  {getGoalOutcomes(goal).map((outcome) => (
+                    <motion.div
+                      key={outcome.label}
+                      initial={{ opacity: 0, scale: 0.96 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.3 }}
+                      className="relative snap-start shrink-0 w-[150px] rounded-2xl border-2 border-[#E8DDD9] bg-card overflow-hidden shadow-sm"
+                    >
+                      <CheckCircle2 className="absolute top-2 right-2 z-10 w-5 h-5 text-primary drop-shadow-sm" />
+                      <div className="h-32 bg-linear-to-br from-primary/10 via-[#ffeb76]/10 to-info/10 flex items-center justify-center p-3">
+                        <Image
+                          src={outcome.image}
+                          alt={outcome.label}
+                          width={160}
+                          height={160}
+                          className="w-full h-full object-contain drop-shadow-sm"
+                        />
+                      </div>
+                      <div className="px-3 py-2.5">
+                        <span className="text-xs font-semibold text-[#3D3D3D] leading-snug">{outcome.label}</span>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
               </div>
 
               {/* The effort: tiny, so the payoff feels easy to reach */}
@@ -1459,9 +1496,9 @@ function RegisterPageContent() {
               <Image
                 src="/guarantee.png"
                 alt="100% money back guarantee"
-                width={96}
-                height={96}
-                className="w-24 h-24 object-contain mb-2"
+                width={144}
+                height={144}
+                className="w-36 h-36 object-contain mb-2"
               />
               <h3 className="text-sm font-bold text-[#3D3D3D] leading-tight mb-1">Money back guarantee</h3>
               <p className="text-xs text-[#5A5A5A] leading-relaxed">
