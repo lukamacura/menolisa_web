@@ -3,7 +3,6 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { Menu, X } from "lucide-react";
 
 type NavbarProps = {
@@ -32,19 +31,7 @@ const Navbar: React.FC<NavbarProps> = ({ isAuthenticated }) => {
           <nav className="flex w-full items-center justify-between rounded-full bg-gray-900 px-3 sm:px-5 py-2.5 sm:py-2 shadow-lg backdrop-blur-lg border border-white/25 overflow-hidden">
             {/* Left: Logo + Brand */}
             <Link href="/" prefetch={false} className="flex items-center gap-2">
-              <div className="relative h-7 w-7 sm:h-8 sm:w-8 rounded-full overflow-hidden shadow-md">
-                <Image
-                  src="/lisa_profile.webp"
-                  alt="MenoLisa"
-                  fill
-                  className="object-cover"
-                  sizes="(max-width: 640px) 28px, 32px"
-                  priority
-                  quality={60}
-                  placeholder="blur"
-                  blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/2gAMAwEAAhEDEQA/ALQAB//Z"
-                />
-              </div>
+
               <span className="text-xs sm:text-sm font-semibold tracking-wide text-white">
                 MenoLisa
               </span>

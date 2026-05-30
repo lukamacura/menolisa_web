@@ -19,8 +19,12 @@ import {
   UserCircle,
   Check,
   TrendingUp,
+  TrendingDown,
   Ruler,
   Weight,
+  ShieldCheck,
+  Clock,
+  Sparkles,
 } from "lucide-react";
 import OtpForm from "@/components/auth/OtpForm";
 import { PaywallView } from "@/components/PaywallView";
@@ -134,7 +138,7 @@ const QUALIFIER_OPTIONS = [
 
 // Images shown on each step, so we can preload the *next* step while the user
 // answers the current one (next/image lazy-loads, so otherwise tiles flash blank
-// on every step change — bad for a conversion funnel).
+// on every step change - bad for a conversion funnel).
 const STEP_IMAGES: Partial<Record<Step, string[]>> = {
   q1_age: AGE_OPTIONS.map((o) => o.image),
   q2_here_for: HERE_FOR_OPTIONS.map((o) => o.image),
@@ -163,7 +167,7 @@ function deriveSeverity(
   return "mild";
 }
 
-type Phase = "quiz" | "calculating" | "email" | "results" | "paywall" | "download";
+type Phase = "quiz" | "calculating" | "email" | "results" | "diagnosis" | "paywall" | "download";
 
 const APP_STORE_URL = "https://apps.apple.com/de/app/menolisa/id6761130271?l=en-GB";
 const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.menolisa.app&pcampaignid=web_share";
@@ -239,7 +243,139 @@ function getCtaCopy(qualifier: string): { label: string; sub: string } {
   }
 }
 
+// First-person CTA label driven by her #1 goal (multi-select; first = primary).
+const GOAL_CTA_LABEL: Record<string, string> = {
+  sleep_through_night: "I want to sleep again",
+  think_clearly: "I want to think clearly again",
+  feel_like_myself: "I want to feel like myself",
+  understand_patterns: "I want to understand my body",
+  data_for_doctor: "I want answers for my doctor",
+  get_body_back: "I want my body back",
+};
+function getGoalCtaLabel(goals: string[]): string {
+  return GOAL_CTA_LABEL[goals[0]] ?? "I want to start";
+}
+
+// Her goals restated as concrete outcomes for the "what you get back" block.
+// Each maps to the same illustration shown in the quiz (q3_goals).
+type GoalOutcome = { label: string; image: string };
+const GOAL_OUTCOME: Record<string, GoalOutcome> = {
+  sleep_through_night: { label: "Sleep through the night", image: "/quiz/goals/sleep.png" },
+  think_clearly: { label: "Think clearly again", image: "/quiz/goals/thinkclearly.png" },
+  feel_like_myself: { label: "Feel like yourself again", image: "/quiz/goals/feelmyself.png" },
+  understand_patterns: { label: "Understand your patterns", image: "/quiz/goals/patterns.png" },
+  data_for_doctor: { label: "Walk into your doctor with real data", image: "/quiz/goals/data.png" },
+  get_body_back: { label: "Get your body back", image: "/quiz/goals/body.png" },
+};
+function getGoalOutcomes(goals: string[]): GoalOutcome[] {
+  const out = goals.map((g) => GOAL_OUTCOME[g]).filter(Boolean) as GoalOutcome[];
+  return out.length
+    ? out.slice(0, 4)
+    : [GOAL_OUTCOME.understand_patterns, GOAL_OUTCOME.feel_like_myself];
+}
+
 const REFERRAL_STORAGE_KEY = "pending_referral_code";
+
+
+
+
+// ─── Diagnosis: personalized before/after transformations ───────────────────
+// Each image in /public/testimonials is one side-by-side shot: left = the hard
+// "before", right = the calmer "after". Keyed by PROBLEM_OPTIONS ids so the cards
+// shown match the symptoms she actually selected.
+type SymptomTransform = { image: string; label: string; before: string; after: string };
+const SYMPTOM_TRANSFORM: Record<string, SymptomTransform> = {
+  hot_flashes:    { image: "/testimonials/hot_flashes.webp", label: "Hot flashes",    before: "Drenched, sleepless nights",        after: "Cool, calm and in control" },
+  sleep_issues:   { image: "/testimonials/sleep.webp",       label: "Sleep",          before: "Tossing and turning till 3am",      after: "Sleeping through the night" },
+  brain_fog:      { image: "/testimonials/brain_fog.webp",   label: "Brain fog",      before: "Losing your train of thought",      after: "Sharp, clear and focused" },
+  mood_swings:    { image: "/testimonials/mood_swings.webp", label: "Mood swings",    before: "Snapping at the people you love",   after: "Steady and yourself again" },
+  weight_changes: { image: "/testimonials/weight_gain.webp", label: "Weight changes", before: "Nothing fitting like it used to",   after: "At home in your body again" },
+  low_energy:     { image: "/testimonials/fatigue.webp",     label: "Fatigue",        before: "Running on empty by midday",        after: "Energy to enjoy your day" },
+  anxiety:        { image: "/testimonials/anxiety.webp",     label: "Anxiety",        before: "A constant, low hum of worry",      after: "Calm, grounded and at ease" },
+  joint_pain:     { image: "/testimonials/joint_pain.webp",  label: "Joint pain",     before: "Stiff, aching mornings",            after: "Moving freely again" },
+  bloating:       { image: "/testimonials/bloating.webp",    label: "Bloating",       before: "Heavy and uncomfortable",           after: "Light and at ease after meals" },
+};
+
+/** Her selected symptoms that have a before/after image (capped, original order). */
+function getSymptomTransforms(topProblems: string[], n = 3): SymptomTransform[] {
+  return topProblems
+    .filter((id) => SYMPTOM_TRANSFORM[id])
+    .slice(0, n)
+    .map((id) => SYMPTOM_TRANSFORM[id]);
+}
+
+/** Two diverging trajectories over ~2 years: decline if untreated vs. climb with Lisa. */
+function TrajectoryChart({ score }: { score: number; ageBand: string }) {
+  const W = 320;
+  const H = 190;
+  const padTop = 24;
+  const padBottom = 30;
+  const padLeft = 6;
+  const padRight = 64; // room for the end-of-line labels
+  const plotW = W - padLeft - padRight;
+  const plotH = H - padTop - padBottom;
+  const yAt = (v: number) => padTop + (1 - v / 100) * plotH;
+  const xAt = (t: number) => padLeft + t * plotW;
+  const easeOut = (t: number) => 1 - Math.pow(1 - t, 2);
+
+  const N = 28;
+  const decline = Math.min(Math.max(score - 12, 8), 24);
+  const gain = Math.min(Math.max(82 - score, 16), 60);
+  const untreated: [number, number][] = [];
+  const treated: [number, number][] = [];
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    untreated.push([xAt(t), yAt(Math.max(10, score - decline * easeOut(t)))]);
+    treated.push([xAt(t), yAt(Math.min(90, score + gain * easeOut(t)))]);
+  }
+  const toPath = (pts: [number, number][]) =>
+    pts.map((p, i) => `${i === 0 ? "M" : "L"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+  const treatedArea = `${toPath(treated)} L${xAt(1)},${H - padBottom} L${padLeft},${H - padBottom} Z`;
+  const endU = untreated[untreated.length - 1];
+  const endT = treated[treated.length - 1];
+  const goalY = yAt(80);
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label="Projected menopause score over the next two years">
+      <defs>
+        <linearGradient id="trajGreen" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#16A34A" stopOpacity="0.20" />
+          <stop offset="100%" stopColor="#16A34A" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+
+      {/* Goal line at 80 */}
+      <line x1={padLeft} y1={goalY} x2={xAt(1)} y2={goalY} stroke="#16A34A" strokeWidth="1" strokeDasharray="3 4" opacity="0.45" />
+      <text x={padLeft} y={goalY - 6} fontSize="11" fill="#16A34A" fontWeight="700"></text>
+
+      {/* Treated area + lines */}
+      <path d={treatedArea} fill="url(#trajGreen)" />
+      <path d={toPath(untreated)} fill="none" stroke="#EF4444" strokeWidth="3.5" strokeLinecap="round" />
+      <path d={toPath(treated)} fill="none" stroke="#16A34A" strokeWidth="3.5" strokeLinecap="round" />
+
+      {/* Start dot + "You" pill */}
+      <circle cx={xAt(0)} cy={yAt(score)} r="4.5" fill="#3D3D3D" />
+      <g transform={`translate(${xAt(0) + 8}, ${yAt(score) - 9})`}>
+        <rect x="0" y="0" width="58" height="18" rx="9" fill="#3D3D3D" />
+        <text x="29" y="13" textAnchor="middle" fontSize="11" fill="#FFFFFF" fontWeight="700">You · {score}</text>
+      </g>
+
+      {/* End-of-line labels so each path is self-explanatory */}
+      <circle cx={endT[0]} cy={endT[1]} r="4.5" fill="#16A34A" />
+      <text x={endT[0] + 8} y={endT[1] - 3} fontSize="12" fill="#16A34A" fontWeight="800">With{" "}Lisa</text>
+      <text x={endT[0] + 8} y={endT[1] + 10} fontSize="10" fill="#16A34A" fontWeight="600" opacity="0.85">better</text>
+
+      <circle cx={endU[0]} cy={endU[1]} r="4.5" fill="#EF4444" />
+      <text x={endU[0] + 8} y={endU[1] + 1} fontSize="12" fill="#EF4444" fontWeight="800">No{" "}plan</text>
+      <text x={endU[0] + 8} y={endU[1] + 14} fontSize="10" fill="#EF4444" fontWeight="600" opacity="0.85">worse</text>
+
+      {/* X axis labels */}
+      <text x={xAt(0)} y={H - 9} textAnchor="start" fontSize="11" fill="#9A9A9A" fontWeight="500">Now</text>
+      <text x={xAt(0.5)} y={H - 9} textAnchor="middle" fontSize="11" fill="#9A9A9A" fontWeight="500">1 year</text>
+      <text x={xAt(1)} y={H - 9} textAnchor="end" fontSize="11" fill="#9A9A9A" fontWeight="500">2 years</text>
+    </svg>
+  );
+}
 
 function RegisterPageContent() {
   const router = useRouter();
@@ -396,7 +532,7 @@ function RegisterPageContent() {
 
   const derivedSeverity = deriveSeverity(totalBurden, timing);
 
-  // Menopause Wellbeing Score (0–100, higher = better) — reacts to every answer:
+  // Menopause Wellbeing Score (0–100, higher = better) - reacts to every answer:
   // symptoms, duration, stage, HRT, BMI (height+weight) and age.
   const scoreBreakdown = useMemo(
     () =>
@@ -416,6 +552,15 @@ function RegisterPageContent() {
   // Loading screen state (between quiz and email)
   const [messageIndex, setMessageIndex] = useState(0);
   const [displayScore, setDisplayScore] = useState(0);
+
+  // Diagnosis page offer countdown - visual urgency only (does NOT change pricing).
+  const [offerSeconds, setOfferSeconds] = useState(15 * 60);
+  useEffect(() => {
+    if (phase !== "diagnosis") return;
+    const id = setInterval(() => setOfferSeconds((s) => (s > 0 ? s - 1 : 0)), 1000);
+    return () => clearInterval(id);
+  }, [phase]);
+  const offerClock = `${Math.floor(offerSeconds / 60)}:${String(offerSeconds % 60).padStart(2, "0")}`;
 
   // Loading messages for results screen
   const loadingMessages = [
@@ -514,7 +659,7 @@ function RegisterPageContent() {
           return false;
       }
     },
-    [ageBand, bodyMetrics, hereFor, goal, topProblems, triedOptions, hrtStatus, timing, qualifier, firstName]
+    [ageBand, bodyMetrics, hereFor, goal, topProblems, hrtStatus, timing, qualifier, firstName]
   );
 
   // Save quiz answers to sessionStorage (cleared when tab closes)
@@ -536,7 +681,7 @@ function RegisterPageContent() {
       weight_unit: bodyMetrics.weight_unit,
     };
     sessionStorage.setItem("pending_quiz_answers", JSON.stringify(quizAnswers));
-  }, [ageBand, topProblems, derivedSeverity, timing, triedOptions, hrtStatus, goal, qualifier, hereFor, firstName, bodyMetrics]);
+  }, [ageBand, topProblems, timing, triedOptions, hrtStatus, goal, qualifier, hereFor, firstName, bodyMetrics]);
 
   const goNext = useCallback(() => {
     if (!stepIsAnswered(currentStep)) return;
@@ -562,7 +707,7 @@ function RegisterPageContent() {
     try {
       // Safety net: someone with an already-active account (e.g. existing paid
       // customer) who slipped past the email check shouldn't be re-onboarded or
-      // shown the paywall — send them straight to the dashboard without touching
+      // shown the paywall - send them straight to the dashboard without touching
       // their saved quiz/profile.
       const { data: sessionData } = await supabase.auth.getSession();
       const sessionUserId = sessionData?.session?.user?.id;
@@ -645,7 +790,7 @@ function RegisterPageContent() {
     } finally {
       setSavingQuiz(false);
     }
-  }, [ageBand, topProblems, derivedSeverity, timing, triedOptions, hrtStatus, goal, qualifier, hereFor, firstName, bodyMetrics, ref, fromQuiz1, router]);
+  }, [ageBand, topProblems, timing, triedOptions, hrtStatus, goal, qualifier, hereFor, firstName, bodyMetrics, ref, fromQuiz1, router]);
 
   const toggleProblem = (problemId: string) => {
     setSymptomSeverity((prev) => {
@@ -714,6 +859,7 @@ function RegisterPageContent() {
       phase === "calculating" ||
       phase === "email" ||
       phase === "results" ||
+      phase === "diagnosis" ||
       phase === "paywall" ||
       phase === "download"
     ) {
@@ -855,6 +1001,23 @@ function RegisterPageContent() {
             animate={{ opacity: 1 }}
             className="max-w-md mx-auto w-full pt-2"
           >
+            {/* Results image */}
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 }}
+              className="mb-4 rounded-2xl overflow-hidden shadow-sm mx-auto w-full sm:w-5/6 md:w-2/3"
+            >
+              <Image
+                src="/results.png"
+                alt="Your menopause results"
+                width={500}
+                height={300}
+                className="w-full object-cover"
+                priority
+              />
+            </motion.div>
+
             {/* Headline */}
             <motion.h1
               initial={{ opacity: 0, y: 16 }}
@@ -1059,11 +1222,273 @@ function RegisterPageContent() {
                   <>
                     <button
                       type="button"
+                      onClick={() => setPhase("diagnosis")}
+                      className="w-full min-h-12 py-3.5 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
+                      style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)", boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)" }}
+                    >
+                      {getGoalCtaLabel(goal)}
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                    <p className="text-[11px] text-[#9A9A9A] text-center mt-1.5">{cta.sub}</p>
+                  </>
+                );
+              })()}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Diagnosis Phase - emotional build between results and paywall:
+          trajectory (fear) -> women like you (proof) -> 8-week outcome -> offer. */}
+      {phase === "diagnosis" && (
+        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pb-[calc(132px+env(safe-area-inset-bottom))] [scrollbar-width:thin] [scrollbar-color:rgba(255,141,161,0.35)_transparent] [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-primary/30 hover:[&::-webkit-scrollbar-thumb]:bg-primary/50">
+          <motion.div
+            key="diagnosis"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="max-w-md mx-auto w-full pt-2"
+          >
+            {/* Back to results */}
+            <button
+              type="button"
+              onClick={() => setPhase("results")}
+              className="flex items-center gap-1 text-xs text-[#9A9A9A] hover:text-[#5A5A5A] mb-2 transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> Back to my score
+            </button>
+
+            {/* ── Block 1: Where this is heading (trajectory) ───────────────── */}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 }}
+              className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-5 shadow-md shadow-primary/5"
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <TrendingDown className="w-5 h-5 text-red-500" />
+                <h2 className="text-base font-bold text-[#3D3D3D]">Where this is heading</h2>
+              </div>
+              <p className="text-xs text-[#5A5A5A] mb-3">
+                {firstName.trim() ? `${firstName.trim()}, untreated` : "Untreated"}, perimenopause symptoms
+                persist <span className="font-bold">4–7 years on average</span> - and often get worse before they settle.
+              </p>
+              <TrajectoryChart score={score} ageBand={ageBand} />
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className="rounded-xl border border-red-200 bg-red-50 p-2.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-red-700">
+                    Without a plan
+                  </div>
+                  <p className="text-[11px] text-red-700/80 mt-0.5 leading-snug">Symptoms compound. Sleep, mood and focus keep slipping.</p>
+                </div>
+                <div className="rounded-xl border border-green-200 bg-green-50 p-2.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-green-700">
+                     With Lisa
+                  </div>
+                  <p className="text-[11px] text-green-700/80 mt-0.5 leading-snug">Track, understand, act - climb toward your 80+ goal.</p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* ── Block 2: Personalized before/after for her symptoms ─────────── */}
+            {(() => {
+              const transforms = getSymptomTransforms(topProblems);
+              if (transforms.length === 0) return null;
+              return (
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                  className="mb-5"
+                >
+                  <h2 className="text-base font-bold text-[#3D3D3D] mb-0.5">
+                    {firstName.trim() ? `${firstName.trim()}, picture yourself in 8 weeks` : "Picture yourself in 8 weeks"}
+                  </h2>
+                  <p className="text-xs text-[#5A5A5A] mb-3">
+                    Before and after - for the symptoms you told Lisa about.
+                  </p>
+
+                  <div className="space-y-3">
+                    {transforms.map((t, i) => (
+                      <motion.div
+                        key={t.image}
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.15 + i * 0.08 }}
+                        className="rounded-2xl bg-card border-2 border-[#E8DDD9] overflow-hidden shadow-sm"
+                      >
+                        <div className="relative">
+                          <Image
+                            src={t.image}
+                            alt={`${t.label}: before and after with MenoLisa`}
+                            width={1000}
+                            height={546}
+                            className="w-full object-cover"
+                          />
+                          <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-white/60" />
+                          <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-black/45 backdrop-blur-sm text-[10px] font-semibold text-white tracking-wide">
+                            Before
+                          </span>
+                          <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-primary/85 backdrop-blur-sm text-[10px] font-semibold text-white tracking-wide">
+                            In 8 weeks
+                          </span>
+                        </div>
+                        <div className="p-3">
+                          <p className="text-xs font-bold text-[#3D3D3D] mb-1.5">{t.label}</p>
+                          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                            <span className="text-[11px] text-[#9A9A9A] leading-snug">{t.before}</span>
+                            <ArrowRight className="w-3.5 h-3.5 text-primary shrink-0" />
+                            <span className="text-[11px] font-semibold text-[#3D3D3D] leading-snug text-right">{t.after}</span>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                </motion.div>
+              );
+            })()}
+
+            {/* ── Block 3: What you get back (her goals) vs. what it takes ──── */}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 }}
+              className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-5 shadow-md shadow-primary/5"
+            >
+              <h2 className="text-base font-bold text-[#3D3D3D] mb-0.5">
+                {firstName.trim() ? `${firstName.trim()}, here's what you get back` : "What you get back"}
+              </h2>
+              <p className="text-xs text-[#5A5A5A] mb-3">The outcomes you told Lisa matter most to you.</p>
+
+              <div className="grid grid-cols-2 gap-2.5 mb-4">
+                {getGoalOutcomes(goal).map((outcome) => (
+                  <div
+                    key={outcome.label}
+                    className="flex flex-col items-center text-center gap-2 rounded-xl border border-green-200 bg-green-50 px-3 py-3"
+                  >
+                    <Image
+                      src={outcome.image}
+                      alt=""
+                      width={48}
+                      height={48}
+                      className="w-12 h-12 shrink-0 object-contain"
+                    />
+                    <span className="text-xs font-semibold text-[#3D3D3D] leading-snug">{outcome.label}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* The effort: tiny, so the payoff feels easy to reach */}
+              <div className="flex items-center gap-2.5 rounded-xl bg-primary/5 border border-primary/20 px-3 py-2.5">
+                <Clock className="w-4 h-4 text-primary shrink-0" />
+                <p className="text-xs text-[#5A5A5A]">
+                  <span className="font-bold text-[#3D3D3D]">All it takes: 2 minutes a day.</span> You log how you feel - Lisa finds the patterns and tells you what to do next.
+                </p>
+              </div>
+            </motion.div>
+
+            {/* ── Block 4: Special offer (visual urgency only) ──────────────── */}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="rounded-2xl overflow-hidden mb-5"
+              style={{ background: "linear-gradient(145deg, #fff5f8 0%, #fff8f0 50%, #f0f9ff 100%)", boxShadow: "0 0 0 2px rgba(255,116,177,0.3), 0 8px 32px rgba(255,116,177,0.15)" }}
+            >
+              {/* Mockup image */}
+              <div className="relative w-full bg-linear-to-br from-primary/10 via-[#ffeb76]/10 to-info/10 pt-5 px-4 flex justify-center">
+                <Image
+                  src="/mockup.png"
+                  alt="MenoLisa app — your personalized plan"
+                  width={577}
+                  height={433}
+                  className="w-full max-w-[260px] object-contain drop-shadow-xl"
+                  priority
+                />
+                {/* Fade bottom of image into card bg */}
+                <div className="absolute bottom-0 inset-x-0 h-10 bg-linear-to-t from-[#fff5f8] to-transparent pointer-events-none" />
+              </div>
+
+              {/* Content */}
+              <div className="px-4 pb-4 pt-2">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-primary" />
+                    <h2 className="text-base font-bold text-[#3D3D3D]">Your plan is reserved</h2>
+                  </div>
+                  <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-primary/15 text-primary text-xs font-bold tabular-nums">
+                    <Clock className="w-3.5 h-3.5" /> {offerClock}
+                  </div>
+                </div>
+                <p className="text-xs text-[#5A5A5A] mb-3">
+                  We&apos;ve built your personalized plan and unlocked a <span className="font-bold text-[#3D3D3D]">3-day free trial</span>. Claim it before it expires.
+                </p>
+                <div className="space-y-2">
+                  {[
+                    "Your full personalized 8-week plan",
+                    "Lisa, your 24/7 menopause companion",
+                    "Symptom tracking + doctor-ready reports",
+                  ].map((line) => (
+                    <div key={line} className="flex items-center gap-2.5 rounded-lg bg-white/70 border border-green-100 px-3 py-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+                      <span className="text-xs font-medium text-[#3D3D3D]">{line}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+
+            {/* ── Trust strip ───────────────────────────────────────────────── */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.25 }}
+              className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[11px] text-[#9A9A9A] mb-4"
+            >
+              <span className="flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5 text-green-600" /> No charge today</span>
+              <span className="flex items-center gap-1"><Check className="w-3.5 h-3.5 text-green-600" /> Cancel anytime</span>
+              <span className="flex items-center gap-1"><Check className="w-3.5 h-3.5 text-green-600" /> Built with clinicians</span>
+            </motion.div>
+
+            {/* ── Guarantee ─────────────────────────────────────────────────── */}
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-5 shadow-sm flex flex-col items-center text-center"
+            >
+              <Image
+                src="/guarantee.png"
+                alt="100% money back guarantee"
+                width={96}
+                height={96}
+                className="w-24 h-24 object-contain mb-2"
+              />
+              <h3 className="text-sm font-bold text-[#3D3D3D] leading-tight mb-1">Money back guarantee</h3>
+              <p className="text-xs text-[#5A5A5A] leading-relaxed">
+                Valid for 7 days. If you&apos;re not satisfied, just show us you followed the plan and we&apos;ll refund you - no questions asked.
+              </p>
+            </motion.div>
+          </motion.div>
+
+          {/* Fixed bottom CTA -> paywall */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="fixed bottom-0 inset-x-0 z-30 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 pb-[env(safe-area-inset-bottom)]"
+          >
+            <div className="mx-auto max-w-md w-full px-4 sm:px-6 py-3">
+              {(() => {
+                const cta = getCtaCopy(qualifier);
+                return (
+                  <>
+                    <button
+                      type="button"
                       onClick={() => setPhase("paywall")}
                       className="w-full min-h-12 py-3.5 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
                       style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)", boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)" }}
                     >
-                      {cta.label}
+                      {getGoalCtaLabel(goal)}
                       <ArrowRight className="w-4 h-4" />
                     </button>
                     <p className="text-[11px] text-[#9A9A9A] text-center mt-1.5">{cta.sub}</p>

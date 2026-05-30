@@ -469,8 +469,9 @@ export function calculateWellbeingScore(inputs: ScoreInputs): ScoreBreakdown {
     bmiPen -
     agePenalty;
 
-  // Let it breathe: floor 12 (never hopeless), cap 92 (someone took this quiz).
-  const score = Math.max(12, Math.min(92, Math.round(raw)));
+  // Let it breathe: floor 12 (never hopeless), cap 79 — must stay under the 80
+  // goal so there's always room to improve (someone took this quiz for a reason).
+  const score = Math.max(12, Math.min(79, Math.round(raw)));
 
   return {
     score,

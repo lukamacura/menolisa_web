@@ -52,7 +52,7 @@ function LoginForm() {
         {successMsg && (
           <div
             role="status"
-            className="mb-4 rounded-xl border border-green-400/30 bg-green-50/80 dark:bg-green-900/20 p-4 text-sm text-green-700 dark:text-green-400 flex items-start gap-3"
+            className="mb-4 rounded-xl border border-green-400/30 bg-green-50/80 dark:bg-green-900/20 p-4 text-sm text-green-700 dark:text-green-800 flex items-start gap-3"
           >
             <CheckCircle className="w-5 h-5 shrink-0 mt-0.5" />
             <p>{successMsg}</p>
