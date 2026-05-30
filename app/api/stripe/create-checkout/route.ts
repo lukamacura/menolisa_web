@@ -148,10 +148,14 @@ export async function POST(req: NextRequest) {
       client_reference_id: user.id,
       customer_email: user.email ?? undefined,
       subscription_data: {
-        trial_period_days: 3,
-        trial_settings: {
-          end_behavior: { missing_payment_method: "cancel" },
-        },
+        ...(plan === "annual"
+          ? {
+              trial_period_days: 3,
+              trial_settings: {
+                end_behavior: { missing_payment_method: "cancel" },
+              },
+            }
+          : {}),
         metadata: { user_id: user.id },
       },
     };

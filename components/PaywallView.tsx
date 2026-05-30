@@ -15,6 +15,7 @@ import {
   Star,
   TrendingUp,
   Zap,
+  CreditCard,
 } from "lucide-react";
 import AnimatedCounter from "@/components/landing/AnimatedCounter";
 
@@ -38,6 +39,94 @@ export function PaywallView({
   error,
   banner,
 }: PaywallViewProps) {
+  const isAnnual = selectedPlan === "annual";
+
+  const trustLabels = isAnnual
+    ? [
+        {
+          icon: Zap,
+          bg: "bg-pink-100",
+          fg: "text-pink-600",
+          text: (
+            <>
+              <strong>Nothing charged today.</strong> Trial starts the moment you sign up
+            </>
+          ),
+        },
+        {
+          icon: Clock,
+          bg: "bg-yellow-100",
+          fg: "text-yellow-700",
+          text: (
+            <>
+              We&apos;ll <strong>email you 24h before</strong> the trial ends. No surprises
+            </>
+          ),
+        },
+        {
+          icon: Check,
+          bg: "bg-sky-100",
+          fg: "text-sky-600",
+          text: (
+            <>
+              <strong>Cancel in 2 taps.</strong> No calls, no hoops
+            </>
+          ),
+        },
+        {
+          icon: ShieldCheck,
+          bg: "bg-green-100",
+          fg: "text-green-700",
+          text: (
+            <>
+              Stripe-secured. <strong>We never see your card</strong>
+            </>
+          ),
+        },
+      ]
+    : [
+        {
+          icon: CreditCard,
+          bg: "bg-pink-100",
+          fg: "text-pink-600",
+          text: (
+            <>
+              <strong>Billed monthly.</strong> No annual commitment required
+            </>
+          ),
+        },
+        {
+          icon: Check,
+          bg: "bg-sky-100",
+          fg: "text-sky-600",
+          text: (
+            <>
+              <strong>Cancel in 2 taps.</strong> No calls, no hoops
+            </>
+          ),
+        },
+        {
+          icon: ShieldCheck,
+          bg: "bg-green-100",
+          fg: "text-green-700",
+          text: (
+            <>
+              Stripe-secured. <strong>We never see your card</strong>
+            </>
+          ),
+        },
+        {
+          icon: Zap,
+          bg: "bg-yellow-100",
+          fg: "text-yellow-700",
+          text: (
+            <>
+              <strong>Instant access.</strong> Start tracking your symptoms today
+            </>
+          ),
+        },
+      ];
+
   return (
     <div
       className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pt-4 sm:pt-6 pb-[calc(140px+env(safe-area-inset-bottom))] sm:pb-6 relative"
@@ -104,19 +193,38 @@ export function PaywallView({
           transition={{ delay: 0.25 }}
           className="text-center mb-4 sm:mb-5"
         >
-          <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-1.5 leading-tight">
-            Try Lisa free for{" "}
-            <span
-              className="bg-clip-text text-transparent"
-              style={{ backgroundImage: "linear-gradient(135deg, #ff74b1, #65dbff)" }}
-            >
-              3 days
-            </span>
-          </h2>
-          <p className="text-sm sm:text-base text-[#5A5A5A]">
-            <strong className="text-[#3D3D3D]">$0 charged today.</strong> We&apos;ll remind you 24h
-            before your trial ends.
-          </p>
+          {isAnnual ? (
+            <>
+              <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-1.5 leading-tight">
+                Try Lisa free for{" "}
+                <span
+                  className="bg-clip-text text-transparent"
+                  style={{ backgroundImage: "linear-gradient(135deg, #ff74b1, #65dbff)" }}
+                >
+                  3 days
+                </span>
+              </h2>
+              <p className="text-sm sm:text-base text-[#5A5A5A]">
+                <strong className="text-[#3D3D3D]">$0 charged today.</strong> We&apos;ll remind you 24h
+                before your trial ends.
+              </p>
+            </>
+          ) : (
+            <>
+              <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-1.5 leading-tight">
+                Start your Lisa journey{" "}
+                <span
+                  className="bg-clip-text text-transparent"
+                  style={{ backgroundImage: "linear-gradient(135deg, #65dbff, #ff74b1)" }}
+                >
+                  today
+                </span>
+              </h2>
+              <p className="text-sm sm:text-base text-[#5A5A5A]">
+                <strong className="text-[#3D3D3D]">50% off</strong> our regular price. Cancel anytime.
+              </p>
+            </>
+          )}
         </motion.div>
 
         {/* Plan toggle */}
@@ -134,7 +242,7 @@ export function PaywallView({
             style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ff9d6c 100%)" }}
           >
             <Sparkles className="w-3 h-3" />
-            MOST POPULAR &middot; SAVE 45%
+            MOST POPULAR &middot; 50% OFF
           </span>
 
           <button
@@ -156,7 +264,8 @@ export function PaywallView({
             }}
           >
             Annual
-            <span className="block text-xs font-medium mt-0.5 text-[#ff74b1]">$6.58/mo</span>
+            <span className="block text-[10px] font-medium mt-0.5 text-[#9A9A9A] line-through">$13.17/mo</span>
+            <span className="block text-xs font-bold mt-0 text-[#ff74b1]">$6.58/mo</span>
           </button>
           <button
             type="button"
@@ -174,7 +283,8 @@ export function PaywallView({
             }}
           >
             Monthly
-            <span className="block text-xs font-medium mt-0.5 text-[#5A5A5A]">$12/mo</span>
+            <span className="block text-[10px] font-medium mt-0.5 text-[#9A9A9A] line-through">$24/mo</span>
+            <span className="block text-xs font-bold mt-0 text-[#5A5A5A]">$12/mo</span>
           </button>
         </motion.div>
 
@@ -195,20 +305,25 @@ export function PaywallView({
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs sm:text-sm font-medium text-[#5A5A5A]">
-              After your 3-day free trial
+              {isAnnual ? "After your 3-day free trial" : "Starting today"}
             </span>
-            {selectedPlan === "annual" && (
+            {isAnnual ? (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold text-green-700 bg-green-100">
                 <TrendingUp className="w-3 h-3" />
-                Save $65/yr
+                Save $79/yr
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold text-pink-700 bg-pink-100">
+                <Sparkles className="w-3 h-3" />
+                50% off
               </span>
             )}
           </div>
 
-          {selectedPlan === "annual" ? (
+          {isAnnual ? (
             <>
               <div className="flex items-baseline gap-2 flex-wrap">
-                <span className="text-sm text-[#9A9A9A] line-through font-medium">$12</span>
+                <span className="text-sm text-[#9A9A9A] line-through font-medium">$13.17</span>
                 <span
                   className="text-4xl font-extrabold bg-clip-text text-transparent"
                   style={{
@@ -225,7 +340,8 @@ export function PaywallView({
             </>
           ) : (
             <>
-              <div className="flex items-baseline gap-1">
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <span className="text-sm text-[#9A9A9A] line-through font-medium">$24</span>
                 <span
                   className="text-4xl font-extrabold bg-clip-text text-transparent"
                   style={{
@@ -243,48 +359,7 @@ export function PaywallView({
 
         {/* Trust labels */}
         <ul className="space-y-2 mb-5 text-sm text-[#3D3D3D]">
-          {[
-            {
-              icon: Zap,
-              bg: "bg-pink-100",
-              fg: "text-pink-600",
-              text: (
-                <>
-                  <strong>Nothing charged today.</strong> Trial starts the moment you sign up
-                </>
-              ),
-            },
-            {
-              icon: Clock,
-              bg: "bg-yellow-100",
-              fg: "text-yellow-700",
-              text: (
-                <>
-                  We&apos;ll <strong>email you 24h before</strong> the trial ends. No surprises
-                </>
-              ),
-            },
-            {
-              icon: Check,
-              bg: "bg-sky-100",
-              fg: "text-sky-600",
-              text: (
-                <>
-                  <strong>Cancel in 2 taps.</strong> No calls, no hoops
-                </>
-              ),
-            },
-            {
-              icon: ShieldCheck,
-              bg: "bg-green-100",
-              fg: "text-green-700",
-              text: (
-                <>
-                  Stripe-secured. <strong>We never see your card</strong>
-                </>
-              ),
-            },
-          ].map((item, i) => {
+          {trustLabels.map((item, i) => {
             const Icon = item.icon;
             return (
               <motion.li
@@ -340,17 +415,32 @@ export function PaywallView({
               <Loader2 className="w-5 h-5 animate-spin" />
               Redirecting to checkout&hellip;
             </>
-          ) : (
+          ) : isAnnual ? (
             <>
               <Lock className="w-4 h-4" />
               Start my free 3-day trial
               <ArrowRight className="w-4 h-4" />
             </>
+          ) : (
+            <>
+              <Lock className="w-4 h-4" />
+              Start for $12/month
+              <ArrowRight className="w-4 h-4" />
+            </>
           )}
         </motion.button>
         <p className="text-[11px] sm:text-xs text-[#7A7A7A] text-center mt-2 sm:mt-3 leading-relaxed">
-          <strong className="text-[#3D3D3D]">$0 due now.</strong> After 3 days:{" "}
-          {selectedPlan === "annual" ? "$79/year ($6.58/mo)" : "$12/month"}. Cancel anytime.
+          {isAnnual ? (
+            <>
+              <strong className="text-[#3D3D3D]">$0 due now.</strong> After 3 days:{" "}
+              $79/year ($6.58/mo). Cancel anytime.
+            </>
+          ) : (
+            <>
+              <strong className="text-[#3D3D3D]">$12 due today.</strong> Billed monthly.
+              Cancel anytime.
+            </>
+          )}
         </p>
       </div>
     </div>
