@@ -114,7 +114,6 @@ export async function POST(request: NextRequest) {
     // Upsert so re-registrations (e.g. mobile → web) don't silently fail on duplicate user_id.
     // The webhook flips account_status to "paid" once Stripe checkout completes.
     {
-      const nowIso = new Date().toISOString();
       const { data: existingTrial } = await supabaseAdmin
         .from("user_trials")
         .select("account_status")
@@ -124,9 +123,9 @@ export async function POST(request: NextRequest) {
       if (!existingTrial) {
         const { error: trialError } = await supabaseAdmin.from("user_trials").insert({
           user_id: userId,
-          trial_start: nowIso,
+          trial_start: null, // column defaults to now(); must be explicit null so the pending-payment email sequence (trial_start IS NULL) can match
           trial_days: 3,
-          account_status: "expired",
+          account_status: "pending_payment",
         });
         if (trialError) {
           console.error("Trial row creation failed:", trialError);

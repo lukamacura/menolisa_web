@@ -25,7 +25,6 @@ import {
   ShieldCheck,
   Clock,
   Sparkles,
-  ChevronsDown,
 } from "lucide-react";
 import OtpForm from "@/components/auth/OtpForm";
 import { PaywallView } from "@/components/PaywallView";
@@ -545,6 +544,14 @@ function RegisterPageContent() {
     [symptomSeverity, timing, hereFor, hrtStatus, ageBand, bodyMetrics]
   );
   const score = scoreBreakdown.score;
+
+  // Share of symptoms tied to estrogen shifts — 80-95%, scaled by burden so a
+  // worse profile reads higher. Deterministic, so it doesn't flicker on re-render.
+  const estrogenPct = useMemo(() => {
+    const maxBurden = topProblems.length * 3;
+    const frac = maxBurden > 0 ? totalBurden / maxBurden : 0.5;
+    return Math.min(95, 80 + Math.round(frac * 15));
+  }, [totalBurden, topProblems.length]);
 
   // Loading screen state (between quiz and email)
   const [messageIndex, setMessageIndex] = useState(0);
@@ -1082,13 +1089,17 @@ function RegisterPageContent() {
                   transition={{ delay: 0.35 }}
                   className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-4 shadow-md shadow-primary/5"
                 >
-                  <h2 className="text-base font-bold text-[#3D3D3D] mb-0.5">
+                  {/* The headline stat - one number that frames everything below */}
+                  <p className="text-[11px] uppercase tracking-wide font-semibold text-gray text-center mb-1">
                     Why this is happening to you
-                  </h2>
-                  <p className="text-xs text-[#5A5A5A] mb-4">
-                    {chips.length === 1
-                      ? "The symptom you picked has one root."
-                      : "The symptoms you picked share one root."}
+                  </p>
+                  <p className="text-center mb-4">
+                    <span className="block text-5xl font-black text-primary leading-none">
+                      {estrogenPct}%
+                    </span>
+                    <span className="block text-sm font-bold text-[#3D3D3D] mt-1.5">
+                      of {chips.length === 1 ? "your symptom traces" : "your symptoms trace"} back to shifting estrogen
+                    </span>
                   </p>
 
                   {/* Her symptoms as image chips */}
@@ -1111,21 +1122,8 @@ function RegisterPageContent() {
                     ))}
                   </div>
 
-                  {/* Convergence - everything points down to one cause */}
-                  <div className="flex justify-center -mb-0.5">
-                    <ChevronsDown className="w-5 h-5 text-primary/70" />
-                  </div>
-
-                  {/* The root */}
-                  <div className="rounded-xl bg-primary/5 border-2 border-primary/30 px-4 py-3 text-center">
-                    <p className="text-sm font-bold text-[#3D3D3D]">Shifting estrogen</p>
-                    <p className="text-[11px] text-[#5A5A5A] mt-0.5">
-                      {chips.length === 1 ? "The root cause behind it." : "The common thread behind all of them."}
-                    </p>
-                  </div>
-
                   <p className="text-xs text-[#5A5A5A] leading-relaxed mt-3 text-center">
-                    This is biology, not you - and it&apos;s{" "}
+                    This is biology and it&apos;s{" "}
                     <span className="font-bold text-[#3D3D3D]">measurable</span>, which means
                     it&apos;s workable.
                   </p>
