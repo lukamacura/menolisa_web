@@ -159,7 +159,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
         <SessionVerification />
         
         {/* Background fill above navigation */}
-        <div className="fixed top-0 left-0 right-0 z-10 h-[80px] bg-background/80 backdrop-blur-sm" />
+        <div className="fixed top-0 left-0 right-0 z-10 h-20 bg-background/80 backdrop-blur-sm" />
         
         {/* Top Navigation */}
       <nav className="fixed left-0 right-0 z-10 border-b border-foreground/10 bg-background/80 backdrop-blur-sm" style={{ top: '80px' }}>
@@ -284,7 +284,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
       </nav>
 
       {/* Main Content */}
-      <main className="flex-1 pt-[144px] sm:pt-[148px]">{children}</main>
+      <main className="flex-1 pt-36 sm:pt-[148px]">{children}</main>
 
       {/* Fixed Lisa Swipe Button */}
       {pathname !== "/dashboard/account" && !pathname?.startsWith("/dashboard/settings") && (

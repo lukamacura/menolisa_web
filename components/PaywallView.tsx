@@ -4,6 +4,7 @@ import { ReactNode } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
 import {
+  ArrowLeft,
   ArrowRight,
   Check,
   Clock,
@@ -29,6 +30,8 @@ export interface PaywallViewProps {
   error?: string | null;
   /** Optional banner above the hero (e.g. "Account under review" for disputed). */
   banner?: ReactNode;
+  /** Optional back link (e.g. return to the diagnosis page). */
+  onBack?: () => void;
 }
 
 export function PaywallView({
@@ -38,6 +41,7 @@ export function PaywallView({
   checkoutLoading,
   error,
   banner,
+  onBack,
 }: PaywallViewProps) {
   const isAnnual = selectedPlan === "annual";
 
@@ -129,7 +133,7 @@ export function PaywallView({
 
   return (
     <div
-      className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pt-4 sm:pt-6 pb-[calc(140px+env(safe-area-inset-bottom))] sm:pb-6 relative"
+      className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pt-4 sm:pt-6 pb-[calc(140px+env(safe-area-inset-bottom))] relative [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
 
     >
 
@@ -137,8 +141,18 @@ export function PaywallView({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: "easeOut" }}
-        className="max-w-md mx-auto w-full flex flex-col sm:flex-1 sm:justify-center sm:min-h-0"
+        className="max-w-md mx-auto w-full flex flex-col"
       >
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex items-center gap-1 text-xs text-[#9A9A9A] hover:text-[#5A5A5A] mb-2 self-start transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" /> Back to my overview
+          </button>
+        )}
+
         {banner && <div className="mb-3">{banner}</div>}
 
         {/* Hero image with colorful halo */}
@@ -238,7 +252,7 @@ export function PaywallView({
           aria-label="Billing period"
         >
           <span
-            className="absolute -top-2.5 left-1/2 -translate-x-1/2 sm:left-[25%] px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-bold tracking-wide text-white shadow-md flex items-center gap-1"
+            className="absolute -top-2.5 left-[25%] -translate-x-1/2 px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-bold tracking-wide text-white shadow-md flex items-center gap-1"
             style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ff9d6c 100%)" }}
           >
             <Sparkles className="w-3 h-3" />
@@ -310,7 +324,7 @@ export function PaywallView({
             {isAnnual ? (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold text-green-700 bg-green-100">
                 <TrendingUp className="w-3 h-3" />
-                Save $79/yr
+                Save $65/yr
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold text-pink-700 bg-pink-100">
@@ -357,6 +371,41 @@ export function PaywallView({
           )}
         </motion.div>
 
+        {/* What's included - reminds her what she's paying for at the decision point */}
+        <div
+          className="rounded-2xl border p-4 mb-4"
+          style={{
+            borderColor: "#f5c518",
+            background: "linear-gradient(135deg, rgba(245,197,24,0.08) 0%, rgba(255,235,118,0.12) 50%, rgba(245,197,24,0.06) 100%)",
+            boxShadow: "0 0 16px rgba(245,197,24,0.25), 0 0 32px rgba(245,197,24,0.12), inset 0 0 20px rgba(245,197,24,0.05)",
+          }}
+        >
+          <p
+            className="text-xs font-bold mb-2.5"
+            style={{
+              color: "#d4a800",
+              textShadow: "0 0 8px rgba(245,197,24,0.7), 0 0 16px rgba(245,197,24,0.4)",
+            }}
+          >
+            Everything included
+          </p>
+          <ul className="space-y-2">
+            {[
+              { bold: "Personalized 8-week plan", sub: "built around your symptoms" },
+              { bold: "Lisa", sub: "your 24/7 menopause AI companion" },
+              { bold: "Symptom tracking", sub: "with doctor-ready reports" },
+            ].map((item) => (
+              <li key={item.bold} className="flex items-start gap-2">
+                <Check className="w-4 h-4 text-yellow-500 shrink-0 mt-0.5" />
+                <span className="text-sm text-[#3D3D3D] leading-snug">
+                  <strong>{item.bold}</strong>
+                  <span className="text-[#7A7A7A]"> - {item.sub}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
         {/* Trust labels */}
         <ul className="space-y-2 mb-5 text-sm text-[#3D3D3D]">
           {trustLabels.map((item, i) => {
@@ -380,6 +429,15 @@ export function PaywallView({
           })}
         </ul>
 
+        {/* Money-back guarantee - risk reversal at the moment of payment */}
+        <div className="flex items-center gap-2.5 rounded-xl border border-green-200 bg-green-50 px-3 py-2.5 mb-4">
+          <ShieldCheck className="w-5 h-5 text-green-700 shrink-0" />
+          <p className="text-xs text-[#3D3D3D]">
+            <strong>7-day money-back guarantee.</strong> Not satisfied? Email us within 7
+            days and we&apos;ll refund you in full.
+          </p>
+        </div>
+
         {error && (
           <div className="mb-3 rounded-xl border border-error/30 bg-error/10 p-3 text-sm text-error">
             {error}
@@ -387,8 +445,9 @@ export function PaywallView({
         )}
       </motion.div>
 
-      {/* Sticky CTA bar */}
-      <div className="fixed bottom-0 inset-x-0 z-40 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/85 px-4 pt-3 pb-[calc(10px+env(safe-area-inset-bottom))] sm:static sm:bg-transparent sm:backdrop-blur-none sm:border-0 sm:px-0 sm:py-0 sm:max-w-md sm:mx-auto sm:w-full">
+      {/* Sticky CTA bar - fixed to the bottom on every viewport */}
+      <div className="fixed bottom-0 inset-x-0 z-40 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/85 px-4 pt-3 pb-[calc(10px+env(safe-area-inset-bottom))]">
+        <div className="max-w-md mx-auto w-full">
         <motion.button
           type="button"
           disabled={checkoutLoading}
@@ -442,6 +501,7 @@ export function PaywallView({
             </>
           )}
         </p>
+        </div>
       </div>
     </div>
   );

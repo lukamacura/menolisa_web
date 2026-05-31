@@ -550,15 +550,6 @@ function RegisterPageContent() {
   const [messageIndex, setMessageIndex] = useState(0);
   const [displayScore, setDisplayScore] = useState(0);
 
-  // Diagnosis page offer countdown - visual urgency only (does NOT change pricing).
-  const [offerSeconds, setOfferSeconds] = useState(15 * 60);
-  useEffect(() => {
-    if (phase !== "diagnosis") return;
-    const id = setInterval(() => setOfferSeconds((s) => (s > 0 ? s - 1 : 0)), 1000);
-    return () => clearInterval(id);
-  }, [phase]);
-  const offerClock = `${Math.floor(offerSeconds / 60)}:${String(offerSeconds % 60).padStart(2, "0")}`;
-
   // Loading messages for results screen
   const loadingMessages = [
     "Taking it all in...",
@@ -1078,6 +1069,70 @@ function RegisterPageContent() {
               );
             })()}
 
+            {/* Why this is happening - root-cause insight comes right after her
+                score: the relief ("one cause, measurable, workable") before the fear. */}
+            {topProblems.length > 0 && (() => {
+              const chips = topProblems
+                .filter((id) => SYMPTOM_IMAGE[id])
+                .slice(0, 5);
+              return (
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.35 }}
+                  className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-4 shadow-md shadow-primary/5"
+                >
+                  <h2 className="text-base font-bold text-[#3D3D3D] mb-0.5">
+                    Why this is happening to you
+                  </h2>
+                  <p className="text-xs text-[#5A5A5A] mb-4">
+                    {chips.length === 1
+                      ? "The symptom you picked has one root."
+                      : "The symptoms you picked share one root."}
+                  </p>
+
+                  {/* Her symptoms as image chips */}
+                  <div className="flex flex-wrap justify-center gap-2 mb-1">
+                    {chips.map((id) => (
+                      <div key={id} className="flex flex-col items-center gap-1 w-16">
+                        <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#E8DDD9] shadow-sm">
+                          <Image
+                            src={SYMPTOM_IMAGE[id]}
+                            alt={SYMPTOM_LABELS[id] || id}
+                            width={48}
+                            height={48}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <span className="text-[9px] leading-tight text-[#9A9A9A] text-center">
+                          {SYMPTOM_LABELS[id] || id}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Convergence - everything points down to one cause */}
+                  <div className="flex justify-center -mb-0.5">
+                    <ChevronsDown className="w-5 h-5 text-primary/70" />
+                  </div>
+
+                  {/* The root */}
+                  <div className="rounded-xl bg-primary/5 border-2 border-primary/30 px-4 py-3 text-center">
+                    <p className="text-sm font-bold text-[#3D3D3D]">Shifting estrogen</p>
+                    <p className="text-[11px] text-[#5A5A5A] mt-0.5">
+                      {chips.length === 1 ? "The root cause behind it." : "The common thread behind all of them."}
+                    </p>
+                  </div>
+
+                  <p className="text-xs text-[#5A5A5A] leading-relaxed mt-3 text-center">
+                    This is biology, not you - and it&apos;s{" "}
+                    <span className="font-bold text-[#3D3D3D]">measurable</span>, which means
+                    it&apos;s workable.
+                  </p>
+                </motion.div>
+              );
+            })()}
+
             {/* Symptom pills */}
             {topProblems.length > 0 && (
               <motion.div
@@ -1158,77 +1213,15 @@ function RegisterPageContent() {
               );
             })()}
 
-            {/* Why this is happening - root-cause visual: her symptoms all trace
-                back to one hormonal thread (recognition + education, no plan-sell). */}
-            {topProblems.length > 0 && (() => {
-              const chips = topProblems
-                .filter((id) => SYMPTOM_IMAGE[id])
-                .slice(0, 5);
-              return (
-                <motion.div
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.5 }}
-                  className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-5 shadow-md shadow-primary/5"
-                >
-                  <h2 className="text-base font-bold text-[#3D3D3D] mb-0.5">
-                    Why this is happening to you
-                  </h2>
-                  <p className="text-xs text-[#5A5A5A] mb-4">
-                    The symptoms you picked share one root.
-                  </p>
-
-                  {/* Her symptoms as image chips */}
-                  <div className="flex flex-wrap justify-center gap-2 mb-1">
-                    {chips.map((id) => (
-                      <div key={id} className="flex flex-col items-center gap-1 w-16">
-                        <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#E8DDD9] shadow-sm">
-                          <Image
-                            src={SYMPTOM_IMAGE[id]}
-                            alt={SYMPTOM_LABELS[id] || id}
-                            width={48}
-                            height={48}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                        <span className="text-[9px] leading-tight text-[#9A9A9A] text-center">
-                          {SYMPTOM_LABELS[id] || id}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Convergence - everything points down to one cause */}
-                  <div className="flex justify-center -mb-0.5">
-                    <ChevronsDown className="w-5 h-5 text-primary/70" />
-                  </div>
-
-                  {/* The root */}
-                  <div className="rounded-xl bg-primary/5 border-2 border-primary/30 px-4 py-3 text-center">
-                    <p className="text-sm font-bold text-[#3D3D3D]">Shifting estrogen</p>
-                    <p className="text-[11px] text-[#5A5A5A] mt-0.5">
-                      The common thread behind all of them.
-                    </p>
-                  </div>
-
-                  <p className="text-xs text-[#5A5A5A] leading-relaxed mt-3 text-center">
-                    This is biology, not you - and it&apos;s{" "}
-                    <span className="font-bold text-[#3D3D3D]">measurable</span>, which means
-                    it&apos;s workable.
-                  </p>
-                </motion.div>
-              );
-            })()}
-
             {/* Outcome stat */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.7 }}
-              className="flex items-center justify-center gap-2 text-xs text-[#5A5A5A] mb-5 px-2 text-center"
+              className="flex items-center justify-center gap-2 text-xs text-[#5A5A5A] mb-5 px-2 text-left"
             >
               <TrendingUp className="w-4 h-4 text-info shrink-0" />
-              <span><strong className="text-[#3D3D3D]">73%</strong> of women with your pattern report better sleep within 14 days</span>
+              <span>Women who track consistently often spot their first clear patterns within <strong className="text-[#3D3D3D]">2 weeks</strong></span>
             </motion.div>
 
           </motion.div>
@@ -1316,7 +1309,7 @@ function RegisterPageContent() {
 
             {/* ── Block 2: Personalized before/after for her symptoms ─────────── */}
             {(() => {
-              const transforms = getSymptomTransforms(topProblems);
+              const transforms = getSymptomTransforms(topProblems, 2);
               if (transforms.length === 0) return null;
               return (
                 <motion.div
@@ -1326,10 +1319,10 @@ function RegisterPageContent() {
                   className="mb-5"
                 >
                   <h2 className="text-base font-bold text-[#3D3D3D] mb-0.5">
-                    {firstName.trim() ? `${firstName.trim()}, picture yourself in 8 weeks` : "Picture yourself in 8 weeks"}
+                    {firstName.trim() ? `${firstName.trim()}, what taking control can look like` : "What taking control can look like"}
                   </h2>
                   <p className="text-xs text-[#5A5A5A] mb-3">
-                    Before and after - for the symptoms you told Lisa about.
+                    From where you are now to where understanding your patterns can take you - for the symptoms you shared.
                   </p>
 
                   <div className="space-y-3">
@@ -1341,6 +1334,7 @@ function RegisterPageContent() {
                         transition={{ delay: 0.15 + i * 0.08 }}
                         className="rounded-2xl bg-card border-2 border-[#E8DDD9] overflow-hidden shadow-sm"
                       >
+                        {/* Image with red/green tint halves and matching labels */}
                         <div className="relative">
                           <Image
                             src={t.image}
@@ -1349,20 +1343,34 @@ function RegisterPageContent() {
                             height={546}
                             className="w-full object-cover"
                           />
-                          <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-white/60" />
-                          <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-black/45 backdrop-blur-sm text-[10px] font-semibold text-white tracking-wide">
-                            Before
+                          {/* Red tint over left half */}
+                          <div className="absolute inset-y-0 left-0 w-1/2 bg-red-500/20 pointer-events-none" />
+                          {/* Green tint over right half */}
+                          <div className="absolute inset-y-0 right-0 w-1/2 bg-green-500/20 pointer-events-none" />
+                          {/* Center divider */}
+                          <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-white/70" />
+                          {/* Red label */}
+                          <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-red-500 text-[10px] font-bold text-white tracking-wide shadow-sm">
+                            Right now
                           </span>
-                          <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-primary/85 backdrop-blur-sm text-[10px] font-semibold text-white tracking-wide">
-                            In 8 weeks
+                          {/* Green label */}
+                          <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-green-600 text-[10px] font-bold text-white tracking-wide shadow-sm">
+                            With Lisa
                           </span>
                         </div>
+
+                        {/* Two equal columns - red before, green after */}
                         <div className="p-3">
-                          <p className="text-xs font-bold text-[#3D3D3D] mb-1.5">{t.label}</p>
-                          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                            <span className="text-[11px] text-[#9A9A9A] leading-snug">{t.before}</span>
-                            <ArrowRight className="w-3.5 h-3.5 text-primary shrink-0" />
-                            <span className="text-[11px] font-semibold text-[#3D3D3D] leading-snug text-right">{t.after}</span>
+                          <p className="text-xs font-bold text-[#3D3D3D] mb-2 text-center">{t.label}</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="rounded-xl bg-red-50 border border-red-200 px-2.5 py-2">
+                              <p className="text-[10px] font-semibold text-red-500 mb-0.5 uppercase tracking-wide">Right now</p>
+                              <p className="text-[11px] text-red-800 leading-snug">{t.before}</p>
+                            </div>
+                            <div className="rounded-xl bg-green-50 border border-green-200 px-2.5 py-2">
+                              <p className="text-[10px] font-semibold text-green-600 mb-0.5 uppercase tracking-wide">With Lisa</p>
+                              <p className="text-[11px] text-green-800 leading-snug">{t.after}</p>
+                            </div>
                           </div>
                         </div>
                       </motion.div>
@@ -1372,53 +1380,58 @@ function RegisterPageContent() {
               );
             })()}
 
-            {/* ── Block 3: What you get back (her goals) vs. what it takes ──── */}
+            {/* ── Block 3: What you get back (her goals) ───────────────────── */}
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.15 }}
-              className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-5 shadow-md shadow-primary/5"
+              className="mb-5"
             >
-              <h2 className="text-base font-bold text-[#3D3D3D] mb-0.5">
-                {firstName.trim() ? `${firstName.trim()}, here's what you get back` : "What you get back"}
-              </h2>
-              <p className="text-xs text-[#5A5A5A] mb-3">The outcomes you told Lisa matter most to you.</p>
+              <div className="px-1 mb-3">
+                <h2 className="text-base font-bold text-[#3D3D3D] mb-0.5">
+                  {firstName.trim() ? `${firstName.trim()}, here's what you get back` : "Here's what you get back"}
+                </h2>
+                <p className="text-[11px] text-[#9A9A9A]">The outcomes you told Lisa matter most.</p>
+              </div>
 
-              {/* Horizontal snap-scroll - big imagery, no cramped grid. Bleeds to the
-                  card edges so a peek of the next card invites the swipe. */}
-              <div className="-mx-4 mb-4">
-                <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory px-4 pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                  {getGoalOutcomes(goal).map((outcome) => (
+              {/* Full-bleed horizontal scroll - peek of next card invites the swipe */}
+              <div className="-mx-4 sm:-mx-6">
+                <div className="flex gap-2.5 overflow-x-auto snap-x snap-mandatory scroll-smooth px-4 sm:px-6 pb-3 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                  {getGoalOutcomes(goal).map((outcome, i) => (
                     <motion.div
                       key={outcome.label}
-                      initial={{ opacity: 0, scale: 0.96 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ duration: 0.3 }}
-                      className="relative snap-start shrink-0 w-[150px] rounded-2xl border-2 border-[#E8DDD9] bg-card overflow-hidden shadow-sm"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.28, delay: i * 0.06 }}
+                      className="snap-start shrink-0 w-32 rounded-2xl bg-card border border-[#E8DDD9] overflow-hidden shadow-sm flex flex-col"
                     >
-                      <CheckCircle2 className="absolute top-2 right-2 z-10 w-5 h-5 text-primary drop-shadow-sm" />
-                      <div className="h-32 bg-linear-to-br from-primary/10 via-[#ffeb76]/10 to-info/10 flex items-center justify-center p-3">
+                      <div className="h-[104px] bg-linear-to-br from-primary/8 via-[#ffeb76]/8 to-info/8 flex items-center justify-center p-3 relative">
                         <Image
                           src={outcome.image}
                           alt={outcome.label}
-                          width={160}
-                          height={160}
-                          className="w-full h-full object-contain drop-shadow-sm"
+                          width={120}
+                          height={120}
+                          className="w-full h-full object-contain"
                         />
+                        <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-primary/15 flex items-center justify-center">
+                          <Check className="w-2.5 h-2.5 text-primary" />
+                        </div>
                       </div>
-                      <div className="px-3 py-2.5">
-                        <span className="text-xs font-semibold text-[#3D3D3D] leading-snug">{outcome.label}</span>
+                      <div className="px-2.5 py-2 flex-1 flex items-center">
+                        <span className="text-[10px] font-semibold text-[#3D3D3D] leading-snug">{outcome.label}</span>
                       </div>
                     </motion.div>
                   ))}
+                  {/* Trailing spacer so last card doesn't sit flush against the edge */}
+                  <div className="shrink-0 w-2" />
                 </div>
               </div>
 
-              {/* The effort: tiny, so the payoff feels easy to reach */}
-              <div className="flex items-center gap-2.5 rounded-xl bg-primary/5 border border-primary/20 px-3 py-2.5">
+              {/* The effort */}
+              <div className="mx-1 flex items-center gap-2.5 rounded-xl bg-primary/5 border border-primary/20 px-3 py-2.5 mt-1">
                 <Clock className="w-4 h-4 text-primary shrink-0" />
-                <p className="text-xs text-[#5A5A5A]">
-                  <span className="font-bold text-[#3D3D3D]">All it takes: 2 minutes a day.</span> You log how you feel - Lisa finds the patterns and tells you what to do next.
+                <p className="text-[11px] text-[#5A5A5A]">
+                  <span className="font-semibold text-[#3D3D3D]">2 minutes a day.</span> Log how you feel - Lisa finds the patterns.
                 </p>
               </div>
             </motion.div>
@@ -1435,7 +1448,7 @@ function RegisterPageContent() {
               <div className="relative w-full bg-linear-to-br from-primary/10 via-[#ffeb76]/10 to-info/10 pt-5 px-4 flex justify-center">
                 <Image
                   src="/mockup.png"
-                  alt="MenoLisa app — your personalized plan"
+                  alt="MenoLisa app - your personalized plan"
                   width={577}
                   height={433}
                   className="w-full max-w-[260px] object-contain drop-shadow-xl"
@@ -1447,17 +1460,12 @@ function RegisterPageContent() {
 
               {/* Content */}
               <div className="px-4 pb-4 pt-2">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 text-primary" />
-                    <h2 className="text-base font-bold text-[#3D3D3D]">Your plan is reserved</h2>
-                  </div>
-                  <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-primary/15 text-primary text-xs font-bold tabular-nums">
-                    <Clock className="w-3.5 h-3.5" /> {offerClock}
-                  </div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Sparkles className="w-5 h-5 text-primary" />
+                  <h2 className="text-base font-bold text-[#3D3D3D]">Your plan is ready</h2>
                 </div>
                 <p className="text-xs text-[#5A5A5A] mb-3">
-                  We&apos;ve built your personalized plan and unlocked a <span className="font-bold text-[#3D3D3D]">3-day free trial</span>. Claim it before it expires.
+                  We&apos;ve built your personalized plan and unlocked a <span className="font-bold text-[#3D3D3D]">3-day free trial</span>.
                 </p>
                 <div className="space-y-2">
                   {[
@@ -1486,25 +1494,6 @@ function RegisterPageContent() {
               <span className="flex items-center gap-1"><Check className="w-3.5 h-3.5 text-green-600" /> Built with clinicians</span>
             </motion.div>
 
-            {/* ── Guarantee ─────────────────────────────────────────────────── */}
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-              className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-5 shadow-sm flex flex-col items-center text-center"
-            >
-              <Image
-                src="/guarantee.png"
-                alt="100% money back guarantee"
-                width={144}
-                height={144}
-                className="w-36 h-36 object-contain mb-2"
-              />
-              <h3 className="text-sm font-bold text-[#3D3D3D] leading-tight mb-1">Money back guarantee</h3>
-              <p className="text-xs text-[#5A5A5A] leading-relaxed">
-                Valid for 7 days. If you&apos;re not satisfied, just show us you followed the plan and we&apos;ll refund you - no questions asked.
-              </p>
-            </motion.div>
           </motion.div>
 
           {/* Fixed bottom CTA -> paywall */}
@@ -1637,6 +1626,7 @@ function RegisterPageContent() {
           onCheckout={handleStartTrialCheckout}
           checkoutLoading={checkoutLoading}
           error={error}
+          onBack={fromQuiz1 ? undefined : () => setPhase("diagnosis")}
         />
       )}
 

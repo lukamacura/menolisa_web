@@ -23,7 +23,7 @@ const INVITE_COPY: Record<
   eligible: {
     title: "50% off your next invoice.",
     subtitle:
-      "Your friend gets 3 days free; you get 50% off your next MenoLisa invoice — applied automatically.",
+      "Your friend gets 3 days free; you get 50% off your next MenoLisa invoice - applied automatically.",
     shareText: "Try MenoLisa - 3 days free.",
   },
   already_used: {
