@@ -194,7 +194,7 @@ export function PaywallView({
           <span className="text-xs sm:text-sm font-semibold text-[#3D3D3D]">
             4.9 &middot;{" "}
             <AnimatedCounter
-              target={1728}
+              target={12800}
               formatter={(n) => `${n.toLocaleString("en-US")}+`}
             />{" "}
             women

@@ -280,7 +280,7 @@ function LandingHeroInner({
               <div className="hidden sm:block w-px h-3 sm:h-4 bg-border opacity-30" />
               <div className="flex items-center gap-1.5 sm:gap-2">
                 <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4 md:h-5 md:w-5 text-primary shrink-0" />
-                <span className="whitespace-nowrap"><AnimatedCounter target={1728} /> trust Lisa</span>
+                <span className="whitespace-nowrap"><AnimatedCounter target={12800} /> trust Lisa</span>
               </div>
             </div>
 
@@ -301,7 +301,7 @@ function LandingHeroInner({
                 ))}
               </div>
               <span className="text-xs sm:text-sm md:text-base text-muted-foreground text-center sm:text-left">
-                Join <AnimatedCounter target={1728} className="font-semibold text-foreground" /> women who stopped guessing
+                Join <AnimatedCounter target={12800} className="font-semibold text-foreground" /> women who stopped guessing
               </span>
             </div>
           </div>

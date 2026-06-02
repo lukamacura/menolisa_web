@@ -42,7 +42,7 @@ export default function LandingSocialProof() {
             Women are <HighlightedTextByRows text="finally getting answers" isInView={isInView} prefersReducedMotion={prefersReducedMotion} delayMs={500} />
           </h2>
           <p className="text-lg sm:text-xl text-muted-foreground">
-            Join <AnimatedCounter target={1728} className="font-semibold text-foreground" /> women who stopped Googling and started understanding
+            Join <AnimatedCounter target={12800} className="font-semibold text-foreground" /> women who stopped Googling and started understanding
           </p>
         </motion.div>
 

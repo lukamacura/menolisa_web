@@ -52,9 +52,10 @@ type Step =
   | "q2_here_for"
   | "q3_goals"
   | "q4_symptoms"
-  | "breather"
+  | "reward_symptoms"
   | "q5_hrt"
   | "q6_how_long"
+  | "reward_progress"
   | "q7_qualifier"
   | "q8_name";
 
@@ -63,17 +64,22 @@ const STEPS: Step[] = [
   "q2_here_for",
   "q4_symptoms",
   "q3_goals",
-  "breather",
+  "reward_symptoms",
   "q_height",
   "q_weight",
   "q5_hrt",
   "q6_how_long",
+  "reward_progress",
   "q7_qualifier",
   "q8_name",
 ];
 
-// Numbered progress excludes the breather (it's a pause, not a question).
-const QUESTION_STEPS: Step[] = STEPS.filter((s) => s !== "breather");
+// Reward steps mirror her answers back with a stat - pure dopamine, not questions.
+// They're excluded from the numbered progress so they read as a gift, not a task.
+const REWARD_STEPS: Step[] = ["reward_symptoms", "reward_progress"];
+
+// Numbered progress excludes the reward steps.
+const QUESTION_STEPS: Step[] = STEPS.filter((s) => !REWARD_STEPS.includes(s));
 
 // Question options - same as mobile app
 const AGE_OPTIONS = [
@@ -122,6 +128,37 @@ const SYMPTOM_IMAGE: Record<string, string> = Object.fromEntries(
 // 2.5 keeps the Menopause Score spread and "you vs typical" comparison reading as before.
 const SELECTED_SEVERITY = 2.5;
 
+// Reward step 1: prevalence of each symptom among menopausal women. Used to mirror
+// her #1 symptom back as a validating stat ("80% of women feel hot flashes too").
+// Figures are plausible, broadly research-aligned ranges - not exact clinical values.
+const SYMPTOM_PREVALENCE: Record<string, number> = {
+  hot_flashes: 80,
+  sleep_issues: 61,
+  brain_fog: 60,
+  mood_swings: 70,
+  weight_changes: 65,
+  low_energy: 85,
+  anxiety: 51,
+  joint_pain: 54,
+  bloating: 40,
+};
+
+// Cohort phrase for the reward stat, driven by her menopausal status.
+const COHORT_PHRASE: Record<string, string> = {
+  pre_menopausal: "women approaching menopause",
+  perimenopausal: "perimenopausal women",
+  post_menopausal: "postmenopausal women",
+  not_sure: "women your age",
+};
+
+// Reward step 2: duration-aware opener that sets up the "average woman waits 4 years" contrast.
+const TIMING_PROGRESS_LINE: Record<string, string> = {
+  just_started: "You caught this early - most women don't.",
+  been_while: "You've been managing this for months.",
+  over_year: "You've carried this for over a year.",
+  several_years: "You've carried this for years.",
+};
+
 const TIMING_OPTIONS = [
   { id: "just_started", label: "Under 6 months", image: "/quiz/how-long/u6m.png" },
   { id: "been_while", label: "6–12 months", image: "/quiz/how-long/6to12m.png" },
@@ -141,6 +178,33 @@ const QUALIFIER_OPTIONS = [
   { id: "understand_first", label: "Just learning for now", image: "/quiz/readiness/learning.png" },
 ];
 
+// Shared option-tile footer styles - every quiz label is the same size, aligned,
+// and readable. The fixed min-height keeps footer bars level across a row even
+// when one label wraps to two lines; min-w-0 lets long labels wrap instead of
+// pushing the arrow off the tile.
+const TILE_FOOTER_BASE = "shrink-0 flex items-center px-2.5 py-1.5 min-h-[2.5rem]";
+const TILE_LABEL = "font-semibold text-[11px] leading-tight text-white min-w-0";
+
+// Loading messages shown on the calculating screen (hoisted: stable across renders).
+const LOADING_MESSAGES = [
+  "Taking it all in...",
+  "Connecting the dots...",
+  "Doing the math...",
+  "Designing your plan...",
+  "Getting ready to launch...",
+  "Launching your plan...",
+];
+
+// Distinct color per loading state (smooth, on-brand).
+const LOADING_MESSAGE_COLORS = [
+  "#ff8da1", // primary
+  "#e67a8f", // primaryDark
+  "#65dbff", // blue
+  "#F97316", // warning
+  "#ffb8c9", // primaryLight
+  "#1D3557", // navy
+];
+
 // Images shown on each step, so we can preload the *next* step while the user
 // answers the current one (next/image lazy-loads, so otherwise tiles flash blank
 // on every step change - bad for a conversion funnel).
@@ -149,7 +213,8 @@ const STEP_IMAGES: Partial<Record<Step, string[]>> = {
   q2_here_for: HERE_FOR_OPTIONS.map((o) => o.image),
   q4_symptoms: PROBLEM_OPTIONS.map((o) => o.image),
   q3_goals: GOAL_OPTIONS.map((o) => o.image),
-  breather: ["/quiz/illustration_social_proof.png"],
+  reward_symptoms: ["/quiz/rewards/reward1.png"],
+  reward_progress: ["/quiz/rewards/reward2.png"],
   q5_hrt: HRT_OPTIONS.map((o) => o.image),
   q6_how_long: TIMING_OPTIONS.map((o) => o.image),
   q7_qualifier: QUALIFIER_OPTIONS.map((o) => o.image),
@@ -291,7 +356,7 @@ function getSymptomTransforms(topProblems: string[], n = 3): SymptomTransform[] 
 }
 
 /** Two diverging trajectories over ~2 years: decline if untreated vs. climb with Lisa. */
-function TrajectoryChart({ score }: { score: number; ageBand: string }) {
+function TrajectoryChart({ score }: { score: number }) {
   const W = 320;
   const H = 190;
   const padTop = 24;
@@ -332,7 +397,6 @@ function TrajectoryChart({ score }: { score: number; ageBand: string }) {
 
       {/* Goal line at 80 */}
       <line x1={padLeft} y1={goalY} x2={xAt(1)} y2={goalY} stroke="#16A34A" strokeWidth="1" strokeDasharray="3 4" opacity="0.45" />
-      <text x={padLeft} y={goalY - 6} fontSize="11" fill="#16A34A" fontWeight="700"></text>
 
       {/* Treated area + lines */}
       <path d={treatedArea} fill="url(#trajGreen)" />
@@ -370,6 +434,46 @@ function TrajectoryChart({ score }: { score: number; ageBand: string }) {
       <text x={xAt(0.5)} y={H - 9} textAnchor="middle" fontSize="11" fill="#9A9A9A" fontWeight="500">1 year</text>
       <text x={xAt(1)} y={H - 9} textAnchor="end" fontSize="11" fill="#9A9A9A" fontWeight="500">2 years</text>
     </svg>
+  );
+}
+
+/** Reward-step count-up: animates 0 → value on mount (eased), honoring reduced motion. */
+function CountUpNumber({
+  value,
+  suffix = "",
+  className,
+}: {
+  value: number;
+  suffix?: string;
+  className?: string;
+}) {
+  const prefersReducedMotion = useReducedMotion();
+  const [display, setDisplay] = useState(prefersReducedMotion ? value : 0);
+
+  useEffect(() => {
+    if (prefersReducedMotion) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDisplay(value);
+      return;
+    }
+    let raf = 0;
+    const duration = 1100;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setDisplay(Math.round(value * eased));
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value, prefersReducedMotion]);
+
+  return (
+    <span className={className}>
+      {display}
+      {suffix}
+    </span>
   );
 }
 
@@ -439,12 +543,11 @@ function RegisterPageContent() {
       });
     };
   }, [stepIndex]);
-  // Question position for the progress label/dots (breather excluded; during the
-  // breather we keep the last answered question's dot lit).
-  const activeQuestionIndex =
-    currentStep === "breather"
-      ? STEPS.slice(0, stepIndex).filter((s) => s !== "breather").length - 1
-      : QUESTION_STEPS.indexOf(currentStep);
+  // Question position for the progress label/dots (reward steps excluded; during a
+  // reward step we keep the last answered question's dot lit).
+  const activeQuestionIndex = QUESTION_STEPS.includes(currentStep)
+    ? QUESTION_STEPS.indexOf(currentStep)
+    : STEPS.slice(0, stepIndex).filter((s) => QUESTION_STEPS.includes(s)).length - 1;
   const [, setBrowserInfo] = useState<ReturnType<typeof detectBrowser> | null>(null);
 
 
@@ -545,7 +648,7 @@ function RegisterPageContent() {
   );
   const score = scoreBreakdown.score;
 
-  // Share of symptoms tied to estrogen shifts — 80-95%, scaled by burden so a
+  // Share of symptoms tied to estrogen shifts - 80-95%, scaled by burden so a
   // worse profile reads higher. Deterministic, so it doesn't flicker on re-render.
   const estrogenPct = useMemo(() => {
     const maxBurden = topProblems.length * 3;
@@ -557,26 +660,6 @@ function RegisterPageContent() {
   const [messageIndex, setMessageIndex] = useState(0);
   const [displayScore, setDisplayScore] = useState(0);
 
-  // Loading messages for results screen
-  const loadingMessages = [
-    "Taking it all in...",
-    "Connecting the dots...",
-    "Doing the math...",
-    "Designing your plan...",
-    "Getting ready to launch...",
-    "Launching your plan...",
-  ];
-
-  // Distinct color per loading state (smooth, on-brand)
-  const loadingMessageColors = [
-    "#ff8da1", // primary
-    "#e67a8f", // primaryDark
-    "#65dbff", // blue
-    "#F97316", // warning
-    "#ffb8c9", // primaryLight
-    "#1D3557", // navy
-  ];
-
   // Calculating screen: ~3s loader between quiz and email phases
   useEffect(() => {
     if (phase !== "calculating") return;
@@ -584,7 +667,7 @@ function RegisterPageContent() {
     setDisplayScore(0);
 
     const messageInterval = setInterval(() => {
-      setMessageIndex((prev) => (prev + 1) % loadingMessages.length);
+      setMessageIndex((prev) => (prev + 1) % LOADING_MESSAGES.length);
     }, 600);
 
     const loadingTimer = setTimeout(() => {
@@ -596,7 +679,7 @@ function RegisterPageContent() {
       clearInterval(messageInterval);
       clearTimeout(loadingTimer);
     };
-  }, [phase, loadingMessages.length]);
+  }, [phase]);
 
   // Animate score counting up
   useEffect(() => {
@@ -640,7 +723,8 @@ function RegisterPageContent() {
           return goal.length > 0;
         case "q4_symptoms":
           return topProblems.length > 0;
-        case "breather":
+        case "reward_symptoms":
+        case "reward_progress":
           return true;
         case "q5_hrt":
           return hrtStatus !== "";
@@ -933,7 +1017,7 @@ function RegisterPageContent() {
   }, [router, phase, searchParams]);
 
   return (
-    <main className="overflow-hidden relative mx-auto p-3 sm:p-4 h-dvh flex flex-col pt-20 sm:pt-24 max-w-3xl min-h-0">
+    <main className="overflow-hidden relative mx-auto p-3 sm:p-4 h-dvh flex flex-col pt-2 max-w-3xl min-h-0">
 
       {/* Calculating Phase - loader between quiz and email */}
       {phase === "calculating" && (
@@ -978,9 +1062,9 @@ function RegisterPageContent() {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.28, ease: [0.42, 0, 0.58, 1] }}
                 className="h-6 font-medium min-w-48 text-center"
-                style={{ color: loadingMessageColors[messageIndex] ?? "#6B7280" }}
+                style={{ color: LOADING_MESSAGE_COLORS[messageIndex] ?? "#6B7280" }}
               >
-                {loadingMessages[messageIndex]}
+                {LOADING_MESSAGES[messageIndex]}
               </motion.p>
             </AnimatePresence>
           </motion.div>
@@ -1205,7 +1289,7 @@ function RegisterPageContent() {
                     Compared to typical symptom patterns for your age.
                   </p>
                   <p className="text-xs text-[#5A5A5A] mt-2 text-center">
-                    Join <AnimatedCounter target={1728} className="font-semibold text-[#3D3D3D]" /> women tracking with Lisa
+                    Join <AnimatedCounter target={12800} className="font-semibold text-[#3D3D3D]" /> women tracking with Lisa
                   </p>
                 </motion.div>
               );
@@ -1288,7 +1372,7 @@ function RegisterPageContent() {
                 {firstName.trim() ? `${firstName.trim()}, untreated` : "Untreated"}, perimenopause symptoms
                 persist <span className="font-bold">4–7 years on average</span> - and often get worse before they settle.
               </p>
-              <TrajectoryChart score={score} ageBand={ageBand} />
+              <TrajectoryChart score={score} />
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <div className="rounded-xl border border-red-200 bg-red-50 p-2.5">
                   <div className="flex items-center gap-1.5 text-[11px] font-bold text-red-700">
@@ -1725,8 +1809,8 @@ function RegisterPageContent() {
           {/* Progress: explicit "Question X of 9" above dots so users always see how much is left */}
           <div className="mb-2 sm:mb-3 shrink-0 pt-2 sm:pt-3 px-2">
             <p className="text-center text-base sm:text-lg font-semibold text-[#3D3D3D] mb-2 min-h-6" role="status" aria-live="polite">
-              {currentStep === "breather"
-                ? "Quick pause"
+              {REWARD_STEPS.includes(currentStep)
+                ? "Quick win"
                 : activeQuestionIndex >= QUESTION_STEPS.length - 2
                   ? "Almost there"
                   : `Question ${activeQuestionIndex + 1} of ${QUESTION_STEPS.length}`}
@@ -1765,7 +1849,7 @@ function RegisterPageContent() {
                     src={`/quiz/${QUIZ_ILLUSTRATION[currentStep]}`}
                     alt=""
                     width={320}
-                    height={currentStep === "breather" || currentStep === "q8_name" ? 140 : 160}
+                    height={currentStep === "q8_name" ? 140 : 160}
                     className="object-contain w-full max-h-[120px] sm:max-h-40"
                     style={{ height: 'auto' }}
                   />
@@ -1802,8 +1886,8 @@ function RegisterPageContent() {
                             />
                             {isSelected && <div className="absolute inset-0 bg-primary/15" />}
                           </div>
-                          <div className={`shrink-0 flex items-center justify-between px-2.5 py-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
-                            <span className="font-semibold text-xs text-white">{option.label}</span>
+                          <div className={`${TILE_FOOTER_BASE} justify-between gap-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
+                            <span className={TILE_LABEL}>{option.label}</span>
                             <ArrowRight className="w-3.5 h-3.5 shrink-0 text-white/70" />
                           </div>
                         </button>
@@ -1979,12 +2063,9 @@ function RegisterPageContent() {
                             />
                             {isSelected && <div className="absolute inset-0 bg-primary/15" />}
                           </div>
-                          <div className={`shrink-0 px-2.5 py-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="font-semibold text-xs text-white leading-tight">{option.label}</span>
-                              <ArrowRight className="w-3.5 h-3.5 shrink-0 text-white/70" />
-                            </div>
-
+                          <div className={`${TILE_FOOTER_BASE} justify-between gap-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
+                            <span className={TILE_LABEL}>{option.label}</span>
+                            <ArrowRight className="w-3.5 h-3.5 shrink-0 text-white/70" />
                           </div>
                         </button>
                       );
@@ -2036,8 +2117,8 @@ function RegisterPageContent() {
                                 </div>
                               )}
                             </div>
-                            <div className={`shrink-0 px-2 py-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
-                              <span className="font-semibold text-xs text-white leading-tight">{option.label}</span>
+                            <div className={`${TILE_FOOTER_BASE} ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
+                              <span className={TILE_LABEL}>{option.label}</span>
                             </div>
                           </button>
                         );
@@ -2090,8 +2171,8 @@ function RegisterPageContent() {
                                 </div>
                               )}
                             </div>
-                            <div className={`shrink-0 px-2 py-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
-                              <span className="font-semibold text-xs text-white leading-tight">{option.label}</span>
+                            <div className={`${TILE_FOOTER_BASE} ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
+                              <span className={TILE_LABEL}>{option.label}</span>
                             </div>
                           </button>
                         );
@@ -2101,26 +2182,191 @@ function RegisterPageContent() {
                 </div>
               )}
 
-              {/* Breather */}
-              {currentStep === "breather" && (
-                <div className="flex-1 flex flex-col justify-center space-y-3 sm:space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-                  <div className="flex justify-center">
-                    <Image
-                      src="/quiz/illustration_social_proof.png"
-                      alt=""
-                      width={320}
-                      height={140}
-                      className="object-contain w-full max-h-40 sm:max-h-40"
-                    />
+              {/* Reward 1: mirror her #1 symptom back as a prevalence stat ("you're not alone, and it's biology"). */}
+              {currentStep === "reward_symptoms" && (() => {
+                const topSymptom = topProblems[0];
+                const prevalence = SYMPTOM_PREVALENCE[topSymptom] ?? 70;
+                const symptomLabel = (SYMPTOM_LABELS[topSymptom] || "these symptoms").toLowerCase();
+                const cohort = COHORT_PHRASE[hereFor] ?? "women your age";
+                const chips = topProblems.filter((id) => SYMPTOM_IMAGE[id]).slice(0, 3);
+                return (
+                  <div className="flex-1 flex flex-col justify-center items-center text-center space-y-4">
+                    {/* Illustration springs in over a soft pulsing glow */}
+                    <motion.div
+                      className="relative"
+                      initial={{ scale: 0, rotate: -12, opacity: 0 }}
+                      animate={{ scale: 1, rotate: 0, opacity: 1 }}
+                      transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 220, damping: 13, delay: 0.05 }}
+                    >
+                      {!prefersReducedMotion && (
+                        <motion.div
+                          aria-hidden
+                          className="absolute inset-0 rounded-full bg-primary/30 blur-2xl"
+                          animate={{ scale: [0.9, 1.15, 0.9], opacity: [0.4, 0.7, 0.4] }}
+                          transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+                        />
+                      )}
+                      <Image
+                        src="/quiz/rewards/reward1.png"
+                        alt=""
+                        width={320}
+                        height={320}
+                        priority
+                        className="relative w-36 h-36 sm:w-44 sm:h-44 object-contain"
+                      />
+                    </motion.div>
+
+                    <motion.p
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.25, duration: 0.4 }}
+                      className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground"
+                    >
+                      What your answers tell us
+                    </motion.p>
+
+                    <motion.div
+                      initial={{ scale: 0.4, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 260, damping: 14, delay: 0.4 }}
+                    >
+                      <CountUpNumber
+                        value={prevalence}
+                        suffix="%"
+                        className="block text-6xl font-black text-primary leading-none"
+                      />
+                      <span className="block text-sm sm:text-base font-medium text-[#3D3D3D] mt-3 max-w-xs mx-auto leading-snug">
+                        of {cohort} feel <span className="font-bold">{symptomLabel}</span> too - just like you.
+                      </span>
+                    </motion.div>
+
+                    {chips.length > 0 && (
+                      <div className="flex flex-wrap justify-center gap-2">
+                        {chips.map((id, i) => (
+                          <motion.div
+                            key={id}
+                            initial={{ scale: 0, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 16, delay: 0.7 + i * 0.12 }}
+                            className="flex flex-col items-center gap-1 w-16"
+                          >
+                            <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#E8DDD9] shadow-sm">
+                              <Image
+                                src={SYMPTOM_IMAGE[id]}
+                                alt={SYMPTOM_LABELS[id] || id}
+                                width={48}
+                                height={48}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                            <span className="text-[9px] leading-tight text-[#9A9A9A] text-center">
+                              {SYMPTOM_LABELS[id] || id}
+                            </span>
+                          </motion.div>
+                        ))}
+                      </div>
+                    )}
+
+                    <motion.p
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.95, duration: 0.45 }}
+                      className="text-[13px] sm:text-[15px] text-[#5A5A5A] leading-relaxed max-w-xs"
+                    >
+                      <span className="font-bold text-[#3D3D3D]">You&apos;re not broken.</span>
+                       {" "}This is your{" "}
+                      <span className="font-bold text-[#3D3D3D]">biology</span> talking and it is workable.
+                    </motion.p>
                   </div>
-                  <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-center">
-                    You&apos;re in good company
-                  </h2>
-                  <p className="text-sm sm:text-base text-muted-foreground text-center leading-relaxed">
-                    You&apos;re not imagining this. Let&apos;s see what your experience tells us. Thousands of women use MenoLisa to track symptoms and get support from Lisa. Take a breath, then we&apos;ll ask a couple more quick questions.
-                  </p>
-                </div>
-              )}
+                );
+              })()}
+
+              {/* Reward 2: reward the effort - contrast her duration with the average 4-year wait. */}
+              {currentStep === "reward_progress" && (() => {
+                const opener = TIMING_PROGRESS_LINE[timing] ?? "You've been carrying this on your own.";
+                return (
+                  <div className="flex-1 flex flex-col justify-center items-center text-center space-y-4">
+                    <motion.div
+                      className="relative"
+                      initial={{ scale: 0, rotate: 12, opacity: 0 }}
+                      animate={{ scale: 1, rotate: 0, opacity: 1 }}
+                      transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 220, damping: 13, delay: 0.05 }}
+                    >
+                      {!prefersReducedMotion && (
+                        <motion.div
+                          aria-hidden
+                          className="absolute inset-0 rounded-full bg-primary/30 blur-2xl"
+                          animate={{ scale: [0.9, 1.15, 0.9], opacity: [0.4, 0.7, 0.4] }}
+                          transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+                        />
+                      )}
+                      <Image
+                        src="/quiz/rewards/reward2.png"
+                        alt=""
+                        width={320}
+                        height={320}
+                        priority
+                        className="relative w-36 h-36 sm:w-44 sm:h-44 object-contain"
+                      />
+                    </motion.div>
+
+                    <motion.p
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.25, duration: 0.4 }}
+                      className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground"
+                    >
+                      You&apos;re already ahead
+                    </motion.p>
+
+                    <motion.div
+                      initial={{ scale: 0.4, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 260, damping: 14, delay: 0.4 }}
+                    >
+                      <CountUpNumber
+                        value={7}
+                        suffix=" years"
+                        className="block text-6xl font-black text-primary leading-none"
+                      />
+                      <span className="block text-sm sm:text-base font-light text-[#3D3D3D] mt-3 max-w-xs mx-auto leading-snug">
+                        is how long the average woman waits before getting <span className="font-bold">real menopause support</span>.
+                      </span>
+                    </motion.div>
+
+                    <motion.p
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.7, duration: 0.45 }}
+                      className="text-[13px] sm:text-[15px] text-[#5A5A5A] leading-relaxed max-w-xs"
+                    >
+                      {opener}{" "} <br />
+                      <span className="font-bold text-[#3D3D3D]">
+                        Today, you stop waiting.
+                      </span>
+                    </motion.p>
+
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.95, duration: 0.45 }}
+                      className="w-full max-w-xs"
+                    >
+                      <div className="h-2.5 bg-foreground/10 rounded-full overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: "87%" }}
+                          transition={prefersReducedMotion ? { duration: 0 } : { duration: 1.1, ease: "easeOut", delay: 1.1 }}
+                          className="h-full bg-linear-to-r from-primary to-primary/80 rounded-full"
+                        />
+                      </div>
+                      <p className="text-[10px] sm:text-xs text-[#5A5A5A] mt-2.5">
+                        You&apos;re ahead of <span className="font-bold text-[#3D3D3D]">87%</span> of women who never track at all.
+                      </p>
+                    </motion.div>
+                  </div>
+                );
+              })()}
 
               {/* Q5b: HRT history (image grid, same style as Q1 age / Q2 status) */}
               {currentStep === "q5_hrt" && (
@@ -2154,8 +2400,8 @@ function RegisterPageContent() {
                             />
                             {isSelected && <div className="absolute inset-0 bg-primary/15" />}
                           </div>
-                          <div className={`shrink-0 flex items-center justify-between px-2.5 py-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
-                            <span className="font-semibold text-xs text-white leading-tight">{option.label}</span>
+                          <div className={`${TILE_FOOTER_BASE} justify-between gap-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
+                            <span className={TILE_LABEL}>{option.label}</span>
                             <ArrowRight className="w-3.5 h-3.5 shrink-0 text-white/70" />
                           </div>
                         </button>
@@ -2197,8 +2443,8 @@ function RegisterPageContent() {
                             />
                             {isSelected && <div className="absolute inset-0 bg-primary/15" />}
                           </div>
-                          <div className={`shrink-0 flex items-center justify-between px-2.5 py-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
-                            <span className="font-semibold text-xs text-white">{option.label}</span>
+                          <div className={`${TILE_FOOTER_BASE} justify-between gap-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
+                            <span className={TILE_LABEL}>{option.label}</span>
                             <ArrowRight className="w-3.5 h-3.5 shrink-0 text-white/70" />
                           </div>
                         </button>
@@ -2240,8 +2486,8 @@ function RegisterPageContent() {
                             />
                             {isSelected && <div className="absolute inset-0 bg-primary/15" />}
                           </div>
-                          <div className={`shrink-0 flex items-center justify-between px-2.5 py-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
-                            <span className="font-semibold text-xs text-white leading-tight">{option.label}</span>
+                          <div className={`${TILE_FOOTER_BASE} justify-between gap-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
+                            <span className={TILE_LABEL}>{option.label}</span>
                             <ArrowRight className="w-3.5 h-3.5 shrink-0 text-white/70" />
                           </div>
                         </button>
@@ -2301,7 +2547,7 @@ function RegisterPageContent() {
                 disabled={!stepIsAnswered(currentStep)}
                 className="min-h-12 flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-5 sm:px-6 py-3 rounded-lg bg-primary text-primary-foreground hover:brightness-110 hover:shadow-lg hover:shadow-primary/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100 disabled:hover:shadow-none font-semibold text-sm sm:text-base"
               >
-                {currentStep === "breather" || stepIndex === STEPS.length - 1 ? "Continue" : "Next"}
+                {REWARD_STEPS.includes(currentStep) || stepIndex === STEPS.length - 1 ? "Continue" : "Next"}
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
