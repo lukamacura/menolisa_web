@@ -284,18 +284,16 @@ const getSeverityPainText = (
 };
 
 
-function getCtaCopy(qualifier: string): { label: string; sub: string } {
-  switch (qualifier) {
-    case "ready_to_act":
-      return { label: "Start my plan - free for 3 days", sub: "Free for 3 days. We'll email you before it ends - cancel in one tap, pay nothing." };
-    case "exploring":
-      return { label: "Try Lisa free for 3 days", sub: "Free for 3 days. Not for you? Cancel before it ends and you're never charged." };
-    case "understand_first":
-    default:
-      return { label: "See my full plan - free for 3 days", sub: "Free for 3 days. See everything first - we'll remind you before any charge." };
-  }
-}
-
+function getCtaCopy(qualifier: string): { sub: string } {
+    switch (qualifier) {
+      case "ready_to_act":
+        return { sub: "Free for 3 days, then it's a membership - cancel anytime, no charge today." };
+      case "exploring":
+        return { sub: "No pressure - free for 3 days. Membership after, cancel in one tap." };
+      case "understand_first":
+      default:
+        return { sub: "Free for 3 days so Lisa can show you everything. Membership after - cancel anytime." };
+}}
 // First-person CTA label driven by her #1 goal (multi-select; first = primary).
 const GOAL_CTA_LABEL: Record<string, string> = {
   sleep_through_night: "I want to sleep again",
@@ -307,6 +305,18 @@ const GOAL_CTA_LABEL: Record<string, string> = {
 };
 function getGoalCtaLabel(goals: string[]): string {
   return GOAL_CTA_LABEL[goals[0]] ?? "I want to start";
+}
+
+// Diagnosis-step CTA (the doorstep to the paywall). She's already convinced she
+// wants the outcome - the only thing left is fear of committing/being charged.
+// So this label is resolve + safety, keyed to her readiness, never a "buy now".
+const DIAGNOSIS_CTA_LABEL: Record<string, string> = {
+  ready_to_act: "I'm ready - let's begin",
+  exploring: "I'm ready to explore",
+  understand_first: "I'm ready to learn with Lisa",
+};
+function getDiagnosisCtaLabel(qualifier: string): string {
+  return DIAGNOSIS_CTA_LABEL[qualifier] ?? "I'm ready to feel better";
 }
 
 // Her goals restated as concrete outcomes for the "what you get back" block.
@@ -1184,8 +1194,8 @@ function RegisterPageContent() {
                     <span className="block text-5xl font-black text-primary leading-none">
                       {estrogenPct}%
                     </span>
-                    <span className="block text-sm font-bold text-[#3D3D3D] mt-1.5">
-                      of {chips.length === 1 ? "your symptom traces" : "your symptoms trace"} back to shifting estrogen
+                    <span className="block text-sm font-medium text-[#3D3D3D] mt-1.5">
+                      of {chips.length === 1 ? "your symptom traces" : "your symptoms trace"} back to <br /> <span className="font-bold">shifting estrogen</span>
                     </span>
                   </p>
 
@@ -1306,7 +1316,7 @@ function RegisterPageContent() {
               className="flex items-center justify-center gap-2 text-xs text-[#5A5A5A] mb-5 px-2 text-left"
             >
               <TrendingUp className="w-4 h-4 text-info shrink-0" />
-              <span>Women who understand <em>why</em> their symptoms happen - not just track them - feel back in control within <strong className="text-[#3D3D3D]">2 weeks</strong>. Lisa knows menopause inside out.</span>
+              <span>Understand the <em>why</em> behind your symptoms and most women feel back in control within <strong className="text-[#3D3D3D]">2 weeks</strong>.</span>
             </motion.div>
 
           </motion.div>
@@ -1599,7 +1609,7 @@ function RegisterPageContent() {
                       className="w-full min-h-12 py-3.5 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
                       style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)", boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)" }}
                     >
-                      {getGoalCtaLabel(goal)}
+                      {getDiagnosisCtaLabel(qualifier)}
                       <ArrowRight className="w-4 h-4" />
                     </button>
                     <p className="text-[11px] text-[#9A9A9A] text-center mt-1.5">{cta.sub}</p>
