@@ -151,12 +151,13 @@ const COHORT_PHRASE: Record<string, string> = {
   not_sure: "women your age",
 };
 
-// Reward step 2: duration-aware opener that sets up the "average woman waits 4 years" contrast.
-const TIMING_PROGRESS_LINE: Record<string, string> = {
-  just_started: "You caught this early - most women don't.",
-  been_while: "You've been managing this for months.",
-  over_year: "You've carried this for over a year.",
-  several_years: "You've carried this for years.",
+// Reward step 2: pride line keyed off how long she's been managing symptoms.
+// Goal is for her to feel proud of acting today, whatever her starting point.
+const TIMING_PRIDE_LINE: Record<string, string> = {
+  just_started: "You caught it early. That's the smartest thing you could do.",
+  been_while: "You stopped guessing and started acting. That's real strength.",
+  over_year: "You waited long enough. Today, you take the lead.",
+  several_years: "After all these years, you chose yourself. That's everything.",
 };
 
 const TIMING_OPTIONS = [
@@ -247,16 +248,17 @@ const getScoreColor = (score: number): string => {
   return "text-orange-500";
 };
 
-const getSeverityHeadline = (severity: string, name: string): string => {
-  const displayName = name || "you";
+// Returns the sentence *after* the name, so the name can be rendered bold and
+// the rest regular weight (name carries the emphasis, not the whole line).
+const getSeverityHeadline = (severity: string): string => {
   switch (severity) {
     case "severe":
-      return `${displayName}, this can't continue.`;
+      return ", this can't continue.";
     case "moderate":
-      return `${displayName}, I need to be honest with you.`;
+      return ", I need to be honest.";
     case "mild":
     default:
-      return `${displayName}, let's talk about what's really going on.`;
+      return ", let's talk about what's really going on.";
   }
 };
 
@@ -285,12 +287,12 @@ const getSeverityPainText = (
 function getCtaCopy(qualifier: string): { label: string; sub: string } {
   switch (qualifier) {
     case "ready_to_act":
-      return { label: "Start my plan - free for 3 days", sub: "Cancel anytime. No charge if you cancel before day 3." };
+      return { label: "Start my plan - free for 3 days", sub: "Free for 3 days. We'll email you before it ends - cancel in one tap, pay nothing." };
     case "exploring":
-      return { label: "Try Lisa free for 3 days", sub: "Browse without commitment. Most members keep going." };
+      return { label: "Try Lisa free for 3 days", sub: "Free for 3 days. Not for you? Cancel before it ends and you're never charged." };
     case "understand_first":
     default:
-      return { label: "See my full plan - free for 3 days", sub: "Understand what's happening, then decide." };
+      return { label: "See my full plan - free for 3 days", sub: "Free for 3 days. See everything first - we'll remind you before any charge." };
   }
 }
 
@@ -1102,9 +1104,10 @@ function RegisterPageContent() {
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="text-xl sm:text-2xl font-semibold text-[#3D3D3D] text-center mb-2"
+              className="text-xl sm:text-2xl font-normal text-[#3D3D3D] text-center mb-2"
             >
-              {getSeverityHeadline(derivedSeverity, firstName || "you")}
+              <span className="font-bold">{firstName.trim() || "You"}</span>
+              {getSeverityHeadline(derivedSeverity)}
             </motion.h1>
 
             {/* Pain paragraph */}
@@ -1303,7 +1306,7 @@ function RegisterPageContent() {
               className="flex items-center justify-center gap-2 text-xs text-[#5A5A5A] mb-5 px-2 text-left"
             >
               <TrendingUp className="w-4 h-4 text-info shrink-0" />
-              <span>Women who track consistently often spot their first clear patterns within <strong className="text-[#3D3D3D]">2 weeks</strong></span>
+              <span>Women who understand <em>why</em> their symptoms happen - not just track them - feel back in control within <strong className="text-[#3D3D3D]">2 weeks</strong>. Lisa knows menopause inside out.</span>
             </motion.div>
 
           </motion.div>
@@ -2281,9 +2284,9 @@ function RegisterPageContent() {
                 );
               })()}
 
-              {/* Reward 2: reward the effort - contrast her duration with the average 4-year wait. */}
+              {/* Reward 2: one fact (the 6-year wait) + one personal win (timing-keyed pride). No overlap. */}
               {currentStep === "reward_progress" && (() => {
-                const opener = TIMING_PROGRESS_LINE[timing] ?? "You've been carrying this on your own.";
+                const pride = TIMING_PRIDE_LINE[timing] ?? "You're finally putting yourself first - that takes strength.";
                 return (
                   <div className="flex-1 flex flex-col justify-center items-center text-center space-y-4">
                     <motion.div
@@ -2316,7 +2319,7 @@ function RegisterPageContent() {
                       transition={{ delay: 0.25, duration: 0.4 }}
                       className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground"
                     >
-                      You&apos;re already ahead
+                      What most women don&apos;t know
                     </motion.p>
 
                     <motion.div
@@ -2325,7 +2328,7 @@ function RegisterPageContent() {
                       transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 260, damping: 14, delay: 0.4 }}
                     >
                       <CountUpNumber
-                        value={7}
+                        value={6}
                         suffix=" years"
                         className="block text-6xl font-black text-primary leading-none"
                       />
@@ -2338,32 +2341,10 @@ function RegisterPageContent() {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.7, duration: 0.45 }}
-                      className="text-[13px] sm:text-[15px] text-[#5A5A5A] leading-relaxed max-w-xs"
+                      className="w-full max-w-xs rounded-xl bg-primary/5 border border-primary/20 px-4 py-3 text-sm sm:text-base font-semibold text-[#3D3D3D] leading-snug"
                     >
-                      {opener}{" "} <br />
-                      <span className="font-bold text-[#3D3D3D]">
-                        Today, you stop waiting.
-                      </span>
+                      {pride}
                     </motion.p>
-
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.95, duration: 0.45 }}
-                      className="w-full max-w-xs"
-                    >
-                      <div className="h-2.5 bg-foreground/10 rounded-full overflow-hidden">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: "87%" }}
-                          transition={prefersReducedMotion ? { duration: 0 } : { duration: 1.1, ease: "easeOut", delay: 1.1 }}
-                          className="h-full bg-linear-to-r from-primary to-primary/80 rounded-full"
-                        />
-                      </div>
-                      <p className="text-[10px] sm:text-xs text-[#5A5A5A] mt-2.5">
-                        You&apos;re ahead of <span className="font-bold text-[#3D3D3D]">87%</span> of women who never track at all.
-                      </p>
-                    </motion.div>
                   </div>
                 );
               })()}
