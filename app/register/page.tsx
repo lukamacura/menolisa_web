@@ -9,11 +9,11 @@ import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { supabase } from "@/lib/supabaseClient";
 import { getAccountState, stateAllowsAccess } from "@/lib/getAccountState";
 import { detectBrowser, hasBrowserMismatchIssue } from "@/lib/browserUtils";
+import { cn } from "@/lib/utils";
 import {
   ArrowRight,
   ArrowLeft,
   CheckCircle2,
-  Loader2,
   Goal,
   AlertTriangle,
   UserCircle,
@@ -24,7 +24,9 @@ import {
   Weight,
   ShieldCheck,
   Clock,
-  Sparkles,
+  ClipboardList,
+  MessageCircleHeart,
+  Activity,
 } from "lucide-react";
 import OtpForm from "@/components/auth/OtpForm";
 import { PaywallView } from "@/components/PaywallView";
@@ -284,15 +286,32 @@ const getSeverityPainText = (
 };
 
 
+// Results-step sub: she's here to SEE her results, not to be sold. No price,
+// no "membership", no "guarantee" - any of those reads as a sales tell and
+// breaks trust. Keep it pure forward motion toward her own answers.
+function getResultsCtaCopy(qualifier: string): { sub: string } {
+    switch (qualifier) {
+      case "ready_to_act":
+        return { sub: "Your full breakdown is ready - see what's driving it." };
+      case "exploring":
+        return { sub: "No pressure - just see what Lisa found for you." };
+      case "understand_first":
+      default:
+        return { sub: "See the why behind your symptoms, step by step with Lisa." };
+}}
+
+// Diagnosis-step sub: this is the doorstep to the paywall, so risk reversal
+// belongs HERE. Phrased to match the real offer (3-day free trial, not a
+// paid-then-refund flow) - "no charge today" is the honest guarantee.
 function getCtaCopy(qualifier: string): { sub: string } {
     switch (qualifier) {
       case "ready_to_act":
-        return { sub: "Free for 3 days, then it's a membership - cancel anytime, no charge today." };
+        return { sub: "Free for 3 days · no charge today · cancel anytime." };
       case "exploring":
-        return { sub: "No pressure - free for 3 days. Membership after, cancel in one tap." };
+        return { sub: "Free for 3 days, no charge today, cancel anytime." };
       case "understand_first":
       default:
-        return { sub: "Free for 3 days so Lisa can show you everything. Membership after - cancel anytime." };
+        return { sub: "Try Lisa free. No charge today, cancel anytime." };
 }}
 // First-person CTA label driven by her #1 goal (multi-select; first = primary).
 const GOAL_CTA_LABEL: Record<string, string> = {
@@ -639,7 +658,7 @@ function RegisterPageContent() {
   // Email state
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [savingQuiz, setSavingQuiz] = useState(false);
+  const [, setSavingQuiz] = useState(false);
 
   const derivedSeverity = deriveSeverity(totalBurden, timing);
 
@@ -1330,7 +1349,7 @@ function RegisterPageContent() {
           >
             <div className="mx-auto max-w-md w-full px-4 sm:px-6 py-3">
               {(() => {
-                const cta = getCtaCopy(qualifier);
+                const cta = getResultsCtaCopy(qualifier);
                 return (
                   <>
                     <button
@@ -1539,41 +1558,135 @@ function RegisterPageContent() {
               className="rounded-2xl overflow-hidden mb-5"
               style={{ background: "linear-gradient(145deg, #fff5f8 0%, #fff8f0 50%, #f0f9ff 100%)", boxShadow: "0 0 0 2px rgba(255,116,177,0.3), 0 8px 32px rgba(255,116,177,0.15)" }}
             >
-              {/* Mockup image */}
-              <div className="relative w-full bg-linear-to-br from-primary/10 via-[#ffeb76]/10 to-info/10 pt-5 px-4 flex justify-center">
+              {/* Personalized mockup: her name written onto the offer background,
+                  letter by letter in script - the premium, made-for-you moment. */}
+              <div className="relative w-full">
                 <Image
-                  src="/mockup.png"
-                  alt="MenoLisa app - your personalized plan"
-                  width={577}
-                  height={433}
-                  className="w-full max-w-[260px] object-contain drop-shadow-xl"
+                  src="/quiz/offer.png"
+                  alt={firstName.trim() ? `${firstName.trim()}'s personalized MenoLisa plan` : "Your personalized MenoLisa plan"}
+                  width={1024}
+                  height={1536}
+                  className="w-full h-auto"
                   priority
                 />
-                {/* Fade bottom of image into card bg */}
-                <div className="absolute bottom-0 inset-x-0 h-10 bg-linear-to-t from-[#fff5f8] to-transparent pointer-events-none" />
+                {(() => {
+                  // Real, personalized "prescription" written onto the scroll.
+                  const ink = "#5c4327";
+                  const goalLabel = (GOAL_OUTCOME[goal[0]]?.label ?? "feel like yourself again").toLowerCase();
+                  const remedies = (() => {
+                    const r = getSymptomTransforms(topProblems, 3).map((t) => t.after);
+                    return r.length ? r : ["Steady, restful nights", "A clearer, calmer mind", "Energy that lasts the day"];
+                  })();
+                  const fade = {
+                    hidden: { opacity: 0, y: 8 },
+                    show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" as const } },
+                  };
+                  return (
+                    <motion.div
+                      initial="hidden"
+                      animate="show"
+                      variants={{ hidden: {}, show: { transition: { staggerChildren: 0.22, delayChildren: 0.45 } } }}
+                      className="absolute inset-0 flex flex-col items-center justify-center text-center px-[16%] py-[15%]"
+                      style={{ color: ink }}
+                    >
+                      {/* Eyebrow */}
+                      <motion.span
+                        variants={fade}
+                        className="text-[9px] sm:text-[10px] uppercase tracking-[0.28em] opacity-70 mb-2"
+                        style={{ fontFamily: "var(--font-lora)" }}
+                      >
+                        Your Personalized Menopause Plan
+                      </motion.span>
+
+                      {/* Name, written letter by letter */}
+                      <motion.div
+                        variants={{ hidden: {}, show: { transition: { staggerChildren: 0.09 } } }}
+                        className="flex"
+                      >
+                        {(firstName.trim() || "Lisa").split("").map((ch, i) => (
+                          <motion.span
+                            key={`${ch}-${i}`}
+                            variants={{
+                              hidden: { opacity: 0, y: 12, rotate: -5, filter: "blur(6px)" },
+                              show: { opacity: 1, y: 0, rotate: 0, filter: "blur(0px)", transition: { type: "spring", stiffness: 240, damping: 18 } },
+                            }}
+                            className="font-script text-5xl sm:text-6xl leading-none"
+                          >
+                            {ch === " " ? " " : ch}
+                          </motion.span>
+                        ))}
+                      </motion.div>
+
+                      {/* Flourish */}
+                      <motion.div variants={fade} className="my-2.5 h-px w-16" style={{ background: ink, opacity: 0.4 }} />
+
+                      {/* The promise, keyed to her #1 goal */}
+                      <motion.p
+                        variants={fade}
+                        className="text-xs sm:text-sm italic leading-snug max-w-[92%]"
+                        style={{ fontFamily: "var(--font-lora)" }}
+                      >
+                        Designed to help you {goalLabel}.
+                      </motion.p>
+
+                      {/* Remedy lines from the symptoms she selected */}
+                      <motion.ul
+                        variants={{ hidden: {}, show: { transition: { staggerChildren: 0.13, delayChildren: 0.1 } } }}
+                        className="mt-3 space-y-1.5"
+                      >
+                        {remedies.map((r) => (
+                          <motion.li
+                            key={r}
+                            variants={fade}
+                            className="flex items-center justify-center gap-2 text-[11px] sm:text-xs"
+                            style={{ fontFamily: "var(--font-lora)" }}
+                          >
+                            <span className="opacity-60">✦</span>
+                            {r}
+                          </motion.li>
+                        ))}
+                      </motion.ul>
+
+                      {/* Signature */}
+                      <motion.div variants={fade} className="mt-4 flex flex-col items-center">
+                        <span className="font-script text-2xl sm:text-3xl leading-none">Lisa</span>
+                        <span
+                          className="text-[8px] sm:text-[9px] uppercase tracking-[0.22em] opacity-60 mt-1"
+                          style={{ fontFamily: "var(--font-lora)" }}
+                        >
+                          Your menopause companion
+                        </span>
+                      </motion.div>
+                    </motion.div>
+                  );
+                })()}
               </div>
 
               {/* Content */}
-              <div className="px-4 pb-4 pt-2">
-                <div className="flex items-center gap-2 mb-2">
-                  <Sparkles className="w-5 h-5 text-primary" />
-                  <h2 className="text-base font-bold text-[#3D3D3D]">Your plan is ready</h2>
-                </div>
+              <div className="px-4 pb-4 pt-3">
                 <p className="text-xs text-[#5A5A5A] mb-3">
-                  We&apos;ve built your personalized plan and unlocked a <span className="font-bold text-[#3D3D3D]">3-day free trial</span>.
+                  <span className="font-bold text-[#3D3D3D]">{firstName.trim() ? `${firstName.trim()}, you ` : "You "}just answered 10 questions</span> about your body -
+                  the honest kind most women never even tell their doctor. Lisa turned every one into the plan above,
+                  and unlocked your <span className="font-bold text-[#3D3D3D]">3-day free trial</span>.
                 </p>
                 <div className="space-y-2">
                   {[
-                    "Your full personalized 8-week plan",
-                    "Lisa, your 24/7 menopause companion",
-                    "Symptom tracking + doctor-ready reports",
-                  ].map((line) => (
-                    <div key={line} className="flex items-center gap-2.5 rounded-lg bg-white/70 border border-green-100 px-3 py-2">
-                      <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+                    { line: "Your full personalized 8-week plan", Icon: ClipboardList, iconColor: "text-rose-500", bg: "bg-rose-50/80", border: "border-rose-100" },
+                    { line: "Lisa, your 24/7 menopause companion", Icon: MessageCircleHeart, iconColor: "text-violet-500", bg: "bg-violet-50/80", border: "border-violet-100" },
+                    { line: "Symptom tracking + doctor-ready reports", Icon: Activity, iconColor: "text-sky-500", bg: "bg-sky-50/80", border: "border-sky-100" },
+                  ].map(({ line, Icon, iconColor, bg, border }) => (
+                    <div key={line} className={cn("flex items-center gap-2.5 rounded-lg border px-3 py-2", bg, border)}>
+                      <Icon className={cn("w-4 h-4 shrink-0", iconColor)} />
                       <span className="text-xs font-medium text-[#3D3D3D]">{line}</span>
                     </div>
                   ))}
                 </div>
+                {/* Effort-justification closer - hard sunk-cost: the work is done, walking away throws it away */}
+                <p className="text-[11px] text-[#5A5A5A] mt-3 leading-snug">
+                  You already did the hard part. Close this now and those 10 answers - and the plan
+                  only <span className="font-semibold text-[#3D3D3D]">you</span> could have - are gone for nothing.
+                  <span className="font-semibold text-[#3D3D3D]"> Don&apos;t leave it like that.</span>
+                </p>
               </div>
             </motion.div>
 
@@ -1691,11 +1804,6 @@ function RegisterPageContent() {
               }}
             />
 
-            {savingQuiz && (
-              <p className="mt-3 text-sm text-[#5A5A5A] text-center flex items-center justify-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin" /> Saving your answers…
-              </p>
-            )}
 
             {error && (
               <div className="mt-3 rounded-xl border border-error/30 bg-error/10 p-3 text-sm text-error">
@@ -1857,13 +1965,13 @@ function RegisterPageContent() {
             <div className="rounded-xl sm:rounded-2xl border border-foreground/10 bg-card backdrop-blur-sm p-2.5 mx-2 my-2 sm:p-3 space-y-1.5 sm:space-y-2 flex-1 min-h-0 shadow-lg shadow-primary/5 overflow-hidden flex flex-col">
               {/* Quiz step illustration (from public/quiz/, same as mobile assets/quiz/) */}
               {QUIZ_ILLUSTRATION[currentStep] && (
-                <div className="shrink-0 flex justify-center mb-2 sm:mb-3">
+                <div className={`shrink-0 flex justify-center ${currentStep === "q8_name" ? "mb-1" : "mb-2 sm:mb-3"}`}>
                   <Image
                     src={`/quiz/${QUIZ_ILLUSTRATION[currentStep]}`}
                     alt=""
                     width={320}
-                    height={currentStep === "q8_name" ? 140 : 160}
-                    className="object-contain w-full max-h-[120px] sm:max-h-40"
+                    height={currentStep === "q8_name" ? 200 : 160}
+                    className={`object-contain w-full ${currentStep === "q8_name" ? "max-h-[180px] sm:max-h-[220px]" : "max-h-[120px] sm:max-h-40"}`}
                     style={{ height: 'auto' }}
                   />
                 </div>
