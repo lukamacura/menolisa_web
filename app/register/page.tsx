@@ -24,9 +24,9 @@ import {
   Weight,
   ShieldCheck,
   Clock,
-  ClipboardList,
   MessageCircleHeart,
   Activity,
+  Gift,
 } from "lucide-react";
 import OtpForm from "@/components/auth/OtpForm";
 import { PaywallView } from "@/components/PaywallView";
@@ -537,6 +537,8 @@ function RegisterPageContent() {
   const [phase, setPhase] = useState<Phase>(() => {
     const phaseParam = searchParams.get("phase");
     if (phaseParam === "download" || phaseParam === "paywall") return phaseParam;
+    // Dev-only: preview the diagnosis step directly (?phase=diagnosis) without finishing the quiz.
+    if (phaseParam === "diagnosis" && process.env.NODE_ENV === "development") return "diagnosis";
     return "quiz";
   });
   // /quiz1 traffic skips the register quiz entirely and jumps straight to email + paywall.
@@ -1550,143 +1552,134 @@ function RegisterPageContent() {
               </div>
             </motion.div>
 
-            {/* ── Block 4: Special offer (visual urgency only) ──────────────── */}
+            {/* ── Block 4: Value stack (Lisa, tracking, insights) + free bonus ── */}
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="rounded-2xl overflow-hidden mb-5"
-              style={{ background: "linear-gradient(145deg, #fff5f8 0%, #fff8f0 50%, #f0f9ff 100%)", boxShadow: "0 0 0 2px rgba(255,116,177,0.3), 0 8px 32px rgba(255,116,177,0.15)" }}
+              className="mb-5"
             >
-              {/* Personalized mockup: her name written onto the offer background,
-                  letter by letter in script - the premium, made-for-you moment. */}
-              <div className="relative w-full">
-                <Image
-                  src="/quiz/offer.png"
-                  alt={firstName.trim() ? `${firstName.trim()}'s personalized MenoLisa plan` : "Your personalized MenoLisa plan"}
-                  width={1024}
-                  height={1536}
-                  className="w-full h-auto"
-                  priority
-                />
-                {(() => {
-                  // Real, personalized "prescription" written onto the scroll.
-                  const ink = "#5c4327";
-                  const goalLabel = (GOAL_OUTCOME[goal[0]]?.label ?? "feel like yourself again").toLowerCase();
-                  const remedies = (() => {
-                    const r = getSymptomTransforms(topProblems, 3).map((t) => t.after);
-                    return r.length ? r : ["Steady, restful nights", "A clearer, calmer mind", "Energy that lasts the day"];
-                  })();
-                  const fade = {
-                    hidden: { opacity: 0, y: 8 },
-                    show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" as const } },
-                  };
-                  return (
-                    <motion.div
-                      initial="hidden"
-                      animate="show"
-                      variants={{ hidden: {}, show: { transition: { staggerChildren: 0.22, delayChildren: 0.45 } } }}
-                      className="absolute inset-0 flex flex-col items-center justify-center text-center px-[16%] py-[15%]"
-                      style={{ color: ink }}
-                    >
-                      {/* Eyebrow */}
-                      <motion.span
-                        variants={fade}
-                        className="text-[9px] sm:text-[10px] uppercase tracking-[0.28em] opacity-70 mb-2"
-                        style={{ fontFamily: "var(--font-lora)" }}
-                      >
-                        Your Personalized Menopause Plan
-                      </motion.span>
-
-                      {/* Name, written letter by letter */}
-                      <motion.div
-                        variants={{ hidden: {}, show: { transition: { staggerChildren: 0.09 } } }}
-                        className="flex"
-                      >
-                        {(firstName.trim() || "Lisa").split("").map((ch, i) => (
-                          <motion.span
-                            key={`${ch}-${i}`}
-                            variants={{
-                              hidden: { opacity: 0, y: 12, rotate: -5, filter: "blur(6px)" },
-                              show: { opacity: 1, y: 0, rotate: 0, filter: "blur(0px)", transition: { type: "spring", stiffness: 240, damping: 18 } },
-                            }}
-                            className="font-script text-5xl sm:text-6xl leading-none"
-                          >
-                            {ch === " " ? " " : ch}
-                          </motion.span>
-                        ))}
-                      </motion.div>
-
-                      {/* Flourish */}
-                      <motion.div variants={fade} className="my-2.5 h-px w-16" style={{ background: ink, opacity: 0.4 }} />
-
-                      {/* The promise, keyed to her #1 goal */}
-                      <motion.p
-                        variants={fade}
-                        className="text-xs sm:text-sm italic leading-snug max-w-[92%]"
-                        style={{ fontFamily: "var(--font-lora)" }}
-                      >
-                        Designed to help you {goalLabel}.
-                      </motion.p>
-
-                      {/* Remedy lines from the symptoms she selected */}
-                      <motion.ul
-                        variants={{ hidden: {}, show: { transition: { staggerChildren: 0.13, delayChildren: 0.1 } } }}
-                        className="mt-3 space-y-1.5"
-                      >
-                        {remedies.map((r) => (
-                          <motion.li
-                            key={r}
-                            variants={fade}
-                            className="flex items-center justify-center gap-2 text-[11px] sm:text-xs"
-                            style={{ fontFamily: "var(--font-lora)" }}
-                          >
-                            <span className="opacity-60">✦</span>
-                            {r}
-                          </motion.li>
-                        ))}
-                      </motion.ul>
-
-                      {/* Signature */}
-                      <motion.div variants={fade} className="mt-4 flex flex-col items-center">
-                        <span className="font-script text-2xl sm:text-3xl leading-none">Lisa</span>
-                        <span
-                          className="text-[8px] sm:text-[9px] uppercase tracking-[0.22em] opacity-60 mt-1"
-                          style={{ fontFamily: "var(--font-lora)" }}
-                        >
-                          Your menopause companion
-                        </span>
-                      </motion.div>
-                    </motion.div>
-                  );
-                })()}
+              <div className="px-1 mb-3">
+                <h2 className="text-base font-bold text-[#3D3D3D] mb-0.5">
+                  {firstName.trim() ? `${firstName.trim()}, here's everything you unlock` : "Here's everything you unlock"}
+                </h2>
+                <p className="text-[11px] text-[#9A9A9A]">Your 3-day free trial starts the moment you join.</p>
               </div>
 
-              {/* Content */}
-              <div className="px-4 pb-4 pt-3">
-                <p className="text-xs text-[#5A5A5A] mb-3">
-                  <span className="font-bold text-[#3D3D3D]">{firstName.trim() ? `${firstName.trim()}, you ` : "You "}just answered 10 questions</span> about your body -
-                  the honest kind most women never even tell their doctor. Lisa turned every one into the plan above,
-                  and unlocked your <span className="font-bold text-[#3D3D3D]">3-day free trial</span>.
-                </p>
-                <div className="space-y-2">
+              {/* Main value stack: Lisa + tracking + insights, with the charts illustration */}
+              <div
+                className="rounded-2xl overflow-hidden mb-3 bg-card border-2 border-[#E8DDD9]"
+                style={{ boxShadow: "0 0 0 2px rgba(255,116,177,0.25), 0 8px 28px rgba(255,116,177,0.12)" }}
+              >
+                <div className="bg-linear-to-br from-primary/8 via-[#ffeb76]/8 to-info/8 flex items-center justify-center py-4">
+                  <Image
+                    src="/quiz/offer2.png"
+                    alt="Lisa, symptom tracking and personalized insights"
+                    width={1024}
+                    height={1024}
+                    className="w-40 h-40 object-contain"
+                  />
+                </div>
+                <div className="px-4 pb-4 pt-3 space-y-2">
                   {[
-                    { line: "Your full personalized 8-week plan", Icon: ClipboardList, iconColor: "text-rose-500", bg: "bg-rose-50/80", border: "border-rose-100" },
-                    { line: "Lisa, your 24/7 menopause companion", Icon: MessageCircleHeart, iconColor: "text-violet-500", bg: "bg-violet-50/80", border: "border-violet-100" },
-                    { line: "Symptom tracking + doctor-ready reports", Icon: Activity, iconColor: "text-sky-500", bg: "bg-sky-50/80", border: "border-sky-100" },
-                  ].map(({ line, Icon, iconColor, bg, border }) => (
-                    <div key={line} className={cn("flex items-center gap-2.5 rounded-lg border px-3 py-2", bg, border)}>
-                      <Icon className={cn("w-4 h-4 shrink-0", iconColor)} />
-                      <span className="text-xs font-medium text-[#3D3D3D]">{line}</span>
+                    { Icon: MessageCircleHeart, color: "text-violet-500", bg: "bg-violet-50/80", border: "border-violet-100", title: "Lisa, your 24/7 companion", desc: "Ask her anything about your body, anytime." },
+                    { Icon: Activity, color: "text-sky-500", bg: "bg-sky-50/80", border: "border-sky-100", title: "Symptom tracking + doctor reports", desc: "Log in 2 minutes a day - she turns it into a report your doctor will read." },
+                    { Icon: TrendingUp, color: "text-emerald-500", bg: "bg-emerald-50/80", border: "border-emerald-100", title: "Personalized insights", desc: "Lisa spots the patterns behind your symptoms and what helps." },
+                  ].map(({ Icon, color, bg, border, title, desc }) => (
+                    <div key={title} className={cn("flex items-start gap-2.5 rounded-lg border px-3 py-2.5", bg, border)}>
+                      <Icon className={cn("w-4 h-4 shrink-0 mt-0.5", color)} />
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-[#3D3D3D]">{title}</p>
+                        <p className="text-[11px] text-[#5A5A5A] leading-snug mt-0.5">{desc}</p>
+                      </div>
                     </div>
                   ))}
                 </div>
-                {/* Effort-justification closer - hard sunk-cost: the work is done, walking away throws it away */}
-                <p className="text-[11px] text-[#5A5A5A] mt-3 leading-snug">
-                  You already did the hard part. Close this now and those 10 answers - and the plan
-                  only <span className="font-semibold text-[#3D3D3D]">you</span> could have - are gone for nothing.
-                  <span className="font-semibold text-[#3D3D3D]"> Don&apos;t leave it like that.</span>
-                </p>
+              </div>
+
+              {/* Free bonus: personalized 8-week plan - the scroll with her name */}
+              <div className="rounded-2xl overflow-hidden border-2 border-dashed border-primary/40 bg-primary/5">
+                <div className="flex items-center gap-2 px-4 pt-3">
+                  <Gift className="w-4 h-4 text-primary shrink-0" />
+                  <span className="px-2 py-0.5 rounded-full bg-primary text-[9px] font-bold text-white uppercase tracking-wide">Free bonus</span>
+                </div>
+
+                {/* Personalized mockup: her name written onto the scroll, letter by
+                    letter in script - the made-for-you moment. */}
+                <div className="relative w-full">
+                  <Image
+                    src="/quiz/offer.png"
+                    alt={firstName.trim() ? `${firstName.trim()}'s personalized 8-week plan` : "Your personalized 8-week plan"}
+                    width={1024}
+                    height={1536}
+                    className="w-full h-auto"
+                    priority
+                  />
+                  {(() => {
+                    const ink = "#5c4327";
+                    const goalLabel = (GOAL_OUTCOME[goal[0]]?.label ?? "feel like yourself again").toLowerCase();
+                    const fade = {
+                      hidden: { opacity: 0, y: 8 },
+                      show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" as const } },
+                    };
+                    return (
+                      <motion.div
+                        initial="hidden"
+                        animate="show"
+                        variants={{ hidden: {}, show: { transition: { staggerChildren: 0.22, delayChildren: 0.45 } } }}
+                        className="absolute inset-0 flex flex-col items-center justify-center text-center px-[16%] py-[15%]"
+                        style={{ color: ink }}
+                      >
+                        <motion.span
+                          variants={fade}
+                          className="text-[9px] sm:text-[10px] uppercase tracking-[0.28em] opacity-70 mb-2"
+                          style={{ fontFamily: "var(--font-lora)" }}
+                        >
+                          Your Personalized 8-Week Plan
+                        </motion.span>
+
+                        <motion.div
+                          variants={{ hidden: {}, show: { transition: { staggerChildren: 0.09 } } }}
+                          className="flex"
+                        >
+                          {(firstName.trim() || "Lisa").split("").map((ch, i) => (
+                            <motion.span
+                              key={`${ch}-${i}`}
+                              variants={{
+                                hidden: { opacity: 0, y: 12, rotate: -5, filter: "blur(6px)" },
+                                show: { opacity: 1, y: 0, rotate: 0, filter: "blur(0px)", transition: { type: "spring", stiffness: 240, damping: 18 } },
+                              }}
+                              className="font-script text-5xl sm:text-6xl leading-none"
+                            >
+                              {ch === " " ? " " : ch}
+                            </motion.span>
+                          ))}
+                        </motion.div>
+
+                        <motion.div variants={fade} className="my-2.5 h-px w-16" style={{ background: ink, opacity: 0.4 }} />
+
+                        <motion.p
+                          variants={fade}
+                          className="text-xs sm:text-sm italic leading-snug max-w-[92%]"
+                          style={{ fontFamily: "var(--font-lora)" }}
+                        >
+                          Designed to help you {goalLabel}.
+                        </motion.p>
+
+                        <motion.div variants={fade} className="mt-4 flex flex-col items-center">
+                          <span className="font-script text-2xl sm:text-3xl leading-none">Lisa</span>
+                        </motion.div>
+                      </motion.div>
+                    );
+                  })()}
+                </div>
+
+                <div className="px-4 pb-4 pt-2">
+                  <h3 className="text-sm font-bold text-[#3D3D3D]">Your personalized 8-week plan</h3>
+                  <p className="text-xs text-[#5A5A5A] leading-snug mt-0.5">
+                    Built from your 10 answers - yours free when you start your trial.
+                  </p>
+                </div>
               </div>
             </motion.div>
 
