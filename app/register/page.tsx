@@ -331,7 +331,7 @@ function getGoalCtaLabel(goals: string[]): string {
 // So this label is resolve + safety, keyed to her readiness, never a "buy now".
 const DIAGNOSIS_CTA_LABEL: Record<string, string> = {
   ready_to_act: "I'm ready - let's begin",
-  exploring: "I'm ready to explore",
+  exploring: "I'm ready to explore with Lisa",
   understand_first: "I'm ready to learn with Lisa",
 };
 function getDiagnosisCtaLabel(qualifier: string): string {

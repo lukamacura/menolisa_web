@@ -101,12 +101,28 @@ export async function sendSequenceEmail(
   return { id: data?.id ?? null, error: null };
 }
 
-/** Sent when Stripe checkout completes — trial starts, $0 charged. */
-export async function sendTrialWelcomeEmail(to: string, name: string | null): Promise<void> {
+/**
+ * Sent when Stripe checkout completes.
+ * `hasTrial` true → annual 3-day trial ($0 charged today); false → monthly, charged immediately.
+ */
+export async function sendTrialWelcomeEmail(
+  to: string,
+  name: string | null,
+  hasTrial: boolean = true
+): Promise<void> {
   const greeting = name?.trim() || "there";
+  const openingLine = hasTrial
+    ? "Your 3-day trial has started. Nothing has been charged yet."
+    : "Your subscription is active. Thank you for joining.";
+  const subject = hasTrial
+    ? "Your 3-day trial has started. Nothing charged today."
+    : "Welcome to MenoLisa";
+  const footerLine = hasTrial
+    ? "You will get a reminder before your trial ends. Questions? Just reply to this email."
+    : "You can manage or cancel your subscription anytime from Account. Questions? Just reply to this email.";
   const body = `
 <p style="margin:0 0 16px;font-size:17px;font-weight:600;color:#2d1b3d">Hi ${greeting},</p>
-<p style="margin:0 0 16px">Your 3-day trial has started. Nothing has been charged yet.</p>
+<p style="margin:0 0 16px">${openingLine}</p>
 <p style="margin:0 0 28px">Lisa is ready. Open the app, say hi, and log how you feel today. Even one symptom helps her start spotting patterns for you.</p>
 <table cellpadding="0" cellspacing="0" border="0">
   <tr>
@@ -118,13 +134,9 @@ export async function sendTrialWelcomeEmail(to: string, name: string | null): Pr
     </td>
   </tr>
 </table>
-<p style="margin:24px 0 0;color:#9d7ec9;font-size:13px">You will get a reminder before your trial ends. Questions? Just reply to this email.</p>`;
+<p style="margin:24px 0 0;color:#9d7ec9;font-size:13px">${footerLine}</p>`;
 
-  await sendSequenceEmail(
-    to,
-    "Your 3-day trial has started. Nothing charged today.",
-    buildEmailHtml(body)
-  );
+  await sendSequenceEmail(to, subject, buildEmailHtml(body));
 }
 
 /** Sent when Stripe actually charges them (day 3 conversion + renewals). */

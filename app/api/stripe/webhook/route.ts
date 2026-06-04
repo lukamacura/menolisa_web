@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { writeSubscription } from "@/lib/subscriptionWrite";
 import { sendTrialWelcomeEmail, sendChargeConfirmedEmail, sendAdminNotification } from "@/lib/resend";
+import { send8WeekPlanEmail } from "@/lib/eightWeekPlan";
 
 export const runtime = "nodejs";
 
@@ -178,12 +179,14 @@ async function handleCheckoutSessionCompleted(
             .eq("user_id", userId)
             .maybeSingle();
           await Promise.all([
-            sendTrialWelcomeEmail(email, profile?.name ?? null),
+            sendTrialWelcomeEmail(email, profile?.name ?? null, trial_end !== null),
             sendAdminNotification(
               `New trial signup — ${email}`,
               `<p>New trial: <strong>${email}</strong>${profile?.name ? ` (${profile.name})` : ""}</p><p>Started: ${new Date().toUTCString()}</p>`
             ),
           ]);
+          // LLM plan generation is slow; run it after the webhook responds so Stripe isn't kept waiting.
+          after(() => send8WeekPlanEmail(email, userId));
         }
       } catch (e) {
         console.error("Webhook: trial welcome emails failed:", e);
