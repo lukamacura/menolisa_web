@@ -94,9 +94,18 @@ async function generatePlanWeeks(profile: PlanProfile): Promise<PlanWeek[]> {
 
 // Paper-note palette. Solid hex only — email clients drop rgba/8-digit hex unpredictably.
 const NOTE_COLORS = [
-  { tape: "#ff8fb3", paper: "#fff0f5", ink: "#c1366b", tab: "#ff6b9d" }, // pink
-  { tape: "#ffd83d", paper: "#fffbe8", ink: "#a87b00", tab: "#f2c200" }, // yellow
-  { tape: "#7ba6ff", paper: "#eef3ff", ink: "#2f5fd0", tab: "#5b8def" }, // blue
+  { tape: "#ff8fb3", paper: "#fff0f5", ink: "#c1366b", tab: "#ff6b9d", soft: "#ffe3ec" }, // pink
+  { tape: "#ffd83d", paper: "#fffbe8", ink: "#a87b00", tab: "#f2c200", soft: "#fff3c4" }, // yellow
+  { tape: "#7ba6ff", paper: "#eef3ff", ink: "#2f5fd0", tab: "#5b8def", soft: "#dde8ff" }, // blue
+];
+
+// The 8 weeks fall into four natural phases. Used to group the plan with
+// section headers so the email reads as a journey, not a flat list.
+const PHASES: Array<{ label: string; weeks: [number, number] }> = [
+  { label: "Phase 1 · Understand", weeks: [1, 2] },
+  { label: "Phase 2 · Stabilize", weeks: [3, 4] },
+  { label: "Phase 3 · Strengthen", weeks: [5, 6] },
+  { label: "Phase 4 · Sustain", weeks: [7, 8] },
 ];
 
 // Handwritten ("Caveat") + readable serif ("Georgia"). Clients that strip the
@@ -104,47 +113,100 @@ const NOTE_COLORS = [
 const HAND = "'Caveat','Bradley Hand','Comic Sans MS',cursive";
 const BODY = "Georgia,'Times New Roman',serif";
 
-function renderPlanHtml(name: string | null, weeks: PlanWeek[]): string {
-  const greeting = name?.trim() || "there";
+function renderWeekCard(w: PlanWeek): string {
+  const c = NOTE_COLORS[(w.week - 1) % NOTE_COLORS.length];
 
-  const weekBlocks = weeks
-    .map((w, i) => {
-      const c = NOTE_COLORS[i % NOTE_COLORS.length];
-      const actions = w.actions.length
-        ? `<table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:10px">${w.actions
-            .map(
-              (a) => `<tr>
-              <td valign="top" style="width:26px;padding:3px 0;font-family:${HAND};font-size:22px;line-height:1;color:${c.ink}">✓</td>
-              <td style="padding:3px 0;font-family:${BODY};font-size:15px;line-height:1.6;color:#3a352f">${escapeHtml(a)}</td>
-            </tr>`
-            )
-            .join("")}</table>`
-        : "";
+  const actions = w.actions.length
+    ? `<table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:6px">${w.actions
+        .map(
+          (a) => `<tr>
+          <td valign="top" style="width:30px;padding:6px 0;font-family:${HAND};font-size:24px;line-height:1.2;color:${c.ink}">✓</td>
+          <td style="padding:6px 0;font-family:${BODY};font-size:16px;line-height:1.65;color:#3a352f">${escapeHtml(a)}</td>
+        </tr>`
+        )
+        .join("")}</table>`
+    : "";
 
-      return `
-<tr><td style="padding:0 0 26px">
+  return `
+<tr><td style="padding:0 0 30px">
   <table cellpadding="0" cellspacing="0" border="0" width="100%">
     <!-- washi tape -->
     <tr><td align="center" style="font-size:0;line-height:0;padding-bottom:0">
-      <div style="display:inline-block;width:120px;height:22px;background-color:${c.tape};border-radius:3px;opacity:0.9"></div>
+      <div style="display:inline-block;width:140px;height:24px;background-color:${c.tape};border-radius:4px"></div>
     </td></tr>
     <!-- note card -->
-    <tr><td style="background-color:${c.paper};border:1px solid ${c.tape};border-top:none;border-radius:0 0 14px 14px;padding:20px 24px 22px">
+    <tr><td style="background-color:${c.paper};border:1px solid ${c.tape};border-top:none;border-radius:0 0 16px 16px;padding:24px 28px 26px">
+
+      <!-- card head: number + title -->
       <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-        <td valign="middle" style="width:54px">
-          <div style="width:46px;height:46px;background-color:${c.tab};border-radius:50%;text-align:center;font-family:${HAND};font-size:26px;font-weight:700;color:#ffffff;line-height:46px">${w.week}</div>
+        <td valign="top" style="width:62px">
+          <div style="width:52px;height:52px;background-color:${c.tab};border-radius:50%;text-align:center;font-family:${HAND};font-size:30px;font-weight:700;color:#ffffff;line-height:52px">${w.week}</div>
         </td>
         <td valign="middle">
-          <div style="font-family:${HAND};font-size:13px;letter-spacing:.05em;text-transform:uppercase;color:${c.ink}">Week ${w.week}</div>
-          <div style="font-family:${HAND};font-size:28px;line-height:1.1;color:#2d2a26">${escapeHtml(w.title)}</div>
+          <div style="font-family:${HAND};font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:${c.ink}">Week ${w.week}</div>
+          <div style="font-family:${HAND};font-size:32px;line-height:1.1;color:#2d2a26">${escapeHtml(w.title)}</div>
         </td>
       </tr></table>
-      ${w.focus ? `<p style="margin:14px 0 0;font-family:${BODY};font-size:15px;line-height:1.6;color:#5b524a;font-style:italic">${escapeHtml(w.focus)}</p>` : ""}
-      ${actions}
+
+      ${
+        w.focus
+          ? `<table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:16px"><tr>
+              <td style="width:4px;background-color:${c.tab};border-radius:3px;font-size:0;line-height:0">&nbsp;</td>
+              <td style="padding:2px 0 2px 14px;font-family:${BODY};font-size:16px;line-height:1.6;color:#5b524a;font-style:italic">${escapeHtml(w.focus)}</td>
+            </tr></table>`
+          : ""
+      }
+
+      ${
+        actions
+          ? `<div style="margin-top:20px;font-family:${HAND};font-size:16px;letter-spacing:.06em;text-transform:uppercase;color:${c.ink}">This week</div>
+             <div style="height:1px;background-color:${c.tape};margin-top:6px;font-size:0;line-height:0">&nbsp;</div>
+             ${actions}`
+          : ""
+      }
+
     </td></tr>
   </table>
 </td></tr>`;
-    })
+}
+
+function renderPhaseHeader(label: string): string {
+  return `
+<tr><td style="padding:6px 0 22px">
+  <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+    <td style="width:50%;border-bottom:1px solid #e3d9c6;font-size:0;line-height:0">&nbsp;</td>
+    <td style="padding:0 14px;white-space:nowrap;font-family:${HAND};font-size:18px;letter-spacing:.04em;text-transform:uppercase;color:#a89878">${escapeHtml(label)}</td>
+    <td style="width:50%;border-bottom:1px solid #e3d9c6;font-size:0;line-height:0">&nbsp;</td>
+  </tr></table>
+</td></tr>`;
+}
+
+function renderPlanHtml(name: string | null, weeks: PlanWeek[]): string {
+  const greeting = name?.trim() || "there";
+
+  // Group week cards under phase headers.
+  const weekBlocks = PHASES.map((phase) => {
+    const inPhase = weeks.filter((w) => w.week >= phase.weeks[0] && w.week <= phase.weeks[1]);
+    if (!inPhase.length) return "";
+    return renderPhaseHeader(phase.label) + inPhase.map(renderWeekCard).join("");
+  }).join("");
+
+  // "How this works" intro chips.
+  const howItWorks = [
+    ["🗓️", "One focus a week", "Eight weeks, eight gentle shifts — never all at once."],
+    ["✅", "Small daily actions", "A few doable steps each week that build on the last."],
+    ["💬", "Lisa adapts with you", "Log as you go and I'll fine-tune the plan to your patterns."],
+  ]
+    .map(
+      ([icon, title, body]) => `
+      <tr>
+        <td valign="top" style="width:40px;padding:0 0 16px;font-size:24px;line-height:1.2">${icon}</td>
+        <td style="padding:0 0 16px">
+          <div style="font-family:${BODY};font-size:16px;font-weight:700;color:#2d2a26;line-height:1.3">${title}</div>
+          <div style="font-family:${BODY};font-size:15px;line-height:1.6;color:#6b6155;margin-top:3px">${body}</div>
+        </td>
+      </tr>`
+    )
     .join("");
 
   return `<!DOCTYPE html>
@@ -161,51 +223,65 @@ function renderPlanHtml(name: string | null, weeks: PlanWeek[]): string {
 </head>
 <body style="margin:0;padding:0;background-color:#efe7d8">
 <table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#efe7d8" style="background-color:#efe7d8">
-  <tr><td align="center" style="padding:36px 14px 52px">
-    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px">
+  <tr><td align="center" style="padding:40px 14px 56px">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px">
 
       <!-- Paper sheet -->
-      <tr><td style="background-color:#fffdf7;border-radius:16px;border:1px solid #ece3d1;padding:0">
+      <tr><td style="background-color:#fffdf7;border-radius:18px;border:1px solid #ece3d1;padding:0">
 
         <!-- top color band -->
         <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-          <td height="8" style="background-color:#ff6b9d;font-size:0;line-height:0;border-radius:16px 0 0 0">&nbsp;</td>
-          <td height="8" style="background-color:#ffd83d;font-size:0;line-height:0">&nbsp;</td>
-          <td height="8" style="background-color:#5b8def;font-size:0;line-height:0;border-radius:0 16px 0 0">&nbsp;</td>
+          <td height="10" style="background-color:#ff6b9d;font-size:0;line-height:0;border-radius:18px 0 0 0">&nbsp;</td>
+          <td height="10" style="background-color:#ffd83d;font-size:0;line-height:0">&nbsp;</td>
+          <td height="10" style="background-color:#5b8def;font-size:0;line-height:0;border-radius:0 18px 0 0">&nbsp;</td>
         </tr></table>
 
-        <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:34px 32px 8px">
+        <!-- header -->
+        <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:40px 36px 4px">
+          <div style="font-family:${HAND};font-size:22px;color:#ff6b9d">a little something from Lisa</div>
+          <div style="font-family:${HAND};font-size:52px;line-height:1.04;color:#2d2a26;margin-top:4px">Your 8-week plan</div>
+          <div style="height:4px;width:84px;background-color:#ffd83d;margin-top:12px;border-radius:3px"></div>
 
-          <!-- header -->
-          <div style="font-family:${HAND};font-size:20px;color:#ff6b9d">a little something from Lisa</div>
-          <div style="font-family:${HAND};font-size:46px;line-height:1.05;color:#2d2a26;margin-top:2px">Your 8-week plan</div>
-          <div style="height:3px;width:70px;background-color:#ffd83d;margin-top:10px;border-radius:3px"></div>
+          <p style="margin:26px 0 14px;font-family:${BODY};font-size:17px;line-height:1.75;color:#3a352f">Hi ${escapeHtml(greeting)},</p>
+          <p style="margin:0 0 14px;font-family:${BODY};font-size:17px;line-height:1.75;color:#3a352f">I built this from your answers — eight weeks, one small focus at a time, shaped around what you told me matters most.</p>
+          <p style="margin:0;font-family:${BODY};font-size:17px;line-height:1.75;color:#3a352f">No rushing. Just follow the week you're in, and I'll adjust as we learn your patterns together.</p>
+        </td></tr></table>
 
-          <p style="margin:24px 0 14px;font-family:${BODY};font-size:16px;line-height:1.7;color:#3a352f">Hi ${escapeHtml(greeting)},</p>
-          <p style="margin:0 0 14px;font-family:${BODY};font-size:16px;line-height:1.7;color:#3a352f">I built this from your answers — eight weeks, one small focus at a time, shaped around what you told me matters most.</p>
-          <p style="margin:0 0 8px;font-family:${BODY};font-size:16px;line-height:1.7;color:#3a352f">No rushing. Just follow the week you're in, and I'll adjust as we learn your patterns together.</p>
-
+        <!-- how this works -->
+        <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:24px 36px 0">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f7f1e4;border-radius:14px">
+            <tr><td style="padding:24px 26px 8px">
+              <div style="font-family:${HAND};font-size:24px;color:#2d2a26;margin-bottom:14px">How this works</div>
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">${howItWorks}</table>
+            </td></tr>
+          </table>
         </td></tr></table>
 
         <!-- weeks -->
-        <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:18px 32px 8px">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:34px 36px 8px">
           <table width="100%" cellpadding="0" cellspacing="0" border="0">${weekBlocks}</table>
         </td></tr></table>
 
         <!-- CTA -->
-        <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="padding:8px 32px 36px">
-          <table cellpadding="0" cellspacing="0" border="0"><tr>
-            <td bgcolor="#5b8def" style="background-color:#5b8def;border-radius:40px">
-              <a href="${APP_URL}/dashboard/symptoms" target="_blank" style="display:inline-block;padding:15px 40px;font-family:${HAND};font-size:22px;font-weight:700;color:#ffffff;text-decoration:none">Start Week 1 →</a>
-            </td>
-          </tr></table>
-          <p style="margin:18px 0 0;font-family:${HAND};font-size:18px;color:#c1366b">You've got this. — Lisa 💛</p>
+        <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:8px 36px 40px">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#fef6ee;border:1px solid #f3e7d6;border-radius:16px">
+            <tr><td align="center" style="padding:30px 28px">
+              <div style="font-family:${HAND};font-size:30px;line-height:1.15;color:#2d2a26;margin-bottom:6px">Ready when you are</div>
+              <p style="margin:0 0 20px;font-family:${BODY};font-size:16px;line-height:1.6;color:#6b6155">Open your tracker and take the first small step of Week 1.</p>
+              <table cellpadding="0" cellspacing="0" border="0" align="center"><tr>
+                <td bgcolor="#5b8def" style="background-color:#5b8def;border-radius:40px">
+                  <a href="${APP_URL}/dashboard/symptoms" target="_blank" style="display:inline-block;padding:16px 44px;font-family:${HAND};font-size:24px;font-weight:700;color:#ffffff;text-decoration:none">Start Week 1 →</a>
+                </td>
+              </tr></table>
+              <p style="margin:20px 0 0;font-family:${HAND};font-size:20px;color:#c1366b">You've got this. — Lisa 💛</p>
+            </td></tr>
+          </table>
         </td></tr></table>
 
       </td></tr>
 
       <!-- footer -->
-      <tr><td style="padding:20px 28px 0;text-align:center">
+      <tr><td style="padding:24px 28px 0;text-align:center">
         <p style="margin:0;font-family:${BODY};font-size:12px;line-height:1.6;color:#9b9183">This plan is a starting point, not medical advice. Always talk to your doctor about treatment decisions.</p>
       </td></tr>
 
