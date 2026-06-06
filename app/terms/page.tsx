@@ -8,7 +8,7 @@ export default function TermsPage() {
           <br />
           Macura Solutions LLC
           <br />
-          Last Updated: March 10, 2026
+          Last Updated: June 6, 2026
         </p>
 
         <section className="mb-8">
@@ -29,6 +29,7 @@ export default function TermsPage() {
             <li><strong>Mood and hydration tracking</strong> — Daily mood ratings and optional water intake</li>
             <li><strong>Lisa (AI assistant)</strong> — An AI-powered chatbot that provides educational information and personalized insights based on your tracked data</li>
             <li><strong>Weekly insights and pattern analysis</strong> — Summaries of your data to help you spot patterns</li>
+            <li><strong>Menopause Score</strong> — A non-clinical wellness indicator (0–100) calculated from the information you provide and track, to help you see change over time. It is not a medical measurement, diagnosis, or score</li>
             <li><strong>Health summary / doctor reports (&quot;What Lisa Noticed&quot;)</strong> — Downloadable summaries for you to share with healthcare providers</li>
             <li><strong>Lifestyle suggestions</strong> — General suggestions related to sleep, relaxation, breathing, journaling, and similar topics</li>
           </ul>
@@ -86,6 +87,11 @@ export default function TermsPage() {
 
           <h3 className="text-xl font-semibold mb-3 mt-6">7.5 Platform-Specific Billing (Apple / Google)</h3>
           <p>If you subscribe through the Apple App Store or Google Play, payment is processed by Apple or Google under their respective terms. Cancellation and refunds for those purchases may be managed through your Apple or Google account settings and are subject to Apple&apos;s and Google&apos;s policies. For subscriptions made through our website (e.g., Stripe), the cancellation and refund terms in this section apply.</p>
+
+          <h3 className="text-xl font-semibold mb-3 mt-6">7.6 The 80+ Guarantee (Website / Stripe subscriptions)</h3>
+          <p>For eligible subscriptions purchased through our website, we offer an optional &quot;80+ Guarantee.&quot; If, after eight (8) continuous weeks of paid subscription, your Menopause Score has not reached 80 or higher, you may request a full refund of the amount you paid for that period, <strong>provided that you followed your personalized plan during those eight weeks</strong>.</p>
+          <p>&quot;Following your personalized plan&quot; means, at minimum, logging your symptoms and/or mood on at least four (4) days in each of the eight weeks and engaging with the plan steps provided in the app. The <strong>Menopause Score is a non-clinical wellness indicator, not a medical measurement, diagnosis, or guarantee of any health outcome.</strong> The guarantee relates only to the indicator reaching 80+, not to any medical or clinical result.</p>
+          <p>To request, email <a href="mailto:support@macurasolutions.us" className="text-primary hover:underline">support@macurasolutions.us</a> within fourteen (14) days after your eight-week period ends, using the email on your account. We may review your in-app activity to confirm the above conditions were met. This guarantee may be used once per user and applies to website (Stripe) purchases only — Apple App Store and Google Play purchases are subject to Apple&apos;s and Google&apos;s refund policies. This guarantee is in addition to the 7-day refund in Section 7.4; a user who has received any refund is not eligible for another. After a refund, your subscription is canceled and premium access ends.</p>
         </section>
 
         <section className="mb-8">

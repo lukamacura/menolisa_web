@@ -300,19 +300,13 @@ function getResultsCtaCopy(qualifier: string): { sub: string } {
         return { sub: "See the why behind your symptoms, step by step with Lisa." };
 }}
 
-// Diagnosis-step sub: this is the doorstep to the paywall, so risk reversal
-// belongs HERE. Phrased to match the real offer (3-day free trial, not a
-// paid-then-refund flow) - "no charge today" is the honest guarantee.
-function getCtaCopy(qualifier: string): { sub: string } {
-    switch (qualifier) {
-      case "ready_to_act":
-        return { sub: "Free for 3 days · no charge today · cancel anytime." };
-      case "exploring":
-        return { sub: "Free for 3 days, no charge today, cancel anytime." };
-      case "understand_first":
-      default:
-        return { sub: "Try Lisa free. No charge today, cancel anytime." };
-}}
+// Diagnosis-step sub: this is the doorstep to the paywall, so the full risk
+// reversal belongs HERE - free trial + the 8-week conditional guarantee in one
+// breath. The guarantee block above already spells out the "follow your plan"
+// condition; this line just reassures at the moment of action.
+function getCtaCopy(): { sub: string } {
+  return { sub: "Free for 3 days · 80+ in 8 weeks or your money back · cancel anytime." };
+}
 // First-person CTA label driven by her #1 goal (multi-select; first = primary).
 const GOAL_CTA_LABEL: Record<string, string> = {
   sleep_through_night: "I want to sleep again",
@@ -336,6 +330,21 @@ const DIAGNOSIS_CTA_LABEL: Record<string, string> = {
 };
 function getDiagnosisCtaLabel(qualifier: string): string {
   return DIAGNOSIS_CTA_LABEL[qualifier] ?? "I'm ready to feel better";
+}
+
+// Her #1 goal as a second-person outcome phrase, used to build the personalized
+// 8-week promise ("{outcome} in 8 weeks"). This is the spine of the offer - the
+// emotional finish line; the 80+ score is its measurable proof.
+const GOAL_PROMISE: Record<string, string> = {
+  sleep_through_night: "Sleep through the night",
+  think_clearly: "Think clearly again",
+  feel_like_myself: "Feel like yourself again",
+  understand_patterns: "Understand your body",
+  data_for_doctor: "Walk into your doctor with real answers",
+  get_body_back: "Get your body back",
+};
+function getOfferPromise(goals: string[]): string {
+  return GOAL_PROMISE[goals[0]] ?? "Feel like yourself again";
 }
 
 // Her goals restated as concrete outcomes for the "what you get back" block.
@@ -1391,6 +1400,26 @@ function RegisterPageContent() {
               <ArrowLeft className="w-3.5 h-3.5" /> Back to my score
             </button>
 
+            {/* ── Offer promise: her goal + 8 weeks + the measurable proof.
+                Frames the whole page around her own finish line. ─────────────── */}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.02 }}
+              className="text-center mb-5"
+            >
+              <h1 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] leading-tight">
+                {getOfferPromise(goal)} in{" "}
+                <span className="text-primary">8 weeks</span>.
+              </h1>
+              <p className="text-sm text-[#5A5A5A] mt-1.5">
+                {firstName.trim() ? `${firstName.trim()}, here's` : "Here's"} your plan to take
+                your score from{" "}
+                <span className="font-bold text-[#3D3D3D]">{score}</span> to{" "}
+                <span className="font-bold text-green-600">80+</span>.
+              </p>
+            </motion.div>
+
             {/* ── Block 1: Where this is heading (trajectory) ───────────────── */}
             <motion.div
               initial={{ opacity: 0, y: 16 }}
@@ -1683,6 +1712,32 @@ function RegisterPageContent() {
               </div>
             </motion.div>
 
+            {/* ── The 80+ Guarantee: named, conditional risk-reversal. The
+                "follow your plan" condition is what makes it safe to offer and
+                turns the free 8-week plan bonus into the thing she must use. ── */}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.22 }}
+              className="relative rounded-2xl border-2 border-green-300 bg-green-50 p-4 mb-5 overflow-hidden"
+              style={{ boxShadow: "0 0 0 2px rgba(22,163,74,0.12), 0 8px 28px rgba(22,163,74,0.12)" }}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <ShieldCheck className="w-6 h-6 text-green-600 shrink-0" />
+                <h2 className="text-base font-bold text-green-800">The 80+ Guarantee</h2>
+              </div>
+              <p className="text-sm text-[#3D3D3D] leading-relaxed">
+                {firstName.trim() ? `${firstName.trim()}, follow` : "Follow"} your personalized
+                8-week plan and if you don&apos;t reach a score of{" "}
+                <span className="font-bold text-green-700">80+</span>, we&apos;ll refund you in
+                full.
+              </p>
+              <p className="text-xs text-[#5A5A5A] leading-snug mt-2">
+                All we ask is that you use the plan we built for you. No risk - the only way to
+                lose is to not start.
+              </p>
+            </motion.div>
+
             {/* ── Trust strip ───────────────────────────────────────────────── */}
             <motion.div
               initial={{ opacity: 0 }}
@@ -1706,7 +1761,7 @@ function RegisterPageContent() {
           >
             <div className="mx-auto max-w-md w-full px-4 sm:px-6 py-3">
               {(() => {
-                const cta = getCtaCopy(qualifier);
+                const cta = getCtaCopy();
                 return (
                   <>
                     <button

@@ -8,7 +8,7 @@ export default function PrivacyPage() {
           <br />
           Macura Solutions LLC
           <br />
-          Last Updated: March 31, 2026
+          Last Updated: June 6, 2026
         </p>
 
         <section className="mb-8">
@@ -43,7 +43,8 @@ export default function PrivacyPage() {
             <li><strong>Daily mood data</strong> — mood ratings (e.g., rough, meh, good, great) and emotional wellness information</li>
             <li><strong>Sleep-related data</strong> — if you log sleep issues, insomnia, or related symptoms</li>
             <li><strong>Hydration data</strong> — water intake you choose to log</li>
-            <li><strong>Onboarding/quiz data</strong> — main concerns (e.g., hot flashes, sleep issues, brain fog, mood swings, weight changes, low energy, anxiety, joint pain), severity, how long you&apos;ve had symptoms, what you&apos;ve tried, goals (e.g., sleep through the night, think clearly, feel like myself, understand patterns, data for doctor), and similar information you provide during setup</li>
+            <li><strong>Onboarding/quiz data</strong> — main concerns (e.g., hot flashes, sleep issues, brain fog, mood swings, weight changes, low energy, anxiety, joint pain), severity, how long you&apos;ve had symptoms, what you&apos;ve tried, goals (e.g., sleep through the night, think clearly, feel like myself, understand patterns, data for doctor), height, weight, and similar information you provide during setup</li>
+            <li><strong>Menopause Score</strong> — a non-clinical wellness indicator (0–100) we calculate from your quiz answers, symptom logs, mood, and related tracked data to help you see change over time. It is derived from data you provide; it is not a medical measurement or diagnosis</li>
           </ul>
 
           <h3 className="text-xl font-semibold mb-3 mt-6">2.3 AI Conversation Data</h3>
@@ -86,6 +87,7 @@ export default function PrivacyPage() {
             <li><strong>Provide and operate the Service</strong> — run the symptom tracker, mood and hydration tracking, and account management</li>
             <li><strong>Generate AI (Lisa) responses</strong> — use your messages and relevant context (e.g., profile and symptom summaries) to personalize answers and suggestions</li>
             <li><strong>Generate doctor reports (&quot;What Lisa Noticed&quot;)</strong> — create summaries of your tracked data for you to share with healthcare providers</li>
+            <li><strong>Calculate your Menopause Score</strong> — combine your quiz answers and tracked data into a single non-clinical wellness indicator so you can see progress over time, including to administer our 80+ Guarantee where applicable</li>
             <li><strong>Send communications</strong> — magic link emails, optional daily reminders, weekly insight summaries, trial and subscription notices, and important service announcements</li>
             <li><strong>Improve the Service</strong> — analyze aggregate, anonymized usage to fix issues and develop features</li>
             <li><strong>Security and compliance</strong> — protect against unauthorized access, enforce our Terms, and respond to lawful requests</li>

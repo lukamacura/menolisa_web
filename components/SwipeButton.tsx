@@ -45,6 +45,7 @@ export default function SwipeButton(props: SwipeButtonProps) {
     return () => subscription.unsubscribe();
   }, [isHome]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const navigate = () => {
     if (!canNavigate) return;
     if (isHome) {
@@ -175,7 +176,7 @@ export default function SwipeButton(props: SwipeButtonProps) {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
     };
-  }, [isDragging, canNavigate, isHome, isAuthenticated, router]);
+  }, [isDragging, canNavigate, isHome, isAuthenticated, router, navigate]);
 
   const handleClick = () => {
     if (!canNavigate) return;
@@ -211,8 +212,8 @@ export default function SwipeButton(props: SwipeButtonProps) {
 
   const getLabel = (): string => {
     if (isLisa) return "Swipe to open Lisa chat";
-    if (isAuthenticated === null) return "Swipe to see your Menopause Score";
-    return isAuthenticated ? "Swipe to see your overview" : "Swipe to see your Menopause Score";
+    if (isAuthenticated === null) return "I want my Menopause Score";
+    return isAuthenticated ? "Swipe to see your overview" : "I want my Menopause Score";
   };
 
   // Home uses slightly different RGB for the circle

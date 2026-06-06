@@ -429,12 +429,13 @@ export function PaywallView({
           })}
         </ul>
 
-        {/* Money-back guarantee - risk reversal at the moment of payment */}
+        {/* The 80+ Guarantee - same conditional risk-reversal as the diagnosis
+            page, restated in one line at the moment of payment. */}
         <div className="flex items-center gap-2.5 rounded-xl border border-green-200 bg-green-50 px-3 py-2.5 mb-4">
           <ShieldCheck className="w-5 h-5 text-green-700 shrink-0" />
           <p className="text-xs text-[#3D3D3D]">
-            <strong>7-day money-back guarantee.</strong> Not satisfied? Email us within 7
-            days and we&apos;ll refund you in full.
+            <strong>The 80+ Guarantee.</strong> Follow your 8-week plan and don&apos;t reach a
+            score of 80+? We&apos;ll refund you in full.
           </p>
         </div>
 
