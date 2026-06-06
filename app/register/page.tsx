@@ -1650,11 +1650,12 @@ function RegisterPageContent() {
                 style={{ boxShadow: "0 0 0 2px rgba(255,116,177,0.25), 0 8px 28px rgba(255,116,177,0.12)" }}
               >
                 <div className="bg-linear-to-br from-primary/8 via-[#ffeb76]/8 to-info/8 flex items-center justify-center py-2">
-                  <Image
-                    src="/quiz/offer2.png"
-                    alt="Lisa, symptom tracking and personalized insights"
-                    width={1024}
-                    height={1024}
+                  <video
+                    src="/quiz/mockup_video.mp4"
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
                     className="w-full h-auto object-contain"
                   />
                 </div>
@@ -1708,6 +1709,17 @@ function RegisterPageContent() {
                         className="absolute inset-0 flex flex-col items-center justify-center text-center px-[16%] py-[15%]"
                         style={{ color: ink }}
                       >
+                        <motion.div variants={fade} className="mb-2">
+                          <Image
+                            src="/quiz/rewards/reward1.png"
+                            alt=""
+                            width={400}
+                            height={480}
+                            sizes="96px"
+                            className="w-20 h-auto pointer-events-none select-none drop-shadow-lg"
+                          />
+                        </motion.div>
+
                         <motion.span
                           variants={fade}
                           className="text-[9px] sm:text-[10px] uppercase tracking-[0.28em] opacity-70 mb-2"
@@ -1750,16 +1762,6 @@ function RegisterPageContent() {
                       </motion.div>
                     );
                   })()}
-
-                  {/* Lisa peeking over the bottom edge, above the heading */}
-                  <Image
-                    src="/quiz/rewards/reward1.png"
-                    alt=""
-                    width={400}
-                    height={480}
-                    sizes="96px"
-                    className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/3 w-20 h-auto pointer-events-none select-none drop-shadow-lg z-10"
-                  />
                 </div>
 
                 <div className="px-4 pb-4 pt-2">
