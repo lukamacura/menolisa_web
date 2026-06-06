@@ -200,12 +200,12 @@ const LOADING_MESSAGES = [
 
 // Distinct color per loading state (smooth, on-brand).
 const LOADING_MESSAGE_COLORS = [
-  "#ff8da1", // primary
-  "#e67a8f", // primaryDark
-  "#65dbff", // blue
-  "#F97316", // warning
-  "#ffb8c9", // primaryLight
-  "#1D3557", // navy
+  "#E91E8C", // vivid pink
+  "#0EA5E9", // vivid sky blue
+  "#7C3AED", // vivid purple
+  "#EA580C", // vivid orange
+  "#0D9488", // vivid teal
+  "#DC2626", // vivid red
 ];
 
 // Images shown on each step, so we can preload the *next* step while the user
@@ -471,8 +471,8 @@ function TrajectoryChart({ score }: { score: number }) {
 
       {/* X axis labels */}
       <text x={xAt(0)} y={H - 9} textAnchor="start" fontSize="11" fill="#9A9A9A" fontWeight="500">Now</text>
-      <text x={xAt(0.5)} y={H - 9} textAnchor="middle" fontSize="11" fill="#9A9A9A" fontWeight="500">1 year</text>
-      <text x={xAt(1)} y={H - 9} textAnchor="end" fontSize="11" fill="#9A9A9A" fontWeight="500">2 years</text>
+      <text x={xAt(0.5)} y={H - 9} textAnchor="middle" fontSize="11" fill="#9A9A9A" fontWeight="500">4 weeks</text>
+      <text x={xAt(1)} y={H - 9} textAnchor="end" fontSize="11" fill="#9A9A9A" fontWeight="500">8 weeks</text>
     </svg>
   );
 }
@@ -1438,11 +1438,9 @@ function RegisterPageContent() {
               className="text-left mb-5"
             >
               <h1 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight">
+                {getOfferPromise(goal)} in{" "}
                 <span className="relative inline-block">
-                  <span className="relative z-10">
-                    {getOfferPromise(goal)} in{" "}
-                    <span className="text-primary">8 weeks</span>.
-                  </span>
+                  <span className="relative z-10 text-primary">8 weeks</span>
                   <motion.span
                     className="absolute inset-0 bg-primary/20 rounded-sm pointer-events-none px-0.5"
                     initial={{ scaleX: 0, transformOrigin: "left" }}
@@ -1454,7 +1452,7 @@ function RegisterPageContent() {
                     transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
                     style={{ zIndex: 0, willChange: diagnosisHighlight ? "transform" : "auto" }}
                   />
-                </span>
+                </span>.
               </h1>
               <p className="text-xs text-[#5A5A5A] mt-1.5">
                 Here&apos;s your plan to take
@@ -1752,6 +1750,16 @@ function RegisterPageContent() {
                       </motion.div>
                     );
                   })()}
+
+                  {/* Lisa peeking over the bottom edge, above the heading */}
+                  <Image
+                    src="/quiz/rewards/reward1.png"
+                    alt=""
+                    width={400}
+                    height={480}
+                    sizes="96px"
+                    className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/3 w-20 h-auto pointer-events-none select-none drop-shadow-lg z-10"
+                  />
                 </div>
 
                 <div className="px-4 pb-4 pt-2">
@@ -1780,7 +1788,7 @@ function RegisterPageContent() {
               <p className="text-sm text-[#3D3D3D] leading-relaxed">
                 {firstName.trim() ? `${firstName.trim()}, follow` : "Follow"}{" "}your {" "}
                 <b>personalized 8-week plan</b> and if you don&apos;t reach a score of{" "}
-                <span className="font-bold text-green-700">80+</span>, we&apos;ll refund you in
+                <span className="font-bold text-green-700">80+</span>, we&apos;ll <b>refund you</b> in
                 full.
               </p>
               <p className="text-xs text-[#5A5A5A] leading-snug mt-2">
