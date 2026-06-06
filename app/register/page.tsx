@@ -305,7 +305,7 @@ function getResultsCtaCopy(qualifier: string): { sub: string } {
 // breath. The guarantee block above already spells out the "follow your plan"
 // condition; this line just reassures at the moment of action.
 function getCtaCopy(): { sub: string } {
-  return { sub: "Free for 3 days · 80+ in 8 weeks or your money back · cancel anytime." };
+  return { sub: "Free for 3 days · 100% guarantee · cancel anytime." };
 }
 // First-person CTA label driven by her #1 goal (multi-select; first = primary).
 const GOAL_CTA_LABEL: Record<string, string> = {
@@ -701,6 +701,17 @@ function RegisterPageContent() {
   // Loading screen state (between quiz and email)
   const [messageIndex, setMessageIndex] = useState(0);
   const [displayScore, setDisplayScore] = useState(0);
+
+  // Diagnosis headline highlight sweep: fire ~1s after the step appears.
+  const [diagnosisHighlight, setDiagnosisHighlight] = useState(false);
+  useEffect(() => {
+    if (phase !== "diagnosis") {
+      setDiagnosisHighlight(false);
+      return;
+    }
+    const t = setTimeout(() => setDiagnosisHighlight(true), 1000);
+    return () => clearTimeout(t);
+  }, [phase]);
 
   // Calculating screen: ~3s loader between quiz and email phases
   useEffect(() => {
@@ -1400,20 +1411,53 @@ function RegisterPageContent() {
               <ArrowLeft className="w-3.5 h-3.5" /> Back to my score
             </button>
 
+            {/* Reward illustration - small but visible, sets a warm tone above the offer. */}
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.02 }}
+              className="flex justify-center mb-3"
+            >
+              <Image
+                src="/quiz/rewards/reward1.png"
+                alt=""
+                width={400}
+                height={480}
+                sizes="(max-width: 640px) 96px, 112px"
+                className="w-24 sm:w-28 h-auto object-contain"
+                priority
+              />
+            </motion.div>
+
             {/* ── Offer promise: her goal + 8 weeks + the measurable proof.
                 Frames the whole page around her own finish line. ─────────────── */}
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.02 }}
-              className="text-center mb-5"
+              className="text-left mb-5"
             >
               <h1 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight">
-                {getOfferPromise(goal)} in{" "}
-                <span className="text-primary">8 weeks</span>.
+                <span className="relative inline-block">
+                  <span className="relative z-10">
+                    {getOfferPromise(goal)} in{" "}
+                    <span className="text-primary">8 weeks</span>.
+                  </span>
+                  <motion.span
+                    className="absolute inset-0 bg-primary/20 rounded-sm pointer-events-none px-0.5"
+                    initial={{ scaleX: 0, transformOrigin: "left" }}
+                    animate={
+                      diagnosisHighlight && !prefersReducedMotion
+                        ? { scaleX: 1 }
+                        : { scaleX: 0 }
+                    }
+                    transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
+                    style={{ zIndex: 0, willChange: diagnosisHighlight ? "transform" : "auto" }}
+                  />
+                </span>
               </h1>
               <p className="text-xs text-[#5A5A5A] mt-1.5">
-                {firstName.trim() ? `${firstName.trim()}, here's` : "Here's"} your plan to take
+                Here&apos;s your plan to take
                 your score from{" "}
                 <span className="font-bold text-[#3D3D3D]">{score}</span> to{" "}
                 <span className="font-bold text-green-600">80+</span>.
@@ -1432,9 +1476,16 @@ function RegisterPageContent() {
                 <h2 className="text-base font-bold text-[#3D3D3D]">Where this is heading</h2>
               </div>
               <p className="text-xs text-[#5A5A5A] mb-3">
-                {firstName.trim() ? `${firstName.trim()}, untreated` : "Untreated"}, perimenopause symptoms
-                persist <span className="font-bold">4–7 years on average</span> - and often get worse before they settle.
-              </p>
+              {firstName.trim() ? (
+                <>
+                  <span className="font-bold">{firstName.trim()}</span>, untreated
+                </>
+              ) : (
+                "Untreated"
+              )}{" "}
+              perimenopause symptoms persist 4–7 years on average - and often get worse
+              before they settle.
+            </p>
               <TrajectoryChart score={score} />
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <div className="rounded-xl border border-red-200 bg-red-50 p-2.5">
@@ -1600,13 +1651,13 @@ function RegisterPageContent() {
                 className="rounded-2xl overflow-hidden mb-3 bg-card border-2 border-[#E8DDD9]"
                 style={{ boxShadow: "0 0 0 2px rgba(255,116,177,0.25), 0 8px 28px rgba(255,116,177,0.12)" }}
               >
-                <div className="bg-linear-to-br from-primary/8 via-[#ffeb76]/8 to-info/8 flex items-center justify-center py-4">
+                <div className="bg-linear-to-br from-primary/8 via-[#ffeb76]/8 to-info/8 flex items-center justify-center py-2">
                   <Image
                     src="/quiz/offer2.png"
                     alt="Lisa, symptom tracking and personalized insights"
                     width={1024}
                     height={1024}
-                    className="w-40 h-40 object-contain"
+                    className="w-full h-auto object-contain"
                   />
                 </div>
                 <div className="px-4 pb-4 pt-3 space-y-2">
@@ -1727,7 +1778,7 @@ function RegisterPageContent() {
                 <h2 className="text-base font-bold text-green-800">The 80+ Guarantee</h2>
               </div>
               <p className="text-sm text-[#3D3D3D] leading-relaxed">
-                {firstName.trim() ? `${firstName.trim()}, follow` : "Follow"}{" "}your 
+                {firstName.trim() ? `${firstName.trim()}, follow` : "Follow"}{" "}your {" "}
                 <b>personalized 8-week plan</b> and if you don&apos;t reach a score of{" "}
                 <span className="font-bold text-green-700">80+</span>, we&apos;ll refund you in
                 full.
