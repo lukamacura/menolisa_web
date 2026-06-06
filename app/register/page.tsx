@@ -1649,14 +1649,15 @@ function RegisterPageContent() {
                 className="rounded-2xl overflow-hidden mb-3 bg-card border-2 border-[#E8DDD9]"
                 style={{ boxShadow: "0 0 0 2px rgba(255,116,177,0.25), 0 8px 28px rgba(255,116,177,0.12)" }}
               >
-                <div className="bg-linear-to-br from-primary/8 via-[#ffeb76]/8 to-info/8 flex items-center justify-center py-2">
+                <div className="bg-linear-to-br from-primary/8 via-[#ffeb76]/8 to-info/8 flex items-center justify-center py-3">
                   <video
                     src="/quiz/mockup_video.mp4"
                     autoPlay
                     loop
                     muted
                     playsInline
-                    className="w-full h-auto object-contain"
+                    preload="auto"
+                    className="w-40 h-40 object-cover rounded-2xl border-2 border-white shadow-md shadow-primary/10"
                   />
                 </div>
                 <div className="px-4 pb-4 pt-3 space-y-2">
