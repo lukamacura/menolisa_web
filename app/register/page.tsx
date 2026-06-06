@@ -1408,11 +1408,11 @@ function RegisterPageContent() {
               transition={{ delay: 0.02 }}
               className="text-center mb-5"
             >
-              <h1 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] leading-tight">
+              <h1 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight">
                 {getOfferPromise(goal)} in{" "}
                 <span className="text-primary">8 weeks</span>.
               </h1>
-              <p className="text-sm text-[#5A5A5A] mt-1.5">
+              <p className="text-xs text-[#5A5A5A] mt-1.5">
                 {firstName.trim() ? `${firstName.trim()}, here's` : "Here's"} your plan to take
                 your score from{" "}
                 <span className="font-bold text-[#3D3D3D]">{score}</span> to{" "}
@@ -1441,13 +1441,13 @@ function RegisterPageContent() {
                   <div className="flex items-center gap-1.5 text-[11px] font-bold text-red-700">
                     Without a plan
                   </div>
-                  <p className="text-[11px] text-red-700/80 mt-0.5 leading-snug">Symptoms compound. Sleep, mood and focus keep slipping.</p>
+                  <p className="text-[11px] text-red-700/80 mt-0.5 leading-snug">Symptoms compound and worsen.</p>
                 </div>
                 <div className="rounded-xl border border-green-200 bg-green-50 p-2.5">
                   <div className="flex items-center gap-1.5 text-[11px] font-bold text-green-700">
                      With Lisa
                   </div>
-                  <p className="text-[11px] text-green-700/80 mt-0.5 leading-snug">Track, understand, act - climb toward your 80+ goal.</p>
+                  <p className="text-[11px] text-green-700/80 mt-0.5 leading-snug">Climb toward your 80+ goal.</p>
                 </div>
               </div>
             </motion.div>
@@ -1727,8 +1727,8 @@ function RegisterPageContent() {
                 <h2 className="text-base font-bold text-green-800">The 80+ Guarantee</h2>
               </div>
               <p className="text-sm text-[#3D3D3D] leading-relaxed">
-                {firstName.trim() ? `${firstName.trim()}, follow` : "Follow"} your personalized
-                8-week plan and if you don&apos;t reach a score of{" "}
+                {firstName.trim() ? `${firstName.trim()}, follow` : "Follow"}{" "}your 
+                <b>personalized 8-week plan</b> and if you don&apos;t reach a score of{" "}
                 <span className="font-bold text-green-700">80+</span>, we&apos;ll refund you in
                 full.
               </p>
