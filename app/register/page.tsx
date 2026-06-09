@@ -1261,7 +1261,7 @@ function RegisterPageContent() {
                   </div>
 
                   <p className="text-xs text-[#5A5A5A] leading-relaxed mt-3 text-center">
-                    This isn&apos;t willpower or anything you did wrong — it&apos;s biology, and
+                    This isn&apos;t willpower or anything you did wrong - it&apos;s biology, and
                     it&apos;s{" "}
                     <span className="font-bold text-[#3D3D3D]">measurable</span>, which means
                     it&apos;s workable.
@@ -1874,8 +1874,8 @@ function RegisterPageContent() {
                 <>
                   <p className="text-sm sm:text-base text-[#5A5A5A]">
                     {fromQuiz1
-                      ? "Enter your email so we can save your plan — so you don't lose it. We'll send a 6-digit code, no password."
-                      : "Enter your email so we can save your score and free plan — so you don't lose it. We'll send a 6-digit code, no password."}
+                      ? "Enter your email so we can save your plan - so you don't lose it. We'll send a 6-digit code, no password."
+                      : "Enter your email so we can save your score and free plan - so you don't lose it. We'll send a 6-digit code, no password."}
                   </p>
                   {firstName.trim() && (
                     <p className="text-sm text-[#5A5A5A] mt-2">
@@ -2459,8 +2459,8 @@ function RegisterPageContent() {
                         suffix="%"
                         className="block text-6xl font-black text-primary leading-none"
                       />
-                      <span className="block text-sm sm:text-base font-medium text-[#3D3D3D] mt-3 max-w-xs mx-auto leading-snug">
-                        of {cohort} feel <span className="font-bold">{symptomLabel}</span> too - just like you.
+                      <span className="block text-sm sm:text-base font-normal text-[#5A5A5A] mt-3 max-w-xs mx-auto leading-snug">
+                        of {cohort} feel <span className="font-bold text-[#3D3D3D]">{symptomLabel}</span> too - just like you.
                       </span>
                     </motion.div>
 
@@ -2495,11 +2495,10 @@ function RegisterPageContent() {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.95, duration: 0.45 }}
-                      className="text-[13px] sm:text-[15px] text-[#5A5A5A] leading-relaxed max-w-xs"
+                      className="w-full max-w-xs rounded-xl bg-primary/5 border border-primary/20 px-4 py-3 text-sm sm:text-base font-semibold text-[#3D3D3D] leading-snug"
                     >
-                      <span className="font-bold text-[#3D3D3D]">You&apos;re not broken.</span>
-                       {" "}This is your{" "}
-                      <span className="font-bold text-[#3D3D3D]">biology</span> talking and it is workable.
+                      <span className="font-bold">You&apos;re not broken.</span> This is your{" "}
+                      <span className="font-bold">biology</span> talking - and it&apos;s <span className="font-bold">workable</span>.
                     </motion.p>
                   </div>
                 );
@@ -2553,8 +2552,8 @@ function RegisterPageContent() {
                         suffix=" years"
                         className="block text-6xl font-black text-primary leading-none"
                       />
-                      <span className="block text-sm sm:text-base font-light text-[#3D3D3D] mt-3 max-w-xs mx-auto leading-snug">
-                        is how long the average woman waits before getting <span className="font-bold">real menopause support</span>.
+                      <span className="block text-sm sm:text-base font-normal text-[#5A5A5A] mt-3 max-w-xs mx-auto leading-snug">
+                        is how long the average woman waits before getting <span className="font-bold text-[#3D3D3D]">real menopause support</span>.
                       </span>
                     </motion.div>
 
