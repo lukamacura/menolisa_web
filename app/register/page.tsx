@@ -191,8 +191,8 @@ const TILE_LABEL = "font-semibold text-[11px] leading-tight text-white min-w-0";
 // Loading messages shown on the calculating screen (hoisted: stable across renders).
 const LOADING_MESSAGES = [
   "Taking it all in...",
+  "Comparing your answers to thousands of women like you...",
   "Connecting the dots...",
-  "Doing the math...",
   "Designing your plan...",
   "Getting ready to launch...",
   "Launching your plan...",
@@ -1261,7 +1261,8 @@ function RegisterPageContent() {
                   </div>
 
                   <p className="text-xs text-[#5A5A5A] leading-relaxed mt-3 text-center">
-                    This is biology and it&apos;s{" "}
+                    This isn&apos;t willpower or anything you did wrong — it&apos;s biology, and
+                    it&apos;s{" "}
                     <span className="font-bold text-[#3D3D3D]">measurable</span>, which means
                     it&apos;s workable.
                   </p>
@@ -1411,23 +1412,7 @@ function RegisterPageContent() {
               <ArrowLeft className="w-3.5 h-3.5" /> Back to my score
             </button>
 
-            {/* Reward illustration - small but visible, sets a warm tone above the offer. */}
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.02 }}
-              className="flex justify-center mb-3"
-            >
-              <Image
-                src="/quiz/rewards/reward1.png"
-                alt=""
-                width={400}
-                height={480}
-                sizes="(max-width: 640px) 96px, 112px"
-                className="w-24 sm:w-28 h-auto object-contain"
-                priority
-              />
-            </motion.div>
+          
 
             {/* ── Offer promise: her goal + 8 weeks + the measurable proof.
                 Frames the whole page around her own finish line. ─────────────── */}
@@ -1805,11 +1790,16 @@ function RegisterPageContent() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.25 }}
-              className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[11px] text-[#9A9A9A] mb-4"
+              className="mb-4"
             >
-              <span className="flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5 text-green-600" /> No charge today</span>
-              <span className="flex items-center gap-1"><Check className="w-3.5 h-3.5 text-green-600" /> Cancel anytime</span>
-              <span className="flex items-center gap-1"><Check className="w-3.5 h-3.5 text-green-600" /> Built with clinicians</span>
+              <p className="text-center text-xs font-semibold text-[#3D3D3D] mb-2">
+                Built with menopause clinicians · grounded in published research
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[11px] text-[#9A9A9A]">
+                <span className="flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5 text-green-600" /> No charge today</span>
+                <span className="flex items-center gap-1"><Check className="w-3.5 h-3.5 text-green-600" /> Cancel anytime</span>
+                <span className="flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5 text-green-600" /> Your data stays private</span>
+              </div>
             </motion.div>
 
           </motion.div>
@@ -1884,8 +1874,8 @@ function RegisterPageContent() {
                 <>
                   <p className="text-sm sm:text-base text-[#5A5A5A]">
                     {fromQuiz1
-                      ? "Enter your email for a 6-digit code. No password. Your focus pillars are saved."
-                      : "Enter your email and we'll send a 6-digit code to unlock your results. No password needed."}
+                      ? "Enter your email so we can save your plan — so you don't lose it. We'll send a 6-digit code, no password."
+                      : "Enter your email so we can save your score and free plan — so you don't lose it. We'll send a 6-digit code, no password."}
                   </p>
                   {firstName.trim() && (
                     <p className="text-sm text-[#5A5A5A] mt-2">
@@ -2029,6 +2019,9 @@ function RegisterPageContent() {
           {/* Quiz entry headline (step 0 only) - strategy: curiosity-driven, 2-min assessment */}
           {stepIndex === 0 && (
             <div className="shrink-0 text-center mb-2 sm:mb-3 px-2">
+              <p className="text-xs sm:text-sm font-medium text-primary mb-0.5">
+                If you don&apos;t feel like yourself lately, you&apos;re not imagining it.
+              </p>
               <h1 className="text-lg sm:text-xl font-bold text-[#3D3D3D]">
                 What&apos;s Your Menopause Score?
               </h1>
