@@ -191,11 +191,8 @@ const TILE_LABEL = "font-semibold text-[11px] leading-tight text-white min-w-0";
 // Loading messages shown on the calculating screen (hoisted: stable across renders).
 const LOADING_MESSAGES = [
   "Taking it all in...",
-  "Comparing your answers to thousands of women like you...",
-  "Connecting the dots...",
+  "Comparing you to thousands of women like you...",
   "Designing your plan...",
-  "Getting ready to launch...",
-  "Launching your plan...",
 ];
 
 // Distinct color per loading state (smooth, on-brand).
@@ -203,9 +200,6 @@ const LOADING_MESSAGE_COLORS = [
   "#E91E8C", // vivid pink
   "#0EA5E9", // vivid sky blue
   "#7C3AED", // vivid purple
-  "#EA580C", // vivid orange
-  "#0D9488", // vivid teal
-  "#DC2626", // vivid red
 ];
 
 // Images shown on each step, so we can preload the *next* step while the user
@@ -720,8 +714,8 @@ function RegisterPageContent() {
     setDisplayScore(0);
 
     const messageInterval = setInterval(() => {
-      setMessageIndex((prev) => (prev + 1) % LOADING_MESSAGES.length);
-    }, 600);
+      setMessageIndex((prev) => Math.min(prev + 1, LOADING_MESSAGES.length - 1));
+    }, 1000);
 
     const loadingTimer = setTimeout(() => {
       clearInterval(messageInterval);
@@ -2019,9 +2013,21 @@ function RegisterPageContent() {
           {/* Quiz entry headline (step 0 only) - strategy: curiosity-driven, 2-min assessment */}
           {stepIndex === 0 && (
             <div className="shrink-0 text-center mb-2 sm:mb-3 px-2">
-              <p className="text-xs sm:text-sm font-medium text-primary mb-0.5">
-                If you don&apos;t feel like yourself lately, you&apos;re not imagining it.
-              </p>
+              <motion.div
+                initial={{ opacity: 0, y: -40 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{
+                  delay: prefersReducedMotion ? 0 : 0.6,
+                  type: "spring",
+                  stiffness: 320,
+                  damping: 22,
+                }}
+                className="inline-block mb-2 rounded-full bg-primary/10 border border-primary/20 px-3.5 py-1.5 shadow-sm"
+              >
+                <p className="text-xs sm:text-sm font-medium text-primary">
+                  If you don&apos;t feel like yourself lately, you&apos;re not imagining it.
+                </p>
+              </motion.div>
               <h1 className="text-lg sm:text-xl font-bold text-[#3D3D3D]">
                 What&apos;s Your Menopause Score?
               </h1>
