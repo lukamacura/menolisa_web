@@ -480,13 +480,13 @@ export function PaywallView({
           ) : isAnnual ? (
             <>
               <Lock className="w-4 h-4" />
-              Claim MenoLisa & 8 week Plan
+              Claim MenoLisa & my plan
               <ArrowRight className="w-4 h-4" />
             </>
           ) : (
             <>
               <Lock className="w-4 h-4" />
-              Claim MenoLisa & 8 week Plan
+              Claim MenoLisa & my plan
               <ArrowRight className="w-4 h-4" />
             </>
           )}
