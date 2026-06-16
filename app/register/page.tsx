@@ -370,15 +370,15 @@ const REFERRAL_STORAGE_KEY = "pending_referral_code";
 // shown match the symptoms she actually selected.
 type SymptomTransform = { image: string; label: string; before: string; after: string };
 const SYMPTOM_TRANSFORM: Record<string, SymptomTransform> = {
-  hot_flashes:    { image: "/testimonials/hot_flashes.webp", label: "Hot flashes",    before: "Drenched, sleepless nights",        after: "Cool, calm and in control" },
-  sleep_issues:   { image: "/testimonials/sleep.webp",       label: "Sleep",          before: "Tossing and turning till 3am",      after: "Sleeping through the night" },
-  brain_fog:      { image: "/testimonials/brain_fog.webp",   label: "Brain fog",      before: "Losing your train of thought",      after: "Sharp, clear and focused" },
-  mood_swings:    { image: "/testimonials/mood_swings.webp", label: "Mood swings",    before: "Snapping at the people you love",   after: "Steady and yourself again" },
-  weight_changes: { image: "/testimonials/weight_gain.webp", label: "Weight changes", before: "Nothing fitting like it used to",   after: "At home in your body again" },
-  low_energy:     { image: "/testimonials/fatigue.webp",     label: "Fatigue",        before: "Running on empty by midday",        after: "Energy to enjoy your day" },
-  anxiety:        { image: "/testimonials/anxiety.webp",     label: "Anxiety",        before: "A constant, low hum of worry",      after: "Calm, grounded and at ease" },
-  joint_pain:     { image: "/testimonials/joint_pain.webp",  label: "Joint pain",     before: "Stiff, aching mornings",            after: "Moving freely again" },
-  bloating:       { image: "/testimonials/bloating.webp",    label: "Bloating",       before: "Heavy and uncomfortable",           after: "Light and at ease after meals" },
+  hot_flashes:    { image: "/testimonials/hot_flashes.webp", label: "Hot flashes",    before: "Drenched, sleepless nights",        after: "Knowing your triggers and what helps" },
+  sleep_issues:   { image: "/testimonials/sleep.webp",       label: "Sleep",          before: "Tossing and turning till 3am",      after: "A clear routine built around your sleep" },
+  brain_fog:      { image: "/testimonials/brain_fog.webp",   label: "Brain fog",      before: "Losing your train of thought",      after: "Spotting the patterns behind foggy days" },
+  mood_swings:    { image: "/testimonials/mood_swings.webp", label: "Mood swings",    before: "Snapping at the people you love",   after: "Understanding what's driving the swings" },
+  weight_changes: { image: "/testimonials/weight_gain.webp", label: "Weight changes", before: "Nothing fitting like it used to",   after: "A plan that works with your body now" },
+  low_energy:     { image: "/testimonials/fatigue.webp",     label: "Fatigue",        before: "Running on empty by midday",        after: "Knowing where your energy goes" },
+  anxiety:        { image: "/testimonials/anxiety.webp",     label: "Anxiety",        before: "A constant, low hum of worry",      after: "Tools to steady the anxious moments" },
+  joint_pain:     { image: "/testimonials/joint_pain.webp",  label: "Joint pain",     before: "Stiff, aching mornings",            after: "Daily habits that ease the stiffness" },
+  bloating:       { image: "/testimonials/bloating.webp",    label: "Bloating",       before: "Heavy and uncomfortable",           after: "Spotting the foods behind the bloat" },
 };
 
 /** Her selected symptoms that have a before/after image (capped, original order). */
@@ -1352,7 +1352,7 @@ function RegisterPageContent() {
               className="flex items-center justify-center gap-2 text-xs text-[#5A5A5A] mb-5 px-2 text-left"
             >
               <TrendingUp className="w-4 h-4 text-info shrink-0" />
-              <span>Understand the <em>why</em> behind your symptoms and most women feel back in control within <strong className="text-[#3D3D3D]">2 weeks</strong>.</span>
+              <span>Most women understand the why behind their symptoms within <strong className="text-[#3D3D3D]">2 weeks</strong>.</span>
             </motion.div>
 
           </motion.div>
@@ -1549,6 +1549,9 @@ function RegisterPageContent() {
                       </motion.div>
                     ))}
                   </div>
+                  <p className="text-[10px] text-[#9A9A9A] mt-2 px-1 leading-snug">
+                    Illustrative. Individual experiences vary - MenoLisa helps you track and understand your symptoms with guidance, it&apos;s not a medical treatment.
+                  </p>
                 </motion.div>
               );
             })()}
