@@ -93,7 +93,7 @@ const AGE_OPTIONS = [
 
 const HERE_FOR_OPTIONS = [
   { id: "pre_menopausal", label: "Pre-menopausal (not started)", image: "/quiz/status/pre.png" },
-  { id: "perimenopausal", label: "Perimenopausal (irregular periods)", image: "/quiz/status/peri.png" },
+  { id: "perimenopausal", label: "Perimenopausal", image: "/quiz/status/peri.png" },
   { id: "post_menopausal", label: "Post-menopausal (periods stopped)", image: "/quiz/status/post.png" },
   { id: "not_sure", label: "I'm not sure", image: "/quiz/status/notsure.png" },
 ];
@@ -1180,7 +1180,7 @@ function RegisterPageContent() {
                   <div className="flex items-center justify-between mb-2.5">
                     <div className="flex items-center gap-2">
                       <AlertTriangle className="w-5 h-5 text-orange-500" />
-                      <span className="text-sm font-bold text-gray-900!">Your Menopause Score</span>
+                      <span className="text-sm font-bold text-gray-900!">Your Results</span>
                     </div>
                     <div className="flex items-baseline gap-1">
                       <span className={`text-3xl font-bold ${getScoreColor(score)}`}>{displayScore}</span>
@@ -1862,7 +1862,7 @@ function RegisterPageContent() {
                   </>
                 ) : (
                   <>
-                    Your personalized Menopause Score{" "}
+                    Your personalized Menopause Plan{" "}
                     <span className="text-primary uppercase">is ready</span>
                   </>
                 )}
@@ -2032,10 +2032,10 @@ function RegisterPageContent() {
                 </p>
               </motion.div>
               <h1 className="text-lg sm:text-xl font-bold text-[#3D3D3D]">
-                What&apos;s Your Menopause Score?
+                Take the Menopause Quiz
               </h1>
               <p className="text-xs sm:text-sm text-[#5A5A5A] mt-0.5">
-                Take the free 2-minute quiz. No download required.
+                Just 2 minutes, free. No download required.
               </p>
             </div>
           )}
