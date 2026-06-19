@@ -23,7 +23,6 @@ import {
   Ruler,
   Weight,
   ShieldCheck,
-  Clock,
   MessageCircleHeart,
   Activity,
   Gift,
@@ -339,24 +338,6 @@ const GOAL_PROMISE: Record<string, string> = {
 };
 function getOfferPromise(goals: string[]): string {
   return GOAL_PROMISE[goals[0]] ?? "Feel like yourself again";
-}
-
-// Her goals restated as concrete outcomes for the "what you get back" block.
-// Each maps to the same illustration shown in the quiz (q3_goals).
-type GoalOutcome = { label: string; image: string };
-const GOAL_OUTCOME: Record<string, GoalOutcome> = {
-  sleep_through_night: { label: "Sleep through the night", image: "/quiz/goals/sleep.png" },
-  think_clearly: { label: "Think clearly again", image: "/quiz/goals/thinkclearly.png" },
-  feel_like_myself: { label: "Feel like yourself again", image: "/quiz/goals/feelmyself.png" },
-  understand_patterns: { label: "Understand your patterns", image: "/quiz/goals/patterns.png" },
-  data_for_doctor: { label: "Walk into your doctor with real data", image: "/quiz/goals/data.png" },
-  get_body_back: { label: "Get your body back", image: "/quiz/goals/body.png" },
-};
-function getGoalOutcomes(goals: string[]): GoalOutcome[] {
-  const out = goals.map((g) => GOAL_OUTCOME[g]).filter(Boolean) as GoalOutcome[];
-  return out.length
-    ? out.slice(0, 4)
-    : [GOAL_OUTCOME.understand_patterns, GOAL_OUTCOME.feel_like_myself];
 }
 
 const REFERRAL_STORAGE_KEY = "pending_referral_code";
@@ -1556,61 +1537,7 @@ function RegisterPageContent() {
               );
             })()}
 
-            {/* ── Block 3: What you get back (her goals) ───────────────────── */}
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.15 }}
-              className="mb-5"
-            >
-              <div className="px-1 mb-3">
-                <h2 className="text-base font-bold text-[#3D3D3D] mb-0.5">
-                  {firstName.trim() ? `${firstName.trim()}, here's what you get back` : "Here's what you get back"}
-                </h2>
-                <p className="text-[11px] text-[#9A9A9A]">The outcomes you told Lisa matter most.</p>
-              </div>
-
-              {/* Full-bleed horizontal scroll - peek of next card invites the swipe */}
-              <div className="-mx-4 sm:-mx-6">
-                <div className="flex gap-2.5 overflow-x-auto snap-x snap-mandatory scroll-smooth px-4 sm:px-6 pb-3 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                  {getGoalOutcomes(goal).map((outcome, i) => (
-                    <motion.div
-                      key={outcome.label}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.28, delay: i * 0.06 }}
-                      className="snap-start shrink-0 w-32 rounded-2xl bg-card border border-[#E8DDD9] overflow-hidden shadow-sm flex flex-col"
-                    >
-                      <div className="h-[104px] bg-linear-to-br from-primary/8 via-[#ffeb76]/8 to-info/8 flex items-center justify-center p-3 relative">
-                        <Image
-                          src={outcome.image}
-                          alt={outcome.label}
-                          width={120}
-                          height={120}
-                          className="w-full h-full object-contain"
-                        />
-                        <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-primary/15 flex items-center justify-center">
-                          <Check className="w-2.5 h-2.5 text-primary" />
-                        </div>
-                      </div>
-                      <div className="px-2.5 py-2 flex-1 flex items-center">
-                        <span className="text-[10px] font-semibold text-[#3D3D3D] leading-snug">{outcome.label}</span>
-                      </div>
-                    </motion.div>
-                  ))}
-                  {/* Trailing spacer so last card doesn't sit flush against the edge */}
-                  <div className="shrink-0 w-2" />
-                </div>
-              </div>
-
-              {/* The effort */}
-              <div className="mx-1 flex items-center gap-2.5 rounded-xl bg-primary/5 border border-primary/20 px-3 py-2.5 mt-1">
-                <Clock className="w-4 h-4 text-primary shrink-0" />
-                <p className="text-[11px] text-[#5A5A5A]">
-                  <span className="font-semibold text-[#3D3D3D]">2 minutes a day.</span> Log how you feel - Lisa finds the patterns.
-                </p>
-              </div>
-            </motion.div>
+            
 
             {/* ── Block 4: Value stack (Lisa, tracking, insights) + free bonus ── */}
             <motion.div
@@ -1679,7 +1606,7 @@ function RegisterPageContent() {
                   />
                   {(() => {
                     const ink = "#5c4327";
-                    const goalLabel = (GOAL_OUTCOME[goal[0]]?.label ?? "feel like yourself again").toLowerCase();
+                    const goalLabel = (GOAL_PROMISE[goal[0]] ?? "feel like yourself again").toLowerCase();
                     const fade = {
                       hidden: { opacity: 0, y: 8 },
                       show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" as const } },
