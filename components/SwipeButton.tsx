@@ -212,8 +212,8 @@ export default function SwipeButton(props: SwipeButtonProps) {
 
   const getLabel = (): string => {
     if (isLisa) return "Swipe to open Lisa chat";
-    if (isAuthenticated === null) return "I want my Menopause Score";
-    return isAuthenticated ? "Swipe to see your overview" : "I want my Menopause Score";
+    if (isAuthenticated === null) return "I want my Menopause Plan";
+    return isAuthenticated ? "Swipe to see your overview" : "I want my Menopause Plan";
   };
 
   // Home uses slightly different RGB for the circle
