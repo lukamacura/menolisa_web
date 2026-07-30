@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useRef } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
 import {
@@ -19,6 +19,8 @@ import {
   CreditCard,
 } from "lucide-react";
 import AnimatedCounter from "@/components/landing/AnimatedCounter";
+import { META_CURRENCY, PLAN_VALUE } from "@/lib/metaPixel";
+import { trackFb } from "@/lib/metaPixelClient";
 
 export type PaywallPlan = "annual" | "monthly";
 
@@ -32,6 +34,12 @@ export interface PaywallViewProps {
   banner?: ReactNode;
   /** Optional back link (e.g. return to the diagnosis page). */
   onBack?: () => void;
+  /**
+   * Which funnel this paywall belongs to. Sent to Meta as `content_category` so
+   * the registration funnel and the expired-account paywall stay separable in
+   * Events Manager.
+   */
+  trackingSource?: "register" | "dashboard";
 }
 
 export function PaywallView({
@@ -42,8 +50,40 @@ export function PaywallView({
   error,
   banner,
   onBack,
+  trackingSource,
 }: PaywallViewProps) {
   const isAnnual = selectedPlan === "annual";
+
+  // ViewContent fires once when the paywall appears - not on every plan toggle,
+  // which would inflate the count and skew the ViewContent -> InitiateCheckout rate.
+  const viewTracked = useRef(false);
+  useEffect(() => {
+    if (viewTracked.current) return;
+    viewTracked.current = true;
+    trackFb("ViewContent", {
+      content_name: "paywall",
+      content_category: trackingSource,
+      content_type: "product",
+      value: PLAN_VALUE[selectedPlan],
+      currency: META_CURRENCY,
+    });
+    // Intentionally mount-only: selectedPlan is read for the initial value only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // InitiateCheckout fires on the CTA - the moment she actually enters Stripe -
+  // rather than on paywall view, so it reflects intent rather than exposure.
+  const handleCheckoutClick = (plan: PaywallPlan) => {
+    trackFb("InitiateCheckout", {
+      content_name: plan,
+      content_category: trackingSource,
+      content_type: "product",
+      value: PLAN_VALUE[plan],
+      currency: META_CURRENCY,
+      num_items: 1,
+    });
+    return onCheckout(plan);
+  };
 
   const trustLabels = isAnnual
     ? [
@@ -454,7 +494,7 @@ export function PaywallView({
         <motion.button
           type="button"
           disabled={checkoutLoading}
-          onClick={() => onCheckout(selectedPlan)}
+          onClick={() => handleCheckoutClick(selectedPlan)}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           className="relative w-full min-h-14 py-4 font-bold text-foreground rounded-2xl transition-all flex items-center justify-center gap-2 text-base sm:text-base disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden group"

@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import OtpForm from "@/components/auth/OtpForm";
 import { PaywallView } from "@/components/PaywallView";
+import MetaPurchaseTracker from "@/components/MetaPurchaseTracker";
 import AnimatedCounter from "@/components/landing/AnimatedCounter";
 import {
   SYMPTOM_LABELS,
@@ -1854,12 +1855,14 @@ function RegisterPageContent() {
           checkoutLoading={checkoutLoading}
           error={error}
           onBack={fromQuiz1 ? undefined : () => setPhase("diagnosis")}
+          trackingSource="register"
         />
       )}
 
       {/* Download Phase - redirect users to mobile app */}
       {phase === "download" && (
         <div className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 py-4 sm:py-6">
+          <MetaPurchaseTracker />
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}

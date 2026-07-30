@@ -295,7 +295,34 @@ STRIPE_WEBHOOK_SECRET          # Webhook signature verification
 RESEND_API_KEY                 # Transactional email
 CRON_SECRET                    # Protects /api/cron/* endpoints
 NEXT_PUBLIC_SITE_URL           # Base URL (used in redirects)
+META_CAPI_ACCESS_TOKEN         # Meta Conversions API token (Events Manager → Settings). Server-only.
+META_CAPI_TEST_EVENT_CODE      # Optional; from Events Manager → Test Events. Leave unset in production.
+NEXT_PUBLIC_META_PIXEL_ID      # Optional; defaults to 7118800424899365
 ```
+
+### Meta Pixel / Conversions API
+Ad tracking for the `/register` and `/quiz1` web2app funnel:
+
+| Event | Fires from | Value |
+|---|---|---|
+| `PageView` | `components/MetaPixel.tsx` (in `app/layout.tsx`); re-fires on App Router route changes | — |
+| `ViewContent` | `components/PaywallView.tsx` on mount (once, not per plan toggle) | selected plan |
+| `InitiateCheckout` | `components/PaywallView.tsx` CTA click | selected plan |
+| `Purchase` | Browser: `components/MetaPurchaseTracker.tsx` on the success landing. Server: `sendMetaPurchase()` from the Stripe webhook | $79 annual / $12 monthly |
+
+`Purchase` is sent from **both** browser and server and deduplicated by a shared
+`event_id` (`purchaseEventId()` in `lib/metaPixel.ts`, derived from the Stripe
+Checkout Session id). Shared constants live in `lib/metaPixel.ts`; the CAPI
+sender in `lib/metaCapi.ts` never throws, so a Meta outage can't fail the Stripe
+webhook and trigger retries.
+
+Annual reports its full $79 at checkout despite the 3-day $0 trial — deliberate,
+to give Meta's optimizer conversion volume. Reported ad revenue therefore runs
+ahead of collected revenue by the trial-cancel rate; reconcile in Stripe.
+
+`_fbp`/`_fbc` cookies plus the client IP and user-agent are captured in
+`app/api/stripe/create-checkout/route.ts` and stashed on the Checkout Session
+metadata, because the webhook is server-to-server and cannot see them.
 
 ### Styling
 Tailwind CSS v4. Utility function for merging classes:

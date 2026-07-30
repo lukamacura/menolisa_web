@@ -109,6 +109,7 @@ export default function PaywallPage() {
           checkoutLoading={checkoutLoading}
           error={error}
           banner={isDisputed ? <DisputedAccountBanner /> : undefined}
+          trackingSource="dashboard"
         />
       </div>
     </main>

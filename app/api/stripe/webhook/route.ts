@@ -5,6 +5,8 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { writeSubscription } from "@/lib/subscriptionWrite";
 import { sendTrialWelcomeEmail, sendChargeConfirmedEmail, sendAdminNotification } from "@/lib/resend";
 import { send8WeekPlanEmail } from "@/lib/eightWeekPlan";
+import { sendMetaPurchase, metaMatchDataFrom } from "@/lib/metaCapi";
+import { META_CURRENCY, PLAN_VALUE, purchaseEventId } from "@/lib/metaPixel";
 
 export const runtime = "nodejs";
 
@@ -169,6 +171,25 @@ async function handleCheckoutSessionCompleted(
         `Webhook: checkout.session.completed conflict — user ${userId} already has active ${result.existingProvider} sub`
       );
     } else {
+      // Server-side Purchase for Meta ads attribution. Deduped against the
+      // browser pixel copy on the success page via a shared event_id. Deferred
+      // with after() so Stripe gets its 200 without waiting on Meta.
+      after(() =>
+        sendMetaPurchase({
+          eventId: purchaseEventId(session.id),
+          eventTimeSec: eventCreatedSec,
+          value:
+            plan_amount != null
+              ? plan_amount / 100
+              : PLAN_VALUE[plan_type ?? "annual"],
+          currency: META_CURRENCY,
+          email: session.customer_details?.email ?? session.customer_email ?? null,
+          userId,
+          planType: plan_type,
+          ...metaMatchDataFrom(session.metadata),
+        })
+      );
+
       try {
         const { data: authData } = await supabaseAdmin.auth.admin.getUserById(userId);
         const email = authData.user?.email;

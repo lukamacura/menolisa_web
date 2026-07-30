@@ -131,12 +131,31 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // session_id + plan let the success page fire the browser-side Meta Purchase
+    // with the right value and the event_id that dedupes it against the
+    // Conversions API copy sent from the Stripe webhook.
     const defaultSuccess = fromRegistration
-      ? `${baseUrl}/register?phase=download&session_id={CHECKOUT_SESSION_ID}`
-      : `${baseUrl}/checkout/success`;
+      ? `${baseUrl}/register?phase=download&session_id={CHECKOUT_SESSION_ID}&plan=${plan}`
+      : `${baseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}&plan=${plan}`;
     const defaultCancel = fromRegistration
       ? `${baseUrl}/register?phase=paywall`
       : `${baseUrl}/dashboard`;
+
+    // The Stripe webhook is server-to-server, so the user's Meta cookies, IP and
+    // user-agent are unreachable there. Snapshot them here - the last moment her
+    // browser talks to us - so the Conversions API can match the conversion back
+    // to the ad click. Absent for mobile-app checkouts; CAPI still matches on
+    // hashed email + external_id.
+    const metaMetadata: Record<string, string> = {};
+    const fbp = req.cookies.get("_fbp")?.value;
+    const fbc = req.cookies.get("_fbc")?.value;
+    const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+    // Stripe caps metadata values at 500 chars.
+    const clientUa = req.headers.get("user-agent")?.slice(0, 500);
+    if (fbp) metaMetadata.fbp = fbp;
+    if (fbc) metaMetadata.fbc = fbc;
+    if (clientIp) metaMetadata.fb_client_ip = clientIp;
+    if (clientUa) metaMetadata.fb_client_ua = clientUa;
 
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: "subscription",
@@ -147,6 +166,7 @@ export async function POST(req: NextRequest) {
       cancel_url: useMobileReturns ? customCancel : defaultCancel,
       client_reference_id: user.id,
       customer_email: user.email ?? undefined,
+      metadata: { user_id: user.id, plan, ...metaMetadata },
       subscription_data: {
         ...(plan === "annual"
           ? {

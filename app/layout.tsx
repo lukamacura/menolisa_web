@@ -6,6 +6,7 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import ConditionalNavbar from "@/components/ConditionalNavbar";
 import PreloaderGate from "@/components/PreloaderGate";
+import MetaPixel from "@/components/MetaPixel";
 import localFont from "next/font/local";
 import { Dancing_Script, Poppins, Lora } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
@@ -88,6 +89,7 @@ export default async function RootLayout({
         {supabaseUrl && <link rel="dns-prefetch" href={supabaseUrl} />}
       </head>
       <body className="min-h-screen flex flex-col font-sans text-foreground bg-background">
+        <MetaPixel />
         <PreloaderGate />
         <ConditionalNavbar isAuthenticated={isAuthenticated} />
 
