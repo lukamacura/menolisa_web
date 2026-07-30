@@ -21,6 +21,26 @@ export default function MetaPixel() {
 
   return (
     <>
+      {/*
+        `autoConfig: false` must stay, and must come before `init`.
+
+        With autoConfig on (Meta's default), fbevents.js runs Automatic Event
+        Detection: it scans the DOM for buttons and links whose copy and page
+        context look like a conversion and fires standard events - Subscribe,
+        Lead, Contact - with no fbq() call in our source. On the paywall it was
+        inferring Subscribe off the plan CTA and re-firing on every Framer Motion
+        re-render, flooding Events Manager with dozens of phantom Subscribes and
+        corrupting the funnel's step-to-step rates.
+
+        Turning it off means every event in Events Manager is one we fired on
+        purpose: PageView, ViewContent, InitiateCheckout, Purchase. It also
+        disables Automatic Advanced Matching (form-field email/phone scraping),
+        which we don't rely on - the Conversions API sends hashed match data from
+        the Stripe webhook instead.
+
+        If we ever want a real Subscribe, fire it explicitly from the webhook's
+        subscription-confirmation branch, not from the browser.
+      */}
       <Script id="fb-pixel" strategy="afterInteractive">
         {`
     !function(f,b,e,v,n,t,s)
@@ -31,6 +51,7 @@ export default function MetaPixel() {
     t.src=v;s=b.getElementsByTagName(e)[0];
     s.parentNode.insertBefore(t,s)}(window,document,'script',
     'https://connect.facebook.net/en_US/fbevents.js');
+    fbq('set', 'autoConfig', false, '${META_PIXEL_ID}');
     fbq('init', '${META_PIXEL_ID}');
     fbq('track', 'PageView');
         `}
