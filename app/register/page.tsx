@@ -27,6 +27,7 @@ import {
   Activity,
   Gift,
   Wind,
+  PartyPopper,
 } from "lucide-react";
 import OtpForm from "@/components/auth/OtpForm";
 import { PaywallView } from "@/components/PaywallView";
@@ -356,6 +357,18 @@ const BREATH_SEQUENCE = [
 const BREATH_ROUNDS = 3;
 const BREATH_CYCLE_SECONDS = BREATH_SEQUENCE.reduce((sum, b) => sum + b.seconds, 0); // 12
 const BREATH_TOTAL_SECONDS = BREATH_CYCLE_SECONDS * BREATH_ROUNDS; // 36
+
+// Confetti for the finish moment. Precomputed (not random) so the burst is
+// identical every time and never re-shuffles on a re-render.
+const CONFETTI_BURST = Array.from({ length: 14 }, (_, i) => {
+  const angle = (i / 14) * Math.PI * 2;
+  const distance = 78 + (i % 3) * 22;
+  return {
+    x: Math.cos(angle) * distance,
+    y: Math.sin(angle) * distance,
+    color: ["#ff74b1", "#ffeb76", "#65dbff"][i % 3],
+  };
+});
 
 // Her symptoms as a natural lowercase phrase: "hot flashes, sleep issues and brain fog".
 // Capped at 3 so the sentence stays readable.
@@ -2031,74 +2044,106 @@ function RegisterPageContent() {
                   </p>
                 </motion.div>
               ) : (
-                /* ── Done: the reward ─────────────────────────────────────── */
+                /* ── Done: the reward. One celebration, one number, one line -
+                    she should feel it before she reads it. ─────────────────── */
                 <motion.div
                   key="relief-done"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.35 }}
-                  className="flex-1 flex flex-col justify-center items-center text-center space-y-4"
+                  className="flex-1 flex flex-col justify-center items-center text-center gap-5"
                 >
                   <motion.div
                     className="relative flex items-center justify-center"
-                    initial={{ scale: 0, rotate: -12, opacity: 0 }}
+                    initial={{ scale: 0, rotate: -18, opacity: 0 }}
                     animate={{ scale: 1, rotate: 0, opacity: 1 }}
                     transition={
                       prefersReducedMotion
                         ? { duration: 0 }
-                        : { type: "spring", stiffness: 220, damping: 13, delay: 0.05 }
+                        : { type: "spring", stiffness: 240, damping: 11, delay: 0.05 }
                     }
                   >
                     {!prefersReducedMotion && (
-                      <motion.div
-                        aria-hidden
-                        className="absolute inset-0 rounded-full bg-primary/30 blur-2xl"
-                        animate={{ scale: [0.9, 1.15, 0.9], opacity: [0.4, 0.7, 0.4] }}
-                        transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-                      />
+                      <>
+                        <motion.div
+                          aria-hidden
+                          className="absolute inset-0 rounded-full bg-primary/30 blur-2xl"
+                          animate={{ scale: [0.9, 1.2, 0.9], opacity: [0.4, 0.75, 0.4] }}
+                          transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+                        />
+                        {/* Confetti burst - fires once, right as the icon pops. */}
+                        {CONFETTI_BURST.map((c, i) => (
+                          <motion.span
+                            key={i}
+                            aria-hidden
+                            className="absolute w-1.5 h-1.5 rounded-full"
+                            style={{ background: c.color }}
+                            initial={{ x: 0, y: 0, scale: 0, opacity: 1 }}
+                            animate={{ x: c.x, y: c.y, scale: [0, 1, 0.6], opacity: [1, 1, 0] }}
+                            transition={{ duration: 1.1, delay: 0.15, ease: "easeOut" }}
+                          />
+                        ))}
+                      </>
                     )}
-                    <div className="relative w-20 h-20 rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center">
-                      <Check className="w-10 h-10 text-primary" strokeWidth={3} />
+                    <div
+                      className="relative w-24 h-24 rounded-full flex items-center justify-center"
+                      style={{
+                        background:
+                          "linear-gradient(135deg, rgba(255,116,177,0.25) 0%, rgba(255,235,118,0.25) 50%, rgba(101,219,255,0.25) 100%)",
+                        border: "2px solid rgba(255,116,177,0.4)",
+                      }}
+                    >
+                      <PartyPopper className="w-11 h-11 text-primary" strokeWidth={2} />
                     </div>
+                  </motion.div>
+
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3, duration: 0.4 }}
+                    className="space-y-2"
+                  >
+                    <h1 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight">
+                      Hooray{firstName.trim() ? `, ${firstName.trim()}` : ""}!
+                    </h1>
+                    <p className="text-base sm:text-lg text-[#5A5A5A] leading-snug max-w-xs mx-auto">
+                      You just calmed your body down in{" "}
+                      <span className="font-bold text-[#3D3D3D]">
+                        {BREATH_TOTAL_SECONDS} seconds
+                      </span>
+                      .
+                    </p>
+                  </motion.div>
+
+                  <motion.div
+                    initial={{ scale: 0.6, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={
+                      prefersReducedMotion
+                        ? { duration: 0 }
+                        : { type: "spring", stiffness: 260, damping: 15, delay: 0.55 }
+                    }
+                    className="flex items-center gap-3 rounded-2xl bg-primary/5 border border-primary/20 px-5 py-3"
+                  >
+                    <CountUpNumber
+                      value={5}
+                      className="text-4xl font-black text-primary leading-none"
+                    />
+                    <span className="text-left text-sm text-[#5A5A5A] leading-tight">
+                      breaths a minute
+                      <span className="block font-semibold text-[#3D3D3D]">
+                        your body&apos;s calm-down pace
+                      </span>
+                    </span>
                   </motion.div>
 
                   <motion.p
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.25, duration: 0.4 }}
-                    className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground"
+                    transition={{ delay: 0.8, duration: 0.4 }}
+                    className="text-sm text-[#9A9A9A] max-w-xs mx-auto leading-snug"
                   >
-                    Your first win
-                  </motion.p>
-
-                  <motion.div
-                    initial={{ scale: 0.4, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={
-                      prefersReducedMotion
-                        ? { duration: 0 }
-                        : { type: "spring", stiffness: 260, damping: 14, delay: 0.4 }
-                    }
-                  >
-                    <CountUpNumber
-                      value={5}
-                      className="block text-6xl font-black text-primary leading-none"
-                    />
-                    <span className="block text-sm sm:text-base font-normal text-[#5A5A5A] mt-3 max-w-xs mx-auto leading-snug">
-                      breaths a minute - less than half your normal rate. That&apos;s the pace that
-                      tells your nervous system it&apos;s{" "}
-                      <span className="font-bold text-[#3D3D3D]">safe to stand down</span>.
-                    </span>
-                  </motion.div>
-
-                  <motion.p
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.7, duration: 0.45 }}
-                    className="w-full max-w-xs rounded-xl bg-primary/5 border border-primary/20 px-4 py-3 text-sm sm:text-base font-semibold text-[#3D3D3D] leading-snug"
-                  >
-                    <span className="font-bold">You just did that yourself.</span> Lisa builds the
-                    rest around your {getSymptomPhrase(topProblems)}.
+                    That was one tool. Lisa has the rest.
                   </motion.p>
                 </motion.div>
               )}
