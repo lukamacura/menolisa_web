@@ -26,6 +26,7 @@ import {
   MessageCircleHeart,
   Activity,
   Gift,
+  Wind,
 } from "lucide-react";
 import OtpForm from "@/components/auth/OtpForm";
 import { PaywallView } from "@/components/PaywallView";
@@ -234,7 +235,7 @@ function deriveSeverity(
   return "mild";
 }
 
-type Phase = "quiz" | "calculating" | "email" | "results" | "diagnosis" | "paywall" | "download";
+type Phase = "quiz" | "calculating" | "email" | "results" | "diagnosis" | "relief" | "paywall" | "download";
 
 const APP_STORE_URL = "https://apps.apple.com/de/app/menolisa/id6761130271?l=en-GB";
 const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.menolisa.app&pcampaignid=web_share";
@@ -339,6 +340,37 @@ const GOAL_PROMISE: Record<string, string> = {
 };
 function getOfferPromise(goals: string[]): string {
   return GOAL_PROMISE[goals[0]] ?? "Feel like yourself again";
+}
+
+// ─── Relief exercise: paced breathing between diagnosis and paywall ─────────
+// One thing that works, done by her, before she's ever asked for money. The
+// exhale is longer than the inhale on purpose - that asymmetry is what shifts
+// the nervous system, and it's the pattern clinicians hand out for hot flashes.
+// A full cycle is 12s => 5 breaths/min, which is the reward stat: arithmetic
+// from the exercise itself, not an efficacy claim we'd have to defend.
+const BREATH_SEQUENCE = [
+  { key: "in", label: "Breathe in", seconds: 4, scale: 1.35 },
+  { key: "hold", label: "Hold", seconds: 2, scale: 1.35 },
+  { key: "out", label: "Breathe out", seconds: 6, scale: 1 },
+] as const;
+const BREATH_ROUNDS = 3;
+const BREATH_CYCLE_SECONDS = BREATH_SEQUENCE.reduce((sum, b) => sum + b.seconds, 0); // 12
+const BREATH_TOTAL_SECONDS = BREATH_CYCLE_SECONDS * BREATH_ROUNDS; // 36
+
+// Her symptoms as a natural lowercase phrase: "hot flashes, sleep issues and brain fog".
+// Capped at 3 so the sentence stays readable.
+function getSymptomPhrase(topProblems: string[]): string {
+  const names = topProblems.slice(0, 3).map((id) => (SYMPTOM_LABELS[id] || id).toLowerCase());
+  if (names.length === 0) return "your symptoms";
+  if (names.length === 1) return names[0];
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+// Diagnosis is no longer the doorstep to the paywall - the relief exercise is.
+// So diagnosis gets pure forward motion here, and getCtaCopy()'s trial +
+// guarantee line moves onto the relief CTA, where the commitment actually happens.
+function getDiagnosisForwardCopy(): { sub: string } {
+  return { sub: "One 60-second relief exercise first - then your plan." };
 }
 
 const REFERRAL_STORAGE_KEY = "pending_referral_code";
@@ -522,8 +554,13 @@ function RegisterPageContent() {
   const [phase, setPhase] = useState<Phase>(() => {
     const phaseParam = searchParams.get("phase");
     if (phaseParam === "download" || phaseParam === "paywall") return phaseParam;
-    // Dev-only: preview the diagnosis step directly (?phase=diagnosis) without finishing the quiz.
-    if (phaseParam === "diagnosis" && process.env.NODE_ENV === "development") return "diagnosis";
+    // Dev-only: preview the diagnosis / relief steps directly without finishing the quiz.
+    if (
+      (phaseParam === "diagnosis" || phaseParam === "relief") &&
+      process.env.NODE_ENV === "development"
+    ) {
+      return phaseParam;
+    }
     return "quiz";
   });
   // /quiz1 traffic skips the register quiz entirely and jumps straight to email + paywall.
@@ -539,6 +576,55 @@ function RegisterPageContent() {
   }, []);
   const [stepIndex, setStepIndex] = useState(0);
   const currentStep = STEPS[stepIndex];
+
+  // Relief exercise (phase === "relief"). Stays "done" once finished, so coming
+  // back from the paywall doesn't make her breathe through it a second time.
+  const [reliefStage, setReliefStage] = useState<"intro" | "running" | "done">("intro");
+  // Single source of truth: seconds elapsed since she tapped start. Round, step and
+  // the countdown are all *derived* from it, so the interval's updater stays pure
+  // (StrictMode double-invokes updaters in dev - anything stateful in there advances twice).
+  const [reliefElapsed, setReliefElapsed] = useState(0);
+
+  useEffect(() => {
+    if (reliefStage !== "running") return;
+    const id = setInterval(() => setReliefElapsed((e) => e + 1), 1000);
+    return () => clearInterval(id);
+  }, [reliefStage]);
+
+  // The circle's scale is animated by framer over each step's full duration, so the
+  // breathing stays smooth even though the visible number only ticks once a second.
+  const { breathStep, breathRound, secondsLeft } = useMemo(() => {
+    // Clamp to the final second: on the tick that completes the exercise the raw
+    // value would wrap back to "Breathe in", flashing one frame of the circle
+    // re-expanding before the reward swaps in.
+    const t = Math.min(reliefElapsed, BREATH_TOTAL_SECONDS - 1);
+    const intoCycle = t % BREATH_CYCLE_SECONDS;
+    let acc = 0;
+    let step = BREATH_SEQUENCE.length - 1;
+    for (let i = 0; i < BREATH_SEQUENCE.length; i++) {
+      if (intoCycle < acc + BREATH_SEQUENCE[i].seconds) {
+        step = i;
+        break;
+      }
+      acc += BREATH_SEQUENCE[i].seconds;
+    }
+    return {
+      breathStep: step,
+      breathRound: Math.floor(t / BREATH_CYCLE_SECONDS),
+      secondsLeft: acc + BREATH_SEQUENCE[step].seconds - intoCycle,
+    };
+  }, [reliefElapsed]);
+
+  useEffect(() => {
+    if (reliefStage === "running" && reliefElapsed >= BREATH_TOTAL_SECONDS) {
+      setReliefStage("done");
+    }
+  }, [reliefStage, reliefElapsed]);
+
+  const startRelief = useCallback(() => {
+    setReliefElapsed(0);
+    setReliefStage("running");
+  }, []);
 
   // Preload the next step's images (and prewarm the very first step on mount) so
   // tiles are already cached before the step renders.
@@ -968,6 +1054,7 @@ function RegisterPageContent() {
       phase === "email" ||
       phase === "results" ||
       phase === "diagnosis" ||
+      phase === "relief" ||
       phase === "paywall" ||
       phase === "download"
     ) {
@@ -1729,7 +1816,7 @@ function RegisterPageContent() {
 
           </motion.div>
 
-          {/* Fixed bottom CTA -> paywall */}
+          {/* Fixed bottom CTA -> relief exercise */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1738,12 +1825,12 @@ function RegisterPageContent() {
           >
             <div className="mx-auto max-w-md w-full px-4 sm:px-6 py-3">
               {(() => {
-                const cta = getCtaCopy();
+                const cta = getDiagnosisForwardCopy();
                 return (
                   <>
                     <button
                       type="button"
-                      onClick={() => setPhase("paywall")}
+                      onClick={() => setPhase("relief")}
                       className="w-full min-h-12 py-3.5 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
                       style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)", boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)" }}
                     >
@@ -1756,6 +1843,298 @@ function RegisterPageContent() {
               })()}
             </div>
           </motion.div>
+        </div>
+      )}
+
+      {/* Relief Phase - one paced-breathing exercise she completes herself, so she
+          arrives at the paywall having already been given something that worked. */}
+      {phase === "relief" && (
+        <div
+          className={cn(
+            "flex-1 flex flex-col min-h-0 -mx-4 sm:-mx-6 px-4 sm:px-6 pt-2",
+            reliefStage === "done" && "pb-[calc(132px+env(safe-area-inset-bottom))]"
+          )}
+        >
+          <div className="max-w-md mx-auto w-full flex-1 flex flex-col min-h-0">
+            {/* Back to diagnosis */}
+            <button
+              type="button"
+              onClick={() => setPhase("diagnosis")}
+              className="flex items-center gap-1 self-start shrink-0 text-xs text-[#9A9A9A] hover:text-[#5A5A5A] mb-2 transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> Back
+            </button>
+
+            <AnimatePresence mode="wait">
+              {/* ── Intro + running share one persistent circle, so starting the
+                  exercise never re-mounts (and never re-animates) it. ───────── */}
+              {reliefStage !== "done" ? (
+                <motion.div
+                  key="relief-exercise"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0, scale: 0.96 }}
+                  transition={{ duration: 0.35 }}
+                  className="flex-1 flex flex-col justify-center items-center text-center gap-5"
+                >
+                  {/* Fixed-height copy slot: the two states swap inside it without
+                      shifting the circle below. */}
+                  <div className="min-h-[128px] sm:min-h-[136px] flex flex-col justify-end w-full">
+                    <AnimatePresence mode="wait">
+                      {reliefStage === "intro" ? (
+                        <motion.div
+                          key="relief-copy-intro"
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          transition={{ duration: 0.3 }}
+                          className="space-y-2.5"
+                        >
+                          <h1 className="text-2xl sm:text-3xl font-normal text-[#3D3D3D] leading-tight">
+                            {firstName.trim() ? (
+                              <>
+                                <span className="font-bold">{firstName.trim()}</span>, let&apos;s do
+                                one relief exercise.
+                              </>
+                            ) : (
+                              <>Let&apos;s do one relief exercise.</>
+                            )}
+                          </h1>
+                          <p className="text-sm text-[#5A5A5A] leading-relaxed max-w-xs mx-auto">
+                            When{" "}
+                            <span className="font-semibold text-[#3D3D3D]">
+                              {getSymptomPhrase(topProblems)}
+                            </span>{" "}
+                            hit, your body is already in alarm. This is the fastest way out.
+                          </p>
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          key="relief-copy-running"
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          transition={{ duration: 0.3 }}
+                          className="space-y-3"
+                        >
+                          <p className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">
+                            Round {breathRound + 1} of {BREATH_ROUNDS}
+                          </p>
+                          {/* Round dots - she can always see exactly how much is left. */}
+                          <div className="flex justify-center gap-2">
+                            {Array.from({ length: BREATH_ROUNDS }).map((_, i) => (
+                              <motion.div
+                                key={i}
+                                animate={{ width: i === breathRound ? 32 : 8 }}
+                                transition={{
+                                  type: "spring",
+                                  damping: 30,
+                                  stiffness: 200,
+                                  duration: prefersReducedMotion ? 0 : 0.4,
+                                }}
+                                className={cn(
+                                  "h-2 rounded-full",
+                                  i <= breathRound ? "bg-primary" : "bg-primary/20"
+                                )}
+                              />
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  {/* Breathing circle. The box is sized for the largest scale so
+                      expanding never nudges the layout. */}
+                  <div className="relative w-56 h-56 sm:w-64 sm:h-64 flex items-center justify-center shrink-0">
+                    {!prefersReducedMotion && (
+                      <motion.div
+                        aria-hidden
+                        className="absolute w-36 h-36 sm:w-40 sm:h-40 rounded-full bg-primary/30 blur-2xl"
+                        animate={{ scale: [0.9, 1.15, 0.9], opacity: [0.4, 0.7, 0.4] }}
+                        transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+                      />
+                    )}
+                    <motion.button
+                      type="button"
+                      onClick={startRelief}
+                      disabled={reliefStage === "running"}
+                      aria-label={
+                        reliefStage === "intro" ? "Start the breathing exercise" : undefined
+                      }
+                      animate={{
+                        scale:
+                          reliefStage === "running" ? BREATH_SEQUENCE[breathStep].scale : 1,
+                      }}
+                      transition={
+                        prefersReducedMotion
+                          ? { duration: 0 }
+                          : {
+                              duration:
+                                reliefStage === "running"
+                                  ? BREATH_SEQUENCE[breathStep].seconds
+                                  : 0.4,
+                              ease: "easeInOut",
+                            }
+                      }
+                      className="relative w-36 h-36 sm:w-40 sm:h-40 rounded-full flex flex-col items-center justify-center gap-1 disabled:cursor-default"
+                      style={{
+                        background:
+                          "linear-gradient(135deg, rgba(255,116,177,0.22) 0%, rgba(255,235,118,0.22) 50%, rgba(101,219,255,0.22) 100%)",
+                        border: "2px solid rgba(255,116,177,0.35)",
+                      }}
+                    >
+                      <AnimatePresence mode="wait">
+                        {reliefStage === "intro" ? (
+                          <motion.span
+                            key="relief-circle-intro"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="flex flex-col items-center gap-1.5"
+                          >
+                            <Wind className="w-7 h-7 text-primary" />
+                            <span className="text-sm font-semibold text-[#3D3D3D]">
+                              Tap to begin
+                            </span>
+                          </motion.span>
+                        ) : (
+                          <motion.span
+                            key={`relief-circle-${breathStep}`}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="flex flex-col items-center"
+                          >
+                            <span
+                              role="status"
+                              aria-live="polite"
+                              className="text-sm font-semibold text-[#3D3D3D]"
+                            >
+                              {BREATH_SEQUENCE[breathStep].label}
+                            </span>
+                            <span className="text-3xl font-black text-primary leading-tight tabular-nums">
+                              {secondsLeft}
+                            </span>
+                          </motion.span>
+                        )}
+                      </AnimatePresence>
+                    </motion.button>
+                  </div>
+
+                  <p className="text-[11px] text-[#9A9A9A] shrink-0">
+                    {reliefStage === "intro"
+                      ? `${BREATH_TOTAL_SECONDS} seconds · in 4, hold 2, out 6`
+                      : "Let the exhale be longer than the breath in."}
+                  </p>
+                </motion.div>
+              ) : (
+                /* ── Done: the reward ─────────────────────────────────────── */
+                <motion.div
+                  key="relief-done"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.35 }}
+                  className="flex-1 flex flex-col justify-center items-center text-center space-y-4"
+                >
+                  <motion.div
+                    className="relative flex items-center justify-center"
+                    initial={{ scale: 0, rotate: -12, opacity: 0 }}
+                    animate={{ scale: 1, rotate: 0, opacity: 1 }}
+                    transition={
+                      prefersReducedMotion
+                        ? { duration: 0 }
+                        : { type: "spring", stiffness: 220, damping: 13, delay: 0.05 }
+                    }
+                  >
+                    {!prefersReducedMotion && (
+                      <motion.div
+                        aria-hidden
+                        className="absolute inset-0 rounded-full bg-primary/30 blur-2xl"
+                        animate={{ scale: [0.9, 1.15, 0.9], opacity: [0.4, 0.7, 0.4] }}
+                        transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+                      />
+                    )}
+                    <div className="relative w-20 h-20 rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center">
+                      <Check className="w-10 h-10 text-primary" strokeWidth={3} />
+                    </div>
+                  </motion.div>
+
+                  <motion.p
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.25, duration: 0.4 }}
+                    className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground"
+                  >
+                    Your first win
+                  </motion.p>
+
+                  <motion.div
+                    initial={{ scale: 0.4, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={
+                      prefersReducedMotion
+                        ? { duration: 0 }
+                        : { type: "spring", stiffness: 260, damping: 14, delay: 0.4 }
+                    }
+                  >
+                    <CountUpNumber
+                      value={5}
+                      className="block text-6xl font-black text-primary leading-none"
+                    />
+                    <span className="block text-sm sm:text-base font-normal text-[#5A5A5A] mt-3 max-w-xs mx-auto leading-snug">
+                      breaths a minute - less than half your normal rate. That&apos;s the pace that
+                      tells your nervous system it&apos;s{" "}
+                      <span className="font-bold text-[#3D3D3D]">safe to stand down</span>.
+                    </span>
+                  </motion.div>
+
+                  <motion.p
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.7, duration: 0.45 }}
+                    className="w-full max-w-xs rounded-xl bg-primary/5 border border-primary/20 px-4 py-3 text-sm sm:text-base font-semibold text-[#3D3D3D] leading-snug"
+                  >
+                    <span className="font-bold">You just did that yourself.</span> Lisa builds the
+                    rest around your {getSymptomPhrase(topProblems)}.
+                  </motion.p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Fixed bottom CTA -> paywall. Only exists once she's finished, so the
+              ask lands after the reward, never during the exercise. */}
+          {reliefStage === "done" && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.9 }}
+              className="fixed bottom-0 inset-x-0 z-30 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 pb-[env(safe-area-inset-bottom)]"
+            >
+              <div className="mx-auto max-w-md w-full px-4 sm:px-6 py-3">
+                {(() => {
+                  const cta = getCtaCopy();
+                  return (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setPhase("paywall")}
+                        className="w-full min-h-12 py-3.5 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
+                        style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)", boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)" }}
+                      >
+                        {getGoalCtaLabel(goal)}
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                      <p className="text-[11px] text-[#9A9A9A] text-center mt-1.5">{cta.sub}</p>
+                    </>
+                  );
+                })()}
+              </div>
+            </motion.div>
+          )}
         </div>
       )}
 
@@ -1854,7 +2233,7 @@ function RegisterPageContent() {
           onCheckout={handleStartTrialCheckout}
           checkoutLoading={checkoutLoading}
           error={error}
-          onBack={fromQuiz1 ? undefined : () => setPhase("diagnosis")}
+          onBack={fromQuiz1 ? undefined : () => setPhase("relief")}
           trackingSource="register"
         />
       )}
