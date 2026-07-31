@@ -323,7 +323,7 @@ function LandingHeroInner({
               }}
             >
               <Image
-                src="/hero.png"
+                src="/hero.webp"
                 alt="Lisa app on phone"
                 fill
                 priority

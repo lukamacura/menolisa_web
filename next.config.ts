@@ -46,28 +46,10 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      // One rule for every static asset, replacing the per-file list that had
+      // drifted out of sync with public/ (it still named files that no longer exist).
       {
-        source: "/fonts/:path*",
-        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
-      },
-      {
-        source: "/lisa_profile.webp",
-        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
-      },
-      {
-        source: "/test2.webm",
-        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
-      },
-      {
-        source: "/profile.webp",
-        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
-      },
-      {
-        source: "/home.png",
-        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
-      },
-      {
-        source: "/phone.png",
+        source: "/:path*.:ext(woff2|webp|avif|png|jpg|jpeg|svg|webm|mp4|ico)",
         headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
       },
       {

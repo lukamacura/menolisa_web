@@ -85,47 +85,38 @@ export function PaywallView({
     return onCheckout(plan);
   };
 
+  // Second list is deliberately short-form: 4 boxes, one promise each. At the
+  // payment moment she scans rather than reads, so every box is a 2-3 word
+  // headline with a single supporting line.
   const trustLabels = isAnnual
     ? [
         {
           icon: Zap,
           bg: "bg-pink-100",
           fg: "text-pink-600",
-          text: (
-            <>
-              <strong>Nothing charged today.</strong> Trial starts the moment you sign up
-            </>
-          ),
+          title: "$0 today",
+          sub: "Nothing charged now",
         },
         {
           icon: Clock,
           bg: "bg-yellow-100",
           fg: "text-yellow-700",
-          text: (
-            <>
-              We&apos;ll <strong>email you 24h before</strong> the trial ends. No surprises
-            </>
-          ),
+          title: "24h reminder",
+          sub: "Email before trial ends",
         },
         {
           icon: Check,
           bg: "bg-sky-100",
           fg: "text-sky-600",
-          text: (
-            <>
-              <strong>Cancel in 2 taps.</strong> No calls, no hoops
-            </>
-          ),
+          title: "Cancel in 2 taps",
+          sub: "No calls, no hoops",
         },
         {
           icon: ShieldCheck,
           bg: "bg-green-100",
           fg: "text-green-700",
-          text: (
-            <>
-              Stripe-secured. <strong>We never see your card</strong>
-            </>
-          ),
+          title: "Stripe secured",
+          sub: "We never see your card",
         },
       ]
     : [
@@ -133,41 +124,29 @@ export function PaywallView({
           icon: CreditCard,
           bg: "bg-pink-100",
           fg: "text-pink-600",
-          text: (
-            <>
-              <strong>Billed monthly.</strong> No annual commitment required
-            </>
-          ),
-        },
-        {
-          icon: Check,
-          bg: "bg-sky-100",
-          fg: "text-sky-600",
-          text: (
-            <>
-              <strong>Cancel in 2 taps.</strong> No calls, no hoops
-            </>
-          ),
-        },
-        {
-          icon: ShieldCheck,
-          bg: "bg-green-100",
-          fg: "text-green-700",
-          text: (
-            <>
-              Stripe-secured. <strong>We never see your card</strong>
-            </>
-          ),
+          title: "Billed monthly",
+          sub: "No yearly commitment",
         },
         {
           icon: Zap,
           bg: "bg-yellow-100",
           fg: "text-yellow-700",
-          text: (
-            <>
-              <strong>Instant access.</strong> Start tracking your symptoms today
-            </>
-          ),
+          title: "Instant access",
+          sub: "Start tracking today",
+        },
+        {
+          icon: Check,
+          bg: "bg-sky-100",
+          fg: "text-sky-600",
+          title: "Cancel in 2 taps",
+          sub: "No calls, no hoops",
+        },
+        {
+          icon: ShieldCheck,
+          bg: "bg-green-100",
+          fg: "text-green-700",
+          title: "Stripe secured",
+          sub: "We never see your card",
         },
       ];
 
@@ -211,7 +190,7 @@ export function PaywallView({
             }}
           />
           <Image
-            src="/paywall.png"
+            src="/paywall.webp"
             alt=""
             width={280}
             height={160}
@@ -413,61 +392,59 @@ export function PaywallView({
 
         {/* What's included - reminds her what she's paying for at the decision point */}
         <div
-          className="rounded-2xl border p-4 mb-4"
+          className="rounded-2xl border p-4 mb-3"
           style={{
-            borderColor: "#f5c518",
+            borderColor: "#f0d071",
             background: "linear-gradient(135deg, rgba(245,197,24,0.08) 0%, rgba(255,235,118,0.12) 50%, rgba(245,197,24,0.06) 100%)",
-            boxShadow: "0 0 16px rgba(245,197,24,0.25), 0 0 32px rgba(245,197,24,0.12), inset 0 0 20px rgba(245,197,24,0.05)",
+            boxShadow: "0 0 16px rgba(245,197,24,0.18)",
           }}
         >
-          <p
-            className="text-xs font-bold mb-2.5"
-            style={{
-              color: "#d4a800",
-              textShadow: "0 0 8px rgba(245,197,24,0.7), 0 0 16px rgba(245,197,24,0.4)",
-            }}
-          >
+          <p className="text-xs font-bold tracking-wide uppercase mb-2.5 text-[#8a6d00]">
             Everything included
           </p>
-          <ul className="space-y-2">
+          <ul className="space-y-2.5">
             {[
               { bold: "Personalized 8-week plan", sub: "built around your symptoms" },
               { bold: "Lisa", sub: "your 24/7 menopause AI companion" },
               { bold: "Symptom tracking", sub: "with doctor-ready reports" },
             ].map((item) => (
-              <li key={item.bold} className="flex items-start gap-2">
-                <Check className="w-4 h-4 text-yellow-500 shrink-0 mt-0.5" />
+              <li key={item.bold} className="flex items-start gap-2.5">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-yellow-400/90 shrink-0 mt-0.5">
+                  <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />
+                </span>
                 <span className="text-sm text-[#3D3D3D] leading-snug">
                   <strong>{item.bold}</strong>
-                  <span className="text-[#7A7A7A]"> - {item.sub}</span>
+                  <span className="text-[#6B6B6B]"> &mdash; {item.sub}</span>
                 </span>
               </li>
             ))}
           </ul>
         </div>
 
-        {/* Trust labels */}
-        <ul className="space-y-2 mb-5 text-sm text-[#3D3D3D]">
+        {/* Trust boxes - scannable 2x2 grid, one promise per box */}
+        <div className="grid grid-cols-2 gap-2 mb-4">
           {trustLabels.map((item, i) => {
             const Icon = item.icon;
             return (
-              <motion.li
-                key={i}
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
+              <motion.div
+                key={item.title}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.35 + i * 0.05 }}
-                className="flex items-center gap-2.5"
+                className="rounded-xl border bg-white px-3 py-2.5 shadow-sm"
+                style={{ borderColor: "#E8DDD9" }}
               >
                 <span
-                  className={`inline-flex items-center justify-center w-7 h-7 rounded-full shrink-0 ${item.bg}`}
+                  className={`inline-flex items-center justify-center w-7 h-7 rounded-full mb-1.5 ${item.bg}`}
                 >
-                  <Icon className={`w-3.5 h-3.5 ${item.fg}`} />
+                  <Icon className={`w-4 h-4 ${item.fg}`} />
                 </span>
-                <span className="leading-snug">{item.text}</span>
-              </motion.li>
+                <p className="text-sm font-bold text-[#3D3D3D] leading-tight">{item.title}</p>
+                <p className="text-xs text-[#7A7A7A] leading-snug mt-0.5">{item.sub}</p>
+              </motion.div>
             );
           })}
-        </ul>
+        </div>
 
         {/* The 80+ Guarantee - same conditional risk-reversal as the diagnosis
             page, restated in one line at the moment of payment. */}

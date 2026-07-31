@@ -34,7 +34,7 @@ export default function CheckoutSuccessPage() {
       <MetaPurchaseTracker />
       <div className="w-full max-w-md text-center space-y-6">
         <div className="flex justify-center">
-          <Image src="/paywall.png" alt="" width={220} height={220} priority />
+          <Image src="/paywall.webp" alt="" width={220} height={220} priority />
         </div>
         <div className="flex justify-center">
           <div className="rounded-full bg-primary/15 p-4 ring-4 ring-primary/20">

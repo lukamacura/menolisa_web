@@ -3,43 +3,36 @@ import "./globals.css";
 
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { createServerClient } from "@supabase/ssr";
 import ConditionalNavbar from "@/components/ConditionalNavbar";
-import PreloaderGate from "@/components/PreloaderGate";
 import MetaPixel from "@/components/MetaPixel";
-import localFont from "next/font/local";
 import { Dancing_Script, Poppins, Lora } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
-
-const satoshi = localFont({
-  src: [
-    { path: "../public/fonts/Satoshi-Light.woff2", weight: "400", style: "normal" },
-    { path: "../public/fonts/Satoshi-Regular.woff2",  weight: "500", style: "normal" },
-    { path: "../public/fonts/Satoshi-Bold.woff2",    weight: "700", style: "normal" },
-  ],
-  variable: "--font-satoshi",
-  display: "swap",
-});
 
 const dancingScript = Dancing_Script({
   subsets: ["latin"],
   variable: "--font-script",
   display: "swap",
+  preload: false,
 });
 
-// Tweakcn theme fonts
+// Tweakcn theme fonts.
+// Weights are limited to what the app actually renders: 400/500/600/700.
+// `font-extrabold` (800) and `font-black` (900) appear in markup but resolve to
+// 700 anyway because `font-synthesis-weight: none` is set in globals.css.
 const poppins = Poppins({
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
+  weight: ["400", "500", "600", "700"],
   variable: "--font-poppins",
   display: "swap",
 });
 
+// Only rendered on /register — don't spend the first-paint budget on it elsewhere.
 const lora = Lora({
   subsets: ["latin"],
   variable: "--font-lora",
   display: "swap",
+  preload: false,
 });
 
 export const metadata: Metadata = {
@@ -58,39 +51,27 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  let isAuthenticated = false;
-  if (supabaseUrl && supabaseAnonKey) {
-    const cookieStore = await cookies();
-    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        set() {},
-        remove() {},
-      },
-    });
-    const { data: { user } } = await supabase.auth.getUser();
-    isAuthenticated = !!user;
-  }
+  // Navbar-only hint: is there an auth cookie at all? This is a local cookie read,
+  // NOT a call to Supabase. The previous `supabase.auth.getUser()` here put a network
+  // round-trip to the Supabase auth API in front of the first byte of HTML on EVERY
+  // request — including anonymous landing and quiz-funnel traffic that has no session
+  // to check. ConditionalNavbar already re-verifies the session on the client, so the
+  // server value only needs to be right often enough to avoid a logged-in/out flash.
+  const cookieStore = await cookies();
+  const isAuthenticated = cookieStore
+    .getAll()
+    .some((c) => /^sb-.*-auth-token(\.\d+)?$/.test(c.name) && !!c.value);
 
   return (
-    <html lang="en" data-scroll-behavior="smooth" className={`${satoshi.variable} ${dancingScript.variable} ${poppins.variable} ${lora.variable}`}>
+    <html lang="en" data-scroll-behavior="smooth" className={`${dancingScript.variable} ${poppins.variable} ${lora.variable}`}>
       <head>
-        {/* LCP: preload critical fonts for hero text */}
-        <link rel="preload" href="/fonts/Satoshi-Bold.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
-        <link rel="preload" href="/fonts/Satoshi-Regular.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
-        {/* LCP: preload navbar logo (critical above-the-fold image) */}
-        <link rel="preload" href="/favicon.png" as="image" />
         {/* Preconnect to Supabase for faster API/auth on first request */}
         {supabaseUrl && <link rel="preconnect" href={supabaseUrl} />}
         {supabaseUrl && <link rel="dns-prefetch" href={supabaseUrl} />}
       </head>
       <body className="min-h-screen flex flex-col font-sans text-foreground bg-background">
         <MetaPixel />
-        <PreloaderGate />
         <ConditionalNavbar isAuthenticated={isAuthenticated} />
 
         <main className="flex-1 w-full">{children}</main>

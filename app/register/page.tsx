@@ -358,45 +358,30 @@ const BREATH_ROUNDS = 3;
 const BREATH_CYCLE_SECONDS = BREATH_SEQUENCE.reduce((sum, b) => sum + b.seconds, 0); // 12
 const BREATH_TOTAL_SECONDS = BREATH_CYCLE_SECONDS * BREATH_ROUNDS; // 36
 
-// ─── Relief reward: the exercise becomes tool 1 of 12 in her plan ───────────
-// She finishes holding something she keeps, and seeing three she doesn't have
-// yet. The locked three are drawn from the symptoms she actually selected, so
-// the plan reads as hers rather than as a generic feature list. Every tool
-// named here has to exist in the product - this is a promise, not decoration.
-const RELIEF_TOOL_NAME = "The 4-2-6 Reset";
-const RELIEF_TOOLKIT_SIZE = 12;
+// ─── Relief reward: the exercise becomes tool 1 of 3 in her plan ────────────
+// She finishes holding something she keeps, and seeing what's still locked.
+// The locked two are the actual app sections (exercises + knowledge), not a
+// generic feature list - every entry here has to exist in the product.
+const RELIEF_TOOL_NAME = "Breathing exercise";
+const RELIEF_TOOLKIT_SIZE = 4;
 
 type ReliefTool = { name: string; use: string };
 
-const SYMPTOM_TOOL: Record<string, ReliefTool> = {
-  hot_flashes:    { name: "Hot-flash cool-down",        use: "Catch the surge before it peaks" },
-  sleep_issues:   { name: "Night-waking wind-down",     use: "For 3am, wide awake" },
-  brain_fog:      { name: "Brain-fog 90-second reset",  use: "Clear the haze before you need to think" },
-  mood_swings:    { name: "Mood-swing circuit breaker", use: "For the moment before you snap" },
-  weight_changes: { name: "Menopause plate builder",    use: "Eat for the hormones you have now" },
-  low_energy:     { name: "3pm energy rescue",          use: "For the afternoon crash" },
-  anxiety:        { name: "Anxiety off-ramp",           use: "When your chest won't unclench" },
-  joint_pain:     { name: "Morning joint unlock",       use: "Before your feet hit the floor" },
-  bloating:       { name: "After-dinner bloat relief",  use: "Five minutes on the couch" },
-};
-
-// Backfill, so the locked stack is never short when she picked fewer than three.
-const DEFAULT_LOCKED_TOOLS: ReliefTool[] = [
-  { name: "Cortisol morning ritual", use: "Sets the tone for the whole day" },
-  { name: "Deep-sleep wind-down", use: "Asleep faster, awake less" },
-  { name: "Your trigger tracker", use: "Finds what's actually setting you off" },
-];
-
 function getLockedTools(topProblems: string[]): ReliefTool[] {
-  const picked = topProblems
-    .map((id) => SYMPTOM_TOOL[id])
-    .filter((t): t is ReliefTool => Boolean(t));
-  const out = picked.slice(0, 3);
-  for (const t of DEFAULT_LOCKED_TOOLS) {
-    if (out.length >= 3) break;
-    if (!out.some((x) => x.name === t.name)) out.push(t);
-  }
-  return out;
+  return [
+    {
+      name: `Exercises for ${getSymptomPhrase(topProblems)}`,
+      use: "Targeted routines for what you picked",
+    },
+    {
+      name: "Symptoms tracking",
+      use: "Log how you feel, spot the patterns",
+    },
+    {
+      name: "Knowledge",
+      use: "Understand what's happening, and why",
+    },
+  ];
 }
 
 // "For hot flashes - anywhere, no equipment". Her #1 symptom, so the tool she
@@ -1268,7 +1253,7 @@ function RegisterPageContent() {
               className="mb-4 mx-auto w-full sm:w-5/6 md:w-2/3"
             >
               <Image
-                src="/results.png"
+                src="/results.webp"
                 alt="Your menopause results"
                 width={500}
                 height={300}
@@ -1749,7 +1734,7 @@ function RegisterPageContent() {
                     letter in script - the made-for-you moment. */}
                 <div className="relative w-full">
                   <Image
-                    src="/quiz/offer.png"
+                    src="/quiz/offer.webp"
                     alt={firstName.trim() ? `${firstName.trim()}'s personalized 8-week plan` : "Your personalized 8-week plan"}
                     width={1024}
                     height={1536}
@@ -2403,7 +2388,7 @@ function RegisterPageContent() {
           >
 
             <div className="flex justify-center mb-4">
-              <Image src="/paywall.png" alt="" width={220} height={220} priority />
+              <Image src="/paywall.webp" alt="" width={220} height={220} priority />
             </div>
             <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-3">
               {firstName.trim() ? `${firstName.trim()}, you're all set!` : "You're all set!"}

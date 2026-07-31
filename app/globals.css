@@ -718,7 +718,9 @@ input[type="button"],
   -webkit-text-fill-color: transparent;
   background-clip: text;
   animation: gradient-shift 10s ease infinite;
-  will-change: background-position;
+  /* No `will-change: background-position` here — background-position can't be
+     GPU-composited, so the hint only pins a layer while the browser still
+     repaints the clipped text every frame, forever, on every page using it. */
 }
 
 /* Accessibility - Respect user motion preferences */
@@ -763,11 +765,24 @@ input[type="button"],
     rgba(255, 255, 255, 0.3) 100%
   );
   border: 2px solid rgba(255, 255, 255, 0.5);
-  box-shadow: 
+  box-shadow:
     0 8px 32px rgba(236, 72, 153, 0.15),
     0 2px 12px rgba(219, 39, 119, 0.1);
   pointer-events: none;
   opacity: 0.8;
+  /* Promote to its own compositor layer so the infinite transform animation is
+     a GPU transform per frame instead of a main-thread repaint of the gradient,
+     border and two box-shadows. Without this the bubbles cost real INP. */
+  will-change: transform;
+  contain: layout paint style;
+}
+
+/* Phones are where the Speed Insights score hurts most and where the bubbles are
+   least visible anyway — keep a few for the effect, drop the rest of the layers. */
+@media (max-width: 767px) {
+  .glassy-bubble:nth-of-type(n + 5) {
+    display: none;
+  }
 }
 
 .animate-float-1 {

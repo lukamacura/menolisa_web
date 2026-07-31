@@ -300,7 +300,7 @@ export default function WhatLisaNoticed() {
       {/* Banner illustration */}
       <div className="relative w-full h-28 sm:h-36 md:h-44 lg:h-52">
         <Image
-          src="/lisa-noticed-banner.png"
+          src="/lisa-noticed-banner.webp"
           alt=""
           fill
           className="object-cover"
