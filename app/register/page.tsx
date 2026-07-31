@@ -28,6 +28,7 @@ import {
   Gift,
   Wind,
   PartyPopper,
+  Lock,
 } from "lucide-react";
 import OtpForm from "@/components/auth/OtpForm";
 import { PaywallView } from "@/components/PaywallView";
@@ -347,8 +348,7 @@ function getOfferPromise(goals: string[]): string {
 // One thing that works, done by her, before she's ever asked for money. The
 // exhale is longer than the inhale on purpose - that asymmetry is what shifts
 // the nervous system, and it's the pattern clinicians hand out for hot flashes.
-// A full cycle is 12s => 5 breaths/min, which is the reward stat: arithmetic
-// from the exercise itself, not an efficacy claim we'd have to defend.
+// A full cycle is 12s (in 4, hold 2, out 6) - hence the tool's name below.
 const BREATH_SEQUENCE = [
   { key: "in", label: "Breathe in", seconds: 4, scale: 1.35 },
   { key: "hold", label: "Hold", seconds: 2, scale: 1.35 },
@@ -357,6 +357,55 @@ const BREATH_SEQUENCE = [
 const BREATH_ROUNDS = 3;
 const BREATH_CYCLE_SECONDS = BREATH_SEQUENCE.reduce((sum, b) => sum + b.seconds, 0); // 12
 const BREATH_TOTAL_SECONDS = BREATH_CYCLE_SECONDS * BREATH_ROUNDS; // 36
+
+// ─── Relief reward: the exercise becomes tool 1 of 12 in her plan ───────────
+// She finishes holding something she keeps, and seeing three she doesn't have
+// yet. The locked three are drawn from the symptoms she actually selected, so
+// the plan reads as hers rather than as a generic feature list. Every tool
+// named here has to exist in the product - this is a promise, not decoration.
+const RELIEF_TOOL_NAME = "The 4-2-6 Reset";
+const RELIEF_TOOLKIT_SIZE = 12;
+
+type ReliefTool = { name: string; use: string };
+
+const SYMPTOM_TOOL: Record<string, ReliefTool> = {
+  hot_flashes:    { name: "Hot-flash cool-down",        use: "Catch the surge before it peaks" },
+  sleep_issues:   { name: "Night-waking wind-down",     use: "For 3am, wide awake" },
+  brain_fog:      { name: "Brain-fog 90-second reset",  use: "Clear the haze before you need to think" },
+  mood_swings:    { name: "Mood-swing circuit breaker", use: "For the moment before you snap" },
+  weight_changes: { name: "Menopause plate builder",    use: "Eat for the hormones you have now" },
+  low_energy:     { name: "3pm energy rescue",          use: "For the afternoon crash" },
+  anxiety:        { name: "Anxiety off-ramp",           use: "When your chest won't unclench" },
+  joint_pain:     { name: "Morning joint unlock",       use: "Before your feet hit the floor" },
+  bloating:       { name: "After-dinner bloat relief",  use: "Five minutes on the couch" },
+};
+
+// Backfill, so the locked stack is never short when she picked fewer than three.
+const DEFAULT_LOCKED_TOOLS: ReliefTool[] = [
+  { name: "Cortisol morning ritual", use: "Sets the tone for the whole day" },
+  { name: "Deep-sleep wind-down", use: "Asleep faster, awake less" },
+  { name: "Your trigger tracker", use: "Finds what's actually setting you off" },
+];
+
+function getLockedTools(topProblems: string[]): ReliefTool[] {
+  const picked = topProblems
+    .map((id) => SYMPTOM_TOOL[id])
+    .filter((t): t is ReliefTool => Boolean(t));
+  const out = picked.slice(0, 3);
+  for (const t of DEFAULT_LOCKED_TOOLS) {
+    if (out.length >= 3) break;
+    if (!out.some((x) => x.name === t.name)) out.push(t);
+  }
+  return out;
+}
+
+// "For hot flashes - anywhere, no equipment". Her #1 symptom, so the tool she
+// keeps is labelled with the thing she came here for.
+function getUnlockedToolUse(topProblems: string[]): string {
+  const first = topProblems[0];
+  const label = first ? (SYMPTOM_LABELS[first] || first).toLowerCase() : "";
+  return label ? `For ${label} - anywhere, no equipment` : "Anywhere, no equipment";
+}
 
 // Confetti for the finish moment. Precomputed (not random) so the burst is
 // identical every time and never re-shuffles on a re-render.
@@ -711,6 +760,8 @@ function RegisterPageContent() {
     () => Object.values(symptomSeverity).reduce((a, b) => a + b, 0),
     [symptomSeverity]
   );
+  // The three still-locked tools on the relief reward screen, picked from her symptoms.
+  const reliefLockedTools = useMemo(() => getLockedTools(topProblems), [topProblems]);
 
   // Normalized body metrics (canonical cm/kg) derived from the per-unit inputs.
   const bodyMetrics = useMemo(() => {
@@ -1214,14 +1265,14 @@ function RegisterPageContent() {
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 }}
-              className="mb-4 rounded-2xl overflow-hidden shadow-sm mx-auto w-full sm:w-5/6 md:w-2/3"
+              className="mb-4 mx-auto w-full sm:w-5/6 md:w-2/3"
             >
               <Image
                 src="/results.png"
                 alt="Your menopause results"
                 width={500}
                 height={300}
-                className="w-full object-cover"
+                className="w-full object-contain"
                 priority
               />
             </motion.div>
@@ -1865,7 +1916,10 @@ function RegisterPageContent() {
         <div
           className={cn(
             "flex-1 flex flex-col min-h-0 -mx-4 sm:-mx-6 px-4 sm:px-6 pt-2",
-            reliefStage === "done" && "pb-[calc(132px+env(safe-area-inset-bottom))]"
+            // The reward stack is taller than the exercise, so it gets to scroll
+            // on short screens; the exercise itself must never move under her.
+            reliefStage === "done" &&
+              "overflow-y-auto pb-[calc(132px+env(safe-area-inset-bottom))]"
           )}
         >
           <div className="max-w-md mx-auto w-full flex-1 flex flex-col min-h-0">
@@ -2039,19 +2093,19 @@ function RegisterPageContent() {
 
                   <p className="text-[11px] text-[#9A9A9A] shrink-0">
                     {reliefStage === "intro"
-                      ? `${BREATH_TOTAL_SECONDS} seconds · in 4, hold 2, out 6`
+                      ? `${RELIEF_TOOL_NAME} · ${BREATH_TOTAL_SECONDS} seconds`
                       : "Let the exhale be longer than the breath in."}
                   </p>
                 </motion.div>
               ) : (
-                /* ── Done: the reward. One celebration, one number, one line -
-                    she should feel it before she reads it. ─────────────────── */
+                /* ── Done: the reward. She keeps the tool she just used, and sees
+                    the three she doesn't have yet - felt first, read second. ── */
                 <motion.div
                   key="relief-done"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.35 }}
-                  className="flex-1 flex flex-col justify-center items-center text-center gap-5"
+                  className="flex-1 flex flex-col justify-center items-center text-center gap-4"
                 >
                   <motion.div
                     className="relative flex items-center justify-center"
@@ -2086,14 +2140,14 @@ function RegisterPageContent() {
                       </>
                     )}
                     <div
-                      className="relative w-24 h-24 rounded-full flex items-center justify-center"
+                      className="relative w-20 h-20 rounded-full flex items-center justify-center"
                       style={{
                         background:
                           "linear-gradient(135deg, rgba(255,116,177,0.25) 0%, rgba(255,235,118,0.25) 50%, rgba(101,219,255,0.25) 100%)",
                         border: "2px solid rgba(255,116,177,0.4)",
                       }}
                     >
-                      <PartyPopper className="w-11 h-11 text-primary" strokeWidth={2} />
+                      <PartyPopper className="w-9 h-9 text-primary" strokeWidth={2} />
                     </div>
                   </motion.div>
 
@@ -2107,44 +2161,99 @@ function RegisterPageContent() {
                       Hooray{firstName.trim() ? `, ${firstName.trim()}` : ""}!
                     </h1>
                     <p className="text-base sm:text-lg text-[#5A5A5A] leading-snug max-w-xs mx-auto">
-                      You just calmed your body down in{" "}
+                      You calmed your body in{" "}
                       <span className="font-bold text-[#3D3D3D]">
                         {BREATH_TOTAL_SECONDS} seconds
-                      </span>
-                      .
+                      </span>{" "}
+                      - and unlocked your first tool.
                     </p>
                   </motion.div>
 
-                  <motion.div
-                    initial={{ scale: 0.6, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={
-                      prefersReducedMotion
-                        ? { duration: 0 }
-                        : { type: "spring", stiffness: 260, damping: 15, delay: 0.55 }
-                    }
-                    className="flex items-center gap-3 rounded-2xl bg-primary/5 border border-primary/20 px-5 py-3"
-                  >
-                    <CountUpNumber
-                      value={5}
-                      className="text-4xl font-black text-primary leading-none"
-                    />
-                    <span className="text-left text-sm text-[#5A5A5A] leading-tight">
-                      breaths a minute
-                      <span className="block font-semibold text-[#3D3D3D]">
-                        your body&apos;s calm-down pace
-                      </span>
-                    </span>
-                  </motion.div>
+                  {/* Tool 1 of 12: what she keeps, then what she doesn't have yet. */}
+                  <div className="w-full max-w-xs space-y-2">
+                    <motion.div
+                      initial={{ scale: 0.9, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={
+                        prefersReducedMotion
+                          ? { duration: 0 }
+                          : { type: "spring", stiffness: 260, damping: 16, delay: 0.55 }
+                      }
+                      className="flex items-start gap-3 rounded-2xl bg-primary/5 border-2 border-primary/30 px-4 py-3 text-left"
+                    >
+                      <div className="mt-0.5 w-6 h-6 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+                        <Check className="w-3.5 h-3.5 text-primary" strokeWidth={3} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-[#3D3D3D] leading-tight">
+                          {RELIEF_TOOL_NAME}
+                        </p>
+                        <p className="text-xs text-[#5A5A5A] leading-snug">
+                          {getUnlockedToolUse(topProblems)}
+                        </p>
+                        <p className="text-[11px] font-semibold text-primary mt-0.5">
+                          Yours to keep
+                        </p>
+                      </div>
+                    </motion.div>
 
-                  <motion.p
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.8, duration: 0.4 }}
-                    className="text-sm text-[#9A9A9A] max-w-xs mx-auto leading-snug"
-                  >
-                    That was one tool. Lisa has the rest.
-                  </motion.p>
+                    {/* Locked stack, fading out at the bottom so it reads as "there's more". */}
+                    <div className="relative space-y-2">
+                      {reliefLockedTools.map((tool, i) => (
+                        <motion.div
+                          key={tool.name}
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.7 + i * 0.09, duration: 0.35 }}
+                          className="flex items-center gap-3 rounded-2xl border border-foreground/10 bg-foreground/[0.03] px-4 py-2.5 text-left"
+                        >
+                          <div className="w-6 h-6 rounded-full bg-foreground/5 flex items-center justify-center shrink-0">
+                            <Lock className="w-3.5 h-3.5 text-[#9A9A9A]" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-[#8A8A8A] leading-tight truncate">
+                              {tool.name}
+                            </p>
+                            <p className="text-[11px] text-[#B0B0B0] leading-snug truncate">
+                              {tool.use}
+                            </p>
+                          </div>
+                        </motion.div>
+                      ))}
+                      <div
+                        aria-hidden
+                        className="pointer-events-none absolute inset-x-0 bottom-0 h-9 bg-linear-to-t from-background to-transparent"
+                      />
+                    </div>
+
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 1, duration: 0.4 }}
+                      className="pt-1 space-y-1.5"
+                    >
+                      <div className="flex items-baseline justify-between text-[11px]">
+                        <span className="font-semibold text-[#3D3D3D]">
+                          1 of {RELIEF_TOOLKIT_SIZE} unlocked
+                        </span>
+                        <span className="text-[#9A9A9A]">
+                          +{RELIEF_TOOLKIT_SIZE - 1} more in your plan
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-primary/15 overflow-hidden">
+                        <motion.div
+                          className="h-full rounded-full bg-primary"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${(1 / RELIEF_TOOLKIT_SIZE) * 100}%` }}
+                          transition={
+                            prefersReducedMotion
+                              ? { duration: 0 }
+                              : { delay: 1.05, duration: 0.7, ease: "easeOut" }
+                          }
+                        />
+                      </div>
+                    </motion.div>
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -2367,6 +2476,16 @@ function RegisterPageContent() {
       {/* Quiz Phase */}
       {phase === "quiz" && (
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden pb-[calc(72px+env(safe-area-inset-bottom))]">
+          {/* Back to previous question - small, top-left, matches results/diagnosis back link */}
+          {stepIndex > 0 && (
+            <button
+              type="button"
+              onClick={goBack}
+              className="flex items-center gap-1 self-start shrink-0 text-xs text-[#9A9A9A] hover:text-[#5A5A5A] px-2 transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> Back
+            </button>
+          )}
           {/* Quiz entry headline (step 0 only) - strategy: curiosity-driven, 2-min assessment */}
           {stepIndex === 0 && (
             <div className="shrink-0 text-center mb-2 sm:mb-3 px-2">
@@ -3095,21 +3214,12 @@ function RegisterPageContent() {
 
           {/* Navigation Buttons - fixed to bottom of viewport, safe-area aware */}
           <div className="fixed bottom-0 inset-x-0 z-30 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 pb-[env(safe-area-inset-bottom)]">
-            <div className="mx-auto max-w-3xl flex items-center justify-between gap-3 px-4 sm:px-6 py-3">
-              <button
-                type="button"
-                onClick={goBack}
-                disabled={stepIndex === 0}
-                className="min-h-12 flex items-center justify-center gap-1.5 px-4 sm:px-5 py-3 rounded-lg border-2 border-foreground/15 hover:bg-foreground/5 hover:border-foreground/25 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent font-medium text-sm sm:text-base"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                Back
-              </button>
+            <div className="mx-auto max-w-3xl px-4 sm:px-6 py-3">
               <button
                 type="button"
                 onClick={goNext}
                 disabled={!stepIsAnswered(currentStep)}
-                className="min-h-12 flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-5 sm:px-6 py-3 rounded-lg bg-primary text-primary-foreground hover:brightness-110 hover:shadow-lg hover:shadow-primary/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100 disabled:hover:shadow-none font-semibold text-sm sm:text-base"
+                className="min-h-12 w-full flex items-center justify-center gap-1.5 px-5 sm:px-6 py-3 rounded-lg bg-primary text-primary-foreground hover:brightness-110 hover:shadow-lg hover:shadow-primary/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100 disabled:hover:shadow-none font-semibold text-sm sm:text-base"
               >
                 {REWARD_STEPS.includes(currentStep) || stepIndex === STEPS.length - 1 ? "Continue" : "Next"}
                 <ArrowRight className="w-3.5 h-3.5" />
