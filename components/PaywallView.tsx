@@ -497,13 +497,13 @@ export function PaywallView({
           ) : isAnnual ? (
             <>
               <Lock className="w-4 h-4" />
-              Claim MenoLisa & Plan
+              Start my 3-day free trial
               <ArrowRight className="w-4 h-4" />
             </>
           ) : (
             <>
               <Lock className="w-4 h-4" />
-              Claim MenoLisa & Plan
+              Get my plan &mdash; $12/mo
               <ArrowRight className="w-4 h-4" />
             </>
           )}
@@ -511,11 +511,11 @@ export function PaywallView({
         <p className="text-[11px] sm:text-xs text-[#7A7A7A] text-center mt-2 sm:mt-3 leading-relaxed">
           {isAnnual ? (
             <>
-              $79/year. 3 days free. Cancel anytime.
+              $0 today, then $79/year. Cancel anytime.
             </>
           ) : (
             <>
-            $12/month. All features included. Cancel anytime.
+              Billed $12/month. All features included. Cancel anytime.
             </>
           )}
         </p>
