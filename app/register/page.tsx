@@ -2043,7 +2043,8 @@ function RegisterPageContent() {
                   </HighlightSweep>{" "}
                   in full.
                 </p>
-                <p className="text-xs text-[#5A5A5A] leading-snug mt-2">
+                <div className="w-16 h-px bg-green-300 my-3" />
+                <p className="text-xs text-[#5A5A5A] leading-snug">
                   All we ask is that you use the plan we built for you. No risk - the only way to
                   lose is to not start.
                 </p>

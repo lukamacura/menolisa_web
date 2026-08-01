@@ -446,14 +446,24 @@ export function PaywallView({
           })}
         </div>
 
-        {/* The 80+ Guarantee - same conditional risk-reversal as the diagnosis
-            page, restated in one line at the moment of payment. */}
-        <div className="flex items-start gap-2.5 rounded-xl border border-green-200 bg-green-50 px-3 py-2.5 mb-4">
-          <ShieldCheck className="w-5 h-5 text-green-700 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-bold text-green-800 leading-snug">The 80+ Guarantee</p>
-            <p className="text-xs text-[#5A5A5A] leading-snug mt-0.5">
-              Follow your 8-week plan and don&apos;t reach a score of 80+? We&apos;ll refund you in full.
+        {/* The 80+ Guarantee - identical copy and layout to the diagnosis page's
+            guarantee card, restated at the moment of payment. */}
+        <div
+          className="rounded-2xl border-2 border-green-300 bg-green-50 p-4 mb-4"
+          style={{ boxShadow: "0 0 0 2px rgba(22,163,74,0.12), 0 8px 28px rgba(22,163,74,0.12)" }}
+        >
+          <div className="flex flex-col items-center text-center">
+            <ShieldCheck className="w-12 h-12 text-green-600 shrink-0 mb-2" />
+            <h2 className="text-base font-bold text-green-800 mb-2">The 80+ Guarantee</h2>
+            <p className="text-sm text-[#3D3D3D] leading-relaxed">
+              Follow your <b>personalized 8-week plan</b> and if you don&apos;t reach a score of{" "}
+              <span className="font-bold text-green-700">80+</span>, we&apos;ll{" "}
+              <b className="text-green-700">refund you</b> in full.
+            </p>
+            <div className="w-16 h-px bg-green-300 my-3" />
+            <p className="text-xs text-[#5A5A5A] leading-snug">
+              All we ask is that you use the plan we built for you. No risk - the only way to
+              lose is to not start.
             </p>
           </div>
         </div>
