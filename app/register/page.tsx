@@ -221,6 +221,16 @@ const STEP_IMAGES: Partial<Record<Step, string[]>> = {
   q8_name: [`/quiz/${QUIZ_ILLUSTRATION.q8_name}`],
 };
 
+// Real app screenshots used on the diagnosis step. Preloaded while she reads her
+// results so the phone shots are already cached and don't pop in one by one.
+const DIAGNOSIS_SHOTS = [
+  "/diagnosys/symptoms1.webp",
+  "/diagnosys/symptoms2.webp",
+  "/diagnosys/insights.webp",
+  "/diagnosys/chat.webp",
+  "/diagnosys/8week.webp",
+];
+
 // Build the same URL next/image requests, so the preload warms both the Vercel
 // optimizer cache and the browser HTTP cache (640/828 cover phone + desktop).
 const optimizedImageUrl = (src: string, w: number) =>
@@ -628,6 +638,76 @@ function HighlightSweep({
   );
 }
 
+// A real app screenshot shown as physical evidence: phone-framed, tilted a few
+// degrees and cropped by its stage so it reads as a photo of the product rather
+// than a flat asset. Always paired with <ShotStage />, which does the clipping.
+function PhoneShot({
+  src,
+  alt,
+  rotate = 0,
+  delay = 0,
+  className,
+}: {
+  src: string;
+  alt: string;
+  rotate?: number;
+  delay?: number;
+  className?: string;
+}) {
+  const prefersReducedMotion = useReducedMotion();
+  return (
+    <motion.div
+      initial={
+        prefersReducedMotion
+          ? { opacity: 1, y: 0, rotate }
+          : { opacity: 0, y: 26, rotate: rotate * 0.25 }
+      }
+      whileInView={{ opacity: 1, y: 0, rotate }}
+      viewport={{ once: true, amount: 0.3 }}
+      transition={{ duration: prefersReducedMotion ? 0 : 0.6, delay, ease: [0.16, 1, 0.3, 1] }}
+      className={cn(
+        "shrink-0 rounded-[1.4rem] bg-white p-[3px] ring-1 ring-black/5 shadow-[0_16px_36px_-10px_rgba(61,61,61,0.45)]",
+        className
+      )}
+    >
+      <Image
+        src={src}
+        alt={alt}
+        width={1080}
+        height={2192}
+        sizes="(max-width: 480px) 55vw, 260px"
+        className="w-full h-auto rounded-[1.25rem]"
+      />
+    </motion.div>
+  );
+}
+
+/** Tinted stage that crops the phones at the bottom, so they peek in rather than
+    dominate the card. `fadeFrom` should match the surface underneath. */
+function ShotStage({
+  children,
+  className,
+  fadeFrom = "from-card",
+}: {
+  children: React.ReactNode;
+  className?: string;
+  fadeFrom?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "relative overflow-hidden bg-linear-to-br from-primary/12 via-[#ffeb76]/12 to-info/12",
+        className
+      )}
+    >
+      <div className="flex items-start justify-center gap-2 px-4 pt-5">{children}</div>
+      <div
+        className={cn("pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-linear-to-t to-transparent", fadeFrom)}
+      />
+    </div>
+  );
+}
+
 function RegisterPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -750,6 +830,21 @@ function RegisterPageContent() {
       });
     };
   }, [stepIndex]);
+
+  // Warm the diagnosis screenshots while she's still on results.
+  useEffect(() => {
+    if (typeof window === "undefined" || phase !== "results") return;
+    const imgs = DIAGNOSIS_SHOTS.map((src) => {
+      const img = new window.Image();
+      img.src = optimizedImageUrl(src, 640);
+      return img;
+    });
+    return () => {
+      imgs.forEach((img) => {
+        img.src = "";
+      });
+    };
+  }, [phase]);
   // Question position for the progress label/dots (reward steps excluded; during a
   // reward step we keep the last answered question's dot lit).
   const activeQuestionIndex = QUESTION_STEPS.includes(currentStep)
@@ -1643,7 +1738,10 @@ function RegisterPageContent() {
 
             {/* ── Block 2: Personalized before/after for her symptoms ─────────── */}
             {(() => {
-              const transforms = getSymptomTransforms(topProblems, 2);
+              // One symptom, not two: the trajectory chart above already carries
+              // the "it gets better" message, and a second tile is pure scroll
+              // between her and the CTA.
+              const transforms = getSymptomTransforms(topProblems, 1);
               if (transforms.length === 0) return null;
               return (
                 <motion.div
@@ -1717,54 +1815,105 @@ function RegisterPageContent() {
 
             
 
-            {/* ── Block 4: Value stack (Lisa, tracking, insights) + free bonus ── */}
+            {/* ── Block 3: The mechanism. Vision above answers "what could my life
+                look like"; this answers the question that immediately follows -
+                "how?" - with three sequenced steps and real app screenshots, so
+                she sees the product before she is ever asked to pay for it. ─── */}
+            {(() => {
+              const topSymptom = [...topProblems]
+                .sort((a, b) => (symptomSeverity[b] ?? 0) - (symptomSeverity[a] ?? 0))[0];
+              const topLabel = topSymptom
+                ? (SYMPTOM_LABELS[topSymptom] || topSymptom).toLowerCase()
+                : "your symptoms";
+              return (
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                  className="mb-5"
+                >
+                  <div className="px-1 mb-3">
+                    <h2 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight">
+                      {firstName.trim() ? `${firstName.trim()}, here's ` : "Here's "}
+                      <HighlightSweep>how we&apos;ll do it</HighlightSweep>
+                    </h2>
+                    <p className="text-xs text-[#5A5A5A] mt-1.5">
+                      Three steps, about 2 minutes a day.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {/* Step 1 - Track. Two shots: the grid she taps, and the rating
+                        sheet that follows, so the "2 minutes" claim is visible. */}
+                    <div className="rounded-2xl bg-card border-2 border-[#E8DDD9] overflow-hidden shadow-md shadow-primary/5">
+                      <div className="flex items-start gap-2.5 px-4 pt-3.5 pb-3">
+                        <span className="shrink-0 w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center">1</span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-[#3D3D3D] flex items-center gap-1.5">
+                            <Activity className="w-4 h-4 text-sky-500 shrink-0" /> Track
+                          </p>
+                          <p className="text-xs text-[#5A5A5A] leading-snug mt-0.5">
+                            Tap what you felt today - {topLabel}, sleep, mood - and how bad it was. Two minutes, done.
+                          </p>
+                        </div>
+                      </div>
+                      <ShotStage className="h-44">
+                        <PhoneShot src="/diagnosys/symptoms1.webp" alt="Tracking symptoms in the MenoLisa app" rotate={-7} className="w-[40%] -mr-4 mt-2" />
+                        <PhoneShot src="/diagnosys/symptoms2.webp" alt="Rating symptom severity in the MenoLisa app" rotate={7} delay={0.12} className="w-[40%] relative z-10" />
+                      </ShotStage>
+                    </div>
+
+                    {/* Step 2 - Understand. The payoff of step 1: she gets a read
+                        on her own data instead of just a diary. */}
+                    <div className="rounded-2xl bg-card border-2 border-[#E8DDD9] overflow-hidden shadow-md shadow-primary/5">
+                      <div className="flex items-start gap-2.5 px-4 pt-3.5 pb-3">
+                        <span className="shrink-0 w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center">2</span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-[#3D3D3D] flex items-center gap-1.5">
+                            <TrendingUp className="w-4 h-4 text-emerald-500 shrink-0" /> Understand
+                          </p>
+                          <p className="text-xs text-[#5A5A5A] leading-snug mt-0.5">
+                            Lisa reads your logs and shows you what&apos;s actually driving your {topLabel} - and what to try next.
+                          </p>
+                        </div>
+                      </div>
+                      {/* Pulled up so the crop lands on Lisa's actual read + "what
+                          you can try", not the card header. */}
+                      <ShotStage className="h-44">
+                        <PhoneShot src="/diagnosys/insights.webp" alt="A personalized insight from Lisa in the MenoLisa app" rotate={-4} className="w-[46%] -mt-[26%]" />
+                      </ShotStage>
+                    </div>
+
+                    {/* Step 3 - Ask. Removes the "what if I have a question" objection
+                        before it forms. */}
+                    <div className="rounded-2xl bg-card border-2 border-[#E8DDD9] overflow-hidden shadow-md shadow-primary/5">
+                      <div className="flex items-start gap-2.5 px-4 pt-3.5 pb-3">
+                        <span className="shrink-0 w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center">3</span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-[#3D3D3D] flex items-center gap-1.5">
+                            <MessageCircleHeart className="w-4 h-4 text-violet-500 shrink-0" /> Ask Lisa anything
+                          </p>
+                          <p className="text-xs text-[#5A5A5A] leading-snug mt-0.5">
+                            Wide awake at 2am wondering what&apos;s happening to you? Ask her. Straight answers, no waiting room.
+                          </p>
+                        </div>
+                      </div>
+                      <ShotStage className="h-44">
+                        <PhoneShot src="/diagnosys/chat.webp" alt="Chatting with Lisa in the MenoLisa app" rotate={4} className="w-[46%]" />
+                      </ShotStage>
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })()}
+
+            {/* ── Block 4: Free bonus - the personalized 8-week plan ──────────── */}
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
+              transition={{ delay: 0.22 }}
               className="mb-5"
             >
-              <div className="px-1 mb-3">
-                <h2 className="text-base font-bold text-[#3D3D3D] mb-0.5">
-                  {firstName.trim() ? `${firstName.trim()}, here's ` : "Here's "}
-                  <HighlightSweep>everything you unlock</HighlightSweep>
-                </h2>
-                <p className="text-[11px] text-[#9A9A9A]">Your 3-day free trial starts the moment you join.</p>
-              </div>
-
-              {/* Main value stack: Lisa + tracking + insights, with the charts illustration */}
-              <div
-                className="rounded-2xl overflow-hidden mb-3 bg-card border-2 border-[#E8DDD9]"
-                style={{ boxShadow: "0 0 0 2px rgba(255,116,177,0.25), 0 8px 28px rgba(255,116,177,0.12)" }}
-              >
-                <div className="bg-linear-to-br from-primary/8 via-[#ffeb76]/8 to-info/8 flex items-center justify-center py-3">
-                  <video
-                    src="/quiz/mockup_video.mp4"
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                    preload="auto"
-                    className="w-40 h-40 object-cover rounded-2xl border-2 border-white shadow-md shadow-primary/10"
-                  />
-                </div>
-                <div className="px-4 pb-4 pt-3 space-y-2">
-                  {[
-                    { Icon: MessageCircleHeart, color: "text-violet-500", bg: "bg-violet-50/80", border: "border-violet-100", title: "Lisa, your 24/7 companion", desc: "Ask her anything about your body, anytime." },
-                    { Icon: Activity, color: "text-sky-500", bg: "bg-sky-50/80", border: "border-sky-100", title: "Symptom tracking + doctor reports", desc: "Log in 2 minutes a day - she turns it into a report your doctor will read." },
-                    { Icon: TrendingUp, color: "text-emerald-500", bg: "bg-emerald-50/80", border: "border-emerald-100", title: "Personalized insights", desc: "Lisa spots the patterns behind your symptoms and what helps." },
-                  ].map(({ Icon, color, bg, border, title, desc }) => (
-                    <div key={title} className={cn("flex items-start gap-2.5 rounded-lg border px-3 py-2.5", bg, border)}>
-                      <Icon className={cn("w-4 h-4 shrink-0 mt-0.5", color)} />
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-[#3D3D3D]">{title}</p>
-                        <p className="text-[11px] text-[#5A5A5A] leading-snug mt-0.5">{desc}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
               {/* Free bonus: personalized 8-week plan - the scroll with her name */}
               <div className="rounded-2xl overflow-hidden border-2 border-dashed border-primary/40 bg-primary/5">
                 <div className="flex items-center gap-2 px-4 pt-3">
@@ -1853,11 +2002,22 @@ function RegisterPageContent() {
                   })()}
                 </div>
 
-                <div className="px-4 pb-4 pt-2">
+                <div className="px-4 pt-2">
                   <p className="text-xs text-[#5A5A5A] leading-snug">
                     Built from your 10 answers - yours free when you start your trial.
                   </p>
                 </div>
+
+                {/* The plan as it actually arrives. An unretouched inbox shot is
+                    what turns the illustrated scroll above into a real thing. */}
+                <ShotStage className="h-40 mt-3" fadeFrom="from-background">
+                  <PhoneShot
+                    src="/diagnosys/8week.webp"
+                    alt="The personalized 8-week plan email from Lisa"
+                    rotate={-3}
+                    className="w-[52%]"
+                  />
+                </ShotStage>
               </div>
             </motion.div>
 
@@ -1900,9 +2060,11 @@ function RegisterPageContent() {
               <p className="text-center text-xs font-semibold text-[#3D3D3D] mb-2">
                 Built with menopause clinicians · grounded in published research
               </p>
+              {/* Pricing reassurance ("no charge today", "cancel anytime") lives on
+                  the paywall, not here - this page's job is belief, and naming the
+                  charge two screens early just raises her guard. */}
               <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[11px] text-[#9A9A9A]">
-                <span className="flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5 text-green-600" /> No charge today</span>
-                <span className="flex items-center gap-1"><Check className="w-3.5 h-3.5 text-green-600" /> Cancel anytime</span>
+                <span className="flex items-center gap-1"><Check className="w-3.5 h-3.5 text-green-600" /> Built around your 10 answers</span>
                 <span className="flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5 text-green-600" /> Your data stays private</span>
               </div>
             </motion.div>
