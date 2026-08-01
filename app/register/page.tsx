@@ -433,8 +433,14 @@ function getSymptomPhrase(topProblems: string[]): string {
 // Diagnosis is no longer the doorstep to the paywall - the relief exercise is.
 // So diagnosis gets pure forward motion here, and getCtaCopy()'s trial +
 // guarantee line moves onto the relief CTA, where the commitment actually happens.
-function getDiagnosisForwardCopy(): { sub: string } {
-  return { sub: "One 60-second relief exercise first - then your plan." };
+function getDiagnosisForwardCopy(): { sub: React.ReactNode } {
+  return {
+    sub: (
+      <>
+        One <HighlightSweep>36-second relief exercise</HighlightSweep> first - then your plan.
+      </>
+    ),
+  };
 }
 
 const REFERRAL_STORAGE_KEY = "pending_referral_code";
@@ -1859,7 +1865,7 @@ function RegisterPageContent() {
                       </div>
                       <ShotStage className="h-44">
                         <PhoneShot src="/diagnosys/symptoms1.webp" alt="Tracking symptoms in the MenoLisa app" rotate={-7} className="w-[40%] -mr-4 mt-2" />
-                        <PhoneShot src="/diagnosys/symptoms2.webp" alt="Rating symptom severity in the MenoLisa app" rotate={7} delay={0.12} className="w-[40%] relative z-10" />
+                        <PhoneShot src="/diagnosys/symptoms2.webp" alt="Rating symptom severity in the MenoLisa app" rotate={7} delay={0.12} className="w-[40%]" />
                       </ShotStage>
                     </div>
 
