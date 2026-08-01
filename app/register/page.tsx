@@ -349,10 +349,17 @@ function getOfferPromise(goals: string[]): string {
 // exhale is longer than the inhale on purpose - that asymmetry is what shifts
 // the nervous system, and it's the pattern clinicians hand out for hot flashes.
 // A full cycle is 12s (in 4, hold 2, out 6) - hence the tool's name below.
+//
+// `ease` shapes each step so the circle moves like lungs, not like a slider:
+//   in   - fills fast at first, then eases into the top as the chest resists
+//   hold - drifts back a hair (1.35 -> 1.32); a real hold settles, it doesn't freeze
+//   out  - hesitates, releases, then lands softly at rest
+// `glow` is the halo's opacity for that step, so the blur breathes with her
+// instead of pulsing on its own unrelated loop.
 const BREATH_SEQUENCE = [
-  { key: "in", label: "Breathe in", seconds: 4, scale: 1.35 },
-  { key: "hold", label: "Hold", seconds: 2, scale: 1.35 },
-  { key: "out", label: "Breathe out", seconds: 6, scale: 1 },
+  { key: "in", label: "Breathe in", seconds: 4, scale: 1.35, glow: 0.72, ease: [0.22, 0.45, 0.32, 1] },
+  { key: "hold", label: "Hold", seconds: 2, scale: 1.32, glow: 0.66, ease: [0.4, 0, 0.6, 1] },
+  { key: "out", label: "Breathe out", seconds: 6, scale: 1, glow: 0.32, ease: [0.5, 0.03, 0.35, 1] },
 ] as const;
 const BREATH_ROUNDS = 3;
 const BREATH_CYCLE_SECONDS = BREATH_SEQUENCE.reduce((sum, b) => sum + b.seconds, 0); // 12
@@ -568,6 +575,55 @@ function CountUpNumber({
     <span className={className}>
       {display}
       {suffix}
+    </span>
+  );
+}
+
+// Marker-pen sweep behind a word - the same highlight the diagnosis headline
+// uses, reused wherever a line carries the offer. Pass `active` to drive it from
+// a timer; leave it off and it sweeps when the line scrolls into view.
+function HighlightSweep({
+  children,
+  active,
+  variant = "primary",
+}: {
+  children: React.ReactNode;
+  active?: boolean;
+  variant?: "primary" | "green";
+}) {
+  const prefersReducedMotion = useReducedMotion();
+  const controlled = active !== undefined;
+  const on = !prefersReducedMotion && (controlled ? active : true);
+  const sweep = {
+    className: cn(
+      "absolute inset-0 rounded-sm pointer-events-none px-0.5",
+      variant === "green" ? "bg-green-500/20" : "bg-primary/20"
+    ),
+  };
+
+  return (
+    <span className="relative inline-block">
+      <span className={cn("relative z-10", variant === "green" ? "text-green-700" : "text-primary")}>
+        {children}
+      </span>
+      {controlled ? (
+        <motion.span
+          {...sweep}
+          initial={{ scaleX: 0, transformOrigin: "left" }}
+          animate={on ? { scaleX: 1 } : { scaleX: 0 }}
+          transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
+          style={{ zIndex: 0, willChange: on ? "transform" : "auto" }}
+        />
+      ) : (
+        <motion.span
+          {...sweep}
+          initial={{ scaleX: 0, transformOrigin: "left" }}
+          whileInView={on ? { scaleX: 1 } : { scaleX: 0 }}
+          viewport={{ once: true, amount: 0.8 }}
+          transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1], delay: 0.15 }}
+          style={{ zIndex: 0 }}
+        />
+      )}
     </span>
   );
 }
@@ -1536,20 +1592,7 @@ function RegisterPageContent() {
             >
               <h1 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight">
                 {getOfferPromise(goal)} in{" "}
-                <span className="relative inline-block">
-                  <span className="relative z-10 text-primary">8 weeks</span>
-                  <motion.span
-                    className="absolute inset-0 bg-primary/20 rounded-sm pointer-events-none px-0.5"
-                    initial={{ scaleX: 0, transformOrigin: "left" }}
-                    animate={
-                      diagnosisHighlight && !prefersReducedMotion
-                        ? { scaleX: 1 }
-                        : { scaleX: 0 }
-                    }
-                    transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
-                    style={{ zIndex: 0, willChange: diagnosisHighlight ? "transform" : "auto" }}
-                  />
-                </span>.
+                <HighlightSweep active={diagnosisHighlight}>8 weeks</HighlightSweep>.
               </h1>
               <p className="text-xs text-[#5A5A5A] mt-1.5">
                 Here&apos;s your plan to take
@@ -1609,12 +1652,10 @@ function RegisterPageContent() {
                   transition={{ delay: 0.1 }}
                   className="mb-5"
                 >
-                  <h2 className="text-base font-bold text-[#3D3D3D] mb-0.5">
-                    {firstName.trim() ? `${firstName.trim()}, what taking control can look like` : "What taking control can look like"}
+                  <h2 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight mb-3">
+                    {firstName.trim() ? `${firstName.trim()}, what ` : "What "}
+                    <HighlightSweep>taking control</HighlightSweep> can look like
                   </h2>
-                  <p className="text-xs text-[#5A5A5A] mb-3">
-                    From where you are now to where understanding your patterns can take you - for the symptoms you shared.
-                  </p>
 
                   <div className="space-y-3">
                     {transforms.map((t, i) => (
@@ -1685,7 +1726,8 @@ function RegisterPageContent() {
             >
               <div className="px-1 mb-3">
                 <h2 className="text-base font-bold text-[#3D3D3D] mb-0.5">
-                  {firstName.trim() ? `${firstName.trim()}, here's everything you unlock` : "Here's everything you unlock"}
+                  {firstName.trim() ? `${firstName.trim()}, here's ` : "Here's "}
+                  <HighlightSweep>everything you unlock</HighlightSweep>
                 </h2>
                 <p className="text-[11px] text-[#9A9A9A]">Your 3-day free trial starts the moment you join.</p>
               </div>
@@ -1812,8 +1854,7 @@ function RegisterPageContent() {
                 </div>
 
                 <div className="px-4 pb-4 pt-2">
-                  <h3 className="text-sm font-bold text-[#3D3D3D]">Your personalized 8-week plan</h3>
-                  <p className="text-xs text-[#5A5A5A] leading-snug mt-0.5">
+                  <p className="text-xs text-[#5A5A5A] leading-snug">
                     Built from your 10 answers - yours free when you start your trial.
                   </p>
                 </div>
@@ -1830,20 +1871,23 @@ function RegisterPageContent() {
               className="relative rounded-2xl border-2 border-green-300 bg-green-50 p-4 mb-5 overflow-hidden"
               style={{ boxShadow: "0 0 0 2px rgba(22,163,74,0.12), 0 8px 28px rgba(22,163,74,0.12)" }}
             >
-              <div className="flex items-center gap-2 mb-2">
-                <ShieldCheck className="w-6 h-6 text-green-600 shrink-0" />
-                <h2 className="text-base font-bold text-green-800">The 80+ Guarantee</h2>
+              <div className="flex flex-col items-center text-center">
+                <ShieldCheck className="w-12 h-12 text-green-600 shrink-0 mb-2" />
+                <h2 className="text-base font-bold text-green-800 mb-2">The 80+ Guarantee</h2>
+                <p className="text-sm text-[#3D3D3D] leading-relaxed">
+                  {firstName.trim() ? `${firstName.trim()}, follow` : "Follow"}{" "}your {" "}
+                  <b>personalized 8-week plan</b> and if you don&apos;t reach a score of{" "}
+                  <span className="font-bold text-green-700">80+</span>, we&apos;ll{" "}
+                  <HighlightSweep variant="green">
+                    <b>refund you</b>
+                  </HighlightSweep>{" "}
+                  in full.
+                </p>
+                <p className="text-xs text-[#5A5A5A] leading-snug mt-2">
+                  All we ask is that you use the plan we built for you. No risk - the only way to
+                  lose is to not start.
+                </p>
               </div>
-              <p className="text-sm text-[#3D3D3D] leading-relaxed">
-                {firstName.trim() ? `${firstName.trim()}, follow` : "Follow"}{" "}your {" "}
-                <b>personalized 8-week plan</b> and if you don&apos;t reach a score of{" "}
-                <span className="font-bold text-green-700">80+</span>, we&apos;ll <b>refund you</b> in
-                full.
-              </p>
-              <p className="text-xs text-[#5A5A5A] leading-snug mt-2">
-                All we ask is that you use the plan we built for you. No risk - the only way to
-                lose is to not start.
-              </p>
             </motion.div>
 
             {/* ── Trust strip ───────────────────────────────────────────────── */}
@@ -2003,8 +2047,22 @@ function RegisterPageContent() {
                       <motion.div
                         aria-hidden
                         className="absolute w-36 h-36 sm:w-40 sm:h-40 rounded-full bg-primary/30 blur-2xl"
-                        animate={{ scale: [0.9, 1.15, 0.9], opacity: [0.4, 0.7, 0.4] }}
-                        transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+                        animate={
+                          reliefStage === "running"
+                            ? {
+                                scale: BREATH_SEQUENCE[breathStep].scale * 1.06,
+                                opacity: BREATH_SEQUENCE[breathStep].glow,
+                              }
+                            : { scale: [0.9, 1.15, 0.9], opacity: [0.4, 0.7, 0.4] }
+                        }
+                        transition={
+                          reliefStage === "running"
+                            ? {
+                                duration: BREATH_SEQUENCE[breathStep].seconds,
+                                ease: [...BREATH_SEQUENCE[breathStep].ease],
+                              }
+                            : { duration: 2.4, repeat: Infinity, ease: "easeInOut" }
+                        }
                       />
                     )}
                     <motion.button
@@ -2021,19 +2079,19 @@ function RegisterPageContent() {
                       transition={
                         prefersReducedMotion
                           ? { duration: 0 }
-                          : {
-                              duration:
-                                reliefStage === "running"
-                                  ? BREATH_SEQUENCE[breathStep].seconds
-                                  : 0.4,
-                              ease: "easeInOut",
-                            }
+                          : reliefStage === "running"
+                            ? {
+                                duration: BREATH_SEQUENCE[breathStep].seconds,
+                                ease: [...BREATH_SEQUENCE[breathStep].ease],
+                              }
+                            : { duration: 0.4, ease: "easeOut" }
                       }
                       className="relative w-36 h-36 sm:w-40 sm:h-40 rounded-full flex flex-col items-center justify-center gap-1 disabled:cursor-default"
                       style={{
                         background:
                           "linear-gradient(135deg, rgba(255,116,177,0.22) 0%, rgba(255,235,118,0.22) 50%, rgba(101,219,255,0.22) 100%)",
                         border: "2px solid rgba(255,116,177,0.35)",
+                        willChange: reliefStage === "running" ? "transform" : "auto",
                       }}
                     >
                       <AnimatePresence mode="wait">
