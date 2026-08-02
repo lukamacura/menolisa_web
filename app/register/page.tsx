@@ -1552,6 +1552,7 @@ function RegisterPageContent() {
       phase === "results" ||
       phase === "diagnosis" ||
       phase === "relief" ||
+      phase === "nutrition" ||
       phase === "paywall" ||
       phase === "download"
     ) {
