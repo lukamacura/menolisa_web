@@ -54,6 +54,7 @@ type Step =
   | "q1_age"
   | "q_height"
   | "q_weight"
+  | "q_fitness"
   | "q2_here_for"
   | "q3_goals"
   | "q4_symptoms"
@@ -72,6 +73,7 @@ const STEPS: Step[] = [
   "reward_symptoms",
   "q_height",
   "q_weight",
+  "q_fitness",
   "q5_hrt",
   "q6_how_long",
   "reward_progress",
@@ -179,6 +181,14 @@ const HRT_OPTIONS = [
   { id: "never", label: "I have never taken HRT", image: "/quiz/hrt/never.png" },
 ];
 
+// Asked right after height/weight so the whole body block sits together, and it
+// feeds the movement side of her plan (plus the "Lose weight" goal).
+const FITNESS_OPTIONS = [
+  { id: "beginner", label: "Beginner", image: "/quiz/fitness/beginner.png" },
+  { id: "medium", label: "Medium", image: "/quiz/fitness/medium.png" },
+  { id: "advanced", label: "Advanced", image: "/quiz/fitness/advanced.png" },
+];
+
 const QUALIFIER_OPTIONS = [
   { id: "ready_to_act", label: "Ready to start", image: "/quiz/readiness/ready.png" },
   { id: "exploring", label: "Still figuring it out", image: "/quiz/readiness/figuring.png" },
@@ -216,6 +226,7 @@ const STEP_IMAGES: Partial<Record<Step, string[]>> = {
   q3_goals: GOAL_OPTIONS.map((o) => o.image),
   reward_symptoms: ["/quiz/rewards/reward1.png"],
   reward_progress: ["/quiz/rewards/reward2.png"],
+  q_fitness: FITNESS_OPTIONS.map((o) => o.image),
   q5_hrt: HRT_OPTIONS.map((o) => o.image),
   q6_how_long: TIMING_OPTIONS.map((o) => o.image),
   q7_qualifier: QUALIFIER_OPTIONS.map((o) => o.image),
@@ -883,6 +894,7 @@ function RegisterPageContent() {
   const [weightUnit, setWeightUnit] = useState<"kg" | "lb">("kg");
   const [weightKg, setWeightKg] = useState<string>("");
   const [weightLb, setWeightLb] = useState<string>("");
+  const [fitnessLevel, setFitnessLevel] = useState<string>("");
   const [hereFor, setHereFor] = useState<string>("");
   const [goal, setGoal] = useState<string[]>([]);
   // id -> severity (1=A little, 2=Quite a bit, 3=Extremely). Absent = "Not at all".
@@ -1039,6 +1051,8 @@ function RegisterPageContent() {
           return bodyMetrics.height_cm !== null;
         case "q_weight":
           return bodyMetrics.weight_kg !== null;
+        case "q_fitness":
+          return fitnessLevel !== "";
         case "q2_here_for":
           return hereFor !== "";
         case "q3_goals":
@@ -1060,7 +1074,7 @@ function RegisterPageContent() {
           return false;
       }
     },
-    [ageBand, bodyMetrics, hereFor, goal, topProblems, hrtStatus, timing, qualifier, firstName]
+    [ageBand, bodyMetrics, fitnessLevel, hereFor, goal, topProblems, hrtStatus, timing, qualifier, firstName]
   );
 
   // Save quiz answers to sessionStorage (cleared when tab closes)
@@ -1080,9 +1094,10 @@ function RegisterPageContent() {
       weight_kg: bodyMetrics.weight_kg,
       height_unit: bodyMetrics.height_unit,
       weight_unit: bodyMetrics.weight_unit,
+      fitness_level: fitnessLevel || null,
     };
     sessionStorage.setItem("pending_quiz_answers", JSON.stringify(quizAnswers));
-  }, [ageBand, topProblems, timing, triedOptions, hrtStatus, goal, qualifier, hereFor, firstName, bodyMetrics]);
+  }, [ageBand, topProblems, timing, triedOptions, hrtStatus, goal, qualifier, hereFor, firstName, bodyMetrics, fitnessLevel]);
 
   const goNext = useCallback(() => {
     if (!stepIsAnswered(currentStep)) return;
@@ -1143,6 +1158,7 @@ function RegisterPageContent() {
         weight_kg: bodyMetrics.weight_kg,
         height_unit: bodyMetrics.height_unit,
         weight_unit: bodyMetrics.weight_unit,
+        fitness_level: fitnessLevel || null,
       };
 
       // /quiz1 hand-off: prefer the quiz1-derived profile when present.
@@ -1191,7 +1207,7 @@ function RegisterPageContent() {
     } finally {
       setSavingQuiz(false);
     }
-  }, [ageBand, topProblems, timing, triedOptions, hrtStatus, goal, qualifier, hereFor, firstName, bodyMetrics, ref, fromQuiz1, router]);
+  }, [ageBand, topProblems, timing, triedOptions, hrtStatus, goal, qualifier, hereFor, firstName, bodyMetrics, fitnessLevel, ref, fromQuiz1, router]);
 
   const toggleProblem = (problemId: string) => {
     setSymptomSeverity((prev) => {
@@ -2946,6 +2962,52 @@ function RegisterPageContent() {
                     <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                       {weightUnit}
                     </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Fitness level (image grid, same style as Q5 HRT) */}
+              {currentStep === "q_fitness" && (
+                <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                  <div className="shrink-0">
+                    <h2 className="text-lg sm:text-xl font-bold mb-0.5">
+                      How would you describe your fitness level?
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      There&apos;s no wrong answer — it just sets your starting point
+                    </p>
+                  </div>
+                  <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-2 min-h-0">
+                    {FITNESS_OPTIONS.map((option) => {
+                      const isSelected = fitnessLevel === option.id;
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => setFitnessLevel(option.id)}
+                          className={`flex flex-col min-h-0 rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer ${
+                            isSelected
+                              ? "ring-2 ring-primary shadow-lg shadow-primary/30"
+                              : "hover:opacity-90"
+                          }`}
+                        >
+                          <div className="relative flex-1 min-h-0">
+                            <Image
+                              src={option.image}
+                              alt={option.label}
+                              fill
+                              sizes="50vw"
+                              className="object-cover"
+                            />
+                            {isSelected && <div className="absolute inset-0 bg-primary/15" />}
+                          </div>
+                          <div className={`${TILE_FOOTER_BASE} justify-between gap-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
+                            <span className={TILE_LABEL}>{option.label}</span>
+                            <ArrowRight className="w-3.5 h-3.5 shrink-0 text-white/70" />
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}

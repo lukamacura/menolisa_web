@@ -665,6 +665,17 @@ export async function POST(req: NextRequest) {
         profileParts.push(`Doctor status: ${doctorLabels[userProfile.doctor_status] || userProfile.doctor_status}`);
       }
 
+      if (userProfile.fitness_level) {
+        const fitnessLabels: Record<string, string> = {
+          beginner: "Beginner (little to no regular exercise)",
+          medium: "Medium (moves regularly, moderate fitness)",
+          advanced: "Advanced (trains consistently, fit)",
+        };
+        profileParts.push(
+          `Fitness level: ${fitnessLabels[userProfile.fitness_level] || userProfile.fitness_level}`
+        );
+      }
+
       {
         const goalLabels: Record<string, string> = {
           sleep_through_night: "Sleep through the night",

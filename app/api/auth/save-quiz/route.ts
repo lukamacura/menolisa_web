@@ -31,6 +31,7 @@ const QuizSchema = z.object({
   weight_kg: z.number().int().min(20).max(500).nullable().optional(),
   height_unit: z.enum(["cm", "ft"]).nullable().optional(),
   weight_unit: z.enum(["kg", "lb"]).nullable().optional(),
+  fitness_level: z.enum(["beginner", "medium", "advanced"]).nullable().optional(),
 });
 
 const BodySchema = z.object({
@@ -81,6 +82,7 @@ export async function POST(request: NextRequest) {
       weight_kg: quizAnswers.weight_kg ?? null,
       height_unit: quizAnswers.height_unit ?? null,
       weight_unit: quizAnswers.weight_unit ?? null,
+      fitness_level: quizAnswers.fitness_level ?? null,
     };
 
     const { data: existingProfile } = await supabaseAdmin
