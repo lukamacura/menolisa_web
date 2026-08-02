@@ -29,6 +29,16 @@ import {
   Wind,
   PartyPopper,
   Lock,
+  Salad,
+  Egg,
+  Beef,
+  Wheat,
+  Apple,
+  Timer,
+  Hourglass,
+  Ban,
+  Droplets,
+  Pill,
 } from "lucide-react";
 import OtpForm from "@/components/auth/OtpForm";
 import { PaywallView } from "@/components/PaywallView";
@@ -259,7 +269,7 @@ function deriveSeverity(
   return "mild";
 }
 
-type Phase = "quiz" | "calculating" | "email" | "results" | "diagnosis" | "relief" | "paywall" | "download";
+type Phase = "quiz" | "calculating" | "email" | "results" | "diagnosis" | "relief" | "nutrition" | "paywall" | "download";
 
 const APP_STORE_URL = "https://apps.apple.com/de/app/menolisa/id6761130271?l=en-GB";
 const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.menolisa.app&pcampaignid=web_share";
@@ -387,28 +397,38 @@ const BREATH_ROUNDS = 3;
 const BREATH_CYCLE_SECONDS = BREATH_SEQUENCE.reduce((sum, b) => sum + b.seconds, 0); // 12
 const BREATH_TOTAL_SECONDS = BREATH_CYCLE_SECONDS * BREATH_ROUNDS; // 36
 
-// ─── Relief reward: the exercise becomes tool 1 of 3 in her plan ────────────
-// She finishes holding something she keeps, and seeing what's still locked.
-// The locked two are the actual app sections (exercises + knowledge), not a
-// generic feature list - every entry here has to exist in the product.
-const RELIEF_TOOL_NAME = "Breathing exercise";
+// ─── The toolkit: one ordered list, unlocked one entry at a time ────────────
+// Both app-taste steps render this same stack - breathing unlocks #1, the
+// nutrition checklist unlocks #2 - so she watches the bar move 25% -> 50% and
+// arrives at the paywall halfway through a set she started herself.
+//
+// Entries 1-3 are the three daily pillars of the habit tracker (relaxation,
+// nutrition, movement); #4 is the layer around them. Every entry has to exist
+// in the product - this is a preview, not a feature list.
 const RELIEF_TOOLKIT_SIZE = 4;
+// Also the caption under the breathing circle, so the tool is named the same
+// before she uses it and after she keeps it.
+const RELIEF_TOOL_NAME = "Breathing exercise";
 
 type ReliefTool = { name: string; use: string };
 
-function getLockedTools(topProblems: string[]): ReliefTool[] {
+function getToolkit(topProblems: string[]): ReliefTool[] {
   return [
+    {
+      name: RELIEF_TOOL_NAME,
+      use: getUnlockedToolUse(topProblems),
+    },
+    {
+      name: "Nutrition checklist",
+      use: "The 9 daily habits that steady your hormones",
+    },
     {
       name: `Exercises for ${getSymptomPhrase(topProblems)}`,
       use: "Targeted routines for what you picked",
     },
     {
-      name: "Symptoms tracking",
-      use: "Log how you feel, spot the patterns",
-    },
-    {
-      name: "Knowledge",
-      use: "Understand what's happening, and why",
+      name: "Tracking & knowledge",
+      use: "Log how you feel, understand why",
     },
   ];
 }
@@ -442,14 +462,150 @@ function getSymptomPhrase(topProblems: string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
-// Diagnosis is no longer the doorstep to the paywall - the relief exercise is.
-// So diagnosis gets pure forward motion here, and getCtaCopy()'s trial +
-// guarantee line moves onto the relief CTA, where the commitment actually happens.
+// Neither diagnosis nor relief is the doorstep to the paywall any more - the
+// nutrition checklist is. Both of these steps get pure forward motion, and
+// getCtaCopy()'s trial + guarantee line lives on the nutrition CTA, where the
+// commitment actually happens. Each promises the next step is short, because
+// the only thing standing between her and the plan now is two small screens.
 function getDiagnosisForwardCopy(): { sub: React.ReactNode } {
   return {
     sub: (
       <>
         One <HighlightSweep>36-second relief exercise</HighlightSweep> first - then your plan.
+      </>
+    ),
+  };
+}
+
+function getReliefForwardCopy(): { sub: React.ReactNode } {
+  return {
+    sub: (
+      <>
+        One <HighlightSweep>20-second check</HighlightSweep> - then your plan.
+      </>
+    ),
+  };
+}
+
+// ─── Nutrition checklist: the second app taste ──────────────────────────────
+// She ticks what she already did today. The breathing exercise gave her a win;
+// this one shows her the standard, measures her against it, and then removes
+// the shame - the gap is structural, not personal. Ticking it is also the
+// fastest way to teach what a hormone-steady day looks like: a product demo
+// wearing a question. Nothing here is persisted - it's a taste, not intake.
+//
+// Array order is priority order (highest-leverage habit first), because the
+// reward screen reuses it to pick her "first 3 swaps" from what she left blank.
+// IDs are the contract with the mobile habit tracker - see docs/marketing/app_taste/pillars.md.
+type NutritionItem = {
+  id: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+};
+type NutritionGroup = {
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  items: NutritionItem[];
+};
+
+const NUTRITION_GROUPS: NutritionGroup[] = [
+  {
+    title: "Meals & nutrients",
+    icon: Salad,
+    items: [
+      { id: "fat_protein_breakfast", label: "Fat & protein for breakfast", icon: Egg },
+      { id: "fat_protein_meals", label: "Fat & protein with every meal", icon: Beef },
+      { id: "high_fiber", label: "Added high-fiber foods", icon: Wheat },
+      { id: "low_gi_fruit", label: "Low-glycemic fruits only", icon: Apple },
+    ],
+  },
+  {
+    title: "Timing & fasting",
+    icon: Timer,
+    items: [
+      { id: "gap_5h", label: "5 hours between meals", icon: Timer },
+      { id: "fast_12h", label: "12-hour fasting window", icon: Hourglass },
+      { id: "no_snacking", label: "No snacking between meals", icon: Ban },
+    ],
+  },
+  {
+    title: "Hydration & supplements",
+    icon: Droplets,
+    items: [
+      { id: "water_6", label: "Drank 6+ glasses of water", icon: Droplets },
+      { id: "supplements", label: "Daily supplements taken", icon: Pill },
+    ],
+  },
+];
+
+const NUTRITION_ITEMS: NutritionItem[] = NUTRITION_GROUPS.flatMap((g) => g.items);
+const NUTRITION_TOTAL = NUTRITION_ITEMS.length; // 9
+
+// Revealed under the supplements row once it's ticked. Deliberately excluded
+// from the score - they're here to name the three that matter, not to inflate
+// her count.
+const SUPPLEMENT_OPTIONS = [
+  { id: "omega3", label: "Omega-3" },
+  { id: "magnesium", label: "Magnesium" },
+  { id: "d3k2", label: "Vitamin D3 + K2" },
+];
+
+// Every tier has to land on "you need the plan" - but for opposite reasons, and
+// none of them may shame her. Low scores get easy wins; high scores get the
+// reframe that matters most, because a woman already doing 8 of 9 has concluded
+// she's tried everything. Naming her own symptoms back to her turns her
+// diligence into the argument: effort was never the missing piece.
+function getNutritionVerdict(
+  count: number,
+  name: string,
+  topProblems: string[]
+): { headline: string; body: React.ReactNode } {
+  const suffix = name ? `, ${name}` : "";
+  const missing = NUTRITION_TOTAL - count;
+
+  if (count === 0) {
+    return {
+      headline: `Clean slate${suffix}.`,
+      body: (
+        <>
+          Nothing on this list yet - which means all {NUTRITION_TOTAL} of these are easy wins still
+          sitting on the table. Most women start exactly here.
+        </>
+      ),
+    };
+  }
+  if (count <= 3) {
+    return {
+      headline: `${count} of ${NUTRITION_TOTAL}${suffix}.`,
+      body: (
+        <>
+          You&apos;re already doing {count} without anyone telling you to. The other {missing} are
+          the ones that move insulin, estrogen and sleep - and they&apos;re what Lisa hands you, one
+          day at a time.
+        </>
+      ),
+    };
+  }
+  if (count <= 6) {
+    return {
+      headline: `${count} of ${NUTRITION_TOTAL} - over halfway.`,
+      body: (
+        <>
+          You&apos;re not doing this wrong, and you&apos;re not lazy. You&apos;re missing{" "}
+          <span className="font-bold text-[#3D3D3D]">structure, not effort</span>. That&apos;s the
+          part we build for you.
+        </>
+      ),
+    };
+  }
+  return {
+    headline: `${count} of ${NUTRITION_TOTAL}. You're doing almost everything right.`,
+    body: (
+      <>
+        And you still have{" "}
+        <span className="font-bold text-[#3D3D3D]">{getSymptomPhrase(topProblems)}</span>. That&apos;s
+        the proof this was never about willpower - your hormones changed the rules, so your plan has
+        to change with them.
       </>
     ),
   };
@@ -656,6 +812,103 @@ function HighlightSweep({
   );
 }
 
+// The reward stack both app-taste steps end on: what she keeps, then what she
+// doesn't have yet, then how far through the set she is. Felt first, read
+// second. The bar animates *from* the previous state rather than from zero, so
+// on the second step she sees it physically move 25% -> 50%.
+function ToolkitStack({
+  unlockedCount,
+  topProblems,
+}: {
+  unlockedCount: number;
+  topProblems: string[];
+}) {
+  const prefersReducedMotion = useReducedMotion();
+  const toolkit = getToolkit(topProblems);
+  const unlocked = toolkit.slice(0, unlockedCount);
+  const locked = toolkit.slice(unlockedCount);
+
+  return (
+    <div className="w-full max-w-xs space-y-2">
+      {unlocked.map((tool, i) => (
+        <motion.div
+          key={tool.name}
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={
+            prefersReducedMotion
+              ? { duration: 0 }
+              : { type: "spring", stiffness: 260, damping: 16, delay: 0.55 + i * 0.09 }
+          }
+          className="flex items-start gap-3 rounded-2xl bg-primary/5 border-2 border-primary/30 px-4 py-3 text-left"
+        >
+          <div className="mt-0.5 w-6 h-6 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+            <Check className="w-3.5 h-3.5 text-primary" strokeWidth={3} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-[#3D3D3D] leading-tight">{tool.name}</p>
+            <p className="text-xs text-[#5A5A5A] leading-snug">{tool.use}</p>
+            <p className="text-[11px] font-semibold text-primary mt-0.5">Yours to keep</p>
+          </div>
+        </motion.div>
+      ))}
+
+      {/* Locked stack, fading out at the bottom so it reads as "there's more". */}
+      <div className="relative space-y-2">
+        {locked.map((tool, i) => (
+          <motion.div
+            key={tool.name}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.7 + i * 0.09, duration: 0.35 }}
+            className="flex items-center gap-3 rounded-2xl border border-foreground/10 bg-foreground/[0.03] px-4 py-2.5 text-left"
+          >
+            <div className="w-6 h-6 rounded-full bg-foreground/5 flex items-center justify-center shrink-0">
+              <Lock className="w-3.5 h-3.5 text-[#9A9A9A]" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[#8A8A8A] leading-tight truncate">
+                {tool.name}
+              </p>
+              <p className="text-[11px] text-[#B0B0B0] leading-snug truncate">{tool.use}</p>
+            </div>
+          </motion.div>
+        ))}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-9 bg-linear-to-t from-background to-transparent"
+        />
+      </div>
+
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 1, duration: 0.4 }}
+        className="pt-1 space-y-1.5"
+      >
+        <div className="flex items-baseline justify-between text-[11px]">
+          <span className="font-semibold text-[#3D3D3D]">
+            {unlockedCount} of {RELIEF_TOOLKIT_SIZE} unlocked
+          </span>
+          <span className="text-[#9A9A9A]">
+            +{RELIEF_TOOLKIT_SIZE - unlockedCount} more in your plan
+          </span>
+        </div>
+        <div className="h-1.5 w-full rounded-full bg-primary/15 overflow-hidden">
+          <motion.div
+            className="h-full rounded-full bg-primary"
+            initial={{ width: `${((unlockedCount - 1) / RELIEF_TOOLKIT_SIZE) * 100}%` }}
+            animate={{ width: `${(unlockedCount / RELIEF_TOOLKIT_SIZE) * 100}%` }}
+            transition={
+              prefersReducedMotion ? { duration: 0 } : { delay: 1.05, duration: 0.7, ease: "easeOut" }
+            }
+          />
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 // A real app screenshot shown as physical evidence: phone-framed, tilted a few
 // degrees and cropped by its stage so it reads as a photo of the product rather
 // than a flat asset. Always paired with <ShotStage />, which does the clipping.
@@ -755,9 +1008,9 @@ function RegisterPageContent() {
   const [phase, setPhase] = useState<Phase>(() => {
     const phaseParam = searchParams.get("phase");
     if (phaseParam === "download" || phaseParam === "paywall") return phaseParam;
-    // Dev-only: preview the diagnosis / relief steps directly without finishing the quiz.
+    // Dev-only: preview the diagnosis / relief / nutrition steps directly without finishing the quiz.
     if (
-      (phaseParam === "diagnosis" || phaseParam === "relief") &&
+      (phaseParam === "diagnosis" || phaseParam === "relief" || phaseParam === "nutrition") &&
       process.env.NODE_ENV === "development"
     ) {
       return phaseParam;
@@ -825,6 +1078,30 @@ function RegisterPageContent() {
   const startRelief = useCallback(() => {
     setReliefElapsed(0);
     setReliefStage("running");
+  }, []);
+
+  // Nutrition checklist (phase === "nutrition"), the second app taste. Same rule
+  // as the relief stage: once she's seen the verdict, coming back from the
+  // paywall returns her to it rather than making her tick the list again.
+  const [nutritionStage, setNutritionStage] = useState<"checklist" | "done">("checklist");
+  const [nutritionDone, setNutritionDone] = useState<string[]>([]);
+  // Sub-selection under the supplements row. Never counted - see SUPPLEMENT_OPTIONS.
+  const [supplementsTaken, setSupplementsTaken] = useState<string[]>([]);
+
+  const toggleNutritionItem = useCallback((id: string) => {
+    setNutritionDone((prev) => {
+      const on = prev.includes(id);
+      // Un-ticking supplements drops the chips with it, so hidden state can't
+      // linger behind a row she's since cleared.
+      if (on && id === "supplements") setSupplementsTaken([]);
+      return on ? prev.filter((x) => x !== id) : [...prev, id];
+    });
+  }, []);
+
+  const toggleSupplement = useCallback((id: string) => {
+    setSupplementsTaken((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
   }, []);
 
   // Preload the next step's images (and prewarm the very first step on mount) so
@@ -915,9 +1192,6 @@ function RegisterPageContent() {
     () => Object.values(symptomSeverity).reduce((a, b) => a + b, 0),
     [symptomSeverity]
   );
-  // The three still-locked tools on the relief reward screen, picked from her symptoms.
-  const reliefLockedTools = useMemo(() => getLockedTools(topProblems), [topProblems]);
-
   // Normalized body metrics (canonical cm/kg) derived from the per-unit inputs.
   const bodyMetrics = useMemo(() => {
     let height_cm: number | null = null;
@@ -2398,98 +2672,16 @@ function RegisterPageContent() {
                     </p>
                   </motion.div>
 
-                  {/* Tool 1 of 12: what she keeps, then what she doesn't have yet. */}
-                  <div className="w-full max-w-xs space-y-2">
-                    <motion.div
-                      initial={{ scale: 0.9, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={
-                        prefersReducedMotion
-                          ? { duration: 0 }
-                          : { type: "spring", stiffness: 260, damping: 16, delay: 0.55 }
-                      }
-                      className="flex items-start gap-3 rounded-2xl bg-primary/5 border-2 border-primary/30 px-4 py-3 text-left"
-                    >
-                      <div className="mt-0.5 w-6 h-6 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
-                        <Check className="w-3.5 h-3.5 text-primary" strokeWidth={3} />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold text-[#3D3D3D] leading-tight">
-                          {RELIEF_TOOL_NAME}
-                        </p>
-                        <p className="text-xs text-[#5A5A5A] leading-snug">
-                          {getUnlockedToolUse(topProblems)}
-                        </p>
-                        <p className="text-[11px] font-semibold text-primary mt-0.5">
-                          Yours to keep
-                        </p>
-                      </div>
-                    </motion.div>
-
-                    {/* Locked stack, fading out at the bottom so it reads as "there's more". */}
-                    <div className="relative space-y-2">
-                      {reliefLockedTools.map((tool, i) => (
-                        <motion.div
-                          key={tool.name}
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: 0.7 + i * 0.09, duration: 0.35 }}
-                          className="flex items-center gap-3 rounded-2xl border border-foreground/10 bg-foreground/[0.03] px-4 py-2.5 text-left"
-                        >
-                          <div className="w-6 h-6 rounded-full bg-foreground/5 flex items-center justify-center shrink-0">
-                            <Lock className="w-3.5 h-3.5 text-[#9A9A9A]" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-[#8A8A8A] leading-tight truncate">
-                              {tool.name}
-                            </p>
-                            <p className="text-[11px] text-[#B0B0B0] leading-snug truncate">
-                              {tool.use}
-                            </p>
-                          </div>
-                        </motion.div>
-                      ))}
-                      <div
-                        aria-hidden
-                        className="pointer-events-none absolute inset-x-0 bottom-0 h-9 bg-linear-to-t from-background to-transparent"
-                      />
-                    </div>
-
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 1, duration: 0.4 }}
-                      className="pt-1 space-y-1.5"
-                    >
-                      <div className="flex items-baseline justify-between text-[11px]">
-                        <span className="font-semibold text-[#3D3D3D]">
-                          1 of {RELIEF_TOOLKIT_SIZE} unlocked
-                        </span>
-                        <span className="text-[#9A9A9A]">
-                          +{RELIEF_TOOLKIT_SIZE - 1} more in your plan
-                        </span>
-                      </div>
-                      <div className="h-1.5 w-full rounded-full bg-primary/15 overflow-hidden">
-                        <motion.div
-                          className="h-full rounded-full bg-primary"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${(1 / RELIEF_TOOLKIT_SIZE) * 100}%` }}
-                          transition={
-                            prefersReducedMotion
-                              ? { duration: 0 }
-                              : { delay: 1.05, duration: 0.7, ease: "easeOut" }
-                          }
-                        />
-                      </div>
-                    </motion.div>
-                  </div>
+                  {/* Tool 1 of 4: what she keeps, then what she doesn't have yet. */}
+                  <ToolkitStack unlockedCount={1} topProblems={topProblems} />
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
 
-          {/* Fixed bottom CTA -> paywall. Only exists once she's finished, so the
-              ask lands after the reward, never during the exercise. */}
+          {/* Fixed bottom CTA -> nutrition checklist. Only exists once she's
+              finished, so the next ask lands after the reward, never during the
+              exercise. */}
           {reliefStage === "done" && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
@@ -2499,16 +2691,16 @@ function RegisterPageContent() {
             >
               <div className="mx-auto max-w-md w-full px-4 sm:px-6 py-3">
                 {(() => {
-                  const cta = getCtaCopy();
+                  const cta = getReliefForwardCopy();
                   return (
                     <>
                       <button
                         type="button"
-                        onClick={() => setPhase("paywall")}
+                        onClick={() => setPhase("nutrition")}
                         className="w-full min-h-12 py-3.5 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
                         style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)", boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)" }}
                       >
-                        {getGoalCtaLabel(goal)}
+                        Show me my day
                         <ArrowRight className="w-4 h-4" />
                       </button>
                       <p className="text-[11px] text-[#9A9A9A] text-center mt-1.5">{cta.sub}</p>
@@ -2518,6 +2710,332 @@ function RegisterPageContent() {
               </div>
             </motion.div>
           )}
+        </div>
+      )}
+
+      {/* Nutrition Phase - the second app taste. She audits her own day against
+          the nine habits, then gets told the gap is structural, not personal.
+          This is the paywall's doorstep, so it carries the trial + guarantee. */}
+      {phase === "nutrition" && (
+        <div
+          className={cn(
+            "flex-1 flex flex-col min-h-0 -mx-4 sm:-mx-6 px-4 sm:px-6 pt-2",
+            // The reward stack is taller than the checklist (which scrolls its
+            // own list instead), so only the reward gets to scroll the page.
+            // Both reserve room for the fixed CTA - the reward's is taller
+            // because it carries the trial line under the button.
+            nutritionStage === "done"
+              ? "overflow-y-auto pb-[calc(132px+env(safe-area-inset-bottom))]"
+              : "pb-[calc(84px+env(safe-area-inset-bottom))]"
+          )}
+        >
+          <div className="max-w-md mx-auto w-full flex-1 flex flex-col min-h-0">
+            {/* Back to the relief reward - reliefStage stays "done", so she
+                never has to breathe through the exercise a second time. */}
+            <button
+              type="button"
+              onClick={() => setPhase("relief")}
+              className="flex items-center gap-1 self-start shrink-0 text-xs text-[#9A9A9A] hover:text-[#5A5A5A] mb-2 transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> Back
+            </button>
+
+            <AnimatePresence mode="wait">
+              {nutritionStage === "checklist" ? (
+                <motion.div
+                  key="nutrition-checklist"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0, scale: 0.96 }}
+                  transition={{ duration: 0.35 }}
+                  className="flex-1 flex flex-col min-h-0 gap-3"
+                >
+                  <div className="shrink-0 text-center space-y-1.5">
+                    <h1 className="text-2xl sm:text-3xl font-normal text-[#3D3D3D] leading-tight">
+                      {firstName.trim() ? (
+                        <>
+                          <span className="font-bold">{firstName.trim()}</span>, one last thing.
+                        </>
+                      ) : (
+                        <>One last thing.</>
+                      )}
+                    </h1>
+                    <p className="text-sm text-[#5A5A5A] leading-relaxed max-w-xs mx-auto">
+                      Which of these did you already do today?
+                    </p>
+                    {/* "Nobody's grading you" is load-bearing: it kills the urge
+                        to over-report, and the verdict only lands if she was honest. */}
+                    <p className="text-[11px] text-[#9A9A9A]">
+                      <span className="font-semibold text-primary tabular-nums">
+                        {nutritionDone.length} of {NUTRITION_TOTAL} selected
+                      </span>{" "}
+                      · Tap everything that applies - be honest, nobody&apos;s grading you.
+                    </p>
+                  </div>
+
+                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 -mr-1 pb-1 [scrollbar-width:thin] space-y-3">
+                    {NUTRITION_GROUPS.map((group) => {
+                      const GroupIcon = group.icon;
+                      return (
+                        <div key={group.title} className="space-y-2">
+                          <div className="flex items-center gap-1.5 px-1">
+                            <GroupIcon className="w-3.5 h-3.5 text-primary" />
+                            <span className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">
+                              {group.title}
+                            </span>
+                          </div>
+                          {group.items.map((item) => {
+                            const ItemIcon = item.icon;
+                            const isOn = nutritionDone.includes(item.id);
+                            return (
+                              <div key={item.id} className="space-y-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleNutritionItem(item.id)}
+                                  aria-pressed={isOn}
+                                  // border-2 in BOTH states - going 1px -> 2px on
+                                  // tap shifts the row by a pixel under her finger.
+                                  className={cn(
+                                    "w-full flex items-center gap-3 rounded-2xl border-2 px-3.5 py-2.5 text-left transition-colors duration-200",
+                                    isOn
+                                      ? "bg-primary/5 border-primary/30"
+                                      : "border-foreground/10 bg-foreground/[0.03] hover:bg-foreground/[0.06]"
+                                  )}
+                                >
+                                  <div
+                                    className={cn(
+                                      "w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors",
+                                      isOn ? "bg-primary/15" : "bg-foreground/5"
+                                    )}
+                                  >
+                                    <ItemIcon
+                                      className={cn(
+                                        "w-4 h-4",
+                                        isOn ? "text-primary" : "text-[#9A9A9A]"
+                                      )}
+                                    />
+                                  </div>
+                                  <span
+                                    className={cn(
+                                      "flex-1 min-w-0 text-sm leading-tight",
+                                      isOn
+                                        ? "font-bold text-[#3D3D3D]"
+                                        : "font-medium text-[#5A5A5A]"
+                                    )}
+                                  >
+                                    {item.label}
+                                  </span>
+                                  <div
+                                    className={cn(
+                                      "w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-colors",
+                                      isOn ? "bg-primary" : "border border-foreground/15"
+                                    )}
+                                  >
+                                    {isOn && (
+                                      <Check
+                                        className="w-3 h-3 text-primary-foreground animate-in zoom-in duration-200"
+                                        strokeWidth={3}
+                                      />
+                                    )}
+                                  </div>
+                                </button>
+
+                                {/* Supplement chips: they name the three that
+                                    matter, so even skipping them teaches her
+                                    something. Never counted toward the score. */}
+                                {item.id === "supplements" && isOn && (
+                                  <div className="flex flex-wrap gap-1.5 pl-3 animate-in fade-in slide-in-from-top-1 duration-200">
+                                    {SUPPLEMENT_OPTIONS.map((s) => {
+                                      const chipOn = supplementsTaken.includes(s.id);
+                                      return (
+                                        <button
+                                          key={s.id}
+                                          type="button"
+                                          onClick={() => toggleSupplement(s.id)}
+                                          aria-pressed={chipOn}
+                                          className={cn(
+                                            "px-3 py-1.5 rounded-full text-[11px] font-semibold border-2 transition-colors",
+                                            chipOn
+                                              ? "bg-primary/10 border-primary/30 text-[#3D3D3D]"
+                                              : "border-foreground/10 bg-foreground/[0.03] text-[#8A8A8A] hover:bg-foreground/[0.06]"
+                                          )}
+                                        >
+                                          {s.label}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              ) : (
+                /* ── Done: her day, read back to her. Whatever she ticked, the
+                    verdict lands on "the gap is structural" - then the swaps
+                    give tomorrow a shape, and the toolkit moves to 2 of 4. ── */
+                <motion.div
+                  key="nutrition-done"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.35 }}
+                  className="flex-1 flex flex-col justify-center items-center text-center gap-4"
+                >
+                  {(() => {
+                    const verdict = getNutritionVerdict(
+                      nutritionDone.length,
+                      firstName.trim(),
+                      topProblems
+                    );
+                    const swaps = NUTRITION_ITEMS.filter(
+                      (i) => !nutritionDone.includes(i.id)
+                    ).slice(0, 3);
+                    return (
+                      <>
+                        <motion.div
+                          className="relative flex items-center justify-center"
+                          initial={{ scale: 0, rotate: -18, opacity: 0 }}
+                          animate={{ scale: 1, rotate: 0, opacity: 1 }}
+                          transition={
+                            prefersReducedMotion
+                              ? { duration: 0 }
+                              : { type: "spring", stiffness: 240, damping: 11, delay: 0.05 }
+                          }
+                        >
+                          {!prefersReducedMotion && (
+                            <>
+                              <motion.div
+                                aria-hidden
+                                className="absolute inset-0 rounded-full bg-primary/30 blur-2xl"
+                                animate={{ scale: [0.9, 1.2, 0.9], opacity: [0.4, 0.75, 0.4] }}
+                                transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+                              />
+                              {CONFETTI_BURST.map((c, i) => (
+                                <motion.span
+                                  key={i}
+                                  aria-hidden
+                                  className="absolute w-1.5 h-1.5 rounded-full"
+                                  style={{ background: c.color }}
+                                  initial={{ x: 0, y: 0, scale: 0, opacity: 1 }}
+                                  animate={{
+                                    x: c.x,
+                                    y: c.y,
+                                    scale: [0, 1, 0.6],
+                                    opacity: [1, 1, 0],
+                                  }}
+                                  transition={{ duration: 1.1, delay: 0.15, ease: "easeOut" }}
+                                />
+                              ))}
+                            </>
+                          )}
+                          {/* Salad, not the party popper - two different wins
+                              should not look like the same screen twice. */}
+                          <div
+                            className="relative w-20 h-20 rounded-full flex items-center justify-center"
+                            style={{
+                              background:
+                                "linear-gradient(135deg, rgba(255,116,177,0.25) 0%, rgba(255,235,118,0.25) 50%, rgba(101,219,255,0.25) 100%)",
+                              border: "2px solid rgba(255,116,177,0.4)",
+                            }}
+                          >
+                            <Salad className="w-9 h-9 text-primary" strokeWidth={2} />
+                          </div>
+                        </motion.div>
+
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.3, duration: 0.4 }}
+                          className="space-y-2"
+                        >
+                          <h1 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] leading-tight">
+                            {verdict.headline}
+                          </h1>
+                          <p className="text-sm sm:text-base text-[#5A5A5A] leading-snug max-w-xs mx-auto">
+                            {verdict.body}
+                          </p>
+                        </motion.div>
+
+                        {/* Tomorrow, made concrete. Derived from what she left
+                            blank, in priority order - the highest-leverage habit
+                            she isn't doing yet comes first. */}
+                        <motion.div
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.45, duration: 0.35 }}
+                          className="w-full max-w-xs rounded-2xl bg-primary/5 border border-primary/20 px-4 py-3 text-left"
+                        >
+                          {swaps.length > 0 ? (
+                            <>
+                              <p className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground mb-2">
+                                Your first {swaps.length === 1 ? "swap" : `${swaps.length} swaps`} for
+                                tomorrow
+                              </p>
+                              <div className="space-y-1.5">
+                                {swaps.map((s) => {
+                                  const SwapIcon = s.icon;
+                                  return (
+                                    <div key={s.id} className="flex items-center gap-2.5">
+                                      <SwapIcon className="w-4 h-4 text-primary shrink-0" />
+                                      <span className="text-sm font-semibold text-[#3D3D3D] leading-tight">
+                                        {s.label}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </>
+                          ) : (
+                            <p className="text-sm font-semibold text-[#3D3D3D] leading-snug">
+                              You&apos;ve got the basics covered. Your plan starts where the basics
+                              stop.
+                            </p>
+                          )}
+                        </motion.div>
+
+                        <ToolkitStack unlockedCount={2} topProblems={topProblems} />
+                      </>
+                    );
+                  })()}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Fixed bottom CTA. During the checklist it's never disabled - zero
+              ticks is an honest answer and gets its own label. After the
+              verdict it becomes the paywall doorstep and carries the trial. */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: nutritionStage === "done" ? 0.9 : 0.2 }}
+            className="fixed bottom-0 inset-x-0 z-30 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 pb-[env(safe-area-inset-bottom)]"
+          >
+            <div className="mx-auto max-w-md w-full px-4 sm:px-6 py-3">
+              <button
+                type="button"
+                onClick={() =>
+                  nutritionStage === "checklist" ? setNutritionStage("done") : setPhase("paywall")
+                }
+                className="w-full min-h-12 py-3.5 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
+                style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)", boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)" }}
+              >
+                {nutritionStage === "checklist"
+                  ? nutritionDone.length > 0
+                    ? "See what this means"
+                    : "I'm starting from scratch"
+                  : getGoalCtaLabel(goal)}
+                <ArrowRight className="w-4 h-4" />
+              </button>
+              {nutritionStage === "done" && (
+                <p className="text-[11px] text-[#9A9A9A] text-center mt-1.5">{getCtaCopy().sub}</p>
+              )}
+            </div>
+          </motion.div>
         </div>
       )}
 
@@ -2616,7 +3134,7 @@ function RegisterPageContent() {
           onCheckout={handleStartTrialCheckout}
           checkoutLoading={checkoutLoading}
           error={error}
-          onBack={fromQuiz1 ? undefined : () => setPhase("relief")}
+          onBack={fromQuiz1 ? undefined : () => setPhase("nutrition")}
           trackingSource="register"
         />
       )}
