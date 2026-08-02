@@ -104,10 +104,11 @@ const HERE_FOR_OPTIONS = [
 const GOAL_OPTIONS = [
   { id: "sleep_through_night", label: "Sleep through the night", image: "/quiz/goals/sleep.png" },
   { id: "think_clearly", label: "Think clearly again", image: "/quiz/goals/thinkclearly.png" },
-  { id: "feel_like_myself", label: "Feel like myself", image: "/quiz/goals/feelmyself.png" },
-  { id: "understand_patterns", label: "Understand my patterns", image: "/quiz/goals/patterns.png" },
+  { id: "feel_like_myself", label: "Mental and emotional wellbeing", image: "/quiz/goals/feelmyself.png" },
   { id: "data_for_doctor", label: "Have data for my doctor", image: "/quiz/goals/data.png" },
-  { id: "get_body_back", label: "Get my body back", image: "/quiz/goals/body.png" },
+  // id kept as `get_body_back` on purpose - existing user_profiles rows and the
+  // mobile app still carry it; only the copy/image moved to weight loss.
+  { id: "get_body_back", label: "Lose weight", image: "/quiz/goals/weight.png" },
 ];
 
 // Image-based symptom tiles (same style as Q1 age / Q2 status). 9 options, multi-select.
@@ -318,10 +319,10 @@ function getCtaCopy(): { sub: string } {
 const GOAL_CTA_LABEL: Record<string, string> = {
   sleep_through_night: "I want to sleep again",
   think_clearly: "I want to think clearly again",
-  feel_like_myself: "I want to feel like myself",
-  understand_patterns: "I want to understand my body",
+  feel_like_myself: "I want to feel steady again",
+  understand_patterns: "I want to understand my body", // legacy: retired option
   data_for_doctor: "I want answers for my doctor",
-  get_body_back: "I want my body back",
+  get_body_back: "I want to lose the weight",
 };
 function getGoalCtaLabel(goals: string[]): string {
   return GOAL_CTA_LABEL[goals[0]] ?? "I want to start";
@@ -345,10 +346,10 @@ function getDiagnosisCtaLabel(qualifier: string): string {
 const GOAL_PROMISE: Record<string, string> = {
   sleep_through_night: "Sleep through the night",
   think_clearly: "Think clearly again",
-  feel_like_myself: "Feel like yourself again",
-  understand_patterns: "Understand your body",
+  feel_like_myself: "Feel calm and steady again",
+  understand_patterns: "Understand your body", // legacy: retired option
   data_for_doctor: "Walk into your doctor with real answers",
-  get_body_back: "Get your body back",
+  get_body_back: "Lose the weight",
 };
 function getOfferPromise(goals: string[]): string {
   return GOAL_PROMISE[goals[0]] ?? "Feel like yourself again";

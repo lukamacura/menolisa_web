@@ -669,10 +669,10 @@ export async function POST(req: NextRequest) {
         const goalLabels: Record<string, string> = {
           sleep_through_night: "Sleep through the night",
           think_clearly: "Think clearly again",
-          feel_like_myself: "Feel like myself",
-          understand_patterns: "Understand my patterns",
+          feel_like_myself: "Mental and emotional wellbeing",
+          understand_patterns: "Understand my patterns", // legacy: retired option
           data_for_doctor: "Have data for my doctor",
-          get_body_back: "Get my body back",
+          get_body_back: "Lose weight",
         };
         // Funnel stores multi-select goals[]; fall back to the legacy singular goal.
         const goalList: string[] = Array.isArray(userProfile.goals) && userProfile.goals.length > 0

@@ -230,10 +230,11 @@ export function getGoalPromise(goal: string, name: string): GoalPromise {
       icon: "Brain",
     },
     feel_like_myself: {
-      title: "She's still in there",
-      text: `${displayName}, the you who laughed easily and felt at home in your body — she's not gone. We're going to find her.`,
+      title: "Your mood has triggers too",
+      text: `${displayName}, the anxiety, the irritability, the flatness — they track with your hormones, your sleep, your days. When you can see that, you stop blaming yourself.`,
       icon: "Heart",
     },
+    // Retired quiz option, kept for users who answered it before and as the fallback below.
     understand_patterns: {
       title: "Clarity is coming",
       text: `${displayName}, within days you'll start seeing patterns. Within weeks, you'll understand your body in a way you never have.`,
@@ -245,8 +246,8 @@ export function getGoalPromise(goal: string, name: string): GoalPromise {
       icon: "ClipboardList",
     },
     get_body_back: {
-      title: "Your body is listening",
-      text: `${displayName}, your body isn't betraying you — it's sending signals. When you understand them, you can finally respond.`,
+      title: "The weight isn't a willpower problem",
+      text: `${displayName}, menopause changes how your body stores fat — but sleep, food and stress still move the needle. We'll find which ones move yours.`,
       icon: "Sparkles",
     },
   };
