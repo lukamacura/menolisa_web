@@ -29,8 +29,8 @@ pick her "first 3 swaps for tomorrow" from whatever she left unticked.
 ### Meals & nutrients
 | id | Label |
 |---|---|
-| `fat_protein_breakfast` | Fat & protein for breakfast |
-| `fat_protein_meals` | Fat & protein with every meal |
+| `protein_25_30g` | 25-30g protein per meal |
+| `healthy_fats` | Healthy fats |
 | `high_fiber` | Added high-fiber foods |
 | `low_gi_fruit` | Low-glycemic fruits only |
 

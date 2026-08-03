@@ -30,8 +30,8 @@ import {
   PartyPopper,
   Lock,
   Salad,
-  Egg,
   Beef,
+  Nut,
   Wheat,
   Apple,
   Timer,
@@ -549,8 +549,8 @@ const NUTRITION_GROUPS: NutritionGroup[] = [
     title: "Meals & nutrients",
     icon: Salad,
     items: [
-      { id: "fat_protein_breakfast", label: "Fat & protein for breakfast", icon: Egg },
-      { id: "fat_protein_meals", label: "Fat & protein with every meal", icon: Beef },
+      { id: "protein_25_30g", label: "25-30g protein per meal", icon: Beef },
+      { id: "healthy_fats", label: "Healthy fats", icon: Nut },
       { id: "high_fiber", label: "Added high-fiber foods", icon: Wheat },
       { id: "low_gi_fruit", label: "Low-glycemic fruits only", icon: Apple },
     ],
@@ -1212,6 +1212,13 @@ function RegisterPageContent() {
   const startRelief = useCallback(() => {
     setReliefElapsed(0);
     setReliefStage("running");
+  }, []);
+
+  // Lets her bail out of the timer without losing the reward - jumps straight
+  // to the "done" state as if she'd finished, so the toolkit unlock still lands.
+  const skipRelief = useCallback(() => {
+    setReliefElapsed(BREATH_TOTAL_SECONDS);
+    setReliefStage("done");
   }, []);
 
   // Nutrition checklist (phase === "nutrition"), the second app taste. Same rule
@@ -2252,7 +2259,10 @@ function RegisterPageContent() {
                 app blocks below are how it reaches her, not what she's buying,
                 so the plan gets the page's biggest, most personal asset. ───── */}
             {(() => {
-              const planned = getPlannedSymptoms(topProblems, symptomSeverity, 2);
+              // Just her #1 symptom: the generic pillar list right above already
+              // walks all four pillars once, so a second full-pillar card here
+              // was repeating the same shape twice in a row for no extra payoff.
+              const planned = getPlannedSymptoms(topProblems, symptomSeverity, 1);
               const goalLabel = (GOAL_PROMISE[goal[0]] ?? "feel like yourself again").toLowerCase();
               return (
                 <motion.div
@@ -2292,7 +2302,7 @@ function RegisterPageContent() {
                         };
                         return (
                           <motion.div
-                            initial="hidden"
+                            initial={prefersReducedMotion ? "show" : "hidden"}
                             animate="show"
                             variants={{ hidden: {}, show: { transition: { staggerChildren: 0.22, delayChildren: 0.45 } } }}
                             className="absolute inset-0 flex flex-col items-center justify-center text-center px-[16%] py-[15%]"
@@ -2792,6 +2802,16 @@ function RegisterPageContent() {
                       ? `${RELIEF_TOOL_NAME} · ${BREATH_TOTAL_SECONDS} seconds`
                       : "Let the exhale be longer than the breath in."}
                   </p>
+
+                  {reliefStage === "running" && (
+                    <button
+                      type="button"
+                      onClick={skipRelief}
+                      className="text-[11px] text-[#9A9A9A] hover:text-[#5A5A5A] underline underline-offset-2 transition-colors shrink-0"
+                    >
+                      Skip
+                    </button>
+                  )}
                 </motion.div>
               ) : (
                 /* ── Done: the reward. She keeps the tool she just used, and sees
