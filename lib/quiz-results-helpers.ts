@@ -324,11 +324,13 @@ export const TYPICAL_SYMPTOM_SEVERITY: Record<string, number> = {
 };
 
 // Typical wellbeing score per age band (higher = better), calibrated to the
-// calculateWellbeingScore distribution (12–92 range). A defensible model profile of
+// calculateWellbeingScore distribution (12–68 range). A defensible model profile of
 // the typical menopause quiz-taker per band — NOT a claimed survey average.
+// Every value must stay under SCORE_CEILING, or the benchmark tick on the score
+// bar sits somewhere no real score can ever reach.
 const TYPICAL_SCORE_BY_AGE: Record<string, number> = {
-  under_40: 72,
-  "40_45": 68,
+  under_40: 66,
+  "40_45": 64,
   "46_50": 62,
   "51_plus": 58,
   prefer_not: 64,
@@ -432,6 +434,17 @@ const AGE_PENALTY: Record<string, number> = {
   prefer_not: 1,
 };
 
+// The 8-week goal shown everywhere in the funnel. The score model is calibrated
+// against it: the best possible answer set must still land meaningfully below.
+export const SCORE_GOAL = 80;
+// Highest score anyone can be shown — 12 points of headroom under the goal, so
+// the plan always has something to do.
+const SCORE_CEILING = SCORE_GOAL - 12; // 68
+// Above this the remaining points get compressed instead of clipped, so the
+// lightest answer sets still order correctly relative to each other.
+const SCORE_SOFT_CAP = 60;
+const SCORE_SQUASH = 0.2;
+
 export interface ScoreBreakdown {
   score: number;            // final 0..100 (higher = better)
   symptomPenalty: number;
@@ -470,9 +483,19 @@ export function calculateWellbeingScore(inputs: ScoreInputs): ScoreBreakdown {
     bmiPen -
     agePenalty;
 
-  // Let it breathe: floor 12 (never hopeless), cap 79 — must stay under the 80
-  // goal so there's always room to improve (someone took this quiz for a reason).
-  const score = Math.max(12, Math.min(79, Math.round(raw)));
+  // A hard clamp at 79 produced the absurd case of "your score: 79, your 8-week
+  // target: 80+" — a one-point journey nobody would pay for. So instead of
+  // clipping the top, we compress it: below SOFT_CAP the raw score passes
+  // through untouched, above it each remaining point is worth SQUASH of a point.
+  // The result is still strictly monotonic (a lighter answer set always scores
+  // higher) but can never exceed SCORE_CEILING, which leaves a visible gap to
+  // the 80+ goal for every possible set of answers.
+  const compressed =
+    raw > SCORE_SOFT_CAP ? SCORE_SOFT_CAP + (raw - SCORE_SOFT_CAP) * SCORE_SQUASH : raw;
+
+  // Floor 12 so it's never hopeless, ceiling SCORE_CEILING so there's always
+  // room to improve (someone took this quiz for a reason).
+  const score = Math.max(12, Math.min(SCORE_CEILING, Math.round(compressed)));
 
   return {
     score,

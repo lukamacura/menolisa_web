@@ -102,7 +102,8 @@ web app/
 │   ├── insights/            # Pure data insight generation (no AI)
 │   ├── rag/                 # Full RAG pipeline (orchestrator, retrieval, personas, etc.)
 │   └── *.ts                 # Utilities, Supabase clients, auth helpers
-├── public/                  # Static assets (fonts/, images)
+├── assets/                  # Image MASTERS — never served; source for public/ images
+├── public/                  # Static assets (fonts/, video, generated images)
 ├── scripts/                 # One-off scripts (ingestion, migrations)
 ├── next.config.ts
 ├── middleware.ts             # Route protection and CORS
@@ -341,6 +342,13 @@ Custom CSS variables for fonts: `--font-satoshi`, `--font-script`, `--font-poppi
 - `knowledge-base/` files directly to "fix" AI responses — instead update the content, then re-run `npm run ingest` to rebuild embeddings
 - `node_modules/`, `.next/`
 - The `documents` Supabase table manually — it is fully managed by `npm run ingest`
+- **Images in `public/`** — they are build output. Drop the new master in `assets/`
+  (same relative path) and run `npx tsx scripts/optimize-images.ts`, which
+  re-encodes every master into `public/` and will overwrite anything you edited
+  there by hand. `public/` images are `.webp`; masters may be any format.
+  Widths in the script are ~2x each image's real CSS render box — if you change
+  a layout, change the width. Exceptions that stay PNG: `favicon.png` and
+  `email-logo.png` (email clients can't be relied on for WebP).
 
 ### External Services
 | Service | Purpose | Key files |

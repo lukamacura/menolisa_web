@@ -37,7 +37,7 @@ export function buildEmailHtml(body: string): string {
         <!-- Purple header with logo -->
         <tr>
           <td bgcolor="#7c3aed" style="background-color:#7c3aed;border-radius:20px 20px 0 0;padding:32px 40px 0;text-align:center">
-            <img src="${APP_URL}/paywall.png" width="96" alt="MenoLisa"
+            <img src="${APP_URL}/email-logo.png" width="96" alt="MenoLisa"
                  style="display:block;margin:0 auto;border:0;max-width:96px;height:auto" />
           </td>
         </tr>

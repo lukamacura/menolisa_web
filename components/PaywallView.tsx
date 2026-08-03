@@ -193,7 +193,7 @@ export function PaywallView({
             src="/paywall.webp"
             alt=""
             width={280}
-            height={160}
+            height={280}
             className="relative object-contain w-full max-h-[130px] sm:max-h-40"
           />
         </motion.div>

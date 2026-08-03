@@ -33,7 +33,7 @@ function LoginForm() {
       <div className="flex-1 flex flex-col justify-center">
         <div className="flex justify-center mb-6">
           <Image
-            src="/quiz/illustration_email.png"
+            src="/quiz/illustration_email.webp"
             alt="Email illustration"
             width={120}
             height={120}

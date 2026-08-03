@@ -55,8 +55,8 @@ import {
 
 /** Quiz step/phase -> illustration filename (from public/quiz/, same as mobile app assets/quiz/). */
 const QUIZ_ILLUSTRATION: Record<string, string> = {
-  q8_name: "illustration_q8_name.png",
-  loading: "illustration_loading.png",
+  q8_name: "illustration_q8_name.webp",
+  loading: "illustration_loading.webp",
 };
 
 
@@ -100,41 +100,41 @@ const QUESTION_STEPS: Step[] = STEPS.filter((s) => !REWARD_STEPS.includes(s));
 
 // Question options - same as mobile app
 const AGE_OPTIONS = [
-  { id: "under_40", label: "Under 40", image: "/quiz/age/u40.png" },
-  { id: "40_45", label: "40–45", image: "/quiz/age/41-45.png" },
-  { id: "46_50", label: "46–50", image: "/quiz/age/46-50.png" },
-  { id: "51_plus", label: "50+", image: "/quiz/age/a50.png" },
+  { id: "under_40", label: "Under 40", image: "/quiz/age/u40.webp" },
+  { id: "40_45", label: "40–45", image: "/quiz/age/41-45.webp" },
+  { id: "46_50", label: "46–50", image: "/quiz/age/46-50.webp" },
+  { id: "51_plus", label: "50+", image: "/quiz/age/a50.webp" },
 ];
 
 const HERE_FOR_OPTIONS = [
-  { id: "pre_menopausal", label: "Pre-menopausal (not started)", image: "/quiz/status/pre.png" },
-  { id: "perimenopausal", label: "Perimenopausal", image: "/quiz/status/peri.png" },
-  { id: "post_menopausal", label: "Post-menopausal (periods stopped)", image: "/quiz/status/post.png" },
-  { id: "not_sure", label: "I'm not sure", image: "/quiz/status/notsure.png" },
+  { id: "pre_menopausal", label: "Pre-menopausal (not started)", image: "/quiz/status/pre.webp" },
+  { id: "perimenopausal", label: "Perimenopausal", image: "/quiz/status/peri.webp" },
+  { id: "post_menopausal", label: "Post-menopausal (periods stopped)", image: "/quiz/status/post.webp" },
+  { id: "not_sure", label: "I'm not sure", image: "/quiz/status/notsure.webp" },
 ];
 
 const GOAL_OPTIONS = [
-  { id: "sleep_through_night", label: "Sleep through the night", image: "/quiz/goals/sleep.png" },
-  { id: "think_clearly", label: "Think clearly again", image: "/quiz/goals/thinkclearly.png" },
-  { id: "feel_like_myself", label: "Mental and emotional wellbeing", image: "/quiz/goals/feelmyself.png" },
-  { id: "data_for_doctor", label: "Have data for my doctor", image: "/quiz/goals/data.png" },
+  { id: "sleep_through_night", label: "Sleep through the night", image: "/quiz/goals/sleep.webp" },
+  { id: "think_clearly", label: "Think clearly again", image: "/quiz/goals/thinkclearly.webp" },
+  { id: "feel_like_myself", label: "Mental and emotional wellbeing", image: "/quiz/goals/feelmyself.webp" },
+  { id: "data_for_doctor", label: "Have data for my doctor", image: "/quiz/goals/data.webp" },
   // id kept as `get_body_back` on purpose - existing user_profiles rows and the
   // mobile app still carry it; only the copy/image moved to weight loss.
-  { id: "get_body_back", label: "Lose weight", image: "/quiz/goals/weight.png" },
+  { id: "get_body_back", label: "Lose weight", image: "/quiz/goals/weight.webp" },
 ];
 
 // Image-based symptom tiles (same style as Q1 age / Q2 status). 9 options, multi-select.
 // IDs reuse the existing downstream keys (SYMPTOM_LABELS, pillars, comparison) so results keep working.
 const PROBLEM_OPTIONS = [
-  { id: "hot_flashes", label: "Hot flashes", image: "/symptoms/hot_flashes.png" },
-  { id: "sleep_issues", label: "Can't sleep", image: "/symptoms/insomnia.png" },
-  { id: "brain_fog", label: "Brain fog", image: "/symptoms/brain_fog.png" },
-  { id: "mood_swings", label: "Mood swings", image: "/symptoms/mood_swings.png" },
-  { id: "weight_changes", label: "Weight changes", image: "/symptoms/weight_gain.png" },
-  { id: "low_energy", label: "Fatigue", image: "/symptoms/fatigue.png" },
-  { id: "anxiety", label: "Anxiety", image: "/symptoms/anxiety.png" },
-  { id: "joint_pain", label: "Joint pain", image: "/symptoms/joint_pain.png" },
-  { id: "bloating", label: "Bloating", image: "/symptoms/bloating.png" },
+  { id: "hot_flashes", label: "Hot flashes", image: "/symptoms/hot_flashes.webp" },
+  { id: "sleep_issues", label: "Can't sleep", image: "/symptoms/insomnia.webp" },
+  { id: "brain_fog", label: "Brain fog", image: "/symptoms/brain_fog.webp" },
+  { id: "mood_swings", label: "Mood swings", image: "/symptoms/mood_swings.webp" },
+  { id: "weight_changes", label: "Weight changes", image: "/symptoms/weight_gain.webp" },
+  { id: "low_energy", label: "Fatigue", image: "/symptoms/fatigue.webp" },
+  { id: "anxiety", label: "Anxiety", image: "/symptoms/anxiety.webp" },
+  { id: "joint_pain", label: "Joint pain", image: "/symptoms/joint_pain.webp" },
+  { id: "bloating", label: "Bloating", image: "/symptoms/bloating.webp" },
 ];
 
 // id -> tile image, so results can show her actual selected symptoms as visual chips.
@@ -179,30 +179,30 @@ const TIMING_PRIDE_LINE: Record<string, string> = {
 };
 
 const TIMING_OPTIONS = [
-  { id: "just_started", label: "Under 6 months", image: "/quiz/how-long/u6m.png" },
-  { id: "been_while", label: "6–12 months", image: "/quiz/how-long/6to12m.png" },
-  { id: "over_year", label: "Over a year", image: "/quiz/how-long/o1y.png" },
-  { id: "several_years", label: "Several years", image: "/quiz/how-long/severaly.png" },
+  { id: "just_started", label: "Under 6 months", image: "/quiz/how-long/u6m.webp" },
+  { id: "been_while", label: "6–12 months", image: "/quiz/how-long/6to12m.webp" },
+  { id: "over_year", label: "Over a year", image: "/quiz/how-long/o1y.webp" },
+  { id: "several_years", label: "Several years", image: "/quiz/how-long/severaly.webp" },
 ];
 
 const HRT_OPTIONS = [
-  { id: "currently", label: "I am currently taking HRT", image: "/quiz/hrt/current.png" },
-  { id: "past", label: "I have taken HRT in the past", image: "/quiz/hrt/past.png" },
-  { id: "never", label: "I have never taken HRT", image: "/quiz/hrt/never.png" },
+  { id: "currently", label: "I am currently taking HRT", image: "/quiz/hrt/current.webp" },
+  { id: "past", label: "I have taken HRT in the past", image: "/quiz/hrt/past.webp" },
+  { id: "never", label: "I have never taken HRT", image: "/quiz/hrt/never.webp" },
 ];
 
 // Asked right after height/weight so the whole body block sits together, and it
 // feeds the movement side of her plan (plus the "Lose weight" goal).
 const FITNESS_OPTIONS = [
-  { id: "beginner", label: "Beginner", image: "/quiz/fitness/beginner.png" },
-  { id: "medium", label: "Medium", image: "/quiz/fitness/medium.png" },
-  { id: "advanced", label: "Advanced", image: "/quiz/fitness/advanced.png" },
+  { id: "beginner", label: "Beginner", image: "/quiz/fitness/beginner.webp" },
+  { id: "medium", label: "Medium", image: "/quiz/fitness/medium.webp" },
+  { id: "advanced", label: "Advanced", image: "/quiz/fitness/advanced.webp" },
 ];
 
 const QUALIFIER_OPTIONS = [
-  { id: "ready_to_act", label: "Ready to start", image: "/quiz/readiness/ready.png" },
-  { id: "exploring", label: "Still figuring it out", image: "/quiz/readiness/figuring.png" },
-  { id: "understand_first", label: "Just learning for now", image: "/quiz/readiness/learning.png" },
+  { id: "ready_to_act", label: "Ready to start", image: "/quiz/readiness/ready.webp" },
+  { id: "exploring", label: "Still figuring it out", image: "/quiz/readiness/figuring.webp" },
+  { id: "understand_first", label: "Just learning for now", image: "/quiz/readiness/learning.webp" },
 ];
 
 // Shared option-tile footer styles - every quiz label is the same size, aligned,
@@ -234,8 +234,8 @@ const STEP_IMAGES: Partial<Record<Step, string[]>> = {
   q2_here_for: HERE_FOR_OPTIONS.map((o) => o.image),
   q4_symptoms: PROBLEM_OPTIONS.map((o) => o.image),
   q3_goals: GOAL_OPTIONS.map((o) => o.image),
-  reward_symptoms: ["/quiz/rewards/reward1.png"],
-  reward_progress: ["/quiz/rewards/reward2.png"],
+  reward_symptoms: ["/quiz/rewards/reward1.webp"],
+  reward_progress: ["/quiz/rewards/reward2.webp"],
   q_fitness: FITNESS_OPTIONS.map((o) => o.image),
   q5_hrt: HRT_OPTIONS.map((o) => o.image),
   q6_how_long: TIMING_OPTIONS.map((o) => o.image),
@@ -293,24 +293,56 @@ const getSeverityHeadline = (severity: string): string => {
   }
 };
 
+// Bolded fragments carry the whole message when she skims: the count, the cost,
+// and the turn. The connective tissue between them stays light on purpose.
+const PainEmphasis = ({ children }: { children: React.ReactNode }) => (
+  <strong className="font-bold text-[#3D3D3D]">{children}</strong>
+);
+
 const getSeverityPainText = (
   severity: string,
   symptomCount: number,
   name: string
-): string => {
+): React.ReactNode => {
   const displayName = name || "you";
   const symptomWord = symptomCount === 1 ? "symptom" : "symptoms";
   const theseThis = symptomCount === 1 ? "this" : "these";
   const themIt = symptomCount === 1 ? "it" : "them";
   const theyIt = symptomCount === 1 ? "it" : "they";
+  const count = (
+    <PainEmphasis>
+      {symptomCount} {symptomWord}
+    </PainEmphasis>
+  );
   switch (severity) {
     case "severe":
-      return `${symptomCount} ${symptomWord} controlling your life. You've probably tried to explain it to people who don't get it. You've probably wondered if this is just your new normal. It's not. And ${displayName}, you don't have to keep living like this.`;
+      return (
+        <>
+          {count} <PainEmphasis>controlling your life</PainEmphasis>. You&apos;ve probably tried to
+          explain it to people who don&apos;t get it. You&apos;ve probably wondered if this is just
+          your new normal. <PainEmphasis>It&apos;s not.</PainEmphasis> And {displayName}, you
+          don&apos;t have to keep living like this.
+        </>
+      );
     case "moderate":
-      return `${symptomCount} ${symptomWord}. Affecting your work. Your mood. Your relationships. ${displayName}, you're spending so much energy just trying to function normally - energy you shouldn't have to spend.`;
+      return (
+        <>
+          {count}. Affecting your <PainEmphasis>work</PainEmphasis>. Your{" "}
+          <PainEmphasis>mood</PainEmphasis>. Your <PainEmphasis>relationships</PainEmphasis>.{" "}
+          {displayName}, you&apos;re spending so much energy just trying to function normally -{" "}
+          <PainEmphasis>energy you shouldn&apos;t have to spend</PainEmphasis>.
+        </>
+      );
     case "mild":
     default:
-      return `${displayName}, ${theseThis} ${symptomCount} ${symptomWord} might feel manageable now. But without understanding what's causing ${themIt}, ${theyIt} often get${symptomCount === 1 ? "s" : ""} worse. Let's figure this out before ${theyIt} ${symptomCount === 1 ? "does" : "do"}.`;
+      return (
+        <>
+          {displayName}, {theseThis} {count} might feel manageable now. But without understanding
+          what&apos;s causing {themIt}, {theyIt}{" "}
+          <PainEmphasis>often get{symptomCount === 1 ? "s" : ""} worse</PainEmphasis>. Let&apos;s
+          figure this out <PainEmphasis>before {theyIt} {symptomCount === 1 ? "does" : "do"}</PainEmphasis>.
+        </>
+      );
   }
 };
 
@@ -467,24 +499,18 @@ function getSymptomPhrase(topProblems: string[]): string {
 // getCtaCopy()'s trial + guarantee line lives on the nutrition CTA, where the
 // commitment actually happens. Each promises the next step is short, because
 // the only thing standing between her and the plan now is two small screens.
+// She's read a long page and her guard is up: the next tap feels like the one
+// that costs her something. So the line names what the next screen is NOT
+// (a pitch, a form, a charge) before it names what it is.
 function getDiagnosisForwardCopy(): { sub: React.ReactNode } {
-  return {
-    sub: (
-      <>
-        One <HighlightSweep>36-second relief exercise</HighlightSweep> first - then your plan.
-      </>
-    ),
-  };
+  return { sub: "Not a pitch - 36 seconds of relief you can use tonight." };
 }
 
+// The relief screen ends on the toolkit at 1 of 4, with three still locked - so
+// the next tap is named as the thing that moves that bar, not as a preview of
+// something ("my day") the next screen never actually shows her.
 function getReliefForwardCopy(): { sub: React.ReactNode } {
-  return {
-    sub: (
-      <>
-        One <HighlightSweep>20-second check</HighlightSweep> - then your plan.
-      </>
-    ),
-  };
+  return { sub: "9 quick taps about today - no wrong answers." };
 }
 
 // ─── Nutrition checklist: the second app taste ──────────────────────────────
@@ -1716,7 +1742,7 @@ function RegisterPageContent() {
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="text-xl sm:text-2xl font-normal text-[#3D3D3D] text-center mb-2"
+              className="text-3xl sm:text-4xl font-normal text-[#3D3D3D] text-center leading-tight mb-2"
             >
               <span className="font-bold">{firstName.trim() || "You"}</span>
               {getSeverityHeadline(derivedSeverity)}
@@ -1727,7 +1753,7 @@ function RegisterPageContent() {
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="text-xs text-[#5A5A5A] text-center leading-relaxed mb-4"
+              className="text-sm text-[#5A5A5A] text-center leading-relaxed mb-4"
             >
               {getSeverityPainText(derivedSeverity, topProblems.length, firstName || "you")}
             </motion.p>
@@ -2245,12 +2271,15 @@ function RegisterPageContent() {
                         className="absolute inset-0 flex flex-col items-center justify-center text-center px-[16%] py-[15%]"
                         style={{ color: ink }}
                       >
+                        {/* A wax seal, not the reward illustration - this scroll
+                            carries her name, so the crest has to read as her
+                            plan being sealed, and it has to survive at 80px. */}
                         <motion.div variants={fade} className="mb-2">
                           <Image
-                            src="/quiz/rewards/reward1.png"
+                            src="/personalized_plan.webp"
                             alt=""
-                            width={400}
-                            height={480}
+                            width={500}
+                            height={500}
                             sizes="96px"
                             className="w-20 h-auto pointer-events-none select-none drop-shadow-lg"
                           />
@@ -2302,7 +2331,7 @@ function RegisterPageContent() {
 
                 <div className="px-4 pt-2">
                   <p className="text-xs text-[#5A5A5A] leading-snug">
-                    Built from your 10 answers - yours free when you start your trial.
+                    Built from your 11 answers - yours free when you start your trial.
                   </p>
                 </div>
 
@@ -2363,7 +2392,7 @@ function RegisterPageContent() {
                   the paywall, not here - this page's job is belief, and naming the
                   charge two screens early just raises her guard. */}
               <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[11px] text-[#9A9A9A]">
-                <span className="flex items-center gap-1"><Check className="w-3.5 h-3.5 text-green-600" /> Built around your 10 answers</span>
+                <span className="flex items-center gap-1"><Check className="w-3.5 h-3.5 text-green-600" /> Built around your 11 answers</span>
                 <span className="flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5 text-green-600" /> Your data stays private</span>
               </div>
             </motion.div>
@@ -2447,7 +2476,7 @@ function RegisterPageContent() {
                           transition={{ duration: 0.3 }}
                           className="space-y-2.5"
                         >
-                          <h1 className="text-2xl sm:text-3xl font-normal text-[#3D3D3D] leading-tight">
+                          <h1 className="text-3xl sm:text-4xl font-normal text-[#3D3D3D] leading-tight">
                             {firstName.trim() ? (
                               <>
                                 <span className="font-bold">{firstName.trim()}</span>, let&apos;s do
@@ -2457,7 +2486,7 @@ function RegisterPageContent() {
                               <>Let&apos;s do one relief exercise.</>
                             )}
                           </h1>
-                          <p className="text-sm text-[#5A5A5A] leading-relaxed max-w-xs mx-auto">
+                          <p className="text-xs text-[#5A5A5A] leading-relaxed max-w-xs mx-auto">
                             When{" "}
                             <span className="font-semibold text-[#3D3D3D]">
                               {getSymptomPhrase(topProblems)}
@@ -2664,7 +2693,7 @@ function RegisterPageContent() {
                     <h1 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight">
                       Hooray{firstName.trim() ? `, ${firstName.trim()}` : ""}!
                     </h1>
-                    <p className="text-base sm:text-lg text-[#5A5A5A] leading-snug max-w-xs mx-auto">
+                    <p className="text-xs text-[#5A5A5A] leading-relaxed max-w-xs mx-auto">
                       You calmed your body in{" "}
                       <span className="font-bold text-[#3D3D3D]">
                         {BREATH_TOTAL_SECONDS} seconds
@@ -2701,7 +2730,7 @@ function RegisterPageContent() {
                         className="w-full min-h-12 py-3.5 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
                         style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)", boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)" }}
                       >
-                        Show me my day
+                        Unlock my next tool
                         <ArrowRight className="w-4 h-4" />
                       </button>
                       <p className="text-[11px] text-[#9A9A9A] text-center mt-1.5">{cta.sub}</p>
@@ -3052,7 +3081,7 @@ function RegisterPageContent() {
             <div aria-hidden className="flex justify-center mb-4 sm:mb-6 pointer-events-none">
               <div className="w-full sm:w-78 max-h-[200px] sm:max-h-[200px] overflow-hidden rounded-xl">
                 <Image
-                  src="/quiz/results_blur.png"
+                  src="/quiz/results_blur.webp"
                   alt=""
                   width={437}
                   height={951}
@@ -3150,8 +3179,10 @@ function RegisterPageContent() {
             className="max-w-md mx-auto w-full flex-1 flex flex-col justify-center min-h-0 text-center"
           >
 
+            {/* The app itself, not the Lisa portrait from the paywall - this is
+                the "go install it" screen, so the image has to be the product. */}
             <div className="flex justify-center mb-4">
-              <Image src="/paywall.webp" alt="" width={220} height={220} priority />
+              <Image src="/mockup.webp" alt="" width={240} height={240} priority />
             </div>
             <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-3">
               {firstName.trim() ? `${firstName.trim()}, you're all set!` : "You're all set!"}
@@ -3707,7 +3738,7 @@ function RegisterPageContent() {
                         />
                       )}
                       <Image
-                        src="/quiz/rewards/reward1.png"
+                        src="/quiz/rewards/reward1.webp"
                         alt=""
                         width={320}
                         height={320}
@@ -3800,7 +3831,7 @@ function RegisterPageContent() {
                         />
                       )}
                       <Image
-                        src="/quiz/rewards/reward2.png"
+                        src="/quiz/rewards/reward2.webp"
                         alt=""
                         width={320}
                         height={320}
