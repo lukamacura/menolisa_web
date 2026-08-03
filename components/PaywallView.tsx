@@ -404,7 +404,7 @@ export function PaywallView({
           </p>
           <ul className="space-y-2.5">
             {[
-              { bold: "Personalized 8-week plan", sub: "built around your symptoms" },
+              { bold: "Personalized 8-week plan", sub: "daily movement, nutrition, relaxation & habits" },
               { bold: "Lisa", sub: "your 24/7 menopause AI companion" },
               { bold: "Symptom tracking", sub: "with doctor-ready reports" },
             ].map((item) => (
@@ -446,24 +446,22 @@ export function PaywallView({
           })}
         </div>
 
-        {/* The 80+ Guarantee - identical copy and layout to the diagnosis page's
-            guarantee card, restated at the moment of payment. */}
+        {/* The 8-Week Guarantee - identical copy and layout to the diagnosis
+            page's guarantee card, restated at the moment of payment. */}
         <div
           className="rounded-2xl border-2 border-green-300 bg-green-50 p-4 mb-4"
           style={{ boxShadow: "0 0 0 2px rgba(22,163,74,0.12), 0 8px 28px rgba(22,163,74,0.12)" }}
         >
           <div className="flex flex-col items-center text-center">
             <ShieldCheck className="w-12 h-12 text-green-600 shrink-0 mb-2" />
-            <h2 className="text-base font-bold text-green-800 mb-2">The 80+ Guarantee</h2>
+            <h2 className="text-base font-bold text-green-800 mb-2">The 8-Week Guarantee</h2>
             <p className="text-sm text-[#3D3D3D] leading-relaxed">
-              Follow your <b>personalized 8-week plan</b> and if you don&apos;t reach a score of{" "}
-              <span className="font-bold text-green-700">80+</span>, we&apos;ll{" "}
+              If you don&apos;t feel better in <b>8 weeks</b>, we&apos;ll{" "}
               <b className="text-green-700">refund you</b> in full.
             </p>
             <div className="w-16 h-px bg-green-300 my-3" />
             <p className="text-xs text-[#5A5A5A] leading-snug">
-              All we ask is that you use the plan we built for you. No risk - the only way to
-              lose is to not start.
+              No conditions, no hoops. The only way to lose is to not start.
             </p>
           </div>
         </div>

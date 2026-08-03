@@ -102,8 +102,7 @@ web app/
 │   ├── insights/            # Pure data insight generation (no AI)
 │   ├── rag/                 # Full RAG pipeline (orchestrator, retrieval, personas, etc.)
 │   └── *.ts                 # Utilities, Supabase clients, auth helpers
-├── assets/                  # Image MASTERS — never served; source for public/ images
-├── public/                  # Static assets (fonts/, video, generated images)
+├── public/                  # Static assets (fonts/, images)
 ├── scripts/                 # One-off scripts (ingestion, migrations)
 ├── next.config.ts
 ├── middleware.ts             # Route protection and CORS
@@ -342,13 +341,16 @@ Custom CSS variables for fonts: `--font-satoshi`, `--font-script`, `--font-poppi
 - `knowledge-base/` files directly to "fix" AI responses — instead update the content, then re-run `npm run ingest` to rebuild embeddings
 - `node_modules/`, `.next/`
 - The `documents` Supabase table manually — it is fully managed by `npm run ingest`
-- **Images in `public/`** — they are build output. Drop the new master in `assets/`
-  (same relative path) and run `npx tsx scripts/optimize-images.ts`, which
-  re-encodes every master into `public/` and will overwrite anything you edited
-  there by hand. `public/` images are `.webp`; masters may be any format.
-  Widths in the script are ~2x each image's real CSS render box — if you change
-  a layout, change the width. Exceptions that stay PNG: `favicon.png` and
-  `email-logo.png` (email clients can't be relied on for WebP).
+
+### Adding images
+Everything in `public/` is served to users as-is, so an oversized file is paid
+for on every page load. Before adding an image, shrink it (e.g. squoosh.app):
+- **Format:** `.webp`, except `favicon.png` and `email-logo.png` — email clients
+  can't be relied on to render WebP.
+- **Size:** resize to ~2x the CSS box it renders into, not the size it was
+  exported at. A quiz tile renders at ~224px, so 460px wide is plenty; the app
+  screenshots in `diagnosys/` render at 260px. Aim to keep each file under 50KB.
+- There is no build step — what you put in `public/` is exactly what ships.
 
 ### External Services
 | Service | Purpose | Key files |

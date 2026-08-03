@@ -87,7 +87,7 @@ export default function PrivacyPage() {
             <li><strong>Provide and operate the Service</strong> — run the symptom tracker, mood and hydration tracking, and account management</li>
             <li><strong>Generate AI (Lisa) responses</strong> — use your messages and relevant context (e.g., profile and symptom summaries) to personalize answers and suggestions</li>
             <li><strong>Generate doctor reports (&quot;What Lisa Noticed&quot;)</strong> — create summaries of your tracked data for you to share with healthcare providers</li>
-            <li><strong>Calculate your Menopause Score</strong> — combine your quiz answers and tracked data into a single non-clinical wellness indicator so you can see progress over time, including to administer our 80+ Guarantee where applicable</li>
+            <li><strong>Calculate your Menopause Score</strong> — combine your quiz answers and tracked data into a single non-clinical wellness indicator so you can see progress over time</li>
             <li><strong>Send communications</strong> — magic link emails, optional daily reminders, weekly insight summaries, trial and subscription notices, and important service announcements</li>
             <li><strong>Improve the Service</strong> — analyze aggregate, anonymized usage to fix issues and develop features</li>
             <li><strong>Security and compliance</strong> — protect against unauthorized access, enforce our Terms, and respond to lawful requests</li>

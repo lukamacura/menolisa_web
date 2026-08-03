@@ -25,7 +25,7 @@ import {
   ShieldCheck,
   MessageCircleHeart,
   Activity,
-  Gift,
+  Footprints,
   Wind,
   PartyPopper,
   Lock,
@@ -243,14 +243,26 @@ const STEP_IMAGES: Partial<Record<Step, string[]>> = {
   q8_name: [`/quiz/${QUIZ_ILLUSTRATION.q8_name}`],
 };
 
+// Screenshots of the plan itself - the daily task list and one shot per pillar.
+// These masters don't exist yet; flip PLAN_SHOTS_READY once they're in
+// assets/diagnosys/ and `npm run optimize-images` has run. Until then the plan
+// block renders complete without them rather than requesting broken images.
+const PLAN_SHOTS_READY = false;
+const PLAN_SHOTS = {
+  day: "/diagnosys/plan_day.webp",
+  movement: "/diagnosys/movement.webp",
+  nutrition: "/diagnosys/nutrition.webp",
+  relaxation: "/diagnosys/relaxation.webp",
+};
+
 // Real app screenshots used on the diagnosis step. Preloaded while she reads her
 // results so the phone shots are already cached and don't pop in one by one.
 const DIAGNOSIS_SHOTS = [
+  "/diagnosys/8week.webp",
+  ...(PLAN_SHOTS_READY ? Object.values(PLAN_SHOTS) : []),
   "/diagnosys/symptoms1.webp",
-  "/diagnosys/symptoms2.webp",
   "/diagnosys/insights.webp",
   "/diagnosys/chat.webp",
-  "/diagnosys/8week.webp",
 ];
 
 // Build the same URL next/image requests, so the preload warms both the Vercel
@@ -361,12 +373,10 @@ function getResultsCtaCopy(qualifier: string): { sub: string } {
         return { sub: "See the why behind your symptoms, step by step with Lisa." };
 }}
 
-// Diagnosis-step sub: this is the doorstep to the paywall, so the full risk
-// reversal belongs HERE - free trial + the 8-week conditional guarantee in one
-// breath. The guarantee block above already spells out the "follow your plan"
-// condition; this line just reassures at the moment of action.
+// Doorstep to the paywall, so the full risk reversal belongs HERE - free trial
+// and the 8-week guarantee in one breath, at the moment of action.
 function getCtaCopy(): { sub: string } {
-  return { sub: "Free for 3 days · 100% guarantee · cancel anytime." };
+  return { sub: "Free for 3 days · 8-week guarantee · cancel anytime." };
 }
 // First-person CTA label driven by her #1 goal (multi-select; first = primary).
 const GOAL_CTA_LABEL: Record<string, string> = {
@@ -646,17 +656,20 @@ const REFERRAL_STORAGE_KEY = "pending_referral_code";
 // Each image in /public/testimonials is one side-by-side shot: left = the hard
 // "before", right = the calmer "after". Keyed by PROBLEM_OPTIONS ids so the cards
 // shown match the symptoms she actually selected.
+// The "after" side is deliberately a *feeling*, not a piece of knowledge. The
+// guarantee she reads two blocks later promises she'll feel better, so an after
+// column that only promises understanding undercuts the offer it sits above.
 type SymptomTransform = { image: string; label: string; before: string; after: string };
 const SYMPTOM_TRANSFORM: Record<string, SymptomTransform> = {
-  hot_flashes:    { image: "/testimonials/hot_flashes.webp", label: "Hot flashes",    before: "Drenched, sleepless nights",        after: "Knowing your triggers and what helps" },
-  sleep_issues:   { image: "/testimonials/sleep.webp",       label: "Sleep",          before: "Tossing and turning till 3am",      after: "A clear routine built around your sleep" },
-  brain_fog:      { image: "/testimonials/brain_fog.webp",   label: "Brain fog",      before: "Losing your train of thought",      after: "Spotting the patterns behind foggy days" },
-  mood_swings:    { image: "/testimonials/mood_swings.webp", label: "Mood swings",    before: "Snapping at the people you love",   after: "Understanding what's driving the swings" },
-  weight_changes: { image: "/testimonials/weight_gain.webp", label: "Weight changes", before: "Nothing fitting like it used to",   after: "A plan that works with your body now" },
-  low_energy:     { image: "/testimonials/fatigue.webp",     label: "Fatigue",        before: "Running on empty by midday",        after: "Knowing where your energy goes" },
-  anxiety:        { image: "/testimonials/anxiety.webp",     label: "Anxiety",        before: "A constant, low hum of worry",      after: "Tools to steady the anxious moments" },
-  joint_pain:     { image: "/testimonials/joint_pain.webp",  label: "Joint pain",     before: "Stiff, aching mornings",            after: "Daily habits that ease the stiffness" },
-  bloating:       { image: "/testimonials/bloating.webp",    label: "Bloating",       before: "Heavy and uncomfortable",           after: "Spotting the foods behind the bloat" },
+  hot_flashes:    { image: "/testimonials/hot_flashes.webp", label: "Hot flashes",    before: "Drenched, sleepless nights",        after: "Sleeping through, dry and cool" },
+  sleep_issues:   { image: "/testimonials/sleep.webp",       label: "Sleep",          before: "Tossing and turning till 3am",      after: "Falling asleep and staying there" },
+  brain_fog:      { image: "/testimonials/brain_fog.webp",   label: "Brain fog",      before: "Losing your train of thought",      after: "Words arriving when you need them" },
+  mood_swings:    { image: "/testimonials/mood_swings.webp", label: "Mood swings",    before: "Snapping at the people you love",   after: "Feeling steady around the people you love" },
+  weight_changes: { image: "/testimonials/weight_gain.webp", label: "Weight changes", before: "Nothing fitting like it used to",   after: "Your clothes fitting the way they should" },
+  low_energy:     { image: "/testimonials/fatigue.webp",     label: "Fatigue",        before: "Running on empty by midday",        after: "Still having something left at 4pm" },
+  anxiety:        { image: "/testimonials/anxiety.webp",     label: "Anxiety",        before: "A constant, low hum of worry",      after: "A quiet chest and a calmer day" },
+  joint_pain:     { image: "/testimonials/joint_pain.webp",  label: "Joint pain",     before: "Stiff, aching mornings",            after: "Getting out of bed without bracing" },
+  bloating:       { image: "/testimonials/bloating.webp",    label: "Bloating",       before: "Heavy and uncomfortable",           after: "Light and comfortable after meals" },
 };
 
 /** Her selected symptoms that have a before/after image (capped, original order). */
@@ -665,6 +678,101 @@ function getSymptomTransforms(topProblems: string[], n = 3): SymptomTransform[] 
     .filter((id) => SYMPTOM_TRANSFORM[id])
     .slice(0, n)
     .map((id) => SYMPTOM_TRANSFORM[id]);
+}
+
+// ─── The plan: what she actually buys ───────────────────────────────────────
+// The four daily task areas the mobile app builds her 8-week plan from. This is
+// the offer's mechanism - "track your symptoms" never explained how anyone gets
+// better, and the diagnosis screen is the Reason stage, so the plan has to be
+// the thing the page is about.
+const PLAN_PILLARS = [
+  { key: "movement",   label: "Movement",    icon: Footprints,   tint: "text-sky-500",     blurb: "A routine that matches your level, not a gym program" },
+  { key: "nutrition",  label: "Nutrition",   icon: Salad,        tint: "text-emerald-500", blurb: "The daily swaps that steady your hormones" },
+  { key: "relaxation", label: "Relaxation",  icon: Wind,         tint: "text-violet-500",  blurb: "Breathing and wind-downs you can do anywhere" },
+  { key: "habits",     label: "Your habits", icon: CheckCircle2, tint: "text-primary",     blurb: "The few small things that hold the rest together" },
+] as const;
+
+// The 8-week arc, so the plan reads as a designed progression rather than a
+// to-do list she has to keep up forever.
+const PLAN_ARC = [
+  { weeks: "Week 1–2", label: "Steady the basics" },
+  { weeks: "Week 3–5", label: "Build on what works" },
+  { weeks: "Week 6–8", label: "Lock it in" },
+] as const;
+
+// What her plan actually does about each symptom she picked, one line per pillar.
+// Nutrition and relaxation lines reuse the tracker's own vocabulary (see
+// docs/marketing/app_taste/pillars.md) so the funnel doesn't teach her one set of
+// words and the app greet her with another.
+type SymptomPlan = { movement: string; nutrition: string; relaxation: string; habits: string };
+const SYMPTOM_PLAN: Record<string, SymptomPlan> = {
+  hot_flashes: {
+    movement: "Low-impact strength, 3× a week",
+    nutrition: "Cut the spikes — sugar, alcohol, late caffeine",
+    relaxation: "4-2-6 breathing the moment one starts",
+    habits: "Cool the room before bed",
+  },
+  sleep_issues: {
+    movement: "Move in the morning, nothing hard after 7pm",
+    nutrition: "Fat & protein at breakfast, 12-hour fasting window",
+    relaxation: "A 10-minute wind-down before lights out",
+    habits: "Same wake time, daylight within 30 minutes",
+  },
+  brain_fog: {
+    movement: "A daily walk — blood flow before focus",
+    nutrition: "Fat & protein at breakfast, no snacking",
+    relaxation: "One reset between tasks, not after the crash",
+    habits: "Hardest task in your clearest hour",
+  },
+  mood_swings: {
+    movement: "Steady cardio on the days it builds",
+    nutrition: "Fat & protein with every meal, 5 hours between",
+    relaxation: "Paced breathing before you respond",
+    habits: "Name the trigger before the day ends",
+  },
+  weight_changes: {
+    movement: "Strength 3× a week — muscle is the lever now",
+    nutrition: "Low-glycemic fruit only, 12-hour fasting window",
+    relaxation: "An evening reset — cortisol drives the middle",
+    habits: "Weigh weekly, not daily",
+  },
+  low_energy: {
+    movement: "Short and early, never to exhaustion",
+    nutrition: "Fat & protein at breakfast, 6+ glasses of water",
+    relaxation: "A real 10-minute pause instead of a third coffee",
+    habits: "One 20-minute break, actually booked",
+  },
+  anxiety: {
+    movement: "20 minutes walking, outdoors",
+    nutrition: "No blood-sugar crashes — fat & protein every meal",
+    relaxation: "4-2-6 breathing twice a day, not only in the spike",
+    habits: "Caffeine cut-off at noon",
+  },
+  joint_pain: {
+    movement: "Mobility first, then light strength",
+    nutrition: "Omega-3 daily, added high-fiber foods",
+    relaxation: "An evening stretch and body scan",
+    habits: "Move every hour you sit",
+  },
+  bloating: {
+    movement: "A 10-minute walk after meals",
+    nutrition: "Add high-fiber foods slowly, no snacking between meals",
+    relaxation: "Slow breathing before you eat",
+    habits: "Water first thing, 6+ by evening",
+  },
+};
+
+/** Her worst symptoms first, capped, and only the ones the plan has copy for. */
+function getPlannedSymptoms(
+  topProblems: string[],
+  symptomSeverity: Record<string, number>,
+  n = 2
+): { id: string; label: string; plan: SymptomPlan }[] {
+  return [...topProblems]
+    .filter((id) => SYMPTOM_PLAN[id])
+    .sort((a, b) => (symptomSeverity[b] ?? 0) - (symptomSeverity[a] ?? 0))
+    .slice(0, n)
+    .map((id) => ({ id, label: SYMPTOM_LABELS[id] || id, plan: SYMPTOM_PLAN[id] }));
 }
 
 /** Two diverging trajectories over ~2 years: decline if untreated vs. climb with Lisa. */
@@ -2139,16 +2247,13 @@ function RegisterPageContent() {
 
             
 
-            {/* ── Block 3: The mechanism. Vision above answers "what could my life
-                look like"; this answers the question that immediately follows -
-                "how?" - with three sequenced steps and real app screenshots, so
-                she sees the product before she is ever asked to pay for it. ─── */}
+            {/* ── Block 3: The plan. This is the product - an 8-week plan built
+                from her answers that hands her four things to do each day. The
+                app blocks below are how it reaches her, not what she's buying,
+                so the plan gets the page's biggest, most personal asset. ───── */}
             {(() => {
-              const topSymptom = [...topProblems]
-                .sort((a, b) => (symptomSeverity[b] ?? 0) - (symptomSeverity[a] ?? 0))[0];
-              const topLabel = topSymptom
-                ? (SYMPTOM_LABELS[topSymptom] || topSymptom).toLowerCase()
-                : "your symptoms";
+              const planned = getPlannedSymptoms(topProblems, symptomSeverity, 2);
+              const goalLabel = (GOAL_PROMISE[goal[0]] ?? "feel like yourself again").toLowerCase();
               return (
                 <motion.div
                   initial={{ opacity: 0, y: 16 }}
@@ -2158,199 +2263,257 @@ function RegisterPageContent() {
                 >
                   <div className="px-1 mb-3">
                     <h2 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight">
-                      {firstName.trim() ? `${firstName.trim()}, here's ` : "Here's "}
-                      <HighlightSweep>how we&apos;ll do it</HighlightSweep>
+                      {firstName.trim() ? `${firstName.trim()}, here's your ` : "Here's your "}
+                      <HighlightSweep>8-week plan</HighlightSweep>
                     </h2>
                     <p className="text-xs text-[#5A5A5A] mt-1.5">
-                      Three steps, about 2 minutes a day.
+                      Built from your 11 answers. About 15 minutes a day.
                     </p>
                   </div>
 
-                  <div className="space-y-3">
-                    {/* Step 1 - Track. Two shots: the grid she taps, and the rating
-                        sheet that follows, so the "2 minutes" claim is visible. */}
-                    <div className="rounded-2xl bg-card border-2 border-[#E8DDD9] overflow-hidden shadow-md shadow-primary/5">
-                      <div className="flex items-start gap-2.5 px-4 pt-3.5 pb-3">
-                        <span className="shrink-0 w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center">1</span>
-                        <div className="min-w-0">
-                          <p className="text-sm font-bold text-[#3D3D3D] flex items-center gap-1.5">
-                            <Activity className="w-4 h-4 text-sky-500 shrink-0" /> Track
-                          </p>
-                          <p className="text-xs text-[#5A5A5A] leading-snug mt-0.5">
-                            Tap what you felt today - {topLabel}, sleep, mood - and how bad it was. Two minutes, done.
-                          </p>
-                        </div>
-                      </div>
-                      <ShotStage className="h-44">
-                        <PhoneShot src="/diagnosys/symptoms1.webp" alt="Tracking symptoms in the MenoLisa app" rotate={-7} className="w-[40%] -mr-4 mt-2" />
-                        <PhoneShot src="/diagnosys/symptoms2.webp" alt="Rating symptom severity in the MenoLisa app" rotate={7} delay={0.12} className="w-[40%]" />
-                      </ShotStage>
+                  <div className="rounded-2xl overflow-hidden border-2 border-[#E8DDD9] bg-card shadow-md shadow-primary/5">
+                    {/* Her name written onto the plan, letter by letter in script -
+                        the made-for-you moment, and the reason this reads as her
+                        plan rather than a program she has to fit into. */}
+                    <div className="relative w-full">
+                      <Image
+                        src="/quiz/offer.webp"
+                        alt={firstName.trim() ? `${firstName.trim()}'s personalized 8-week plan` : "Your personalized 8-week plan"}
+                        width={1024}
+                        height={1536}
+                        className="w-full h-auto"
+                        priority
+                      />
+                      {(() => {
+                        const ink = "#5c4327";
+                        const fade = {
+                          hidden: { opacity: 0, y: 8 },
+                          show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" as const } },
+                        };
+                        return (
+                          <motion.div
+                            initial="hidden"
+                            animate="show"
+                            variants={{ hidden: {}, show: { transition: { staggerChildren: 0.22, delayChildren: 0.45 } } }}
+                            className="absolute inset-0 flex flex-col items-center justify-center text-center px-[16%] py-[15%]"
+                            style={{ color: ink }}
+                          >
+                            {/* A wax seal, not the reward illustration - this scroll
+                                carries her name, so the crest has to read as her
+                                plan being sealed, and it has to survive at 80px. */}
+                            <motion.div variants={fade} className="mb-2">
+                              <Image
+                                src="/personalized_plan.webp"
+                                alt=""
+                                width={500}
+                                height={500}
+                                sizes="96px"
+                                className="w-20 h-auto pointer-events-none select-none drop-shadow-lg"
+                              />
+                            </motion.div>
+
+                            <motion.span
+                              variants={fade}
+                              className="text-[9px] sm:text-[10px] uppercase tracking-[0.28em] opacity-70 mb-2"
+                              style={{ fontFamily: "var(--font-lora)" }}
+                            >
+                              Your Personalized 8-Week Plan
+                            </motion.span>
+
+                            <motion.div
+                              variants={{ hidden: {}, show: { transition: { staggerChildren: 0.09 } } }}
+                              className="flex"
+                            >
+                              {(firstName.trim() || "Lisa").split("").map((ch, i) => (
+                                <motion.span
+                                  key={`${ch}-${i}`}
+                                  variants={{
+                                    hidden: { opacity: 0, y: 12, rotate: -5, filter: "blur(6px)" },
+                                    show: { opacity: 1, y: 0, rotate: 0, filter: "blur(0px)", transition: { type: "spring", stiffness: 240, damping: 18 } },
+                                  }}
+                                  className="font-script text-5xl sm:text-6xl leading-none"
+                                >
+                                  {ch === " " ? " " : ch}
+                                </motion.span>
+                              ))}
+                            </motion.div>
+
+                            <motion.div variants={fade} className="my-2.5 h-px w-16" style={{ background: ink, opacity: 0.4 }} />
+
+                            <motion.p
+                              variants={fade}
+                              className="text-xs sm:text-sm italic leading-snug max-w-[92%]"
+                              style={{ fontFamily: "var(--font-lora)" }}
+                            >
+                              Designed to help you {goalLabel}.
+                            </motion.p>
+
+                            <motion.div variants={fade} className="mt-4 flex flex-col items-center">
+                              <span className="font-script text-2xl sm:text-3xl leading-none">Lisa</span>
+                            </motion.div>
+                          </motion.div>
+                        );
+                      })()}
                     </div>
 
-                    {/* Step 2 - Understand. The payoff of step 1: she gets a read
-                        on her own data instead of just a diary. */}
-                    <div className="rounded-2xl bg-card border-2 border-[#E8DDD9] overflow-hidden shadow-md shadow-primary/5">
-                      <div className="flex items-start gap-2.5 px-4 pt-3.5 pb-3">
-                        <span className="shrink-0 w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center">2</span>
-                        <div className="min-w-0">
-                          <p className="text-sm font-bold text-[#3D3D3D] flex items-center gap-1.5">
-                            <TrendingUp className="w-4 h-4 text-emerald-500 shrink-0" /> Understand
-                          </p>
-                          <p className="text-xs text-[#5A5A5A] leading-snug mt-0.5">
-                            Lisa reads your logs and shows you what&apos;s actually driving your {topLabel} - and what to try next.
-                          </p>
-                        </div>
+                    {/* The arc. Eight weeks has to read as a designed progression
+                        she finishes, not a routine she keeps up forever. */}
+                    <div className="px-4 pt-3.5">
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {PLAN_ARC.map((a) => (
+                          <div key={a.weeks} className="rounded-xl border border-[#E8DDD9] bg-background px-2 py-2 text-center">
+                            <p className="text-[10px] font-bold text-primary">{a.weeks}</p>
+                            <p className="text-[10px] text-[#5A5A5A] leading-snug mt-0.5">{a.label}</p>
+                          </div>
+                        ))}
                       </div>
-                      {/* Pulled up so the crop lands on Lisa's actual read + "what
-                          you can try", not the card header. */}
-                      <ShotStage className="h-44">
-                        <PhoneShot src="/diagnosys/insights.webp" alt="A personalized insight from Lisa in the MenoLisa app" rotate={-4} className="w-[46%] -mt-[26%]" />
-                      </ShotStage>
                     </div>
 
-                    {/* Step 3 - Ask. Removes the "what if I have a question" objection
-                        before it forms. */}
-                    <div className="rounded-2xl bg-card border-2 border-[#E8DDD9] overflow-hidden shadow-md shadow-primary/5">
-                      <div className="flex items-start gap-2.5 px-4 pt-3.5 pb-3">
-                        <span className="shrink-0 w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center">3</span>
-                        <div className="min-w-0">
-                          <p className="text-sm font-bold text-[#3D3D3D] flex items-center gap-1.5">
-                            <MessageCircleHeart className="w-4 h-4 text-violet-500 shrink-0" /> Ask Lisa anything
-                          </p>
-                          <p className="text-xs text-[#5A5A5A] leading-snug mt-0.5">
-                            Wide awake at 2am wondering what&apos;s happening to you? Ask her. Straight answers, no waiting room.
-                          </p>
-                        </div>
+                    {/* The daily shape of the plan - four tasks, named the same way
+                        the tracker names them (docs/marketing/app_taste/pillars.md). */}
+                    <div className="px-4 pt-4 pb-3.5">
+                      <p className="text-sm font-bold text-[#3D3D3D] mb-2.5">Every day, four things:</p>
+                      <div className="space-y-2">
+                        {PLAN_PILLARS.map((p) => (
+                          <div key={p.key} className="flex items-start gap-2.5">
+                            <p.icon className={cn("w-4 h-4 shrink-0 mt-0.5", p.tint)} />
+                            <p className="text-xs text-[#5A5A5A] leading-snug">
+                              <span className="font-bold text-[#3D3D3D]">{p.label}</span> — {p.blurb}
+                            </p>
+                          </div>
+                        ))}
                       </div>
-                      <ShotStage className="h-44">
-                        <PhoneShot src="/diagnosys/chat.webp" alt="Chatting with Lisa in the MenoLisa app" rotate={4} className="w-[46%]" />
-                      </ShotStage>
                     </div>
+
+                    {/* Today's list front and centre, the three pillar screens
+                        fanned behind it - the four tasks above, as they actually
+                        look. Gated until the masters land in assets/diagnosys/. */}
+                    {PLAN_SHOTS_READY && (
+                      <ShotStage className="h-44">
+                        <PhoneShot src={PLAN_SHOTS.movement} alt="A movement task in the MenoLisa app" rotate={-9} className="w-[27%] -mr-4 mt-3" />
+                        <PhoneShot src={PLAN_SHOTS.day} alt="Today's plan tasks in the MenoLisa app" rotate={0} delay={0.1} className="w-[31%] z-10" />
+                        <PhoneShot src={PLAN_SHOTS.nutrition} alt="A nutrition task in the MenoLisa app" rotate={7} delay={0.18} className="w-[27%] -ml-4 mt-3" />
+                        <PhoneShot src={PLAN_SHOTS.relaxation} alt="A relaxation task in the MenoLisa app" rotate={13} delay={0.26} className="w-[27%] -ml-6 mt-6" />
+                      </ShotStage>
+                    )}
+
+                    {/* The plan as it actually arrives. An unretouched inbox shot is
+                        what turns the illustrated scroll above into a real thing. */}
+                    <ShotStage className="h-40" fadeFrom="from-card">
+                      <PhoneShot
+                        src="/diagnosys/8week.webp"
+                        alt="The personalized 8-week plan email from Lisa"
+                        rotate={-3}
+                        className="w-[52%]"
+                      />
+                    </ShotStage>
+                  </div>
+
+                  {/* ── What the plan does about HER symptoms. The four pillars above
+                      are the shape; this is the proof it was built for her. ───── */}
+                  {planned.length > 0 && (
+                    <div className="mt-5">
+                      <h3 className="text-lg font-bold text-[#3D3D3D] leading-tight mb-2.5 px-1">
+                        What your plan does about your{" "}
+                        {getSymptomPhrase(planned.map((s) => s.id))}
+                      </h3>
+                      <div className="space-y-3">
+                        {planned.map((s, i) => (
+                          <motion.div
+                            key={s.id}
+                            initial={{ opacity: 0, y: 12 }}
+                            whileInView={{ opacity: 1, y: 0 }}
+                            viewport={{ once: true, amount: 0.3 }}
+                            transition={{ delay: i * 0.08 }}
+                            className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-3.5 shadow-sm"
+                          >
+                            <p className="text-sm font-bold text-[#3D3D3D] mb-2.5">{s.label}</p>
+                            <div className="space-y-2">
+                              {PLAN_PILLARS.map((p) => (
+                                <div key={p.key} className="flex items-start gap-2.5">
+                                  <p.icon className={cn("w-4 h-4 shrink-0 mt-0.5", p.tint)} />
+                                  <div className="min-w-0">
+                                    <p className="text-[10px] font-semibold text-[#9A9A9A] uppercase tracking-wide leading-none">{p.label}</p>
+                                    <p className="text-xs text-[#3D3D3D] leading-snug mt-0.5">{s.plan[p.key]}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </motion.div>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-[#9A9A9A] mt-2 px-1 leading-snug">
+                        Illustrative - your plan is written from your own answers when you start.
+                      </p>
+                    </div>
+                  )}
+                </motion.div>
+              );
+            })()}
+
+            {/* ── Block 4: The app. Deliberately after the plan and deliberately
+                small - these are the tools she runs the plan with, not the offer.
+                Selling them first was selling a tracker to someone who came here
+                to stop feeling this way. ──────────────────────────────────────── */}
+            {(() => {
+              const topSymptom = [...topProblems]
+                .sort((a, b) => (symptomSeverity[b] ?? 0) - (symptomSeverity[a] ?? 0))[0];
+              // No article - the sentence below supplies "your", so the fallback
+              // must not repeat it.
+              const topLabel = topSymptom
+                ? (SYMPTOM_LABELS[topSymptom] || topSymptom).toLowerCase()
+                : "symptoms";
+              return (
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.22 }}
+                  className="mb-5"
+                >
+                  <div className="px-1 mb-3">
+                    <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] leading-tight">
+                      And the app that <HighlightSweep>runs it</HighlightSweep>
+                    </h2>
+                    <p className="text-xs text-[#5A5A5A] mt-1.5">
+                      Your plan lives here, alongside everything that keeps it honest.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl bg-card border-2 border-[#E8DDD9] overflow-hidden shadow-md shadow-primary/5">
+                    <div className="px-4 pt-3.5 pb-3 space-y-2.5">
+                      <div className="flex items-start gap-2.5">
+                        <Activity className="w-4 h-4 text-sky-500 shrink-0 mt-0.5" />
+                        <p className="text-xs text-[#5A5A5A] leading-snug">
+                          <span className="font-bold text-[#3D3D3D]">Track</span> — tap what you felt today. Two minutes, done.
+                        </p>
+                      </div>
+                      <div className="flex items-start gap-2.5">
+                        <TrendingUp className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                        <p className="text-xs text-[#5A5A5A] leading-snug">
+                          <span className="font-bold text-[#3D3D3D]">Understand</span> — Lisa reads your logs and adjusts what your plan asks of you next, around your {topLabel}.
+                        </p>
+                      </div>
+                      <div className="flex items-start gap-2.5">
+                        <MessageCircleHeart className="w-4 h-4 text-violet-500 shrink-0 mt-0.5" />
+                        <p className="text-xs text-[#5A5A5A] leading-snug">
+                          <span className="font-bold text-[#3D3D3D]">Ask Lisa anything</span> — wide awake at 2am? Straight answers, no waiting room.
+                        </p>
+                      </div>
+                    </div>
+
+                    <ShotStage className="h-44">
+                      <PhoneShot src="/diagnosys/symptoms1.webp" alt="Tracking symptoms in the MenoLisa app" rotate={-7} className="w-[34%] -mr-3 mt-2" />
+                      <PhoneShot src="/diagnosys/insights.webp" alt="A personalized insight from Lisa in the MenoLisa app" rotate={0} delay={0.1} className="w-[34%] z-10" />
+                      <PhoneShot src="/diagnosys/chat.webp" alt="Chatting with Lisa in the MenoLisa app" rotate={7} delay={0.2} className="w-[34%] -ml-3 mt-2" />
+                    </ShotStage>
                   </div>
                 </motion.div>
               );
             })()}
 
-            {/* ── Block 4: Free bonus - the personalized 8-week plan ──────────── */}
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.22 }}
-              className="mb-5"
-            >
-              {/* Free bonus: personalized 8-week plan - the scroll with her name */}
-              <div className="rounded-2xl overflow-hidden border-2 border-dashed border-primary/40 bg-primary/5">
-                <div className="flex items-center gap-2 px-4 pt-3">
-                  <Gift className="w-4 h-4 text-primary shrink-0" />
-                  <span className="px-2 py-0.5 rounded-full bg-primary text-[9px] font-bold text-white uppercase tracking-wide">Free bonus</span>
-                </div>
-
-                {/* Personalized mockup: her name written onto the scroll, letter by
-                    letter in script - the made-for-you moment. */}
-                <div className="relative w-full">
-                  <Image
-                    src="/quiz/offer.webp"
-                    alt={firstName.trim() ? `${firstName.trim()}'s personalized 8-week plan` : "Your personalized 8-week plan"}
-                    width={1024}
-                    height={1536}
-                    className="w-full h-auto"
-                    priority
-                  />
-                  {(() => {
-                    const ink = "#5c4327";
-                    const goalLabel = (GOAL_PROMISE[goal[0]] ?? "feel like yourself again").toLowerCase();
-                    const fade = {
-                      hidden: { opacity: 0, y: 8 },
-                      show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" as const } },
-                    };
-                    return (
-                      <motion.div
-                        initial="hidden"
-                        animate="show"
-                        variants={{ hidden: {}, show: { transition: { staggerChildren: 0.22, delayChildren: 0.45 } } }}
-                        className="absolute inset-0 flex flex-col items-center justify-center text-center px-[16%] py-[15%]"
-                        style={{ color: ink }}
-                      >
-                        {/* A wax seal, not the reward illustration - this scroll
-                            carries her name, so the crest has to read as her
-                            plan being sealed, and it has to survive at 80px. */}
-                        <motion.div variants={fade} className="mb-2">
-                          <Image
-                            src="/personalized_plan.webp"
-                            alt=""
-                            width={500}
-                            height={500}
-                            sizes="96px"
-                            className="w-20 h-auto pointer-events-none select-none drop-shadow-lg"
-                          />
-                        </motion.div>
-
-                        <motion.span
-                          variants={fade}
-                          className="text-[9px] sm:text-[10px] uppercase tracking-[0.28em] opacity-70 mb-2"
-                          style={{ fontFamily: "var(--font-lora)" }}
-                        >
-                          Your Personalized 8-Week Plan
-                        </motion.span>
-
-                        <motion.div
-                          variants={{ hidden: {}, show: { transition: { staggerChildren: 0.09 } } }}
-                          className="flex"
-                        >
-                          {(firstName.trim() || "Lisa").split("").map((ch, i) => (
-                            <motion.span
-                              key={`${ch}-${i}`}
-                              variants={{
-                                hidden: { opacity: 0, y: 12, rotate: -5, filter: "blur(6px)" },
-                                show: { opacity: 1, y: 0, rotate: 0, filter: "blur(0px)", transition: { type: "spring", stiffness: 240, damping: 18 } },
-                              }}
-                              className="font-script text-5xl sm:text-6xl leading-none"
-                            >
-                              {ch === " " ? " " : ch}
-                            </motion.span>
-                          ))}
-                        </motion.div>
-
-                        <motion.div variants={fade} className="my-2.5 h-px w-16" style={{ background: ink, opacity: 0.4 }} />
-
-                        <motion.p
-                          variants={fade}
-                          className="text-xs sm:text-sm italic leading-snug max-w-[92%]"
-                          style={{ fontFamily: "var(--font-lora)" }}
-                        >
-                          Designed to help you {goalLabel}.
-                        </motion.p>
-
-                        <motion.div variants={fade} className="mt-4 flex flex-col items-center">
-                          <span className="font-script text-2xl sm:text-3xl leading-none">Lisa</span>
-                        </motion.div>
-                      </motion.div>
-                    );
-                  })()}
-                </div>
-
-                <div className="px-4 pt-2">
-                  <p className="text-xs text-[#5A5A5A] leading-snug">
-                    Built from your 11 answers - yours free when you start your trial.
-                  </p>
-                </div>
-
-                {/* The plan as it actually arrives. An unretouched inbox shot is
-                    what turns the illustrated scroll above into a real thing. */}
-                <ShotStage className="h-40 mt-3" fadeFrom="from-background">
-                  <PhoneShot
-                    src="/diagnosys/8week.webp"
-                    alt="The personalized 8-week plan email from Lisa"
-                    rotate={-3}
-                    className="w-[52%]"
-                  />
-                </ShotStage>
-              </div>
-            </motion.div>
-
-            {/* ── The 80+ Guarantee: named, conditional risk-reversal. The
-                "follow your plan" condition is what makes it safe to offer and
-                turns the free 8-week plan bonus into the thing she must use. ── */}
+            {/* ── The 8-Week Guarantee: unconditional risk-reversal. No score to
+                hit, no logging quota to meet - conditions are what she reads as
+                the catch, and the plan is what we're asking her to believe in. ── */}
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
@@ -2360,11 +2523,10 @@ function RegisterPageContent() {
             >
               <div className="flex flex-col items-center text-center">
                 <ShieldCheck className="w-12 h-12 text-green-600 shrink-0 mb-2" />
-                <h2 className="text-base font-bold text-green-800 mb-2">The 80+ Guarantee</h2>
+                <h2 className="text-base font-bold text-green-800 mb-2">The 8-Week Guarantee</h2>
                 <p className="text-sm text-[#3D3D3D] leading-relaxed">
-                  {firstName.trim() ? `${firstName.trim()}, follow` : "Follow"}{" "}your {" "}
-                  <b>personalized 8-week plan</b> and if you don&apos;t reach a score of{" "}
-                  <span className="font-bold text-green-700">80+</span>, we&apos;ll{" "}
+                  {firstName.trim() ? `${firstName.trim()}, if` : "If"} you don&apos;t feel better in{" "}
+                  <b>8 weeks</b>, we&apos;ll{" "}
                   <HighlightSweep variant="green">
                     <b>refund you</b>
                   </HighlightSweep>{" "}
@@ -2372,8 +2534,7 @@ function RegisterPageContent() {
                 </p>
                 <div className="w-16 h-px bg-green-300 my-3" />
                 <p className="text-xs text-[#5A5A5A] leading-snug">
-                  All we ask is that you use the plan we built for you. No risk - the only way to
-                  lose is to not start.
+                  No conditions, no hoops. The only way to lose is to not start.
                 </p>
               </div>
             </motion.div>
@@ -2386,13 +2547,15 @@ function RegisterPageContent() {
               className="mb-4"
             >
               <p className="text-center text-xs font-semibold text-[#3D3D3D] mb-2">
-                Built with menopause clinicians · grounded in published research
+                Every plan step is built with menopause clinicians and grounded in
+                published research - and Lisa always shows you why she suggested it.
               </p>
               {/* Pricing reassurance ("no charge today", "cancel anytime") lives on
                   the paywall, not here - this page's job is belief, and naming the
                   charge two screens early just raises her guard. */}
               <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[11px] text-[#9A9A9A]">
                 <span className="flex items-center gap-1"><Check className="w-3.5 h-3.5 text-green-600" /> Built around your 11 answers</span>
+                <span className="flex items-center gap-1"><Check className="w-3.5 h-3.5 text-green-600" /> Works alongside HRT</span>
                 <span className="flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5 text-green-600" /> Your data stays private</span>
               </div>
             </motion.div>
