@@ -2177,10 +2177,9 @@ function RegisterPageContent() {
 
             {/* ── Block 2: Personalized before/after for her symptoms ─────────── */}
             {(() => {
-              // One symptom, not two: the trajectory chart above already carries
-              // the "it gets better" message, and a second tile is pure scroll
-              // between her and the CTA.
-              const transforms = getSymptomTransforms(topProblems, 1);
+              // Up to 3 of her symptoms, so the before/after proof covers what
+              // she actually picked rather than just her #1.
+              const transforms = getSymptomTransforms(topProblems, 3);
               if (transforms.length === 0) return null;
               return (
                 <motion.div
@@ -2194,14 +2193,14 @@ function RegisterPageContent() {
                     <HighlightSweep>taking control</HighlightSweep> can look like
                   </h2>
 
-                  <div className="space-y-3">
+                  <div className="flex overflow-x-auto snap-x snap-mandatory gap-3 -mx-4 sm:-mx-6 px-4 sm:px-6 pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                     {transforms.map((t, i) => (
                       <motion.div
                         key={t.image}
                         initial={{ opacity: 0, y: 12 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.15 + i * 0.08 }}
-                        className="rounded-2xl bg-card border-2 border-[#E8DDD9] overflow-hidden shadow-sm"
+                        className="rounded-2xl bg-card border-2 border-[#E8DDD9] overflow-hidden shadow-sm shrink-0 snap-center w-[82%]"
                       >
                         {/* Image with red/green tint halves and matching labels */}
                         <div className="relative">
@@ -2423,10 +2422,15 @@ function RegisterPageContent() {
                       are the shape; this is the proof it was built for her. ───── */}
                   {planned.length > 0 && (
                     <div className="mt-5">
-                      <h3 className="text-lg font-bold text-[#3D3D3D] leading-tight mb-2.5 px-1">
-                        What your plan does about your{" "}
-                        {getSymptomPhrase(planned.map((s) => s.id))}
-                      </h3>
+                      <div className="px-1 mb-3">
+                        <h2 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight">
+                          {firstName.trim() ? `${firstName.trim()}, here's how we'll tackle ` : "Here's how we'll tackle "}
+                          <HighlightSweep>your {getSymptomPhrase(planned.map((s) => s.id))}</HighlightSweep>
+                        </h2>
+                        <p className="text-xs text-[#5A5A5A] mt-1.5">
+                          Every day, you&apos;ll have a few simple tasks to do - each one moving you toward feeling better.
+                        </p>
+                      </div>
                       <div className="space-y-3">
                         {planned.map((s, i) => (
                           <motion.div
