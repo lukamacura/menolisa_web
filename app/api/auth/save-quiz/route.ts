@@ -31,7 +31,7 @@ const QuizSchema = z.object({
   weight_kg: z.number().int().min(20).max(500).nullable().optional(),
   height_unit: z.enum(["cm", "ft"]).nullable().optional(),
   weight_unit: z.enum(["kg", "lb"]).nullable().optional(),
-  fitness_level: z.enum(["beginner", "medium", "advanced"]).nullable().optional(),
+  fitness_level: z.enum(["beginner", "medium", "advanced", "movement_snacks"]).nullable().optional(),
 });
 
 const BodySchema = z.object({

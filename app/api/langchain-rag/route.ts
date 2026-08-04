@@ -670,6 +670,7 @@ export async function POST(req: NextRequest) {
           beginner: "Beginner (little to no regular exercise)",
           medium: "Medium (moves regularly, moderate fitness)",
           advanced: "Advanced (trains consistently, fit)",
+          movement_snacks: "Movement Snacks (little time to exercise, fits in short bursts of movement)",
         };
         profileParts.push(
           `Fitness level: ${fitnessLabels[userProfile.fitness_level] || userProfile.fitness_level}`

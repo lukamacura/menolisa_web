@@ -197,6 +197,7 @@ const FITNESS_OPTIONS = [
   { id: "beginner", label: "Beginner", image: "/quiz/fitness/beginner.webp" },
   { id: "medium", label: "Medium", image: "/quiz/fitness/medium.webp" },
   { id: "advanced", label: "Advanced", image: "/quiz/fitness/advanced.webp" },
+  { id: "movement_snacks", label: "Movement Snacks", image: "/quiz/fitness/movement-snacks.webp" },
 ];
 
 const QUALIFIER_OPTIONS = [
