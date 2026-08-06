@@ -20,8 +20,9 @@ way to finish a set she already started.
 
 These nine IDs and labels are the contract. The tracker's nutrition section must
 reuse them verbatim, in this order, or the funnel will have taught her one
-vocabulary and the app will greet her with another. Source of truth in code:
-`NUTRITION_GROUPS` in `app/register/page.tsx`.
+vocabulary and the app will greet her with another. Two places in code hold them
+and must stay in step: `NUTRITION_GROUPS` in `app/register/page.tsx` (the funnel)
+and `NUTRITION` in `lib/plan/catalog.ts` (the plan).
 
 Order is priority order — highest-leverage habit first. The funnel reuses it to
 pick her "first 3 swaps for tomorrow" from whatever she left unticked.

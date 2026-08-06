@@ -1,5 +1,12 @@
 # Claude Code Prompt — Build /quiz1 for MenoLisa
 
+> **Archived 2026-08-06. `/quiz1` was removed — the route never went into use.**
+> Deleted with it: `app/quiz1/`, `components/quiz1/`, and the `quiz1_completed` /
+> `quiz1_profile` / `quiz1_state` sessionStorage hand-off in `app/register/page.tsx`
+> that let quiz1 traffic skip the register quiz and jump to email → paywall.
+> `/register` is now the only funnel entry. Kept for the copy and the pillar
+> question design.
+
 ## Context
 MenoLisa is an AI-powered menopause companion ("Your AI bestie for the meno chaos") helping women through metabolic changes across 6 pillars: Movement, Nutrition, Sleep, Stress, Supplements, HRT.
 

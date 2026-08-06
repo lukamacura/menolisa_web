@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { writeSubscription } from "@/lib/subscriptionWrite";
 import { sendTrialWelcomeEmail, sendChargeConfirmedEmail, sendAdminNotification } from "@/lib/resend";
-import { send8WeekPlanEmail } from "@/lib/eightWeekPlan";
+import { generatePlan, markPlanGenerating } from "@/lib/plan/generate";
 import { sendMetaPurchase, metaMatchDataFrom } from "@/lib/metaCapi";
 import { META_CURRENCY, PLAN_VALUE, purchaseEventId } from "@/lib/metaPixel";
 
@@ -190,6 +190,13 @@ async function handleCheckoutSessionCompleted(
         })
       );
 
+      // Her 8-week plan. The row is claimed synchronously so the app can show
+      // "building your plan" the moment she opens it; the slow LLM call runs
+      // after Stripe already has its 200. If it never lands, GET /api/plan
+      // re-kicks it.
+      await markPlanGenerating(userId);
+      after(() => generatePlan(userId));
+
       try {
         const { data: authData } = await supabaseAdmin.auth.admin.getUserById(userId);
         const email = authData.user?.email;
@@ -206,8 +213,6 @@ async function handleCheckoutSessionCompleted(
               `<p>New trial: <strong>${email}</strong>${profile?.name ? ` (${profile.name})` : ""}</p><p>Started: ${new Date().toUTCString()}</p>`
             ),
           ]);
-          // LLM plan generation is slow; run it after the webhook responds so Stripe isn't kept waiting.
-          after(() => send8WeekPlanEmail(email, userId));
         }
       } catch (e) {
         console.error("Webhook: trial welcome emails failed:", e);

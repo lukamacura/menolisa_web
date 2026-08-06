@@ -43,6 +43,8 @@ import {
 import OtpForm from "@/components/auth/OtpForm";
 import { PaywallView } from "@/components/PaywallView";
 import MetaPurchaseTracker from "@/components/MetaPurchaseTracker";
+import { META_FUNNEL_STEPS } from "@/lib/metaPixel";
+import { trackFunnelStep } from "@/lib/metaPixelClient";
 import AnimatedCounter from "@/components/landing/AnimatedCounter";
 import {
   SYMPTOM_LABELS,
@@ -533,7 +535,7 @@ function getReliefForwardCopy(): { sub: React.ReactNode } {
 //
 // Array order is priority order (highest-leverage habit first), because the
 // reward screen reuses it to pick her "first 3 swaps" from what she left blank.
-// IDs are the contract with the mobile habit tracker - see docs/marketing/app_taste/pillars.md.
+// IDs are the contract with the mobile habit tracker - see docs/plan/pillars.md.
 type NutritionItem = {
   id: string;
   label: string;
@@ -703,7 +705,7 @@ const PLAN_ARC = [
 
 // What her plan actually does about each symptom she picked, one line per pillar.
 // Nutrition and relaxation lines reuse the tracker's own vocabulary (see
-// docs/marketing/app_taste/pillars.md) so the funnel doesn't teach her one set of
+// docs/plan/pillars.md) so the funnel doesn't teach her one set of
 // words and the app greet her with another.
 type SymptomPlan = { movement: string; nutrition: string; relaxation: string; habits: string };
 const SYMPTOM_PLAN: Record<string, SymptomPlan> = {
@@ -1152,17 +1154,15 @@ function RegisterPageContent() {
     }
     return "quiz";
   });
-  // /quiz1 traffic skips the register quiz entirely and jumps straight to email + paywall.
-  const [fromQuiz1, setFromQuiz1] = useState(false);
-
+  // Ad-funnel step 1: the quiz is actually in front of her. Guarded on the quiz
+  // phase so Stripe's ?phase=paywall|download returns and middleware bounces
+  // don't register as starts, leaving a true count of women who saw a first
+  // question.
   useEffect(() => {
-    if (typeof sessionStorage !== "undefined" && sessionStorage.getItem("quiz1_completed") === "true") {
-      setFromQuiz1(true);
-      setPhase("email");
-    }
-    // Only on mount; subsequent param changes shouldn't override user navigation.
-     
-  }, []);
+    if (phase !== "quiz") return;
+    trackFunnelStep(META_FUNNEL_STEPS.quizStart);
+  }, [phase]);
+
   const [stepIndex, setStepIndex] = useState(0);
   const currentStep = STEPS[stepIndex];
 
@@ -1522,9 +1522,16 @@ function RegisterPageContent() {
     } else {
       // Quiz complete - show calculating loader, then move to email (verify before showing results)
       saveQuizAnswers();
+      // Ad-funnel step 2, and the one that ranks angles: cheap clicks that never
+      // reach here mean the ad pulled the wrong woman. Her symptom count and
+      // primary goal ride along so a segment can be read off the event itself.
+      trackFunnelStep(META_FUNNEL_STEPS.quizComplete, {
+        symptom_count: topProblems.length,
+        goal: goal[0] ?? null,
+      });
       setPhase("calculating");
     }
-  }, [currentStep, stepIndex, stepIsAnswered, saveQuizAnswers]);
+  }, [currentStep, stepIndex, stepIsAnswered, saveQuizAnswers, topProblems, goal]);
 
   const goBack = useCallback(() => {
     if (stepIndex > 0) {
@@ -1559,7 +1566,7 @@ function RegisterPageContent() {
         }
       }
 
-      let quizAnswers: Record<string, unknown> = {
+      const quizAnswers: Record<string, unknown> = {
         age_band: ageBand || null,
         top_problems: topProblems,
         timing,
@@ -1577,18 +1584,6 @@ function RegisterPageContent() {
         fitness_level: fitnessLevel || null,
       };
 
-      // /quiz1 hand-off: prefer the quiz1-derived profile when present.
-      if (fromQuiz1 && typeof sessionStorage !== "undefined") {
-        const raw = sessionStorage.getItem("quiz1_profile");
-        if (raw) {
-          try {
-            quizAnswers = JSON.parse(raw);
-          } catch {
-            // fall through to register-quiz payload
-          }
-        }
-      }
-
       const res = await fetch("/api/auth/save-quiz", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1605,25 +1600,23 @@ function RegisterPageContent() {
         return;
       }
 
+      // Ad-funnel step 3: email verified and her profile is saved. Deliberately a
+      // Meta *standard* event - it can be an optimization objective and an
+      // audience with no Custom Conversion setup, which is what makes it the
+      // fallback objective while Purchase volume is still below learning-phase
+      // exit. Fires after save-quiz succeeds, so an already-active account taking
+      // the early return above is never counted as a new lead.
+      trackFunnelStep(META_FUNNEL_STEPS.lead);
+
       sessionStorage.removeItem("pending_quiz_answers");
       if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(REFERRAL_STORAGE_KEY);
-      if (fromQuiz1) {
-        // Quiz1 already showed her the result - skip /register results and head to paywall.
-        if (typeof sessionStorage !== "undefined") {
-          sessionStorage.removeItem("quiz1_completed");
-          sessionStorage.removeItem("quiz1_profile");
-          sessionStorage.removeItem("quiz1_state");
-        }
-        setPhase("paywall");
-      } else {
-        setPhase("results");
-      }
+      setPhase("results");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error. Please try again.");
     } finally {
       setSavingQuiz(false);
     }
-  }, [ageBand, topProblems, timing, triedOptions, hrtStatus, goal, qualifier, hereFor, firstName, bodyMetrics, fitnessLevel, ref, fromQuiz1, router]);
+  }, [ageBand, topProblems, timing, triedOptions, hrtStatus, goal, qualifier, hereFor, firstName, bodyMetrics, fitnessLevel, ref, router]);
 
   const toggleProblem = (problemId: string) => {
     setSymptomSeverity((prev) => {
@@ -2380,7 +2373,7 @@ function RegisterPageContent() {
                     </div>
 
                     {/* The daily shape of the plan - four tasks, named the same way
-                        the tracker names them (docs/marketing/app_taste/pillars.md). */}
+                        the tracker names them (docs/plan/pillars.md). */}
                     <div className="px-4 pt-4 pb-3.5">
                       <p className="text-sm font-bold text-[#3D3D3D] mb-2.5">Every day, four things:</p>
                       <div className="space-y-2">
@@ -3281,24 +3274,14 @@ function RegisterPageContent() {
 
             <div className="mb-4 sm:mb-6 text-center">
               <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-2 sm:mb-3">
-                {fromQuiz1 ? (
-                  <>
-                    Last step -{" "}
-                    <span className="text-primary uppercase">save your plan</span>
-                  </>
-                ) : (
-                  <>
-                    Your personalized Menopause Plan{" "}
-                    <span className="text-primary uppercase">is ready</span>
-                  </>
-                )}
+                Your personalized Menopause Plan{" "}
+                <span className="text-primary uppercase">is ready</span>
               </h2>
               {otpStep === "email" && (
                 <>
                   <p className="text-sm sm:text-base text-[#5A5A5A]">
-                    {fromQuiz1
-                      ? "Enter your email so we can save your plan - so you don't lose it. We'll send a 6-digit code, no password."
-                      : "Enter your email so we can save your score and free plan - so you don't lose it. We'll send a 6-digit code, no password."}
+                    Enter your email so we can save your score and free plan - so you don&apos;t
+                    lose it. We&apos;ll send a 6-digit code, no password.
                   </p>
                   {firstName.trim() && (
                     <p className="text-sm text-[#5A5A5A] mt-2">
@@ -3352,7 +3335,7 @@ function RegisterPageContent() {
           onCheckout={handleStartTrialCheckout}
           checkoutLoading={checkoutLoading}
           error={error}
-          onBack={fromQuiz1 ? undefined : () => setPhase("nutrition")}
+          onBack={() => setPhase("nutrition")}
           trackingSource="register"
         />
       )}

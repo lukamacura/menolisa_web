@@ -3,6 +3,8 @@
 /** Browser-side `fbq` wrappers. Safe to call before the pixel script loads - the
  *  inline snippet installs a stub that queues calls until fbevents.js arrives. */
 
+import type { MetaFunnelStep } from "@/lib/metaPixel";
+
 export type FbTrackParams = Record<string, unknown>;
 export type FbTrackOptions = { eventID?: string };
 
@@ -45,4 +47,13 @@ export function trackFbOnce(
     // Private mode / storage disabled - fall through and fire anyway.
   }
   trackFb(eventName, params, options);
+}
+
+/**
+ * Fires one of the funnel steps, at most once per session. Keeping the event name
+ * and its dedup key paired in `META_FUNNEL_STEPS` is what stops a call site from
+ * reporting the right event under the wrong key.
+ */
+export function trackFunnelStep(step: MetaFunnelStep, params?: FbTrackParams): void {
+  trackFbOnce(step.onceKey, step.name, params);
 }

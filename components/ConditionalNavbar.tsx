@@ -12,7 +12,6 @@ type ConditionalNavbarProps = {
 export default function ConditionalNavbar({ isAuthenticated: initialIsAuthenticated }: ConditionalNavbarProps) {
   const pathname = usePathname();
   const isChatPage = pathname?.includes("/chat/lisa");
-  const isQuiz1 = pathname === "/quiz1";
   const isRegisterPage = pathname?.startsWith("/register");
   // Start with server-side value - it's usually correct after redirect
   const [isAuthenticated, setIsAuthenticated] = useState(initialIsAuthenticated);
@@ -91,7 +90,7 @@ export default function ConditionalNavbar({ isAuthenticated: initialIsAuthentica
     }
   }, [isChatPage]);
 
-  if (isChatPage || isQuiz1 || isRegisterPage) {
+  if (isChatPage || isRegisterPage) {
     return null;
   }
 

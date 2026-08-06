@@ -301,14 +301,24 @@ NEXT_PUBLIC_META_PIXEL_ID      # Optional; defaults to 7118800424899365
 ```
 
 ### Meta Pixel / Conversions API
-Ad tracking for the `/register` and `/quiz1` web2app funnel:
+Ad tracking for the `/register` web2app funnel:
 
 | Event | Fires from | Value |
 |---|---|---|
 | `PageView` | `components/MetaPixel.tsx` (in `app/layout.tsx`); re-fires on App Router route changes | — |
+| `QuizStart` *(custom)* | `app/register/page.tsx` on the quiz phase | — |
+| `QuizComplete` *(custom)* | `app/register/page.tsx` last step of `goNext()` | — |
+| `Lead` | `app/register/page.tsx` `handleOtpSuccess()`, after save-quiz succeeds | — |
 | `ViewContent` | `components/PaywallView.tsx` on mount (once, not per plan toggle) | selected plan |
 | `InitiateCheckout` | `components/PaywallView.tsx` CTA click | selected plan |
 | `Purchase` | Browser: `components/MetaPurchaseTracker.tsx` on the success landing. Server: `sendMetaPurchase()` from the Stripe webhook | $79 annual / $12 monthly |
+
+Step names and their sessionStorage dedup keys are paired in `META_FUNNEL_STEPS`
+(`lib/metaPixel.ts`) and fired through `trackFunnelStep()`.
+`QuizStart`/`QuizComplete` are custom events — each needs a **Custom Conversion**
+defined in Events Manager before it can be optimized for or used as an audience.
+`Lead` is standard and needs no setup, which is why it's the fallback
+optimization objective while Purchase volume is below learning-phase exit.
 
 `Purchase` is sent from **both** browser and server and deduplicated by a shared
 `event_id` (`purchaseEventId()` in `lib/metaPixel.ts`, derived from the Stripe

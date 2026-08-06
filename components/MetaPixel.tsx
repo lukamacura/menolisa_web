@@ -33,7 +33,8 @@ export default function MetaPixel() {
         corrupting the funnel's step-to-step rates.
 
         Turning it off means every event in Events Manager is one we fired on
-        purpose: PageView, ViewContent, InitiateCheckout, Purchase. It also
+        purpose: PageView, QuizStart, QuizComplete, Lead, ViewContent,
+        InitiateCheckout, Purchase. It also
         disables Automatic Advanced Matching (form-field email/phone scraping),
         which we don't rely on - the Conversions API sends hashed match data from
         the Stripe webhook instead.

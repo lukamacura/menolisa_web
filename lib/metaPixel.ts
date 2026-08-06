@@ -36,3 +36,26 @@ export function isMetaPlan(value: unknown): value is MetaPlan {
 export function purchaseEventId(stripeSessionId: string): string {
   return `purchase_${stripeSessionId}`;
 }
+
+/**
+ * Top-of-funnel steps, fired from the `/register` quiz.
+ *
+ * `QuizStart` and `QuizComplete` are custom events - each needs a Custom
+ * Conversion defined in Events Manager before it can be optimized for or used to
+ * build an audience. `Lead` is a Meta standard event and needs no setup, which is
+ * why the email-verified step uses it: while Purchase volume is too low to exit
+ * the learning phase, Lead is the fallback optimization objective.
+ *
+ * `onceKey` is the sessionStorage key `trackFbOnce` dedups on, so a refresh or a
+ * StrictMode double-effect can't inflate a step.
+ *
+ * Names live here rather than inline because a typo doesn't fail - it silently
+ * creates a new event in Events Manager and splits the funnel in half.
+ */
+export const META_FUNNEL_STEPS = {
+  quizStart: { name: "QuizStart", onceKey: "quiz_start" },
+  quizComplete: { name: "QuizComplete", onceKey: "quiz_complete" },
+  lead: { name: "Lead", onceKey: "lead" },
+} as const;
+
+export type MetaFunnelStep = (typeof META_FUNNEL_STEPS)[keyof typeof META_FUNNEL_STEPS];

@@ -2,6 +2,11 @@
 
 > **Goal:** Borrow the highest-converting mechanics from the ZOE MenoScale quiz (severity-rated symptoms, a benchmarked score, and a "you're not alone" comparison) and fold them into the existing `/register` quiz **without changing the active funnel** — same phase machine, same auth, same save-quiz contract, same paywall/Stripe, same `/quiz1` hand-off.
 
+> **Note (2026-08-06):** written while `/quiz1` still existed. That route and its
+> `/register` hand-off have since been deleted — ignore every `/quiz1` mention
+> below. Everything else still describes the live `/register` quiz. See
+> [../archive/quiz1.md](../archive/quiz1.md).
+
 ---
 
 ## 0. TL;DR
