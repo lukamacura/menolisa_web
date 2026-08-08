@@ -3,18 +3,19 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import { DisputedAccountBanner, PaywallView, type PaywallPlan } from "@/components/PaywallView";
+import { DisputedAccountBanner, PaywallView } from "@/components/PaywallView";
+import { PLAN_ID } from "@/lib/pricing";
+import type { AccountState } from "@/lib/getAccountState";
 
 export const dynamic = "force-dynamic";
 
 type AccountStatusResponse = {
-  state?: "trialing" | "active" | "canceling" | "past_due" | "ended" | "disputed";
+  state?: AccountState;
   has_access?: boolean;
 };
 
 export default function PaywallPage() {
   const router = useRouter();
-  const [selectedPlan, setSelectedPlan] = useState<PaywallPlan>("annual");
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gateLoading, setGateLoading] = useState(true);
@@ -55,7 +56,7 @@ export default function PaywallPage() {
     };
   }, [router]);
 
-  const handleCheckout = async (plan: PaywallPlan) => {
+  const handleCheckout = async () => {
     if (checkoutLoading) return;
     setError(null);
     setCheckoutLoading(true);
@@ -65,7 +66,7 @@ export default function PaywallPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ plan, return_origin: origin || undefined }),
+        body: JSON.stringify({ plan: PLAN_ID, return_origin: origin || undefined }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -103,8 +104,6 @@ export default function PaywallPage() {
     >
       <div className="flex-1 flex flex-col px-4 sm:px-6 py-6 sm:py-10">
         <PaywallView
-          selectedPlan={selectedPlan}
-          onSelectPlan={setSelectedPlan}
           onCheckout={handleCheckout}
           checkoutLoading={checkoutLoading}
           error={error}

@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { WEB_APP_ENABLED } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -13,8 +14,12 @@ function DashboardRedirect() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
+    // Home is the tracker while the web app serves the product, and Account
+    // once it doesn't — landing on a "get the app" wall would strand anyone
+    // who came here to cancel.
+    const target = WEB_APP_ENABLED ? "/dashboard/symptoms" : "/dashboard/account";
     const qs = searchParams.toString();
-    router.replace(qs ? `/dashboard/symptoms?${qs}` : "/dashboard/symptoms");
+    router.replace(qs ? `${target}?${qs}` : target);
   }, [router, searchParams]);
 
   return null;

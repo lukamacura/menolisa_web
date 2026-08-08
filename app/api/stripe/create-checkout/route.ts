@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getAuthenticatedUser } from "@/lib/getAuthenticatedUser";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { PLAN_ID, isPlanId } from "@/lib/pricing";
 
 export const runtime = "nodejs";
 
@@ -9,11 +10,9 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 function getAllowedOrigins(): string[] {
   const origins: string[] = [];
-  if (process.env.NEXT_PUBLIC_APP_URL) origins.push(process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, ""));
   if (process.env.NEXT_PUBLIC_SITE_URL) origins.push(process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, ""));
   if (process.env.VERCEL_URL) origins.push(`https://${process.env.VERCEL_URL}`);
   origins.push("https://menolisa.com", "https://www.menolisa.com");
-  origins.push("https://womenreset.com", "https://www.womenreset.com");
   origins.push("http://localhost:3000", "http://127.0.0.1:3000");
   return [...new Set(origins)];
 }
@@ -24,7 +23,6 @@ function getBaseUrl(originFromRequest?: string | null): string {
     const normalized = originFromRequest.replace(/\/$/, "");
     if (allowed.includes(normalized)) return normalized;
   }
-  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
   if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "");
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   return "http://localhost:3000";
@@ -65,21 +63,19 @@ export async function POST(req: NextRequest) {
     const plan = body?.plan as string | undefined;
     const fromRegistration = body?.from_registration === true;
     const returnOrigin = (body?.return_origin as string | undefined) || req.headers.get("origin") || req.headers.get("referer");
-    if (plan !== "monthly" && plan !== "annual") {
+    // One plan, one price. The retired `monthly`/`annual` values are rejected
+    // rather than aliased, so a stale client fails loudly instead of quietly
+    // buying something at a price its own UI never showed.
+    if (!isPlanId(plan)) {
       return NextResponse.json(
-        { error: "Invalid plan. Use 'monthly' or 'annual'." },
+        { error: `Invalid plan. Use '${PLAN_ID}'.` },
         { status: 400 }
       );
     }
 
-    const priceId =
-      plan === "annual"
-        ? process.env.STRIPE_PRICE_ANNUAL
-        : process.env.STRIPE_PRICE_MONTHLY;
-
+    const priceId = process.env.STRIPE_PRICE_8WEEK;
     if (!priceId) {
-      const missing = plan === "annual" ? "STRIPE_PRICE_ANNUAL" : "STRIPE_PRICE_MONTHLY";
-      console.error(`Missing ${missing} env var`);
+      console.error("Missing STRIPE_PRICE_8WEEK env var");
       return NextResponse.json(
         { error: "Checkout is not configured for this plan." },
         { status: 500 }
@@ -167,15 +163,9 @@ export async function POST(req: NextRequest) {
       client_reference_id: user.id,
       customer_email: user.email ?? undefined,
       metadata: { user_id: user.id, plan, ...metaMetadata },
+      // No trial: the card is charged the full price at checkout and the
+      // subscription renews every 8 weeks off the price's own interval.
       subscription_data: {
-        ...(plan === "annual"
-          ? {
-              trial_period_days: 3,
-              trial_settings: {
-                end_behavior: { missing_payment_method: "cancel" },
-              },
-            }
-          : {}),
         metadata: { user_id: user.id },
       },
     };

@@ -17,8 +17,6 @@ type RecipientRow = {
   name: string | null;
   top_problems: string[] | null;
   goal: string | null;
-  trial_start: string | null;
-  trial_end: string | null;
   account_status: string | null;
   subscription_ends_at: string | null;
   paid_at: string | null;
@@ -27,7 +25,7 @@ type RecipientRow = {
 };
 
 /**
- * Cron: email sequences (Segment 2 trial/expired, Segment 3 paid).
+ * Cron: email sequences (pending-payment winback, then paid-subscriber drip).
  * Uses email_sequence_recipients and Resend. Run once daily (vercel.json: 0 11 * * *).
  * Due windows in Supabase get_email_sequence_due() are tuned for daily run (24h+ windows).
  */

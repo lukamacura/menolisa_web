@@ -5,15 +5,16 @@ import { useCallback, useEffect, useState } from "react";
 type RecentSubscriber = {
   user_id: string;
   name: string | null;
-  trial_start: string | null;
+  created_at: string | null;
   account_status: string | null;
   plan_type: string | null;
 };
 
 type Stats = {
   totalSubscribers: number;
-  monthly: { count: number; mrr: number; percent: number };
-  annual: { count: number; mrr: number; percent: number };
+  /** The only plan sold: $59 per 8 weeks. */
+  plan8w: { count: number; mrr: number };
+  /** Paid rows whose plan_type isn't recognised — should stay 0. */
   unknownCount: number;
   totalMrr: number;
   recentSubscribers: RecentSubscriber[];
@@ -123,49 +124,32 @@ export default function AdminPage() {
           <StatCard
             label="Subscribers"
             value={stats.totalSubscribers.toString()}
-            sub="Active + in trial"
+            sub="Active + canceling"
             accent="blue"
           />
           <StatCard
-            label="Monthly plans"
-            value={stats.monthly.count.toString()}
-            sub={`${money(stats.monthly.mrr)} / mo`}
-            accent="yellow"
+            label="8-week plans"
+            value={stats.plan8w.count.toString()}
+            sub={`${money(stats.plan8w.mrr)} / mo (norm.)`}
+            accent="green"
           />
           <StatCard
-            label="Annual plans"
-            value={stats.annual.count.toString()}
-            sub={`${money(stats.annual.mrr)} / mo (norm.)`}
-            accent="green"
+            label="Unrecognised plan"
+            value={stats.unknownCount.toString()}
+            sub={stats.unknownCount > 0 ? "Paid rows with no plan_type" : "None — as expected"}
+            accent={stats.unknownCount > 0 ? "red" : "yellow"}
           />
         </div>
 
-        {/* MRR + income split */}
-        <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6 space-y-5">
+        {/* MRR */}
+        <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
           <div className="flex items-baseline justify-between">
             <h2 className="text-lg font-semibold text-slate-800">Monthly recurring revenue</h2>
             <span className="text-2xl font-bold text-emerald-600">{money(stats.totalMrr)}</span>
           </div>
-
-          {/* Split bar */}
-          <div>
-            <div className="flex h-5 w-full overflow-hidden rounded-full bg-slate-100">
-              <div
-                className="bg-yellow-400"
-                style={{ width: `${stats.monthly.percent}%` }}
-                title={`Monthly ${stats.monthly.percent}%`}
-              />
-              <div
-                className="bg-emerald-500"
-                style={{ width: `${stats.annual.percent}%` }}
-                title={`Annual ${stats.annual.percent}%`}
-              />
-            </div>
-            <div className="mt-3 flex items-center gap-6 text-sm">
-              <Legend color="bg-yellow-400" label="Monthly" pct={stats.monthly.percent} />
-              <Legend color="bg-emerald-500" label="Annual" pct={stats.annual.percent} />
-            </div>
-          </div>
+          <p className="mt-1 text-sm text-slate-500">
+            $59 per 8 weeks, normalised to a monthly figure.
+          </p>
         </div>
 
         {/* Recent subscribers */}
@@ -186,8 +170,8 @@ export default function AdminPage() {
                 <div className="flex items-center gap-3 text-right">
                   <StatusBadge status={s.account_status} planType={s.plan_type} />
                   <span className="text-xs text-slate-400 w-24">
-                    {s.trial_start
-                      ? new Date(s.trial_start).toLocaleDateString("en-US", {
+                    {s.created_at
+                      ? new Date(s.created_at).toLocaleDateString("en-US", {
                           month: "short",
                           day: "numeric",
                           year: "numeric",
@@ -232,26 +216,20 @@ function StatCard({
   );
 }
 
+const PLAN_LABELS: Record<string, string> = {
+  plan8w: "8-week",
+};
+
 function StatusBadge({ status, planType }: { status: string | null; planType: string | null }) {
-  const label = status === "paid" ? (planType ?? "paid") : (status ?? "—");
+  const planLabel = planType ? (PLAN_LABELS[planType] ?? planType) : null;
+  const label = status === "paid" ? (planLabel ?? "paid") : (status ?? "—");
   const colors =
     status === "paid"
       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-      : status === "trial"
-      ? "bg-blue-50 text-blue-700 border-blue-200"
       : "bg-slate-100 text-slate-500 border-slate-200";
   return (
     <span className={`rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize ${colors}`}>
       {label}
-    </span>
-  );
-}
-
-function Legend({ color, label, pct }: { color: string; label: string; pct: number }) {
-  return (
-    <span className="flex items-center gap-2 text-slate-600">
-      <span className={`h-3 w-3 rounded-full ${color}`} />
-      {label} <span className="font-semibold text-slate-800">{pct}%</span>
     </span>
   );
 }

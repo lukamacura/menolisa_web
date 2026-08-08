@@ -7,9 +7,14 @@ import Link from "next/link";
 import Image from "next/image";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { supabase } from "@/lib/supabaseClient";
-import { getAccountState, stateAllowsAccess } from "@/lib/getAccountState";
+import {
+  getAccountState,
+  stateAllowsAccess,
+  TRIAL_SELECT_COLS,
+} from "@/lib/getAccountState";
 import { detectBrowser, hasBrowserMismatchIssue } from "@/lib/browserUtils";
 import { cn } from "@/lib/utils";
+import { APP_STORE_URL, PLAY_STORE_URL, WEB_APP_ENABLED } from "@/lib/constants";
 import {
   ArrowRight,
   ArrowLeft,
@@ -44,6 +49,13 @@ import OtpForm from "@/components/auth/OtpForm";
 import { PaywallView } from "@/components/PaywallView";
 import MetaPurchaseTracker from "@/components/MetaPurchaseTracker";
 import { META_FUNNEL_STEPS } from "@/lib/metaPixel";
+import {
+  PLAN_ADHERENCE_PCT,
+  PLAN_ID,
+  PLAN_PRICE,
+  PLAN_WEEKS,
+  formatPrice,
+} from "@/lib/pricing";
 import { trackFunnelStep } from "@/lib/metaPixelClient";
 import AnimatedCounter from "@/components/landing/AnimatedCounter";
 import {
@@ -286,8 +298,6 @@ function deriveSeverity(
 
 type Phase = "quiz" | "calculating" | "email" | "results" | "diagnosis" | "relief" | "nutrition" | "paywall" | "download";
 
-const APP_STORE_URL = "https://apps.apple.com/de/app/menolisa/id6761130271?l=en-GB";
-const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.menolisa.app&pcampaignid=web_share";
 
 const getScoreColor = (score: number): string => {
   if (score < 40) return "text-red-500";
@@ -376,10 +386,14 @@ function getResultsCtaCopy(qualifier: string): { sub: string } {
         return { sub: "See the why behind your symptoms, step by step with Lisa." };
 }}
 
-// Doorstep to the paywall, so the full risk reversal belongs HERE - free trial
-// and the 8-week guarantee in one breath, at the moment of action.
+// Doorstep to the paywall, so the full risk reversal belongs HERE. There is no
+// free trial to lean on now, so the guarantee carries it - stated with its
+// adherence condition, since a one-line teaser that promises more than the
+// guarantee card two screens later is how a refund argument starts.
 function getCtaCopy(): { sub: string } {
-  return { sub: "Free for 3 days · 8-week guarantee · cancel anytime." };
+  return {
+    sub: `${formatPrice(PLAN_PRICE)} for ${PLAN_WEEKS} weeks · follow ${PLAN_ADHERENCE_PCT}% or get refunded · cancel anytime.`,
+  };
 }
 // First-person CTA label driven by her #1 goal (multi-select; first = primary).
 const GOAL_CTA_LABEL: Record<string, string> = {
@@ -509,7 +523,7 @@ function getSymptomPhrase(topProblems: string[]): string {
 
 // Neither diagnosis nor relief is the doorstep to the paywall any more - the
 // nutrition checklist is. Both of these steps get pure forward motion, and
-// getCtaCopy()'s trial + guarantee line lives on the nutrition CTA, where the
+// getCtaCopy()'s price + guarantee line lives on the nutrition CTA, where the
 // commitment actually happens. Each promises the next step is short, because
 // the only thing standing between her and the plan now is two small screens.
 // She's read a long page and her guard is up: the next tap feels like the one
@@ -1553,9 +1567,7 @@ function RegisterPageContent() {
       if (sessionUserId) {
         const { data: trialRow } = await supabase
           .from("user_trials")
-          .select(
-            "trial_start, trial_end, trial_days, account_status, subscription_ends_at, subscription_canceled, payment_failed_at, dispute_flagged_at, stripe_subscription_id, provider"
-          )
+          .select(TRIAL_SELECT_COLS)
           .eq("user_id", sessionUserId)
           .maybeSingle();
         if (trialRow && stateAllowsAccess(getAccountState(trialRow).state)) {
@@ -1640,11 +1652,10 @@ function RegisterPageContent() {
 
   const [otpStep, setOtpStep] = useState<"email" | "code">("email");
 
-  const [selectedPlan, setSelectedPlan] = useState<"annual" | "monthly">("annual");
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [syncingPayment, setSyncingPayment] = useState(false);
 
-  const handleStartTrialCheckout = async (plan: "annual" | "monthly") => {
+  const handleStartCheckout = async () => {
     if (checkoutLoading) return;
     setError(null);
     setCheckoutLoading(true);
@@ -1654,7 +1665,7 @@ function RegisterPageContent() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          plan,
+          plan: PLAN_ID,
           from_registration: true,
           return_origin: origin || undefined,
         }),
@@ -2519,9 +2530,13 @@ function RegisterPageContent() {
               );
             })()}
 
-            {/* ── The 8-Week Guarantee: unconditional risk-reversal. No score to
-                hit, no logging quota to meet - conditions are what she reads as
-                the catch, and the plan is what we're asking her to believe in. ── */}
+            {/* ── The 8-Week Guarantee. Risk reversal with exactly one condition:
+                she has to actually follow the plan. Stated as the reason the
+                promise can exist rather than as fine print, because "it works if
+                you do it" is a confident claim, not a catch - and it's the only
+                version that survives contact with people who never open the app.
+                Adherence comes from her own tick-offs, so there is nothing for
+                her to submit and nothing for us to adjudicate. ── */}
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
@@ -2531,10 +2546,13 @@ function RegisterPageContent() {
             >
               <div className="flex flex-col items-center text-center">
                 <ShieldCheck className="w-12 h-12 text-green-600 shrink-0 mb-2" />
-                <h2 className="text-base font-bold text-green-800 mb-2">The 8-Week Guarantee</h2>
+                <h2 className="text-base font-bold text-green-800 mb-2">
+                  The {PLAN_WEEKS}-Week Guarantee
+                </h2>
                 <p className="text-sm text-[#3D3D3D] leading-relaxed">
-                  {firstName.trim() ? `${firstName.trim()}, if` : "If"} you don&apos;t feel better in{" "}
-                  <b>8 weeks</b>, we&apos;ll{" "}
+                  {firstName.trim() ? `${firstName.trim()}, follow` : "Follow"}{" "}
+                  <b>{PLAN_ADHERENCE_PCT}% of your plan</b> for <b>{PLAN_WEEKS} weeks</b>. If you
+                  still don&apos;t feel better, we&apos;ll{" "}
                   <HighlightSweep variant="green">
                     <b>refund you</b>
                   </HighlightSweep>{" "}
@@ -2542,7 +2560,8 @@ function RegisterPageContent() {
                 </p>
                 <div className="w-16 h-px bg-green-300 my-3" />
                 <p className="text-xs text-[#5A5A5A] leading-snug">
-                  No conditions, no hoops. The only way to lose is to not start.
+                  Your plan counts itself as you tick off each day &mdash; nothing to submit,
+                  nothing to prove. Do the work and the risk is ours.
                 </p>
               </div>
             </motion.div>
@@ -2926,7 +2945,7 @@ function RegisterPageContent() {
 
       {/* Nutrition Phase - the second app taste. She audits her own day against
           the nine habits, then gets told the gap is structural, not personal.
-          This is the paywall's doorstep, so it carries the trial + guarantee. */}
+          This is the paywall's doorstep, so it carries the price + guarantee. */}
       {phase === "nutrition" && (
         <div
           className={cn(
@@ -3327,12 +3346,10 @@ function RegisterPageContent() {
         </div>
       )}
 
-      {/* Paywall Phase - card required to start free trial via Stripe */}
+      {/* Paywall Phase - charged in full at Stripe checkout, no trial */}
       {phase === "paywall" && (
         <PaywallView
-          selectedPlan={selectedPlan}
-          onSelectPlan={setSelectedPlan}
-          onCheckout={handleStartTrialCheckout}
+          onCheckout={handleStartCheckout}
           checkoutLoading={checkoutLoading}
           error={error}
           onBack={() => setPhase("nutrition")}
@@ -3417,7 +3434,11 @@ function RegisterPageContent() {
               }}
               className="text-sm text-[#9A9A9A] hover:text-[#5A5A5A] underline transition-colors disabled:opacity-50"
             >
-              {syncingPayment ? "Loading…" : "Continue to web dashboard instead"}
+              {syncingPayment
+                ? "Loading…"
+                : WEB_APP_ENABLED
+                  ? "Continue to web dashboard instead"
+                  : "Manage my subscription"}
             </button>
           </motion.div>
         </div>

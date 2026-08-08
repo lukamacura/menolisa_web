@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { META_CURRENCY, PLAN_VALUE, isMetaPlan, purchaseEventId } from "@/lib/metaPixel";
+import { META_CURRENCY, PLAN_VALUE, purchaseEventId } from "@/lib/metaPixel";
+import { isPlanId } from "@/lib/pricing";
 import { trackFbOnce } from "@/lib/metaPixelClient";
 
 /**
@@ -14,19 +15,24 @@ import { trackFbOnce } from "@/lib/metaPixelClient";
  *
  * The Stripe webhook sends the same Purchase through the Conversions API with
  * an identical event_id, so exactly one is counted.
+ *
+ * A landing carrying a retired `plan` value - a checkout started before the
+ * switch to the single 8-week plan - is skipped rather than reported at the new
+ * price. The webhook's Conversions API copy reads the real amount off the Stripe
+ * subscription, so those still get counted, at the price actually charged.
  */
 export default function MetaPurchaseTracker() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const sessionId = params.get("session_id");
     const plan = params.get("plan");
-    if (!sessionId || !isMetaPlan(plan)) return;
+    if (!sessionId || !isPlanId(plan)) return;
 
     trackFbOnce(
       `purchase:${sessionId}`,
       "Purchase",
       {
-        value: PLAN_VALUE[plan],
+        value: PLAN_VALUE,
         currency: META_CURRENCY,
         content_name: plan,
         content_type: "product",

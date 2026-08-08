@@ -33,7 +33,7 @@ export default function NotificationHelp() {
     },
     {
       icon: AlertCircle,
-      type: "Trial & Welcome",
+      type: "Billing & Welcome",
       description: "Important updates about your account and subscription status",
       color: "text-pink-600",
     },
@@ -150,7 +150,7 @@ export default function NotificationHelp() {
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-pink-600 mt-0.5">•</span>
-                  <span><strong>Trial reminders:</strong> Updates about your account status and trial period</span>
+                  <span><strong>Billing reminders:</strong> Updates about your account and subscription status</span>
                 </li>
               </ul>
             </div>

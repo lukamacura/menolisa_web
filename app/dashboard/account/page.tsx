@@ -33,13 +33,9 @@ export default function AccountPage() {
           <TrialCard
             trial={{
               expired: trialStatus.expired,
-              start: trialStatus.start,
               end: trialStatus.end,
               daysLeft: trialStatus.daysLeft,
-              elapsedDays: trialStatus.elapsedDays,
-              progressPct: trialStatus.progressPct,
               remaining: trialStatus.remaining,
-              trialDays: trialStatus.trialDays,
             }}
             accountState={trialStatus.state}
             accountStatus={trialStatus.accountStatus}

@@ -104,6 +104,41 @@ export const EXERCISES: Exercise[] = E.map(([id, name, props, level, impact, sna
 const BY_ID = new Map(EXERCISES.map((e) => [e.id, e]));
 export const getExercise = (id: string): Exercise | undefined => BY_ID.get(id);
 
+// ─── Exercise video ─────────────────────────────────────────────────────────
+
+/**
+ * Clips are NOT bundled with the Expo app. 59 of them would add tens of MB to
+ * every binary and force an App Store release to re-cut a single one. They live
+ * in a public Supabase Storage bucket behind its CDN, named after the exercise
+ * id, and the app caches each one on first play.
+ *
+ * Bucket layout (`exercise-clips`, public read):
+ *   L01.mp4   H.264 / AAC-less, 6-10s silent loop, ≤720p, ≤400KB
+ *   L01.webp  poster frame, ≤40KB
+ *
+ * Only the API builds these URLs. If the bucket ever moves to another CDN, this
+ * constant is the only thing that changes — no client ships a hardcoded path.
+ */
+const MEDIA_BASE =
+  process.env.EXERCISE_MEDIA_BASE ??
+  `${process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""}/storage/v1/object/public/exercise-clips`;
+
+/**
+ * Which clips have actually been produced. Add ids here as they land — an id
+ * that isn't listed returns no media and the app falls back to name + props,
+ * so a half-finished shoot never shows her a broken player.
+ */
+const MEDIA_READY = new Set<string>([
+  // e.g. "L01", "L02", …
+]);
+
+export type ExerciseMedia = { video: string; poster: string };
+
+export function exerciseMedia(id: string): ExerciseMedia | undefined {
+  if (!MEDIA_READY.has(id) || !MEDIA_BASE) return undefined;
+  return { video: `${MEDIA_BASE}/${id}.mp4`, poster: `${MEDIA_BASE}/${id}.webp` };
+}
+
 /**
  * The exercises this user may be given.
  *
@@ -132,31 +167,191 @@ export const MOVEMENT_VOLUME: Record<string, { sessions: number; minutes: number
   movement_snacks: { sessions: 4, minutes: 5, perDay: true },
 };
 
+// ─── Nutrition: the daily checklist ─────────────────────────────────────────
+
 /**
  * The nine daily nutrition habits, in priority order. These ids and labels are
  * the contract with the /register funnel (NUTRITION_GROUPS) — see
  * docs/plan/pillars.md. Do not reword them here alone.
+ *
+ * Unlike movement and relaxation, these are NOT selected by the LLM. All nine
+ * appear every single day, in this order and grouping, for every user — she
+ * ticks what she actually did. The LLM only nominates which ones a given week
+ * should push on (`nutritionFocus`).
  */
-export const NUTRITION: { id: string; label: string }[] = [
-  { id: "protein_25_30g", label: "25-30g protein per meal" },
-  { id: "healthy_fats", label: "Healthy fats" },
-  { id: "high_fiber", label: "Added high-fiber foods" },
-  { id: "low_gi_fruit", label: "Low-glycemic fruits only" },
-  { id: "gap_5h", label: "5 hours between meals" },
-  { id: "fast_12h", label: "12-hour fasting window" },
-  { id: "no_snacking", label: "No snacking between meals" },
-  { id: "water_6", label: "Drink 6+ glasses of water" },
-  { id: "supplements", label: "Daily supplements taken" },
+export type NutritionGroup = "Meals & nutrients" | "Timing & fasting" | "Hydration & supplements";
+
+export const NUTRITION: { id: string; label: string; group: NutritionGroup }[] = [
+  { id: "protein_25_30g", label: "25-30g protein per meal", group: "Meals & nutrients" },
+  { id: "healthy_fats", label: "Healthy fats", group: "Meals & nutrients" },
+  { id: "high_fiber", label: "Added high-fiber foods", group: "Meals & nutrients" },
+  { id: "low_gi_fruit", label: "Low-glycemic fruits only", group: "Meals & nutrients" },
+  { id: "gap_5h", label: "5 hours between meals", group: "Timing & fasting" },
+  { id: "fast_12h", label: "12-hour fasting window", group: "Timing & fasting" },
+  { id: "no_snacking", label: "No snacking between meals", group: "Timing & fasting" },
+  { id: "water_6", label: "Drank 6+ glasses of water", group: "Hydration & supplements" },
+  { id: "supplements", label: "Daily supplements taken", group: "Hydration & supplements" },
 ];
 
-/** Relaxation practices. The 4-2-6 breathing is the one she already did in the funnel. */
-export const RELAXATION: { id: string; label: string }[] = [
-  { id: "breath_426", label: "4-2-6 breathing" },
-  { id: "winddown_10", label: "10-minute wind-down before bed" },
-  { id: "body_scan", label: "Evening body scan" },
-  { id: "reset_pause", label: "A 5-minute reset between tasks" },
-  { id: "slow_breath_meal", label: "Slow breathing before you eat" },
+/**
+ * Revealed under the `supplements` row once it's ticked, exactly as in the
+ * funnel. Never counted toward the nine — they name the three that matter.
+ */
+export const SUPPLEMENT_OPTIONS = [
+  { id: "omega3", label: "Omega-3" },
+  { id: "magnesium", label: "Magnesium" },
+  { id: "d3k2", label: "Vitamin D3 + K2" },
 ];
+
+/**
+ * Nutrition log keys are deliberately NOT week-prefixed. "25-30g protein per
+ * meal" is the same habit in week 1 and week 8, so it keeps one key for the
+ * plan's whole life and her streak runs unbroken across the week boundary.
+ */
+export const nutritionKey = (id: string) => `nut_${id}`;
+
+// ─── Relaxation: breathing and practices ────────────────────────────────────
+
+/**
+ * Breathing patterns, timed for menopause specifically. Three rules shape every
+ * one of them:
+ *
+ *  1. **Exhale is always at least 1.5x the inhale.** The asymmetry is what
+ *     shifts the nervous system — the absolute length barely matters.
+ *  2. **No breath-hold in anything meant for a hot flash or a spike.** A hold
+ *     amplifies the closed-throat, can't-get-air feeling that rides along with
+ *     a flash, and turns a symptom into a panic. Holds only appear in `sleep`,
+ *     where she is lying down and nothing is spiking.
+ *  3. **Nothing over a 5-second inhale.** A big forced inhale flushes the face
+ *     and can start the very thing she's trying to stop.
+ *
+ * Round counts are what the exercise is *worth doing for*, not a minimum —
+ * `breath_paced_6` is the 15-minute clinical protocol (Freedman's paced
+ * respiration at 6 breaths/min); the rest are 1-2 minute interventions.
+ */
+export type BreathPhaseKey = "in" | "hold" | "out" | "top_up";
+
+export type BreathPhase = { key: BreathPhaseKey; label: string; seconds: number };
+
+export type RelaxationItem = {
+  id: string;
+  label: string;
+  /** One line on when to reach for it — shown under the title. */
+  use: string;
+  kind: "breathing" | "practice";
+  /** Breathing only. One cycle, in order. */
+  phases?: BreathPhase[];
+  rounds?: number;
+  /** Practice only, and the derived length for breathing. */
+  minutes?: number;
+};
+
+const IN = (seconds: number): BreathPhase => ({ key: "in", label: "Breathe in", seconds });
+const HOLD = (seconds: number): BreathPhase => ({ key: "hold", label: "Hold", seconds });
+const OUT = (seconds: number): BreathPhase => ({ key: "out", label: "Breathe out", seconds });
+const TOP_UP = (seconds: number): BreathPhase => ({ key: "top_up", label: "Short sip in", seconds });
+
+export const RELAXATION: RelaxationItem[] = [
+  {
+    // The one she already did in the funnel — same pattern, so the app opens on
+    // something she has personally felt work. 12s cycle = 5 breaths/min.
+    id: "breath_426",
+    label: "4-2-6 breathing",
+    use: "Your daily anchor. Two minutes, any time.",
+    kind: "breathing",
+    phases: [IN(4), HOLD(2), OUT(6)],
+    rounds: 10,
+  },
+  {
+    // No hold, and the longest exhale of the set. Reach for it while the flash
+    // is building, not after.
+    id: "breath_hotflash",
+    label: "Hot flash rescue breathing",
+    use: "The moment you feel one starting.",
+    kind: "breathing",
+    phases: [IN(4), OUT(8)],
+    rounds: 8,
+  },
+  {
+    // The clinical protocol: 6 breaths/min, 15 minutes, twice daily. The only
+    // one here with trial evidence behind the dose, so it gets the real dose.
+    id: "breath_paced_6",
+    label: "Paced respiration",
+    use: "15 quiet minutes, morning and evening.",
+    kind: "breathing",
+    phases: [IN(5), OUT(5)],
+    rounds: 90,
+  },
+  {
+    // Lying down, nothing spiking — the one place a hold earns its keep.
+    id: "breath_sleep",
+    label: "Sleep wind-down breathing",
+    use: "In bed, or when you wake at 3am.",
+    kind: "breathing",
+    phases: [IN(4), HOLD(4), OUT(8)],
+    rounds: 8,
+  },
+  {
+    // Double inhale then a long release — the fastest route down from a racing
+    // heart, which in perimenopause is usually adrenaline, not the heart.
+    id: "breath_sigh",
+    label: "Double-breath reset",
+    use: "Racing heart or sudden dread.",
+    kind: "breathing",
+    phases: [IN(4), TOP_UP(1), OUT(8)],
+    rounds: 5,
+  },
+  {
+    id: "slow_breath_meal",
+    label: "Slow breathing before you eat",
+    use: "Five rounds before the first bite.",
+    kind: "breathing",
+    phases: [IN(4), OUT(6)],
+    rounds: 5,
+  },
+  {
+    id: "winddown_10",
+    label: "10-minute wind-down before bed",
+    use: "Lights low, screens down, same time nightly.",
+    kind: "practice",
+    minutes: 10,
+  },
+  {
+    id: "body_scan",
+    label: "Evening body scan",
+    use: "Head to feet, noticing without fixing.",
+    kind: "practice",
+    minutes: 8,
+  },
+  {
+    id: "reset_pause",
+    label: "A 5-minute reset between tasks",
+    use: "Before the next thing, not after the day.",
+    kind: "practice",
+    minutes: 5,
+  },
+];
+
+const cycleSeconds = (phases: BreathPhase[]) => phases.reduce((s, p) => s + p.seconds, 0);
+
+/** Everything the app needs to run the item, with the maths already done. */
+export function relaxationDetail(id: string) {
+  const item = RELAXATION.find((r) => r.id === id);
+  if (!item) return undefined;
+  if (item.kind !== "breathing" || !item.phases || !item.rounds) {
+    return { kind: item.kind, use: item.use, minutes: item.minutes };
+  }
+  const cycle = cycleSeconds(item.phases);
+  return {
+    kind: item.kind,
+    use: item.use,
+    phases: item.phases,
+    rounds: item.rounds,
+    cycleSeconds: cycle,
+    totalSeconds: cycle * item.rounds,
+    breathsPerMinute: Math.round((60 / cycle) * 10) / 10,
+  };
+}
 
 const NUTRITION_IDS = new Set(NUTRITION.map((n) => n.id));
 const RELAXATION_IDS = new Set(RELAXATION.map((r) => r.id));

@@ -23,23 +23,24 @@ const INVITE_COPY: Record<
   eligible: {
     title: "50% off your next invoice.",
     subtitle:
-      "Your friend gets 3 days free; you get 50% off your next MenoLisa invoice - applied automatically.",
-    shareText: "Try MenoLisa - 3 days free.",
+      "Your friend gets her own 8-week plan; you get 50% off your next MenoLisa invoice - applied automatically.",
+    shareText: "Try MenoLisa - your own personalized 8-week menopause plan.",
   },
   already_used: {
-    title: "Invite friends - they get 3 days free.",
-    subtitle: "Your friends get 3 days free when they sign up with your link.",
-    shareText: "Invite friends to try MenoLisa. They get 3 days free.",
+    title: "Invite friends to try Lisa.",
+    subtitle: "Share your link so a friend can start her own 8-week plan.",
+    shareText: "Try MenoLisa - your own personalized 8-week menopause plan.",
   },
   no_referrals: {
-    title: "Invite friends - they get 3 days free.",
-    subtitle: "Your friends get 3 days free when they sign up with your link.",
-    shareText: "Invite friends to try MenoLisa. They get 3 days free.",
+    title: "Invite a friend, get 50% off.",
+    subtitle:
+      "When a friend subscribes with your link, your next MenoLisa invoice is 50% off.",
+    shareText: "Try MenoLisa - your own personalized 8-week menopause plan.",
   },
   subscribed: {
-    title: "Invite friends - they get 3 days free.",
-    subtitle: "Your friends get 3 days free when they sign up with your link.",
-    shareText: "Invite friends to try MenoLisa. They get 3 days free.",
+    title: "Invite friends to try Lisa.",
+    subtitle: "Share your link so a friend can start her own 8-week plan.",
+    shareText: "Try MenoLisa - your own personalized 8-week menopause plan.",
   },
 };
 

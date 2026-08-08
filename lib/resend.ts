@@ -11,7 +11,7 @@ export function getResend(): Resend {
 }
 
 const DEFAULT_FROM = "Merry | MenoLisa Founder <onboarding@menolisa.com>";
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://menolisa.com";
+const APP_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://menolisa.com";
 
 /**
  * Shared HTML wrapper for all transactional and sequence emails.
@@ -102,27 +102,18 @@ export async function sendSequenceEmail(
 }
 
 /**
- * Sent when Stripe checkout completes.
- * `hasTrial` true → annual 3-day trial ($0 charged today); false → monthly, charged immediately.
+ * Sent when Stripe checkout completes. The customer has been charged at this
+ * point — the 8-week plan has no trial, so there is no "nothing charged yet"
+ * variant of this email.
  */
-export async function sendTrialWelcomeEmail(
-  to: string,
-  name: string | null,
-  hasTrial: boolean = true
-): Promise<void> {
+export async function sendWelcomeEmail(to: string, name: string | null): Promise<void> {
   const greeting = name?.trim() || "there";
-  const openingLine = hasTrial
-    ? "Your 3-day trial has started. Nothing has been charged yet."
-    : "Your subscription is active. Thank you for joining.";
-  const subject = hasTrial
-    ? "Your 3-day trial has started. Nothing charged today."
-    : "Welcome to MenoLisa";
-  const footerLine = hasTrial
-    ? "You will get a reminder before your trial ends. Questions? Just reply to this email."
-    : "You can manage or cancel your subscription anytime from Account. Questions? Just reply to this email.";
+  const subject = "Welcome to MenoLisa";
+  const footerLine =
+    "You can manage or cancel your subscription anytime from Account. Questions? Just reply to this email.";
   const body = `
 <p style="margin:0 0 16px;font-size:17px;font-weight:600;color:#2d1b3d">Hi ${greeting},</p>
-<p style="margin:0 0 16px">${openingLine}</p>
+<p style="margin:0 0 16px">Your subscription is active. Thank you for joining.</p>
 <p style="margin:0 0 28px">Lisa is ready. Open the app, say hi, and log how you feel today. Even one symptom helps her start spotting patterns for you.</p>
 <table cellpadding="0" cellspacing="0" border="0">
   <tr>
@@ -139,7 +130,7 @@ export async function sendTrialWelcomeEmail(
   await sendSequenceEmail(to, subject, buildEmailHtml(body));
 }
 
-/** Sent when Stripe actually charges them (day 3 conversion + renewals). */
+/** Sent on every renewal charge after the first. */
 export async function sendChargeConfirmedEmail(to: string, name: string | null): Promise<void> {
   const greeting = name?.trim() || "there";
   const body = `

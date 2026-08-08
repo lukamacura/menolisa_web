@@ -77,7 +77,7 @@ export default function DeleteAccountPage() {
             <li>Account and notification preferences</li>
             <li>Push notification tokens</li>
             <li>Onboarding and quiz responses</li>
-            <li>Referral and trial data associated with your account</li>
+            <li>Referral and subscription data associated with your account</li>
           </ul>
           <p>
             We also remove your authentication account so you cannot sign in

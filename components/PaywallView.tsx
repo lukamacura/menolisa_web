@@ -1,6 +1,13 @@
 "use client";
 
-import { ReactNode, useEffect, useRef } from "react";
+import {
+  ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
 import {
@@ -10,24 +17,32 @@ import {
   Clock,
   Loader2,
   Lock,
+  RotateCcw,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
   Star,
-  TrendingUp,
   Zap,
   CreditCard,
 } from "lucide-react";
 import AnimatedCounter from "@/components/landing/AnimatedCounter";
 import { META_CURRENCY, PLAN_VALUE } from "@/lib/metaPixel";
+import {
+  PLAN_ADHERENCE_PCT,
+  PLAN_ANCHOR_PRICE,
+  PLAN_DISCOUNT_PCT,
+  PLAN_DISCOUNT_WINDOW_MINUTES,
+  PLAN_DISCOUNT_WINDOW_MS,
+  PLAN_ID,
+  PLAN_PRICE,
+  PLAN_PRICE_PER_DAY,
+  PLAN_WEEKS,
+  formatPrice,
+} from "@/lib/pricing";
 import { trackFb } from "@/lib/metaPixelClient";
 
-export type PaywallPlan = "annual" | "monthly";
-
 export interface PaywallViewProps {
-  selectedPlan: PaywallPlan;
-  onSelectPlan: (plan: PaywallPlan) => void;
-  onCheckout: (plan: PaywallPlan) => void | Promise<void>;
+  onCheckout: () => void | Promise<void>;
   checkoutLoading: boolean;
   error?: string | null;
   /** Optional banner above the hero (e.g. "Account under review" for disputed). */
@@ -42,9 +57,140 @@ export interface PaywallViewProps {
   trackingSource?: "register" | "dashboard";
 }
 
+const PRICE = formatPrice(PLAN_PRICE);
+const ANCHOR = formatPrice(PLAN_ANCHOR_PRICE);
+const PER_DAY = `$${PLAN_PRICE_PER_DAY.toFixed(2)}`;
+
+/**
+ * Where the deadline lives. sessionStorage, not state: a reload must not hand
+ * her a fresh 10 minutes, or the countdown is visibly theatre. Per-tab-session
+ * rather than localStorage, so someone coming back tomorrow starts a new window
+ * instead of landing on a paywall that expired days ago.
+ */
+const DEADLINE_KEY = "menolisa:paywall-discount-deadline";
+
+function readDeadline(): number {
+  try {
+    const stored = Number(window.sessionStorage.getItem(DEADLINE_KEY));
+    // A stored deadline further out than the full window means a stale or
+    // tampered value; treat it as absent rather than honoring it.
+    if (Number.isFinite(stored) && stored > 0 && stored <= Date.now() + PLAN_DISCOUNT_WINDOW_MS) {
+      return stored;
+    }
+  } catch {
+    // sessionStorage can throw in private/blocked contexts.
+  }
+  return 0;
+}
+
+function writeDeadline(deadline: number) {
+  try {
+    window.sessionStorage.setItem(DEADLINE_KEY, String(deadline));
+  } catch {
+    // Non-fatal: the countdown just resets on reload.
+  }
+}
+
+/** `585000` → `"09:45"`. */
+function formatRemaining(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const mm = Math.floor(total / 60);
+  const ss = total % 60;
+  return `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
+}
+
+const subscribeToNothing = () => () => {};
+
+/**
+ * `false` on the server and through hydration, `true` after. `/register` can
+ * server-render the paywall (Stripe's cancel URL returns to `?phase=paywall`),
+ * and by then sessionStorage may hold a half-spent deadline the server knew
+ * nothing about — so the countdown has to sit out hydration rather than
+ * disagree with the HTML. useSyncExternalStore is the one hook that flips after
+ * hydration without a mismatch warning.
+ */
+function useHydrated() {
+  return useSyncExternalStore(
+    subscribeToNothing,
+    () => true,
+    () => false
+  );
+}
+
+/**
+ * Countdown on the discounted price. The deadline is resolved during the first
+ * render rather than in an effect, so once hydrated the paywall paints the
+ * stored countdown directly instead of flashing a full window first.
+ */
+function useDiscountWindow() {
+  const hydrated = useHydrated();
+  const [deadline, setDeadline] = useState(() =>
+    typeof window === "undefined" ? 0 : readDeadline() || Date.now() + PLAN_DISCOUNT_WINDOW_MS
+  );
+  const [now, setNow] = useState(() =>
+    typeof window === "undefined" ? 0 : Date.now()
+  );
+
+  // Persisting is an external-system write, which is what effects are for.
+  useEffect(() => {
+    if (deadline) writeDeadline(deadline);
+  }, [deadline]);
+
+  useEffect(() => {
+    if (!deadline) return;
+    const id = setInterval(() => {
+      const t = Date.now();
+      setNow(t);
+      if (t >= deadline) clearInterval(id);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [deadline]);
+
+  const reclaim = useCallback(() => {
+    setNow(Date.now());
+    setDeadline(Date.now() + PLAN_DISCOUNT_WINDOW_MS);
+  }, []);
+
+  const remainingMs =
+    hydrated && deadline ? Math.max(0, deadline - now) : PLAN_DISCOUNT_WINDOW_MS;
+
+  return { remainingMs, expired: remainingMs === 0, reclaim };
+}
+
+// Scannable 2x2 grid, one promise per box. At the payment moment she scans
+// rather than reads, so every box is a 2-3 word headline with one support line.
+const trustLabels = (price: string) => [
+  {
+    icon: CreditCard,
+    bg: "bg-pink-100",
+    fg: "text-pink-600",
+    title: "One payment",
+    sub: `${price} covers all ${PLAN_WEEKS} weeks`,
+  },
+  {
+    icon: Zap,
+    bg: "bg-yellow-100",
+    fg: "text-yellow-700",
+    title: "Instant access",
+    sub: "Your plan is ready now",
+  },
+  {
+    icon: Check,
+    bg: "bg-sky-100",
+    fg: "text-sky-600",
+    title: "Cancel in 2 taps",
+    sub: "No calls, no hoops",
+  },
+  {
+    icon: ShieldCheck,
+    bg: "bg-green-100",
+    fg: "text-green-700",
+    title: "Stripe secured",
+    sub: "We never see your card",
+  },
+];
+
 export function PaywallView({
-  selectedPlan,
-  onSelectPlan,
   onCheckout,
   checkoutLoading,
   error,
@@ -52,10 +198,12 @@ export function PaywallView({
   onBack,
   trackingSource,
 }: PaywallViewProps) {
-  const isAnnual = selectedPlan === "annual";
+  const { remainingMs, expired, reclaim } = useDiscountWindow();
+  // The live price on the card. Only the discounted one is ever attached to a
+  // checkout button - see PLAN_DISCOUNT_WINDOW_MS in lib/pricing.ts.
+  const livePrice = expired ? ANCHOR : PRICE;
 
-  // ViewContent fires once when the paywall appears - not on every plan toggle,
-  // which would inflate the count and skew the ViewContent -> InitiateCheckout rate.
+  // ViewContent fires once when the paywall appears.
   const viewTracked = useRef(false);
   useEffect(() => {
     if (viewTracked.current) return;
@@ -64,98 +212,29 @@ export function PaywallView({
       content_name: "paywall",
       content_category: trackingSource,
       content_type: "product",
-      value: PLAN_VALUE[selectedPlan],
+      value: PLAN_VALUE,
       currency: META_CURRENCY,
     });
-    // Intentionally mount-only: selectedPlan is read for the initial value only.
+    // Mount-only by design.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // InitiateCheckout fires on the CTA - the moment she actually enters Stripe -
   // rather than on paywall view, so it reflects intent rather than exposure.
-  const handleCheckoutClick = (plan: PaywallPlan) => {
+  const handleCheckoutClick = () => {
     trackFb("InitiateCheckout", {
-      content_name: plan,
+      content_name: PLAN_ID,
       content_category: trackingSource,
       content_type: "product",
-      value: PLAN_VALUE[plan],
+      value: PLAN_VALUE,
       currency: META_CURRENCY,
       num_items: 1,
     });
-    return onCheckout(plan);
+    return onCheckout();
   };
 
-  // Second list is deliberately short-form: 4 boxes, one promise each. At the
-  // payment moment she scans rather than reads, so every box is a 2-3 word
-  // headline with a single supporting line.
-  const trustLabels = isAnnual
-    ? [
-        {
-          icon: Zap,
-          bg: "bg-pink-100",
-          fg: "text-pink-600",
-          title: "$0 today",
-          sub: "Nothing charged now",
-        },
-        {
-          icon: Clock,
-          bg: "bg-yellow-100",
-          fg: "text-yellow-700",
-          title: "24h reminder",
-          sub: "Email before trial ends",
-        },
-        {
-          icon: Check,
-          bg: "bg-sky-100",
-          fg: "text-sky-600",
-          title: "Cancel in 2 taps",
-          sub: "No calls, no hoops",
-        },
-        {
-          icon: ShieldCheck,
-          bg: "bg-green-100",
-          fg: "text-green-700",
-          title: "Stripe secured",
-          sub: "We never see your card",
-        },
-      ]
-    : [
-        {
-          icon: CreditCard,
-          bg: "bg-pink-100",
-          fg: "text-pink-600",
-          title: "Billed monthly",
-          sub: "No yearly commitment",
-        },
-        {
-          icon: Zap,
-          bg: "bg-yellow-100",
-          fg: "text-yellow-700",
-          title: "Instant access",
-          sub: "Start tracking today",
-        },
-        {
-          icon: Check,
-          bg: "bg-sky-100",
-          fg: "text-sky-600",
-          title: "Cancel in 2 taps",
-          sub: "No calls, no hoops",
-        },
-        {
-          icon: ShieldCheck,
-          bg: "bg-green-100",
-          fg: "text-green-700",
-          title: "Stripe secured",
-          sub: "We never see your card",
-        },
-      ];
-
   return (
-    <div
-      className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pt-4 sm:pt-6 pb-[calc(140px+env(safe-area-inset-bottom))] relative [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-
-    >
-
+    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pt-4 sm:pt-6 pb-[calc(140px+env(safe-area-inset-bottom))] relative [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -226,168 +305,130 @@ export function PaywallView({
           transition={{ delay: 0.25 }}
           className="text-center mb-4 sm:mb-5"
         >
-          {isAnnual ? (
-            <>
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-1.5 leading-tight">
-                Try Lisa free for{" "}
-                <span
-                  className="bg-clip-text text-transparent"
-                  style={{ backgroundImage: "linear-gradient(135deg, #ff74b1, #65dbff)" }}
-                >
-                  3 days
-                </span>
-              </h2>
-              <p className="text-sm sm:text-base text-[#5A5A5A]">
-                <strong className="text-[#3D3D3D]">$0 charged today.</strong> We&apos;ll remind you 24h
-                before your trial ends.
-              </p>
-            </>
-          ) : (
-            <>
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-1.5 leading-tight">
-                Start your Lisa journey{" "}
-                <span
-                  className="bg-clip-text text-transparent"
-                  style={{ backgroundImage: "linear-gradient(135deg, #65dbff, #ff74b1)" }}
-                >
-                  today
-                </span>
-              </h2>
-              <p className="text-sm sm:text-base text-[#5A5A5A]">
-                <strong className="text-[#3D3D3D]">50% off</strong> our regular price. Cancel anytime.
-              </p>
-            </>
-          )}
+          <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-1.5 leading-tight">
+            Start your {PLAN_WEEKS}-week plan{" "}
+            <span
+              className="bg-clip-text text-transparent"
+              style={{ backgroundImage: "linear-gradient(135deg, #ff74b1, #65dbff)" }}
+            >
+              today
+            </span>
+          </h2>
+          <p className="text-sm sm:text-base text-[#5A5A5A]">
+            {expired ? (
+              <>
+                Your <strong className="text-[#3D3D3D]">{PLAN_DISCOUNT_PCT}% off</strong> held
+                for {PLAN_DISCOUNT_WINDOW_MINUTES} minutes and just ran out &mdash; you can get
+                it back below.
+              </>
+            ) : (
+              <>
+                <strong className="text-[#3D3D3D]">{PLAN_DISCOUNT_PCT}% off</strong> our regular
+                price. Do the {PLAN_WEEKS} weeks and still don&apos;t feel better? Full refund.
+              </>
+            )}
+          </p>
         </motion.div>
 
-        {/* Plan toggle */}
+        {/* Countdown on the discounted price. Display only - the discount is
+            always reclaimable, so the button below never quotes a price Stripe
+            wouldn't charge. */}
         <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="relative flex rounded-2xl p-1 border mb-3 shadow-sm"
-          style={{ backgroundColor: "#FFFFFF", borderColor: "#E8DDD9" }}
-          role="tablist"
-          aria-label="Billing period"
-        >
-          <span
-            className="absolute -top-2.5 left-[25%] -translate-x-1/2 px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-bold tracking-wide text-white shadow-md flex items-center gap-1"
-            style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ff9d6c 100%)" }}
-          >
-            <Sparkles className="w-3 h-3" />
-            MOST POPULAR &middot; 50% OFF
-          </span>
-
-          <button
-            type="button"
-            role="tab"
-            aria-selected={selectedPlan === "annual"}
-            onClick={() => onSelectPlan("annual")}
-            className="flex-1 py-3 px-3 rounded-xl text-sm font-semibold transition-all relative"
-            style={{
-              background:
-                selectedPlan === "annual"
-                  ? "linear-gradient(135deg, rgba(255,116,177,0.15) 0%, rgba(101,219,255,0.15) 100%)"
-                  : "transparent",
-              color: "#3D3D3D",
-              boxShadow:
-                selectedPlan === "annual"
-                  ? "inset 0 0 0 2px #ff74b1, 0 2px 8px rgba(255,116,177,0.2)"
-                  : "none",
-            }}
-          >
-            Annual
-            <span className="block text-[10px] font-medium mt-0.5 text-[#9A9A9A] line-through">$13.17/mo</span>
-            <span className="block text-xs font-bold mt-0 text-[#ff74b1]">$6.58/mo</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={selectedPlan === "monthly"}
-            onClick={() => onSelectPlan("monthly")}
-            className="flex-1 py-3 px-3 rounded-xl text-sm font-semibold transition-all"
-            style={{
-              backgroundColor: selectedPlan === "monthly" ? "#F5EFEC" : "transparent",
-              color: "#3D3D3D",
-              boxShadow:
-                selectedPlan === "monthly"
-                  ? "inset 0 0 0 2px #65dbff, 0 2px 8px rgba(101,219,255,0.18)"
-                  : "none",
-            }}
-          >
-            Monthly
-            <span className="block text-[10px] font-medium mt-0.5 text-[#9A9A9A] line-through">$24/mo</span>
-            <span className="block text-xs font-bold mt-0 text-[#5A5A5A]">$12/mo</span>
-          </button>
-        </motion.div>
-
-        {/* Price summary card */}
-        <motion.div
-          key={selectedPlan}
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.25 }}
-          className="rounded-2xl border bg-white p-4 mb-4 shadow-sm"
+          transition={{ delay: 0.28 }}
+          className="flex items-center justify-center gap-2 rounded-xl border px-3 py-2 mb-3"
+          style={
+            expired
+              ? { borderColor: "#E8DDD9", background: "rgba(154,154,154,0.08)" }
+              : {
+                  borderColor: "#ff74b1",
+                  background:
+                    "linear-gradient(135deg, rgba(255,116,177,0.10) 0%, rgba(255,157,108,0.10) 100%)",
+                }
+          }
+        >
+          <Clock
+            className={`w-4 h-4 shrink-0 ${expired ? "text-[#9A9A9A]" : "text-[#ff74b1]"}`}
+          />
+          {expired ? (
+            // Only the expiry is announced - a per-second aria-live countdown
+            // would talk over everything else on the page.
+            <p className="text-xs sm:text-sm font-semibold text-[#7A7A7A]" aria-live="polite">
+              Your {PLAN_DISCOUNT_PCT}% discount has expired
+            </p>
+          ) : (
+            <p className="text-xs sm:text-sm font-semibold text-[#3D3D3D]">
+              {PLAN_DISCOUNT_PCT}% off ends in{" "}
+              <span className="font-extrabold tabular-nums text-[#ff74b1]">
+                {formatRemaining(remainingMs)}
+              </span>
+            </p>
+          )}
+        </motion.div>
+
+        {/* Price card - the single plan, no choice to make */}
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3, duration: 0.3 }}
+          className="relative rounded-2xl border bg-white p-4 mb-4 shadow-sm"
           style={{
-            borderColor: selectedPlan === "annual" ? "#ff74b1" : "#E8DDD9",
-            backgroundImage:
-              selectedPlan === "annual"
-                ? "linear-gradient(135deg, rgba(255,116,177,0.06) 0%, rgba(255,235,118,0.04) 50%, rgba(101,219,255,0.06) 100%)"
-                : "none",
+            borderColor: expired ? "#E8DDD9" : "#ff74b1",
+            backgroundImage: expired
+              ? "none"
+              : "linear-gradient(135deg, rgba(255,116,177,0.06) 0%, rgba(255,235,118,0.04) 50%, rgba(101,219,255,0.06) 100%)",
           }}
         >
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs sm:text-sm font-medium text-[#5A5A5A]">
-              {isAnnual ? "After your 3-day free trial" : "Starting today"}
-            </span>
-            {isAnnual ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold text-green-700 bg-green-100">
-                <TrendingUp className="w-3 h-3" />
-                Save $65/yr
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold text-pink-700 bg-pink-100">
-                <Sparkles className="w-3 h-3" />
-                50% off
-              </span>
-            )}
-          </div>
+          <span
+            className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-bold tracking-wide text-white shadow-md flex items-center gap-1 whitespace-nowrap"
+            style={{
+              background: expired
+                ? "linear-gradient(135deg, #b0a8a4 0%, #9A9A9A 100%)"
+                : "linear-gradient(135deg, #ff74b1 0%, #ff9d6c 100%)",
+            }}
+          >
+            <Sparkles className="w-3 h-3" />
+            {PLAN_WEEKS}-WEEK PLAN &middot;{" "}
+            {expired ? "REGULAR PRICE" : `${PLAN_DISCOUNT_PCT}% OFF`}
+          </span>
 
-          {isAnnual ? (
-            <>
-              <div className="flex items-baseline gap-2 flex-wrap">
-                <span className="text-sm text-[#9A9A9A] line-through font-medium">$13.17</span>
-                <span
-                  className="text-4xl font-extrabold bg-clip-text text-transparent"
-                  style={{
-                    backgroundImage: "linear-gradient(135deg, #ff74b1 0%, #65dbff 100%)",
-                  }}
-                >
-                  $6.58
-                </span>
-                <span className="text-sm text-[#5A5A5A] font-medium">/ month</span>
-              </div>
-              <p className="text-xs text-[#5A5A5A] mt-1">
-                Billed $79 once a year &middot; less than a coffee per week
-              </p>
-            </>
-          ) : (
-            <>
-              <div className="flex items-baseline gap-2 flex-wrap">
-                <span className="text-sm text-[#9A9A9A] line-through font-medium">$24</span>
-                <span
-                  className="text-4xl font-extrabold bg-clip-text text-transparent"
-                  style={{
-                    backgroundImage: "linear-gradient(135deg, #65dbff 0%, #ff74b1 100%)",
-                  }}
-                >
-                  $12
-                </span>
-                <span className="text-sm text-[#5A5A5A] font-medium">/ month</span>
-              </div>
-              <p className="text-xs text-[#5A5A5A] mt-1">Billed monthly &middot; cancel anytime</p>
-            </>
-          )}
+          <div className="pt-2 text-center">
+            <div className="flex items-baseline justify-center gap-2 flex-wrap">
+              {!expired && (
+                <span className="text-sm text-[#9A9A9A] line-through font-medium">{ANCHOR}</span>
+              )}
+              <span
+                className={
+                  expired
+                    ? "text-4xl font-extrabold text-[#7A7A7A]"
+                    : "text-4xl font-extrabold bg-clip-text text-transparent"
+                }
+                style={
+                  expired
+                    ? undefined
+                    : { backgroundImage: "linear-gradient(135deg, #ff74b1 0%, #65dbff 100%)" }
+                }
+              >
+                {livePrice}
+              </span>
+              <span className="text-sm text-[#5A5A5A] font-medium">
+                / {PLAN_WEEKS} weeks
+              </span>
+            </div>
+            <p className="text-xs text-[#5A5A5A] mt-1.5">
+              {expired ? (
+                <>
+                  Back to the regular price &mdash; your {PRICE} rate is one tap away
+                </>
+              ) : (
+                <>
+                  That&apos;s about {PER_DAY} a day &middot; renews every {PLAN_WEEKS} weeks,
+                  cancel anytime
+                </>
+              )}
+            </p>
+          </div>
         </motion.div>
 
         {/* What's included - reminds her what she's paying for at the decision point */}
@@ -404,7 +445,10 @@ export function PaywallView({
           </p>
           <ul className="space-y-2.5">
             {[
-              { bold: "Personalized 8-week plan", sub: "daily movement, nutrition, relaxation & habits" },
+              {
+                bold: `Personalized ${PLAN_WEEKS}-week plan`,
+                sub: "daily movement, nutrition, relaxation & habits",
+              },
               { bold: "Lisa", sub: "your 24/7 menopause AI companion" },
               { bold: "Symptom tracking", sub: "with doctor-ready reports" },
             ].map((item) => (
@@ -421,9 +465,9 @@ export function PaywallView({
           </ul>
         </div>
 
-        {/* Trust boxes - scannable 2x2 grid, one promise per box */}
+        {/* Trust boxes */}
         <div className="grid grid-cols-2 gap-2 mb-4">
-          {trustLabels.map((item, i) => {
+          {trustLabels(livePrice).map((item, i) => {
             const Icon = item.icon;
             return (
               <motion.div
@@ -447,21 +491,29 @@ export function PaywallView({
         </div>
 
         {/* The 8-Week Guarantee - identical copy and layout to the diagnosis
-            page's guarantee card, restated at the moment of payment. */}
+            page's guarantee card, restated at the moment of payment. It covers
+            exactly one billing period, and it is conditional on adherence: the
+            condition is the argument, not fine print. "This works if you do it"
+            is a stronger claim than "no questions asked", and it is the only
+            version we can afford to honor. */}
         <div
           className="rounded-2xl border-2 border-green-300 bg-green-50 p-4 mb-4"
           style={{ boxShadow: "0 0 0 2px rgba(22,163,74,0.12), 0 8px 28px rgba(22,163,74,0.12)" }}
         >
           <div className="flex flex-col items-center text-center">
             <ShieldCheck className="w-12 h-12 text-green-600 shrink-0 mb-2" />
-            <h2 className="text-base font-bold text-green-800 mb-2">The 8-Week Guarantee</h2>
+            <h2 className="text-base font-bold text-green-800 mb-2">
+              The {PLAN_WEEKS}-Week Guarantee
+            </h2>
             <p className="text-sm text-[#3D3D3D] leading-relaxed">
-              If you don&apos;t feel better in <b>8 weeks</b>, we&apos;ll{" "}
+              Follow <b>{PLAN_ADHERENCE_PCT}% of your plan</b> for {PLAN_WEEKS} weeks. If you still
+              don&apos;t feel better, we&apos;ll{" "}
               <b className="text-green-700">refund you</b> in full.
             </p>
             <div className="w-16 h-px bg-green-300 my-3" />
             <p className="text-xs text-[#5A5A5A] leading-snug">
-              No conditions, no hoops. The only way to lose is to not start.
+              Your plan counts itself as you tick off each day &mdash; nothing to submit, nothing to
+              prove. Do the work and the risk is ours.
             </p>
           </div>
         </div>
@@ -476,57 +528,58 @@ export function PaywallView({
       {/* Sticky CTA bar - fixed to the bottom on every viewport */}
       <div className="fixed bottom-0 inset-x-0 z-40 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/85 px-4 pt-3 pb-[calc(10px+env(safe-area-inset-bottom))]">
         <div className="max-w-md mx-auto w-full">
-        <motion.button
-          type="button"
-          disabled={checkoutLoading}
-          onClick={() => handleCheckoutClick(selectedPlan)}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          className="relative w-full min-h-14 py-4 font-bold text-foreground rounded-2xl transition-all flex items-center justify-center gap-2 text-base sm:text-base disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden group"
-          style={{
-            background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)",
-            boxShadow:
-              "0 8px 24px rgba(255, 116, 177, 0.4), 0 2px 8px rgba(101, 219, 255, 0.25)",
-          }}
-        >
-          <span
-            aria-hidden
-            className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out"
+          <motion.button
+            type="button"
+            disabled={checkoutLoading && !expired}
+            onClick={expired ? reclaim : handleCheckoutClick}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            className="relative w-full min-h-14 py-4 font-bold text-foreground rounded-2xl transition-all flex items-center justify-center gap-2 text-base sm:text-base disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden group"
             style={{
-              background:
-                "linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.55) 50%, transparent 70%)",
+              background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)",
+              boxShadow:
+                "0 8px 24px rgba(255, 116, 177, 0.4), 0 2px 8px rgba(101, 219, 255, 0.25)",
             }}
-          />
-          {checkoutLoading ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              Redirecting to checkout&hellip;
-            </>
-          ) : isAnnual ? (
-            <>
-              <Lock className="w-4 h-4" />
-              Start my 3-day free trial
-              <ArrowRight className="w-4 h-4" />
-            </>
-          ) : (
-            <>
-              <Lock className="w-4 h-4" />
-              Get my plan &mdash; $12/mo
-              <ArrowRight className="w-4 h-4" />
-            </>
-          )}
-        </motion.button>
-        <p className="text-[11px] sm:text-xs text-[#7A7A7A] text-center mt-2 sm:mt-3 leading-relaxed">
-          {isAnnual ? (
-            <>
-              $0 today, then $79/year. Cancel anytime.
-            </>
-          ) : (
-            <>
-              Billed $12/month. All features included. Cancel anytime.
-            </>
-          )}
-        </p>
+          >
+            <span
+              aria-hidden
+              className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out"
+              style={{
+                background:
+                  "linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.55) 50%, transparent 70%)",
+              }}
+            />
+            {expired ? (
+              <>
+                <RotateCcw className="w-4 h-4" />
+                Get my {PLAN_DISCOUNT_PCT}% discount back
+                <ArrowRight className="w-4 h-4" />
+              </>
+            ) : checkoutLoading ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Redirecting to checkout&hellip;
+              </>
+            ) : (
+              <>
+                <Lock className="w-4 h-4" />
+                Get my {PLAN_WEEKS}-week plan &mdash; {PRICE}
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )}
+          </motion.button>
+          <p className="text-[11px] sm:text-xs text-[#7A7A7A] text-center mt-2 sm:mt-3 leading-relaxed">
+            {expired ? (
+              <>
+                One tap reopens your {PRICE} rate for another{" "}
+                {PLAN_DISCOUNT_WINDOW_MINUTES} minutes.
+              </>
+            ) : (
+              <>
+                Billed {PRICE} today, then every {PLAN_WEEKS} weeks. Cancel anytime.
+              </>
+            )}
+          </p>
         </div>
       </div>
     </div>

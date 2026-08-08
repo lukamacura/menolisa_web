@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getAuthenticatedUser } from "@/lib/getAuthenticatedUser";
+import { checkTrialExpired } from "@/lib/checkTrialStatus";
 
 // Types for API responses
 type SessionSummary = {
@@ -39,6 +40,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const user_id = user.id;
+
+    if (await checkTrialExpired(user_id)) {
+      return NextResponse.json({ error: "Subscription required" }, { status: 403 });
+    }
 
     const { searchParams } = new URL(request.url);
     const session_id = searchParams.get("session_id");
@@ -175,6 +180,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const user_id = user.id;
+
+    if (await checkTrialExpired(user_id)) {
+      return NextResponse.json({ error: "Subscription required" }, { status: 403 });
+    }
 
     const body = await request.json();
     const { session_id, title, action = "create" } = body;

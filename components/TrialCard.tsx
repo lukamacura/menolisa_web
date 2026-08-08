@@ -6,20 +6,13 @@ import type { AccountState } from "@/lib/getAccountState";
 
 export type { AccountState };
 
-// Legacy export — superset that still accepts old visual names from older callers.
-// New code should use AccountState directly.
-export type TrialState = AccountState | "calm" | "warning" | "urgent" | "subscriber" | "expired";
-
 export interface TrialCardProps {
   trial: {
     expired: boolean;
-    start: Date | null;
+    /** End of the paid period. */
     end: Date | null;
     daysLeft: number;
-    elapsedDays: number;
-    progressPct: number;
     remaining: { d: number; h: number; m: number; s: number };
-    trialDays?: number;
   };
   /** Canonical state — preferred. If omitted, derived from accountStatus + flags. */
   accountState?: AccountState;
@@ -45,44 +38,7 @@ type Visuals = {
   title: string;
 };
 
-function visualsFor(state: AccountState, daysLeft: number): Visuals {
-  if (state === "trialing") {
-    if (daysLeft <= 0) {
-      return {
-        background: "from-red-900 via-red-950 to-gray-900",
-        badgeBg: "bg-red-500/30",
-        badgeText: "text-red-300",
-        badgeBorder: "border-red-500/50",
-        badgeLabel: "Trial ends today",
-        progressBar: "from-red-500 to-red-600",
-        buttonStyle: "bg-red-500 hover:bg-red-600 !text-white border border-red-400/50 w-full",
-        title: "Your free trial",
-      };
-    }
-    if (daysLeft <= 2) {
-      return {
-        background: "from-orange-800 to-gray-900",
-        badgeBg: "bg-orange-500/30",
-        badgeText: "text-orange-300",
-        badgeBorder: "border-orange-500/50",
-        badgeLabel: "Last days",
-        progressBar: "from-orange-500 to-amber-500",
-        buttonStyle: "bg-orange-500/80 hover:bg-orange-500 !text-white border border-orange-400/50 w-full",
-        title: "Your free trial",
-      };
-    }
-    return {
-      background: "from-gray-900 via-blue-900 to-pink-900",
-      badgeBg: "bg-green-500/30",
-      badgeText: "text-green-300",
-      badgeBorder: "border-green-500/50",
-      badgeLabel: "Free trial",
-      progressBar: "from-primary via-accent to-secondary",
-      buttonStyle: "bg-white/10 hover:bg-white/20 !text-white border border-white/30 w-full",
-      title: "Your free trial",
-    };
-  }
-
+function visualsFor(state: AccountState): Visuals {
   if (state === "active") {
     return {
       background: "from-gray-900 via-blue-900 to-pink-900",
@@ -150,20 +106,17 @@ function visualsFor(state: AccountState, daysLeft: number): Visuals {
 
 function deriveState(
   accountStatus: string | undefined,
-  trialExpired: boolean,
+  expired: boolean,
   subscriptionCanceled: boolean,
   paymentFailedAt: Date | null
 ): AccountState {
   if (accountStatus === "paid") {
     if (paymentFailedAt) return "past_due";
     if (subscriptionCanceled) return "canceling";
-    if (trialExpired) return "ended"; // shouldn't happen, fail-safe
+    if (expired) return "ended"; // shouldn't happen, fail-safe
     return "active";
   }
-  if (trialExpired || accountStatus === "expired" || accountStatus === "pending_payment") {
-    return "ended";
-  }
-  // No explicit state — default safe.
+  // Anything else — expired, pending_payment, unknown — fails closed.
   return "ended";
 }
 
@@ -202,7 +155,7 @@ export function TrialCard({
     };
   })();
 
-  const styles = visualsFor(state, trial.daysLeft);
+  const styles = visualsFor(state);
   const countdownText = formatCountdown(currentRemaining);
 
   const getCTAText = () => {
@@ -213,12 +166,6 @@ export function TrialCard({
         return isPortalLoading ? "Opening…" : "Resume subscription";
       case "past_due":
         return isPortalLoading ? "Opening…" : "Update payment";
-      case "trialing":
-        return isPortalLoading
-          ? "Opening…"
-          : isThirdPartyProvider
-            ? "Manage in store"
-            : "Manage subscription";
       case "ended":
       case "disputed":
         // These states are redirected to /paywall by the dashboard layout —
@@ -281,35 +228,11 @@ export function TrialCard({
       );
     }
     // ended / disputed — handled by /paywall redirect; render nothing here.
-    if (state === "ended" || state === "disputed") return null;
-    // trialing — card on file, sub already active
-    const billingDate = trial.end
-      ? trial.end.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
-      : null;
-    if (trial.daysLeft <= 2) {
-      return (
-        <div className="space-y-2 mt-2">
-          {billingDate && (
-            <p className="text-sm text-white/80">First charge on {billingDate}</p>
-          )}
-          <div className="flex items-center gap-2 text-sm text-amber-300">
-            <AlertTriangle className="h-4 w-4" />
-            <span>Your card will be charged soon — cancel anytime below</span>
-          </div>
-        </div>
-      );
-    }
-    return (
-      <p className="text-sm text-white/80">
-        {billingDate
-          ? <>Free until {billingDate}. Your card will be charged then.</>
-          : "Free trial active"}
-      </p>
-    );
+    return null;
   })();
 
   const showCountdownBlock =
-    state === "trialing" || state === "active" || state === "canceling" || state === "past_due";
+    state === "active" || state === "canceling" || state === "past_due";
 
   return (
     <>
@@ -334,43 +257,17 @@ export function TrialCard({
           {showCountdownBlock && (
             <div className="mb-6">
               <div className="flex items-baseline gap-2 mb-3">
-                {trial.daysLeft <= 0 && state === "trialing" ? (
-                  <span className="text-4xl lg:text-5xl font-extrabold text-white tracking-tight">
-                    {currentRemaining.h}h {currentRemaining.m}m
-                  </span>
-                ) : (
-                  <>
-                    <span className="text-5xl lg:text-6xl font-extrabold text-white tracking-tight">
-                      {trial.daysLeft}
-                    </span>
-                    <span className="text-lg text-white/80">
-                      {state === "trialing"
-                        ? "days until first charge"
-                        : state === "canceling"
-                          ? "days of access left"
-                          : state === "past_due"
-                            ? "days to update card"
-                            : "days until renewal"}
-                    </span>
-                  </>
-                )}
+                <span className="text-5xl lg:text-6xl font-extrabold text-white tracking-tight">
+                  {trial.daysLeft}
+                </span>
+                <span className="text-lg text-white/80">
+                  {state === "canceling"
+                    ? "days of access left"
+                    : state === "past_due"
+                      ? "days to update card"
+                      : "days until renewal"}
+                </span>
               </div>
-              {state === "trialing" && (
-                <>
-                  <div className="h-3 w-full overflow-hidden rounded-full bg-white/10">
-                    <div
-                      className={`h-full transition-[width] duration-500 bg-linear-to-r ${styles.progressBar}`}
-                      style={{ width: `${Math.max(0, Math.min(100, trial.progressPct))}%` }}
-                    />
-                  </div>
-                  <div className="mt-2 flex items-center justify-between text-xs text-white/70">
-                    <span>
-                      {Math.min(trial.trialDays || 3, trial.elapsedDays)} / {trial.trialDays || 3} days used
-                    </span>
-                    <span>{trial.progressPct.toFixed(0)}%</span>
-                  </div>
-                </>
-              )}
             </div>
           )}
 

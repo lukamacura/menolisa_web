@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
-import { evaluateTrialStatus, type TrialRow } from "@/lib/checkTrialStatus";
+import { evaluateTrialStatus, TRIAL_SELECT_COLS, type TrialRow } from "@/lib/checkTrialStatus";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -19,8 +19,26 @@ const PROTECTED_PREFIXES = [
   "/api/symptoms",
 ] as const;
 
+/**
+ * Routes that require a session but never a payment.
+ *
+ * Billing and account deletion have to stay reachable after access ends —
+ * that is exactly when someone comes looking for them. Bouncing an expired
+ * subscriber to the paywall when she is trying to cancel or delete traps her,
+ * and "you must resubscribe to unsubscribe" is the kind of dark pattern that
+ * turns into chargebacks and, under EU/California cancellation rules, fines.
+ */
+const PAYMENT_EXEMPT_PREFIXES = [
+  "/dashboard/account",
+  "/dashboard/settings",
+] as const;
+
 function isProtectedPath(pathname: string): boolean {
   return PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
+}
+
+function isPaymentExempt(pathname: string): boolean {
+  return PAYMENT_EXEMPT_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
 function applyCors(response: NextResponse) {
@@ -81,12 +99,13 @@ export async function proxy(req: NextRequest) {
 
   // Payment gate: only enforce on UI routes (cookie-auth API routes do their own check).
   const needsPaymentGate =
-    pathname.startsWith("/dashboard") || pathname.startsWith("/chat/lisa");
+    (pathname.startsWith("/dashboard") || pathname.startsWith("/chat/lisa")) &&
+    !isPaymentExempt(pathname);
 
   if (needsPaymentGate) {
     const { data: trialRow } = await supabase
       .from("user_trials")
-      .select("trial_start, trial_end, trial_days, account_status, subscription_ends_at")
+      .select(TRIAL_SELECT_COLS)
       .eq("user_id", user.id)
       .maybeSingle();
 

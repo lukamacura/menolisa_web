@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { evaluateTrialStatus, type TrialRow } from "@/lib/checkTrialStatus";
+import {
+  evaluateTrialStatus,
+  TRIAL_SELECT_COLS,
+  type TrialRow,
+} from "@/lib/checkTrialStatus";
 
 export const runtime = "nodejs";
 
@@ -10,11 +14,10 @@ const BodySchema = z.object({
   email: z.string().email().max(254),
 });
 
-const SELECT_COLS =
-  "trial_start, trial_end, trial_days, account_status, subscription_ends_at, subscription_canceled, payment_failed_at, dispute_flagged_at, stripe_subscription_id, provider";
+const SELECT_COLS = TRIAL_SELECT_COLS;
 
 // Pre-OTP gate for the register funnel: tells the client whether this email already
-// belongs to an account with active access (paid/trialing/etc) so it can send them to
+// belongs to an account with active access so it can send them to
 // /login instead of re-running the quiz + paywall. Returns a boolean only — never the
 // user id — to limit enumeration. Unpaid / non-existent emails fall through to signup.
 export async function POST(req: NextRequest) {

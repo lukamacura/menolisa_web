@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { generateWeeklyInsights, getWeekBoundaries, getPreviousWeekBoundaries } from "@/lib/insights/generateInsights";
 import type { SymptomLog } from "@/lib/symptom-tracker-constants";
 import { getAuthenticatedUser } from "@/lib/getAuthenticatedUser";
+import { checkTrialExpired } from "@/lib/checkTrialStatus";
 
 export const runtime = "nodejs";
 
@@ -12,6 +13,10 @@ export async function GET(req: NextRequest) {
     const user = await getAuthenticatedUser(req);
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (await checkTrialExpired(user.id)) {
+      return NextResponse.json({ error: "Subscription required" }, { status: 403 });
     }
 
     const supabaseAdmin = getSupabaseAdmin();

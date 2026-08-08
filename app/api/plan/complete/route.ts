@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (await checkTrialExpired(user.id)) {
-    return NextResponse.json({ error: "Trial expired" }, { status: 403 });
+    return NextResponse.json({ error: "Subscription required" }, { status: 403 });
   }
 
   const parsed = BodySchema.safeParse(await req.json());

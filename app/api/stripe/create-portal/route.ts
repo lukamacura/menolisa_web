@@ -9,11 +9,9 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 function getAllowedOrigins(): string[] {
   const origins: string[] = [];
-  if (process.env.NEXT_PUBLIC_APP_URL) origins.push(process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, ""));
   if (process.env.NEXT_PUBLIC_SITE_URL) origins.push(process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, ""));
   if (process.env.VERCEL_URL) origins.push(`https://${process.env.VERCEL_URL}`);
   origins.push("https://menolisa.com", "https://www.menolisa.com");
-  origins.push("https://womenreset.com", "https://www.womenreset.com");
   origins.push("http://localhost:3000", "http://127.0.0.1:3000");
   return [...new Set(origins)];
 }
@@ -24,7 +22,6 @@ function getBaseUrl(originFromRequest?: string | null): string {
     const normalized = originFromRequest.replace(/\/$/, "");
     if (allowed.includes(normalized)) return normalized;
   }
-  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
   if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "");
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   return "http://localhost:3000";

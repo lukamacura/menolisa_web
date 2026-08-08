@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
     const isExpired = await checkTrialExpired(user.id);
     if (isExpired) {
       return NextResponse.json(
-        { error: "Trial expired. Please upgrade to continue using the tracker." },
+        { error: "Subscription required. Please subscribe to continue using the tracker." },
         { status: 403 }
       );
     }
@@ -163,7 +163,7 @@ export async function DELETE(req: NextRequest) {
     const isExpired = await checkTrialExpired(user.id);
     if (isExpired) {
       return NextResponse.json(
-        { error: "Trial expired. Please upgrade to continue using the tracker." },
+        { error: "Subscription required. Please subscribe to continue using the tracker." },
         { status: 403 }
       );
     }

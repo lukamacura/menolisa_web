@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/getAuthenticatedUser";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { evaluateTrialStatus, type TrialRow } from "@/lib/checkTrialStatus";
+import {
+  evaluateTrialStatus,
+  TRIAL_SELECT_COLS,
+  type TrialRow,
+} from "@/lib/checkTrialStatus";
 import { getAccountState, type AccountStateRow } from "@/lib/getAccountState";
 
 export const dynamic = "force-dynamic";
@@ -19,9 +23,7 @@ export async function GET(req: NextRequest) {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("user_trials")
-    .select(
-      "trial_start, trial_end, trial_days, account_status, subscription_ends_at, subscription_canceled, payment_failed_at, dispute_flagged_at, stripe_subscription_id, provider"
-    )
+    .select(TRIAL_SELECT_COLS)
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -45,9 +47,6 @@ export async function GET(req: NextRequest) {
     is_third_party_provider: account.isThirdPartyProvider,
     has_access: account.hasAccess,
     account_status: row?.account_status ?? null,
-    trial_start: row?.trial_start ?? null,
-    trial_end: row?.trial_end ?? null,
-    trial_days: row?.trial_days ?? null,
     subscription_ends_at: row?.subscription_ends_at ?? null,
     subscription_canceled: row?.subscription_canceled ?? false,
     payment_failed_at: row?.payment_failed_at ?? null,

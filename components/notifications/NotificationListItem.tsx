@@ -15,6 +15,7 @@ import {
 import { formatNotificationTime } from "@/lib/notificationUtils";
 import type { NotificationType } from "./NotificationProvider";
 import { useDashboardTrialStatus } from "@/lib/dashboardTrialContext";
+import { stateAllowsAccess } from "@/lib/getAccountState";
 
 interface NotificationListItemProps {
   id: string;
@@ -114,12 +115,7 @@ export default function NotificationListItem({
 
     // Handle open_pricing action
     if (actionType === "open_pricing") {
-      const hasAccess =
-        trialStatus.state === "active" ||
-        trialStatus.state === "canceling" ||
-        trialStatus.state === "past_due" ||
-        trialStatus.state === "trialing";
-      router.push(hasAccess ? "/dashboard/account" : "/paywall");
+      router.push(stateAllowsAccess(trialStatus.state) ? "/dashboard/account" : "/paywall");
     } else if (route) {
       // Navigate if route exists
       router.push(route);

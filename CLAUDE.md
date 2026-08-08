@@ -49,63 +49,61 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 web app/
 ├── app/                     # Next.js App Router pages and API routes
 │   ├── api/                 # All REST API endpoints
-│   │   ├── account/         # Account management (delete, etc.)
-│   │   ├── admin/           # Admin utilities (one-time migrations)
-│   │   ├── auth/            # Auth helpers (magic link, check user, save quiz)
+│   │   ├── account/         # Account status + deletion
+│   │   ├── admin/           # Admin stats (password-gated)
+│   │   ├── auth/            # OTP helpers, save-quiz, mobile↔web handoff
 │   │   ├── chat-sessions/   # Chat session persistence
-│   │   ├── cron/            # Scheduled jobs (reminders, insights, trial checks)
+│   │   ├── cron/            # Scheduled jobs (see table below)
 │   │   ├── daily-mood/      # Mood tracking (1-4 scale)
 │   │   ├── doctor-report/   # Generate doctor-ready health report
-│   │   ├── fitness/         # Fitness tracking
 │   │   ├── good-days/       # "Good day" logs
 │   │   ├── health-summary/  # Health summary report generation
-│   │   ├── hydration/       # Hydration tracking
+│   │   ├── iap/             # Apple IAP receipt verify + server notifications
 │   │   ├── insights/        # Insights generation endpoint
 │   │   ├── intake/          # Onboarding quiz data saving
 │   │   ├── langchain-rag/   # Main AI chat endpoint (Lisa)
 │   │   ├── notifications/   # In-app/push notification CRUD
-│   │   ├── nutrition/       # Nutrition logging
-│   │   ├── nutrition-insights/ # Nutrition-specific insights
+│   │   ├── plan/            # 8-week plan generation, habits, completion
 │   │   ├── referral/        # Referral system
-│   │   ├── register/        # User registration helper
-│   │   ├── stripe/          # Stripe checkout + webhook
+│   │   ├── stripe/          # Checkout, portal, webhook, sync
 │   │   ├── symptom-logs/    # Symptom log CRUD
 │   │   ├── symptoms/        # Symptom definitions (seeded defaults)
 │   │   ├── tracker-insights/# Tracker data analysis
 │   │   └── user-preferences/# Notification preferences
-│   ├── auth/                # Auth callback handlers
+│   ├── admin/               # Admin stats page
+│   ├── auth/                # Auth callback + mobile bridge
 │   ├── chat/lisa/           # Lisa AI chat page
-│   ├── checkout/            # Stripe checkout page
+│   ├── checkout/            # Stripe checkout success
 │   ├── dashboard/           # Protected authenticated area
-│   │   ├── fitness/
+│   │   ├── account/         # Plan, billing, cancellation — never payment-gated
 │   │   ├── notifications/
-│   │   ├── nutrition/
-│   │   ├── overview/        # Health analytics overview
 │   │   ├── settings/
 │   │   └── symptoms/        # Main home/tracker page
 │   ├── delete-account/      # Account deletion flow
 │   ├── login/               # OTP sign-in
+│   ├── paywall/
 │   ├── privacy/
-│   ├── register/            # Onboarding quiz (8 steps) + OTP sign-up
+│   ├── register/            # Onboarding quiz + OTP sign-up
 │   └── terms/
 ├── components/              # Shared React components
-│   ├── fitness/
-│   ├── insights/
+│   ├── auth/                # OtpForm — the only auth UI
 │   ├── landing/             # Landing page sections
 │   ├── notifications/
-│   ├── nutrition/
-│   ├── symptom-tracker/     # Main tracker UI (13 components)
-│   └── ui/                  # Base UI: button, badge, accordion, AnimatedComponents
-├── hooks/                   # 12 custom React hooks (data fetching, UI state)
-├── knowledge-base/          # Markdown KB files for RAG (never edit manually — source of truth for AI)
+│   ├── symptom-tracker/     # Main tracker UI (12 components)
+│   └── ui/                  # Base UI: button, badge, accordion
+├── hooks/                   # 10 custom React hooks (data fetching, UI state)
+├── knowledge-base/          # Markdown KB files for RAG (gitignored; source of truth for AI)
 ├── lib/                     # Shared utilities and business logic
 │   ├── insights/            # Pure data insight generation (no AI)
+│   ├── plan/                # 8-week plan catalog + generator
 │   ├── rag/                 # Full RAG pipeline (orchestrator, retrieval, personas, etc.)
 │   └── *.ts                 # Utilities, Supabase clients, auth helpers
 ├── public/                  # Static assets (fonts/, images)
-├── scripts/                 # One-off scripts (ingestion, migrations)
+├── scripts/                 # ingest-documents, cleanup-oversized-documents
+│   └── sql/                 # Dated migrations — the schema history
+├── .env.example             # Authoritative env var list
 ├── next.config.ts
-├── middleware.ts             # Route protection and CORS
+├── proxy.ts                  # Route protection and CORS (Next 16's rename of middleware.ts)
 ├── tailwind.config.ts
 ├── tsconfig.json
 └── vercel.json              # Cron job configuration
@@ -153,20 +151,23 @@ npm run cleanup-docs
 
 **No automated test suite is configured.** There are no unit/integration/e2e test files or test runners in this project.
 
-**Database migrations:** There is no ORM migration system. Schema changes are applied via:
-1. Direct SQL in Supabase Dashboard
-2. Ad-hoc scripts in `scripts/` (e.g., `apply-migration.ts`, `create-user-trials-table.ts`)
-3. One-time API endpoints in `app/api/admin/`
+**Database migrations:** There is no ORM migration system. Every schema change
+is a dated `.sql` file in `scripts/sql/`, applied by hand in the Supabase SQL
+editor. The directory is the migration history — write the file even when you
+apply the change through the dashboard, or the next person has no record of it.
 
-Run a migration script: `npx tsx scripts/<script-name>.ts`
+The one-time admin API endpoints that used to run DDL are gone: an
+unauthenticated route holding the service role key is a remote SQL console.
+Don't add another.
 
 **Cron jobs** (run automatically on Vercel per `vercel.json`):
 | Endpoint | Schedule | Purpose |
 |---|---|---|
 | `/api/cron/daily-reminders` | 9am UTC daily | Push notification to users who haven't logged today |
 | `/api/cron/weekly-insights` | 12am UTC Monday | Generate weekly insight summaries |
-| `/api/cron/trial-reminders` | 10am UTC daily | Email users whose trial is ending soon |
-| `/api/cron/email-sequences` | 11am UTC daily | Drip email sequences |
+| `/api/cron/email-sequences` | 11am UTC daily | Drip email sequences (pending-payment winback + paid drip) |
+
+These three are the whole list — keep it in sync with `vercel.json`.
 
 ---
 
@@ -226,7 +227,7 @@ There are three Supabase client patterns — use the correct one:
 | Client | File | When to use |
 |---|---|---|
 | Browser client | `lib/supabaseClient.ts` | Client components (`"use client"`) |
-| Server client | Created inline via `@supabase/ssr` | Server components, middleware |
+| Server client | Created inline via `@supabase/ssr` | Server components, `proxy.ts` |
 | Admin client | `lib/supabaseAdmin.ts` → `getSupabaseAdmin()` | API routes, scripts (bypasses RLS) |
 
 ```typescript
@@ -242,7 +243,7 @@ const supabaseAdmin = getSupabaseAdmin(); // lazy singleton
 - Registration flow: quiz → `signInWithOtp({ shouldCreateUser: true })` → 6-digit code → `verifyOtp` → `POST /api/auth/save-quiz` (server reads `userId` from session, validates payload with zod, creates `user_trials` row in `pending_payment`) → results → paywall → Stripe checkout → webhook flips `account_status` to `paid`
 - Mobile bridge (`app/auth/mobile-bridge/page.tsx`) is a session handoff (mobile → web token via `#hash`), not a login — leave it alone
 - Email template: paste branded HTML into Supabase Dashboard → Auth → Email Templates → Magic Link, with `{{ .Token }}` for the 6-digit code
-- Middleware at `middleware.ts` protects `/dashboard/*` and `/chat/lisa/*` routes
+- `proxy.ts` (Next 16 renamed `middleware.ts` → `proxy.ts`, and the exported function from `middleware` → `proxy`) protects `/dashboard/*` and `/chat/lisa/*`. It runs two gates: a session check on everything in `PROTECTED_PREFIXES`, then a payment check that skips `PAYMENT_EXEMPT_PREFIXES` (`/dashboard/account`, `/dashboard/settings`) so cancellation and account deletion stay reachable after access ends. Select the full `TRIAL_SELECT_COLS` when reading `user_trials` — a partial select makes missing columns read as "no dispute, not canceled" and grants access it shouldn't.
 
 ### Database Schema (key tables)
 Supabase (PostgreSQL) — no ORM, raw SQL queries via Supabase JS client:
@@ -253,9 +254,73 @@ Supabase (PostgreSQL) — no ORM, raw SQL queries via Supabase JS client:
 | `symptom_logs` | `id`, `user_id`, `symptom_id`, `severity` (1-3), `triggers[]`, `time_of_day`, `notes`, `logged_at` |
 | `daily_mood` | `user_id`, `date`, `mood` (1-4); unique on `(user_id, date)` |
 | `user_profiles` | `user_id`, `name`, `top_problems[]`, `severity`, `timing`, `goal`, `doctor_status` |
-| `user_trials` | `user_id`, `trial_start`, `trial_end`, `trial_days` (default 3), `account_status` ("trial"/"paid"/"expired"), `subscription_ends_at` |
+| `user_trials` | `user_id`, `account_status` ("pending_payment"/"paid"/"expired"), `subscription_ends_at`, `subscription_canceled`, `payment_failed_at`, `dispute_flagged_at`, `provider`, `plan_type`, `plan_amount`. No trial columns — see below. The table name is legacy; it holds subscriptions. |
 | `documents` | Vector store — `id`, `content`, `metadata` (JSONB), `embedding` (vector 1536) |
 | `notifications` | `user_id`, `type`, `content`, `metadata` (JSONB), `is_read`, `created_at` |
+
+### Access control (who gets in)
+
+`lib/getAccountState.ts` is the single place access is decided. Everything else
+— `checkTrialExpired()`, `proxy.ts`, `/api/account/status`, the dashboard
+layout — is a caller. Add a rule here, not at a call site.
+
+The plan is $59 per 8 weeks with **no trial**, so the shape is simple:
+
+| Row state | `state` | Access |
+|---|---|---|
+| `paid`, `subscription_ends_at` in future | `active` | yes |
+| `paid` + `subscription_canceled` | `canceling` | yes, **until `subscription_ends_at`** |
+| `paid` + `payment_failed_at` (Stripe dunning) | `past_due` | yes |
+| `paid` but period elapsed (webhook missed) | `ended` | no |
+| `paid` with **no** `subscription_ends_at` | `ended` | no — fail closed |
+| `expired` / `pending_payment` / unknown / no row | `ended` | no |
+| `dispute_flagged_at` set | `disputed` | no |
+
+Cancelling stops the **next** renewal; it never revokes the weeks already paid
+for. That is what Stripe and the app stores expect, and revoking early invites
+chargebacks.
+
+Two rules worth keeping:
+- **Never write `account_status: "paid"` without an expiry.** The read side
+  fails closed on it, so a null cutoff locks out a paying customer. The Stripe
+  webhook falls back to `now + PLAN_WEEKS` if Stripe hands back no period end.
+- **Select every column in `TRIAL_SELECT_COLS`.** Missing columns come back
+  `undefined`, which reads as "no dispute, not canceled, no failed payment".
+
+There is no trial machinery left, in the code or the schema. The `trialing`
+state, the `trial_start` / `trial_end` / `trial_days` columns, and the triggers
+that recomputed `trial_end` on every write (which stamped a phantom 3-day trial
+onto freshly-paid accounts) were all removed on 2026-08-08 — see
+`scripts/sql/2026-08-08-drop-trial-columns.sql`. `subscription_ends_at` is the
+only access boundary. Don't reintroduce a trial without teaching
+`getAccountState()` what it means; a column nothing reads is worse than useless,
+because the next reader assumes it is authoritative.
+
+`checkTrialExpired()` **fails closed**: a missing row or a failed query denies
+access. It used to allow in both cases, which handed the whole product to any
+authenticated user whose `user_trials` row hadn't been created yet. The function
+keeps its legacy name; it gates subscriptions, not trials.
+
+### Web app vs mobile app
+
+The product — symptom tracking, Lisa chat, notifications — lives in the Expo
+app. The web app's job is the `/register` funnel that sells it, plus billing and
+account deletion.
+
+`WEB_APP_ENABLED` (`lib/constants.ts`, from `NEXT_PUBLIC_WEB_APP_ENABLED`,
+**off unless set to `"true"`**) is the switch. When off, `/dashboard/symptoms`,
+`/chat/lisa` and `/dashboard/notifications` render `<GetTheAppScreen />` instead
+of the product, the nav collapses to Account, and `/dashboard` redirects to
+`/dashboard/account`. The pages are still in the repo — this is a flag, not a
+deletion, so turning the web app back on is one env var.
+
+It is a **UI** switch only. The API routes stay open because the mobile app
+calls them; each enforces access itself via `checkTrialExpired()`. Any new route
+serving paid content needs that check — auth alone is not enough.
+
+Account and Settings are never gated on payment or on this flag, in either
+`proxy.ts` or the dashboard layout. Someone whose subscription ended must still
+be able to cancel and delete.
 
 ### State Management
 No global state library (no Redux/Zustand). Patterns used:
@@ -278,27 +343,25 @@ const [error, setError] = useState<string | null>(null);
 ```
 
 ### Environment Variables
-All env vars live in `.env.local` (local) and Vercel project settings (production). Pattern:
+Local values live in `.env.local` (gitignored); production values live in the
+Vercel project settings. `.env.example` is the committed template and is the
+authoritative list — **it is kept in sync with the code, so if you add a
+`process.env.X`, add it there too.** Pattern:
 - `NEXT_PUBLIC_*` — safe to expose to browser
 - Others — server-only (API routes, scripts)
 
-```
-NEXT_PUBLIC_SUPABASE_URL
-NEXT_PUBLIC_SUPABASE_ANON_KEY
-SUPABASE_SERVICE_ROLE_KEY      # Admin operations, never expose to client
-OPENAI_API_KEY                 # LangChain / embeddings
-STRIPE_SECRET_KEY
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-STRIPE_PRICE_MONTHLY           # Stripe Price ID (price_xxx)
-STRIPE_PRICE_ANNUAL            # Stripe Price ID
-STRIPE_WEBHOOK_SECRET          # Webhook signature verification
-RESEND_API_KEY                 # Transactional email
-CRON_SECRET                    # Protects /api/cron/* endpoints
-NEXT_PUBLIC_SITE_URL           # Base URL (used in redirects)
-META_CAPI_ACCESS_TOKEN         # Meta Conversions API token (Events Manager → Settings). Server-only.
-META_CAPI_TEST_EVENT_CODE      # Optional; from Events Manager → Test Events. Leave unset in production.
-NEXT_PUBLIC_META_PIXEL_ID      # Optional; defaults to 7118800424899365
-```
+Every variable in `.env.example` is read somewhere. Two rules that earned their
+place:
+
+- **`NEXT_PUBLIC_SITE_URL` is the only base-URL variable.** There used to be a
+  second one, `NEXT_PUBLIC_APP_URL`, read in seven places with a different
+  fallback — so email links and Stripe redirect URLs could disagree about which
+  domain the app was on. Removed 2026-08-08.
+- **One plan means one price id.** `STRIPE_PRICE_MONTHLY` and
+  `STRIPE_PRICE_ANNUAL` were removed; `STRIPE_PRICE_8WEEK` is the only one.
+
+See `.env.example` for the full annotated list rather than duplicating it here —
+a second copy is a second thing to forget to update.
 
 ### Meta Pixel / Conversions API
 Ad tracking for the `/register` web2app funnel:
@@ -309,9 +372,9 @@ Ad tracking for the `/register` web2app funnel:
 | `QuizStart` *(custom)* | `app/register/page.tsx` on the quiz phase | — |
 | `QuizComplete` *(custom)* | `app/register/page.tsx` last step of `goNext()` | — |
 | `Lead` | `app/register/page.tsx` `handleOtpSuccess()`, after save-quiz succeeds | — |
-| `ViewContent` | `components/PaywallView.tsx` on mount (once, not per plan toggle) | selected plan |
-| `InitiateCheckout` | `components/PaywallView.tsx` CTA click | selected plan |
-| `Purchase` | Browser: `components/MetaPurchaseTracker.tsx` on the success landing. Server: `sendMetaPurchase()` from the Stripe webhook | $79 annual / $12 monthly |
+| `ViewContent` | `components/PaywallView.tsx` on mount (once) | $59 |
+| `InitiateCheckout` | `components/PaywallView.tsx` CTA click | $59 |
+| `Purchase` | Browser: `components/MetaPurchaseTracker.tsx` on the success landing. Server: `sendMetaPurchase()` from the Stripe webhook | $59 |
 
 Step names and their sessionStorage dedup keys are paired in `META_FUNNEL_STEPS`
 (`lib/metaPixel.ts`) and fired through `trackFunnelStep()`.
@@ -326,9 +389,20 @@ Checkout Session id). Shared constants live in `lib/metaPixel.ts`; the CAPI
 sender in `lib/metaCapi.ts` never throws, so a Meta outage can't fail the Stripe
 webhook and trigger retries.
 
-Annual reports its full $79 at checkout despite the 3-day $0 trial — deliberate,
-to give Meta's optimizer conversion volume. Reported ad revenue therefore runs
-ahead of collected revenue by the trial-cancel rate; reconcile in Stripe.
+There is one plan — $59 for an 8-week period, no free trial — so reported values
+are money actually collected at checkout and Events Manager should reconcile
+against Stripe. The single source of truth for the price, the plan id sent as
+`plan`, and every displayed figure is `lib/pricing.ts`; never hardcode $59 in a
+component. (The retired annual plan reported its full $79 against a $0 3-day
+trial, which made reported ad revenue run ahead of collected revenue by the
+trial-cancel rate. That gap is gone.)
+
+Only new checkouts report `Purchase` — it fires from
+`checkout.session.completed`, not from `invoice.payment_succeeded`, so Meta
+optimizes for new customers instead of being handed a fresh conversion every 8
+weeks for a subscriber it already won. The webhook prefers the real
+`unit_amount` off the Stripe price over `PLAN_VALUE`, so a legacy plan or a
+coupon-discounted first invoice still reports the amount actually charged.
 
 `_fbp`/`_fbc` cookies plus the client IP and user-agent are captured in
 `app/api/stripe/create-checkout/route.ts` and stashed on the Checkout Session
@@ -375,7 +449,29 @@ for on every page load. Before adding an image, shrink it (e.g. squoosh.app):
 - `app/api/stripe/webhook/route.ts` — **must** verify Stripe signature before processing; never remove signature verification
 - `app/api/cron/` — routes check `CRON_SECRET` header; never remove this check
 - `lib/supabaseAdmin.ts` — uses service role key (bypasses RLS); only call from server-side code
-- `middleware.ts` — modifying the matcher or auth logic can expose protected routes
+- `proxy.ts` — modifying the matcher or auth logic can expose protected routes
+- **Never take a user id from a request body.** `/api/intake` and
+  `/api/referral/apply` both did, while writing with the service role, which let
+  anyone overwrite another woman's health profile or mint referral coupons.
+  Derive it from `getAuthenticatedUser(req)`, always.
+- **RLS policies must name their role.** A policy written without `TO
+  service_role` applies to `public` — which includes `anon` and `authenticated`
+  — and with `USING (true)` it hands the whole table to anyone holding the anon
+  key, which ships in the browser bundle. Four such policies ("Service role can
+  manage all trials/profiles/insights", "…read all documents") were exposing
+  every user's profile and letting anyone set their own account to `paid`;
+  dropped 2026-08-08. They were never needed: **service_role bypasses RLS
+  entirely**, so a policy for it is always either redundant or a hole. After any
+  policy change, verify from outside:
+  ```bash
+  curl "$NEXT_PUBLIC_SUPABASE_URL/rest/v1/user_profiles?select=name&limit=1" \
+       -H "apikey: $NEXT_PUBLIC_SUPABASE_ANON_KEY"   # must return []
+  ```
+- **`REVOKE ... FROM public`, not from `anon, authenticated`.** Postgres grants
+  EXECUTE on new functions to `PUBLIC` by default; revoking the named roles
+  leaves that grant intact and the function still callable.
+- Never commit a credential as a code fallback (`process.env.X || "secret"`).
+  A default in the repo is a published secret; fail closed instead.
 
 ### Constraints
 - OpenAI embeddings dimension is **fixed at 1536** — changing this requires dropping and rebuilding the `documents` table
@@ -385,7 +481,7 @@ for on every page load. Before adding an image, shrink it (e.g. squoosh.app):
 ### Do Not Refactor Without Discussion
 - `lib/rag/` — the entire RAG pipeline is carefully tuned with specific thresholds (semantic: 0.30/0.35, hybrid: 0.44-0.50, intent: 0.80); changing values affects AI response quality
 - Auth flow in `app/api/auth/save-quiz/route.ts` — creates user profile + trial in one atomic call right after OTP verification; breaking this disrupts onboarding
-- `middleware.ts` matcher config — must stay in sync with protected route list
+- `proxy.ts` matcher config — must stay in sync with `PROTECTED_PREFIXES`
 
 ---
 
@@ -429,7 +525,7 @@ for on every page load. Before adding an image, shrink it (e.g. squoosh.app):
 
 1. Create in `components/<category>/<ComponentName>.tsx`
 2. Use `cn()` from `@/lib/utils` for conditional Tailwind classes
-3. Use Framer Motion via `components/ui/AnimatedComponents.tsx` wrappers for animations
+3. Use Framer Motion directly for animations (there is no shared wrapper module)
 4. Client-side data: use existing hooks from `hooks/` or create a new one
 
 ### Updating the AI Knowledge Base
@@ -495,14 +591,25 @@ for on every page load. Before adding an image, shrink it (e.g. squoosh.app):
 
 ## 7. CURRENT STATUS
 
-Recent work (from git log):
-- **Paywall** — trial expiry enforcement added across routes
-- **Delete account** — full account deletion flow added (`/delete-account`)
-- **Privacy & Terms** — pages added
-- **Funnel optimization** — onboarding/registration improvements
-- **Email sequences** — drip email campaign system added (`lib/emailSequences.ts`, `/api/cron/email-sequences`)
+Recent work:
+- **RLS bypass fixed (2026-08-08)** — four `FOR ALL / USING (true)` policies with
+  no `TO` clause were exposing every table to the anon key. Dropped; see
+  `scripts/sql/2026-08-08-URGENT-fix-rls-bypass.sql`.
+- **Trial removed entirely (2026-08-08)** — the `trialing` state, the
+  `trial_start`/`trial_end`/`trial_days` columns and their triggers are gone.
+  One plan: $59 / 8 weeks, charged at checkout.
+- **Access gate fails closed** — `checkTrialExpired()` used to allow on a
+  missing row or a query error.
+- **Mobile-only web** — `WEB_APP_ENABLED` hides the product surfaces; Account
+  and Settings stay reachable so cancellation and deletion always work.
+- **Env consolidated** — `.env.example` is the authoritative list;
+  `NEXT_PUBLIC_APP_URL` and the retired plan price ids are gone.
 
-Active areas of the codebase (most recently changed):
-- Trial/paywall enforcement (`lib/checkTrialStatus.ts`, `components/PricingModal.tsx`)
+Active areas of the codebase:
+- Access control (`lib/getAccountState.ts`, `lib/checkTrialStatus.ts`, `proxy.ts`)
+- Stripe billing (`app/api/stripe/`, `lib/pricing.ts`, `lib/subscriptionWrite.ts`)
 - Email automation (`lib/emailSequences.ts`, `lib/resend.ts`)
-- Account management (`app/delete-account/`, `app/api/account/`)
+- The `/register` funnel (`app/register/page.tsx`, `lib/metaPixel.ts`)
+
+See `docs/mobile-app-changes.md` for the API contract changes the Expo app must
+follow.

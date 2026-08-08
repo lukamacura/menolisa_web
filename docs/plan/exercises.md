@@ -116,6 +116,54 @@ Deduplicated across Level 1, Level 2, Level 3, and F.A.C.E. This is the complete
 | --- | --- | --- |
 | X01 | Rest day | Icon, not a figure |
 
+## Clips are mobile-only
+
+The web dashboard has no player and never receives clip URLs. `GET /api/plan`
+returns them **only** when the caller passes `?media=1`, which the Expo app does
+and nothing else does.
+
+This is opt-in rather than sniffed from the auth method (cookie = web, Bearer =
+mobile) for two reasons: "can you play video" is a rendering question, not an
+auth one — a web player could be added later without a client having to pretend
+to be mobile — and the default direction fails safe. A new client that forgets
+the flag gets name + props and no video, rather than silently pulling megabytes
+it can't render and billing you the egress.
+
+The LLM is not involved at any point. It picks exercise ids and nothing else;
+`exerciseMedia()` runs in `hydrateExercises()` well after `sanitize()`, so no
+model ever sees a URL.
+
+## Where the clips live
+
+**Not in the Expo app bundle.** 59 clips would add tens of MB to every binary,
+ship again on every app update whether or not they changed, and force an App
+Store release to re-cut a single one.
+
+They go in a **public Supabase Storage bucket** — already in the stack, already
+behind a CDN, and a re-cut clip is live the moment it's uploaded.
+
+```
+bucket: exercise-clips   (public read, no RLS needed — nothing user-specific)
+  L01.mp4    6-10s silent loop, H.264, ≤720p, ≤400KB
+  L01.webp   poster frame, ≤40KB
+```
+
+Filename **is** the exercise id. Nothing else maps them.
+
+- `exerciseMedia()` in `lib/plan/catalog.ts` builds both URLs. It is the only
+  place that knows the path — no client ships a hardcoded one, so moving to a
+  different CDN is a one-line change. Override the base with
+  `EXERCISE_MEDIA_BASE` if you do.
+- `MEDIA_READY` in the same file lists which clips actually exist. An id that
+  isn't in that set returns no `video`/`poster`, and the app shows name + props
+  with no player — so a half-finished shoot never renders a broken video. **Add
+  ids to that set as clips land.**
+- The Expo app caches each clip on first play (`expo-file-system`); after that
+  it's local. Silent loops mean no audio session to manage.
+
+Poster is required, not optional: without it a list of ten exercises is ten
+simultaneous video loads on a phone.
+
 ### Batching to cut cost
 
 - **U01–U04** are one figure at four angles

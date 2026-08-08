@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { getAuthenticatedUser } from "@/lib/getAuthenticatedUser";
 
 export const runtime = "nodejs";
 
@@ -9,19 +10,29 @@ const MAX_REFERRED_AGE_MINUTES = 10;
 
 /**
  * POST /api/referral/apply
- * Called server-side (e.g. from save-quiz) when a new user signs up with a referral code.
- * Body: { referredUserId: string, referralCode: string }
+ * Called by save-quiz (forwarding the caller's credentials) when a new user
+ * signs up with a referral code.
+ * Body: { referralCode: string }
  * - Resolves code to referrer, inserts referral row, sets reward_applied_at. Referrer gets 50% off first subscription at checkout.
+ *
+ * The referred user is always the session holder. Taking it from the body meant
+ * anyone could mint 50%-off coupons for their own code by posting the id of any
+ * account created in the last {@link MAX_REFERRED_AGE_MINUTES} minutes.
  */
 export async function POST(req: NextRequest) {
   try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const referredUserId = user.id;
+
     const body = await req.json().catch(() => ({}));
-    const referredUserId = body.referredUserId as string | undefined;
     const referralCode = (body.referralCode as string)?.trim();
 
-    if (!referredUserId || !referralCode) {
+    if (!referralCode) {
       return NextResponse.json(
-        { error: "referredUserId and referralCode are required" },
+        { error: "referralCode is required" },
         { status: 400 }
       );
     }

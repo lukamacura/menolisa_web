@@ -33,6 +33,10 @@ instead. She always ends up with a plan.
 screen needs in one call. Mobile and web use the same endpoint — Bearer token for
 the app, cookie for the web dashboard.
 
+The one difference between them is `?media=1`, which the Expo app passes and the
+web dashboard does not: exercise clips are mobile-only, so only that caller gets
+`video`/`poster` URLs. See [exercises.md](exercises.md).
+
 **5. Week timing.** `started_at` is set the **first time she opens the plan**, not
 when she paid — she buys on web and may not install the app for days. Week number
 is `floor(days since started_at / 7) + 1`, capped at 8.
@@ -42,19 +46,45 @@ return their **title only**, so she sees the whole map but can't jump ahead.
 
 ---
 
+## The four pillars are not four of the same thing
+
+This is the shape of the whole feature, and it is deliberately uneven:
+
+| Pillar | Where it lives | Who chooses | Cadence |
+|---|---|---|---|
+| **Movement** | A weekly task with 3-6 exercise ids and a clip each | LLM picks ids from her filtered pool | `weekly` × her level, or `per_day` for snacks |
+| **Nutrition** | **Not a task.** All 9 items, every day, for everyone | Nobody — fixed list. The week only *highlights* 1-2 | Daily, always |
+| **Relaxation** | A weekly task pointing at one catalog practice | LLM picks the item_id | Daily |
+| **Habits** | Two kinds — see below | She does. LLM only suggests | Daily |
+
+**Habits split in two**, because building and quitting are not the same act:
+
+- **build** — a small thing she *adds*. Written free-text by the LLM, one per
+  week, lives in the plan JSON ("Cool the room before bed").
+- **resist** — a temptation she gets credit for *not* giving in to. Lives in
+  `user_habits` with `kind='resist'`, so it persists across weeks and its streak
+  never resets at a week boundary. The LLM writes four personalised
+  `resistSuggestions` from her symptoms; **she opts in.** We never auto-add one —
+  a resist habit she didn't choose isn't a habit, it's a lecture.
+
+---
+
 ## What the LLM is allowed to decide
 
 | Decided by the LLM | Decided by code (the model gets no vote) |
 |---|---|
 | Which exercises, from her filtered list | Which exercises she's *allowed* — level + injury filters |
+| — | Which clip plays, and whether one is sent at all — the model only ever emits ids |
 | How the 8 weeks progress | How often she trains — set by fitness level |
-| Which nutrition & relaxation items, and when | The wording of those items — taken from the catalog |
-| The habit tasks (free text) | Minimum 3 exercises per session; sessions are topped up if short |
+| Which relaxation item, and when | The wording of that item — taken from the catalog |
+| Which 1-2 nutrition ids a week highlights | The nutrition list itself — all 9, every day, unchangeable |
+| The build-habit text and the resist suggestions | Whether a resist suggestion is adopted — she chooses |
 | The "why" line for each task | Task keys, week numbers, cadence for non-movement tasks |
 
-Two safety rules run **after** the model answers, so it cannot opt out of them:
+Two safety rules run **before** the prompt is even built, so the model never sees
+what it isn't allowed to give:
 
-- **Joint pain** → every high-impact exercise is removed
+- **Joint pain** → every high-impact exercise is removed from her pool
 - **Fitness level** → caps which exercises she can be given at all
 
 ---
@@ -86,33 +116,49 @@ Her answers:
 MOVEMENT — pick only these exercise ids, and give {movement volume}:
 {her filtered exercise list, as "L01 Box squat | L02 Bodyweight squat | ..."}
 
-NUTRITION — pick only these item_ids, and use their label as the title:
-{the 9 nutrition ids and labels}
-
 RELAXATION — pick only these item_ids, and use their label as the title:
-{the 5 relaxation ids and labels}
+{the 9 relaxation ids, labels and "use" lines}
+
+NUTRITION — all nine of these are shown to her every day; you do not create
+nutrition tasks. You only name 1-2 ids per week as "nutrition_focus":
+{the 9 nutrition ids and labels}
 
 Rules:
 - Exactly 8 weeks, numbered 1-8. Weeks 1-2 steady the basics, 3-5 build, 6-8 lock it in.
-- Each week: 4-5 tasks — at least one movement, one nutrition, one relaxation, one habit.
-- Habit tasks are yours to write: one small, concrete daily action
-  (e.g. "Cool the room before bed"). Cadence "daily".
-- Nutrition and relaxation tasks need item_id and cadence "daily"
-  (or "per_day" with a target).
+- Each week: 3-4 tasks — at least one movement, one relaxation, one habit. No
+  nutrition tasks.
+- Each week also needs "nutrition_focus": 1-2 nutrition ids to push on that week.
+  Build on the previous week; do not restart from the same id every week.
+- Habit tasks are yours to write: one small, concrete daily action she ADDS
+  (e.g. "Cool the room before bed"). Cadence "daily". Never write a habit about
+  quitting something — that is what resist_suggestions is for.
+- Relaxation tasks need item_id and cadence "daily" (or "per_day" with a target).
+  Match the item to her worst symptom: hot flashes get breath_hotflash, night
+  waking gets breath_sleep, anxiety or palpitations get breath_sigh.
 - Movement tasks need an exercises array of 3-6 ids with sets/reps, or minutes for
   cardio. Title the session as a whole ("Lower body strength"), never after one
   exercise.
+- Titles and focus lines are sentence case: "Steady the basics", not
+  "Steady The Basics".
 - Add difficulty gradually. Never introduce more than one new thing per week.
 - "why" is one short sentence to her, in second person, tied to her symptoms.
   No medical claims, no dosages.
 - pillar and cadence must be lowercase, exactly as written above. Omit fields you
   have no value for — never send null.
-- Titles and focus lines are sentence case: "Steady the basics", not
-  "Steady The Basics".
 
-Return JSON: {"weeks":[{"number":1,"title":"...","focus":"...","tasks":[{"pillar":"...",
-"title":"...","why":"...","cadence":"...","target":1,"item_id":"...",
-"exercises":[{"id":"L01","sets":3,"reps":10}]}]}]}
+RESIST — separately, write 4 "resist_suggestions": specific temptations SHE is
+likely to face given her symptoms, each one she gets credit for resisting for a
+day. Phrase each as the thing not done, concrete and time-bound where it helps
+("No sweets after 8pm", "Phone stays out of the bedroom"). Draw them from what her
+symptoms actually predict — sleep trouble suggests the late screen and the evening
+wine, cravings suggest the 3pm sugar. Never suggest quitting a medication or HRT.
+"why" is one warm sentence, no shame.
+
+Return JSON: {"weeks":[{"number":1,"title":"...","focus":"...",
+"nutrition_focus":["protein_25_30g"],"tasks":[{"pillar":"...","title":"...",
+"why":"...","cadence":"...","target":1,"item_id":"...",
+"exercises":[{"id":"L01","sets":3,"reps":10}]}]}],
+"resist_suggestions":[{"title":"...","why":"..."}]}
 ```
 
 ### Movement volume, by fitness level
@@ -136,20 +182,42 @@ she can repeat through the day, not easier ones.
 Everything below runs in `sanitize()` before the plan is saved.
 
 1. **Tolerated and fixed** — capitalized enums (`"Movement"` → `movement`),
-   `null` where a field should be missing, over-long titles (truncated).
+   lowercase exercise ids (`"l01"` → `L01`), `null` where a field should be
+   missing, over-long titles (truncated).
 2. **Validated one task at a time** — a single malformed task is dropped, not the
-   whole plan.
+   whole plan. An unknown pillar (including a leftover `nutrition` task) is dropped.
 3. **Exercises checked against her filtered list** — anything outside it is removed.
 4. **Sessions topped up** — the model often returns one exercise when asked for
    3–6. Short sessions are filled from her own list.
 5. **Volume overwritten** — movement cadence and target come from the table above,
    never from the model.
 6. **Non-movement tasks forced to daily** — only `per_day` carries a real target.
-7. **Nutrition & relaxation titles replaced** with the catalog label, so the app and
-   the `/register` funnel always use the same words. See [pillars.md](pillars.md).
+7. **Relaxation titles replaced** with the catalog label, so the app and the
+   `/register` funnel always use the same words.
+8. **`nutrition_focus` filtered** to real ids and capped at 2.
+9. **Resist suggestions** validated individually; if none survive, the generic
+   four are used rather than losing an otherwise good 8 weeks.
 
 The plan is only accepted if it has **all 8 weeks with at least 3 tasks each**.
 Otherwise the fallback plan is used.
+
+---
+
+## Task keys — what streaks hang off
+
+`user_plan_logs` has primary key `(user_id, task_key, date)`. The key decides
+whether a streak survives a week boundary:
+
+| Kind | Key | Resets weekly? |
+|---|---|---|
+| Movement session | `w3_movement0` | Yes — it's a different session each week |
+| Build habit | `w3_habit2` | Yes — it's a different habit each week |
+| Relaxation | `w3_breath_hotflash` | Yes, but the id is stable, so a "since week 1" view is possible |
+| **Nutrition** | `nut_protein_25_30g` | **No** — never week-prefixed |
+| **Resist habit** | `habit_<uuid>` | **No** — lives in `user_habits` |
+
+The two that are scored on streak are exactly the two that aren't week-prefixed.
+That is the reason for the difference, not an accident.
 
 ---
 
@@ -158,12 +226,15 @@ Otherwise the fallback plan is used.
 Used when the LLM fails or its answer doesn't survive the checks. It is still
 personalised — her fitness level and injuries filter the exercise list the same
 way — it just isn't tailored to her symptoms. Eight fixed week themes, rotating
-through the catalog, sets stepping up from 2 to 3 after week 4.
+through the catalog, sets stepping up from 2 to 3 after week 4, `nutritionFocus`
+walking the nine in priority order two a week so all nine get pushed by week 8,
+and four generic resist suggestions.
 
 ---
 
 ## Related
 
-- [exercises.md](exercises.md) — the 59 exercises and their illustration status
+- [exercises.md](exercises.md) — the 59 exercises, their clips, and where clips live
 - [pillars.md](pillars.md) — the nutrition wording shared with the funnel
+- [relaxation.md](relaxation.md) — the breathing patterns and why they're timed that way
 - [nutrition.md](nutrition.md) — nutrition tracking copy

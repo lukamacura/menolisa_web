@@ -3,10 +3,11 @@ import Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { writeSubscription } from "@/lib/subscriptionWrite";
-import { sendTrialWelcomeEmail, sendChargeConfirmedEmail, sendAdminNotification } from "@/lib/resend";
+import { sendWelcomeEmail, sendChargeConfirmedEmail, sendAdminNotification } from "@/lib/resend";
 import { generatePlan, markPlanGenerating } from "@/lib/plan/generate";
 import { sendMetaPurchase, metaMatchDataFrom } from "@/lib/metaCapi";
 import { META_CURRENCY, PLAN_VALUE, purchaseEventId } from "@/lib/metaPixel";
+import { PLAN_WEEKS } from "@/lib/pricing";
 
 export const runtime = "nodejs";
 
@@ -35,19 +36,34 @@ function subscriptionPeriodEndIso(subscription: Stripe.Subscription): string | n
   return endTs ? new Date(endTs * 1000).toISOString() : null;
 }
 
-function subscriptionTrialEndIso(subscription: Stripe.Subscription): string | null {
-  const trialEnd = subscription.trial_end;
-  if (!trialEnd) return null;
-  return new Date(trialEnd * 1000).toISOString();
+/**
+ * Access cutoff to use when Stripe gave us no period end but we are about to
+ * mark the account paid.
+ *
+ * getAccountState() fails closed on a paid row with no cutoff, so writing null
+ * here would lock out someone who just paid. One plan length from the event is
+ * the honest guess: it is exactly what the price bills, and the next renewal
+ * webhook overwrites it with Stripe's real date anyway.
+ */
+function fallbackPeriodEndIso(fromSec: number): string {
+  return new Date(fromSec * 1000 + PLAN_WEEKS * 7 * 86_400_000).toISOString();
 }
 
-/** Derive billing interval + amount (cents) from the subscription's first price. */
+/**
+ * Values `plan_type` can hold. `plan8w` — $59 per 8 weeks — is the only plan
+ * sold, and there are no legacy subscribers on anything else.
+ */
+type PlanType = "plan8w";
+
+/** Derive billing period + amount (cents) from the subscription's first price. */
 function planFromSubscription(
   subscription: Stripe.Subscription
-): { plan_type: "monthly" | "annual" | null; plan_amount: number | null } {
+): { plan_type: PlanType | null; plan_amount: number | null } {
   const price = subscription.items?.data?.[0]?.price;
   const interval = price?.recurring?.interval ?? null;
-  const plan_type = interval === "year" ? "annual" : interval === "month" ? "monthly" : null;
+  const intervalCount = price?.recurring?.interval_count ?? 1;
+  const plan_type: PlanType | null =
+    interval === "week" && intervalCount === PLAN_WEEKS ? "plan8w" : null;
   const plan_amount = typeof price?.unit_amount === "number" ? price.unit_amount : null;
   return { plan_type, plan_amount };
 }
@@ -124,18 +140,16 @@ async function handleCheckoutSessionCompleted(
   if (await isStaleEvent(supabaseAdmin, userId, eventCreatedSec)) return { ok: true };
 
   let subscription_ends_at: string | null = null;
-  let trial_end: string | null = null;
   let stripe_customer_id: string | null = null;
   let stripe_subscription_id: string | null = null;
   let subscription_canceled = false;
-  let plan_type: "monthly" | "annual" | null = null;
+  let plan_type: PlanType | null = null;
   let plan_amount: number | null = null;
 
   if (session.subscription && typeof session.subscription === "string") {
     try {
       const subscription = await stripe.subscriptions.retrieve(session.subscription);
       subscription_ends_at = subscriptionPeriodEndIso(subscription);
-      trial_end = subscriptionTrialEndIso(subscription);
       subscription_canceled = !!subscription.cancel_at;
       stripe_customer_id = customerIdOf(subscription.customer);
       stripe_subscription_id = subscription.id;
@@ -153,7 +167,6 @@ async function handleCheckoutSessionCompleted(
   };
   if (stripe_customer_id) extras.stripe_customer_id = stripe_customer_id;
   if (stripe_subscription_id) extras.stripe_subscription_id = stripe_subscription_id;
-  if (trial_end !== null) extras.trial_end = trial_end;
   if (plan_type) extras.plan_type = plan_type;
   if (plan_amount !== null) extras.plan_amount = plan_amount;
 
@@ -162,7 +175,7 @@ async function handleCheckoutSessionCompleted(
       userId,
       provider: "stripe",
       active: true,
-      expiresAt: subscription_ends_at,
+      expiresAt: subscription_ends_at ?? fallbackPeriodEndIso(eventCreatedSec),
       canceled: subscription_canceled,
       extras,
     });
@@ -178,10 +191,10 @@ async function handleCheckoutSessionCompleted(
         sendMetaPurchase({
           eventId: purchaseEventId(session.id),
           eventTimeSec: eventCreatedSec,
-          value:
-            plan_amount != null
-              ? plan_amount / 100
-              : PLAN_VALUE[plan_type ?? "annual"],
+          // Prefer the real amount off the Stripe price - it stays right even
+          // for a legacy plan or a coupon-discounted first invoice. PLAN_VALUE
+          // is only the floor for when the subscription fetch above failed.
+          value: plan_amount != null ? plan_amount / 100 : PLAN_VALUE,
           currency: META_CURRENCY,
           email: session.customer_details?.email ?? session.customer_email ?? null,
           userId,
@@ -207,15 +220,15 @@ async function handleCheckoutSessionCompleted(
             .eq("user_id", userId)
             .maybeSingle();
           await Promise.all([
-            sendTrialWelcomeEmail(email, profile?.name ?? null, trial_end !== null),
+            sendWelcomeEmail(email, profile?.name ?? null),
             sendAdminNotification(
-              `New trial signup — ${email}`,
-              `<p>New trial: <strong>${email}</strong>${profile?.name ? ` (${profile.name})` : ""}</p><p>Started: ${new Date().toUTCString()}</p>`
+              `New subscriber — ${email}`,
+              `<p>New subscriber: <strong>${email}</strong>${profile?.name ? ` (${profile.name})` : ""}</p><p>Started: ${new Date().toUTCString()}</p>`
             ),
           ]);
         }
       } catch (e) {
-        console.error("Webhook: trial welcome emails failed:", e);
+        console.error("Webhook: welcome emails failed:", e);
       }
     }
   } catch (err) {
@@ -232,7 +245,6 @@ async function handleSubscriptionUpsert(
 ): Promise<HandlerResult> {
   const supabaseAdmin = getSupabaseAdmin();
   const subscription_ends_at = subscriptionPeriodEndIso(subscription);
-  const trial_end = subscriptionTrialEndIso(subscription);
   const subscription_canceled = !!subscription.cancel_at;
   const stripe_customer_id = customerIdOf(subscription.customer);
   const { plan_type, plan_amount } = planFromSubscription(subscription);
@@ -255,7 +267,6 @@ async function handleSubscriptionUpsert(
     subscription_canceled,
     updated_at: new Date().toISOString(),
     last_stripe_event_at: new Date(eventCreatedSec * 1000).toISOString(),
-    trial_end, // null clears the trial flag once Stripe leaves trialing
     ...(subscription_ends_at && { subscription_ends_at }),
     ...(stripe_customer_id && { stripe_customer_id }),
     ...(plan_type && { plan_type }),
@@ -287,12 +298,14 @@ async function handleSubscriptionUpsert(
       userId,
       provider: "stripe",
       active: isActive,
-      expiresAt: subscription_ends_at,
+      expiresAt:
+        isActive && !subscription_ends_at
+          ? fallbackPeriodEndIso(eventCreatedSec)
+          : subscription_ends_at,
       canceled: subscription_canceled,
       extras: {
         stripe_subscription_id: subscription.id,
         last_stripe_event_at: new Date(eventCreatedSec * 1000).toISOString(),
-        trial_end,
         ...(stripe_customer_id && { stripe_customer_id }),
         ...(plan_type && { plan_type }),
         ...(plan_amount !== null && { plan_amount }),
@@ -380,12 +393,10 @@ async function handleInvoicePaymentSucceeded(
 
   // Refresh period end from the subscription object — invoice.lines isn't a reliable source across API versions.
   let subscription_ends_at: string | null = null;
-  let trial_end: string | null = null;
   let subscription_canceled = false;
   try {
     const subscription = await stripe.subscriptions.retrieve(stripe_subscription_id);
     subscription_ends_at = subscriptionPeriodEndIso(subscription);
-    trial_end = subscriptionTrialEndIso(subscription);
     subscription_canceled = !!subscription.cancel_at;
   } catch (err) {
     console.error("Webhook invoice.payment_succeeded: failed to fetch subscription:", err);
@@ -397,7 +408,6 @@ async function handleInvoicePaymentSucceeded(
     stripe_subscription_id,
     subscription_canceled,
     payment_failed_at: null,
-    trial_end, // null clears once user is no longer trialing
     updated_at: new Date().toISOString(),
     last_stripe_event_at: new Date(eventCreatedSec * 1000).toISOString(),
     ...(subscription_ends_at && { subscription_ends_at }),

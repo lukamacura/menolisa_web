@@ -24,6 +24,12 @@ vocabulary and the app will greet her with another. Two places in code hold them
 and must stay in step: `NUTRITION_GROUPS` in `app/register/page.tsx` (the funnel)
 and `NUTRITION` in `lib/plan/catalog.ts` (the plan).
 
+**All nine appear every day, for every user.** Nutrition is not something the LLM
+selects into a week — `GET /api/plan` returns the full grouped list on every
+call, and the plan's `nutritionFocus` only marks 1-2 of them as this week's push.
+Their log keys are `nut_<id>`, never week-prefixed, so a streak on "25-30g
+protein per meal" runs unbroken from day 1 to day 56.
+
 Order is priority order — highest-leverage habit first. The funnel reuses it to
 pick her "first 3 swaps for tomorrow" from whatever she left unticked.
 

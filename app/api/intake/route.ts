@@ -1,20 +1,24 @@
 // app/api/intake/route.ts
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { getAuthenticatedUser } from "@/lib/getAuthenticatedUser";
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    // Get admin client (bypasses RLS)
+    // The profile written here is whoever is holding the session, never whoever
+    // the body claims to be. This route writes user_profiles with the service
+    // role, so trusting body.user_id let anyone overwrite any woman's quiz
+    // answers — name, symptoms, goals — with nothing but her user id.
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const user_id = user.id;
+
     const supabase = getSupabaseAdmin();
     const body = await req.json();
-    
-    console.log("=== INTAKE API CALLED ===");
-    console.log("User ID:", body.user_id);
-    console.log("Name:", body.name);
-    console.log("Top Problems:", body.top_problems);
 
     const {
-      user_id,
       name,
       top_problems,
       timing,
@@ -22,13 +26,6 @@ export async function POST(req: Request) {
       doctor_status,
       goal,
     } = body;
-
-    if (!user_id) {
-      return NextResponse.json(
-        { error: "Missing required field: user_id." },
-        { status: 400 }
-      );
-    }
 
     // Validate required fields for new question structure (only if provided)
     // Allow partial updates for webhook/trigger created profiles
@@ -90,23 +87,8 @@ export async function POST(req: Request) {
       }
     }
 
-    // Verify user exists in auth.users first (using admin API)
-    try {
-      const { data: authUser, error: authError } = await supabase.auth.admin.getUserById(user_id);
-      if (authError || !authUser) {
-        console.error("User not found in auth.users:", authError);
-        return NextResponse.json(
-          { 
-            error: "User account not found. Please try registering again.",
-            details: process.env.NODE_ENV === "development" ? authError?.message : undefined
-          },
-          { status: 400 }
-        );
-      }
-    } catch (authCheckError) {
-      // If admin API fails, log but continue (user might still exist)
-      console.warn("Could not verify user via admin API:", authCheckError);
-    }
+    // No auth.users existence check needed — getAuthenticatedUser() already
+    // validated the session against Supabase, so the row is known to exist.
 
     // Check if profile already exists (handle both found and not found cases)
     const { data: existingProfile, error: checkError } = await supabase
@@ -131,12 +113,6 @@ export async function POST(req: Request) {
     if (checkError && checkError.code !== "PGRST116") {
       console.error("Error checking existing profile:", checkError);
     }
-
-    console.log("Intake API: Profile check result:", {
-      hasProfile: !!existingProfile,
-      userId: user_id,
-      hasQuizData: !!(top_problems || name || timing)
-    });
 
     // Prepare profile data with new question structure (only include provided fields)
     const profileData: {

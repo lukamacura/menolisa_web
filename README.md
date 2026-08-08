@@ -35,10 +35,14 @@ Checkout uses Stripe. Set these in `.env.local` (and in Vercel for production):
 
 - `STRIPE_SECRET_KEY` – Stripe secret key (test or live)
 - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` – Publishable key (optional for hosted Checkout)
-- `STRIPE_PRICE_MONTHLY` – Price ID for the monthly plan (e.g. `price_xxx`)
-- `STRIPE_PRICE_ANNUAL` – Price ID for the annual plan (e.g. `price_yyy`)
+- `STRIPE_PRICE_8WEEK` – Price ID for the $59 / 8-week plan (e.g. `price_xxx`)
 
-Get the **Price IDs** from Stripe Dashboard → Products → open each product → copy the Price ID.
+Get the **Price ID** from Stripe Dashboard → Products → open the product → copy the Price ID.
+The price must be recurring with `interval = week` and `interval_count = 8`; the webhook reads
+that interval back to tag the subscription as `plan8w`, so a price with any other interval will
+be recorded as an unknown plan. There is one plan and no free trial — the card is charged in
+full at checkout. Prices shown in the UI come from `lib/pricing.ts`; keep `PLAN_PRICE` in sync
+with the Stripe price.
 
 **Webhook (required for marking users as paid and adding subscription period):**
 
@@ -49,7 +53,7 @@ Get the **Price IDs** from Stripe Dashboard → Products → open each product �
 
 For local testing use [Stripe CLI](https://stripe.com/docs/stripe-cli): `stripe listen --forward-to localhost:3000/api/stripe/webhook` and use the printed signing secret.
 
-**Redirects:** After checkout, users are sent back to the same origin they started from (e.g. your app at menolisa.com → back to menolisa.com/dashboard). Ensure your app domain is in the allowed list (menolisa.com, womenreset.com, localhost, or set `NEXT_PUBLIC_APP_URL` / `NEXT_PUBLIC_SITE_URL`).
+**Redirects:** After checkout, users are sent back to the same origin they started from (e.g. your app at menolisa.com → back to menolisa.com/dashboard). Ensure your app domain is in the allowed list (menolisa.com, localhost, or set `NEXT_PUBLIC_SITE_URL`).
 
 ## Deploy on Vercel
 

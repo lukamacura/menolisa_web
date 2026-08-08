@@ -214,7 +214,7 @@ export default function NotificationSettingsPage() {
           </li>
           <li className="flex items-start gap-3">
             <span className="text-[#ff74b1] text-xl font-bold shrink-0">•</span>
-            <span><strong>Trial updates:</strong> Important information about your trial status (always on)</span>
+            <span><strong>Billing updates:</strong> Important information about your subscription status (always on)</span>
           </li>
         </ul>
       </div>

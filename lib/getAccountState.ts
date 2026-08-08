@@ -6,7 +6,6 @@
  */
 
 export type AccountState =
-  | "trialing"   // Stripe sub status=trialing, card on file, not yet charged
   | "active"     // paying subscriber, renews normally
   | "canceling"  // paid but cancel_at_period_end=true; access until endsAt
   | "past_due"   // last invoice failed; Stripe retrying; keep access
@@ -19,16 +18,26 @@ export type AccountStateRow = {
   subscription_canceled: boolean | null;
   payment_failed_at: string | null;
   dispute_flagged_at?: string | null;
-  trial_start: string | null;
-  trial_end: string | null;
-  trial_days: number | null;
   stripe_subscription_id?: string | null;
   provider?: string | null;
 };
 
+/**
+ * Every column getAccountState() reads, as a Supabase `.select()` string.
+ *
+ * Select less and the missing fields arrive as `undefined`, which reads as "no
+ * dispute, not canceled, no failed payment" — so a partial select silently
+ * grants access it shouldn't.
+ *
+ * Lives here, not in checkTrialStatus.ts, because client components need it
+ * too and that module pulls in the service-role Supabase client.
+ */
+export const TRIAL_SELECT_COLS =
+  "account_status, subscription_ends_at, subscription_canceled, payment_failed_at, dispute_flagged_at, stripe_subscription_id, provider";
+
 export type AccountStateResult = {
   state: AccountState;
-  /** Access cutoff (subscription end, trial end, or null when no upcoming boundary). */
+  /** Access cutoff (subscription end, or null when no upcoming boundary). */
   endsAt: Date | null;
   /** Whole days until endsAt, floored at 0. Null when endsAt is null. */
   daysLeft: number | null;
@@ -72,10 +81,9 @@ export function getAccountState(
   const isThirdPartyProvider = provider === "apple" || provider === "google";
   const previouslyPaid = !!row.stripe_subscription_id || provider !== "stripe";
 
+  // The subscription period is the only access boundary. There is no trial.
   const subEnd = toDate(row.subscription_ends_at);
-  const trialEnd = toDate(row.trial_end);
-  // Prefer the subscription end (Stripe authoritative); fall back to trial_end.
-  const endsAt = subEnd ?? trialEnd;
+  const endsAt = subEnd;
 
   // Disputes lock the account regardless of other flags.
   if (row.dispute_flagged_at) {
@@ -116,8 +124,23 @@ export function getAccountState(
       };
     }
 
-    // Trial still running? trial_end is set during the Stripe trial period.
-    const inTrial = !!trialEnd && trialEnd.getTime() > now.getTime();
+    // "paid" with no cutoff at all is not a subscription, it's a bug — and read
+    // permissively it grants access that never expires, because every check
+    // below is guarded on a date that isn't there. Both writers always supply
+    // one (the Stripe webhook falls back to now + PLAN_WEEKS, Apple to the
+    // receipt's expires_date), so reaching here means the row was written by
+    // something that didn't, and the safe reading of an unknown expiry is that
+    // it has passed.
+    if (!endsAt) {
+      return {
+        state: "ended",
+        endsAt: null,
+        daysLeft: null,
+        previouslyPaid: true,
+        isThirdPartyProvider,
+        hasAccess: false,
+      };
+    }
 
     if (row.payment_failed_at) {
       return {
@@ -136,17 +159,6 @@ export function getAccountState(
         endsAt,
         daysLeft: endsAt ? daysBetween(now, endsAt) : null,
         previouslyPaid: true,
-        isThirdPartyProvider,
-        hasAccess: true,
-      };
-    }
-
-    if (inTrial) {
-      return {
-        state: "trialing",
-        endsAt: trialEnd,
-        daysLeft: trialEnd ? daysBetween(now, trialEnd) : null,
-        previouslyPaid: false,
         isThirdPartyProvider,
         hasAccess: true,
       };
@@ -175,5 +187,5 @@ export function getAccountState(
 
 /** Convenience: a state qualifies for the dashboard? */
 export function stateAllowsAccess(state: AccountState): boolean {
-  return state === "trialing" || state === "active" || state === "canceling" || state === "past_due";
+  return state === "active" || state === "canceling" || state === "past_due";
 }

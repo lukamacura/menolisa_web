@@ -11,6 +11,7 @@ import {
   useDashboardTrialStatus,
 } from "@/lib/dashboardTrialContext";
 import SessionVerification from "@/components/SessionVerification";
+import { WEB_APP_ENABLED } from "@/lib/constants";
 import { NotificationProvider } from "@/components/notifications/NotificationProvider";
 import NotificationContainer from "@/components/notifications/NotificationContainer";
 
@@ -64,43 +65,58 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const isDropdownOpenRef = useRef(false);
 
-  // Hard gate: anyone without access (ended | disputed) is redirected to the paywall page.
+  // Hard gate: anyone without access (ended | disputed) is redirected to the
+  // paywall page — except on Account and Settings, which must stay reachable
+  // precisely when access has ended, because that is where she cancels, manages
+  // billing and deletes her account. proxy.ts exempts the same two prefixes.
+  const paymentExempt =
+    pathname?.startsWith("/dashboard/account") ||
+    pathname?.startsWith("/dashboard/settings");
+
   useEffect(() => {
-    if (trialStatus.loading) return;
+    if (trialStatus.loading || paymentExempt) return;
     if (trialStatus.state === "ended" || trialStatus.state === "disputed") {
       router.replace("/paywall");
     }
-  }, [trialStatus.loading, trialStatus.state, router]);
+  }, [trialStatus.loading, trialStatus.state, paymentExempt, router]);
 
+  // With the product on mobile, Account is the only thing the web nav still
+  // leads to. The other routes stay mounted (they render GetTheAppScreen) so
+  // old bookmarks and email links explain themselves, but nothing here points
+  // at them any more.
   const navItems = [
-    {
-      href: "/dashboard/symptoms",
-      label: "Home",
-      icon: Activity,
-      requiresActiveTrial: false,
-    },
-    {
-      href: "/chat/lisa",
-      label: "Chat with Lisa",
-      icon: MessageSquare,
-      requiresActiveTrial: false,
-    },
-    {
-      href: "/dashboard/notifications",
-      label: "Notifications",
-      icon: Bell,
-      requiresActiveTrial: false,
-    },
+    ...(WEB_APP_ENABLED
+      ? [
+          {
+            href: "/dashboard/symptoms",
+            label: "Home",
+            icon: Activity,
+            requiresActiveSubscription: false,
+          },
+          {
+            href: "/chat/lisa",
+            label: "Chat with Lisa",
+            icon: MessageSquare,
+            requiresActiveSubscription: false,
+          },
+          {
+            href: "/dashboard/notifications",
+            label: "Notifications",
+            icon: Bell,
+            requiresActiveSubscription: false,
+          },
+        ]
+      : []),
     {
       href: "/dashboard/account",
       label: "Account",
       icon: UserCircle,
-      requiresActiveTrial: false,
+      requiresActiveSubscription: false,
     },
   ];
 
   const handleNavClick = (item: typeof navItems[0], e: React.MouseEvent) => {
-    if (item.requiresActiveTrial && trialStatus.expired) {
+    if (item.requiresActiveSubscription && trialStatus.expired) {
       e.preventDefault();
       // Block navigation to trial-gated pages when expired
     }
@@ -192,7 +208,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
                       (item.href !== "/dashboard" && item.href !== "/chat/lisa" && pathname?.startsWith(item.href)) ||
                       (item.href === "/chat/lisa" && pathname === "/chat/lisa");
 
-                    const isDisabled = item.requiresActiveTrial && trialStatus.expired;
+                    const isDisabled = item.requiresActiveSubscription && trialStatus.expired;
                     return (
                       <Link
                         key={item.href}
@@ -242,7 +258,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
                   (item.href !== "/dashboard" && item.href !== "/chat/lisa" && pathname?.startsWith(item.href)) ||
                   (item.href === "/chat/lisa" && pathname === "/chat/lisa");
 
-                const isDisabled = item.requiresActiveTrial && trialStatus.expired;
+                const isDisabled = item.requiresActiveSubscription && trialStatus.expired;
                 return (
                   <AnimatedNavItem key={item.href} delay={index * 50}>
                     <Link
@@ -287,9 +303,11 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
       <main className="flex-1 pt-36 sm:pt-[148px]">{children}</main>
 
       {/* Fixed Lisa Swipe Button */}
-      {pathname !== "/dashboard/account" && !pathname?.startsWith("/dashboard/settings") && (
-        <SwipeButton variant="lisa" trialExpired={trialStatus.expired} />
-      )}
+      {WEB_APP_ENABLED &&
+        pathname !== "/dashboard/account" &&
+        !pathname?.startsWith("/dashboard/settings") && (
+          <SwipeButton variant="lisa" trialExpired={trialStatus.expired} />
+        )}
 
         {/* Notification Container */}
         <NotificationContainer />

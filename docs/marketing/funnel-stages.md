@@ -65,11 +65,11 @@
 
 - **Her Rung (Entry):** **Willingness / Reason** *(ready to decide at the top of the ladder)*
 - **The One Job:** Close the loop using the same size of small, reversible step as the first click. Bookend the funnel.
-- **The One Ask:** Start the trial.
+- **The One Ask:** Buy the 8-week plan.
 - **Paywall Sequence:**
     1. **Desire Callback #2:** Connect directly to her named goal: *"{her goal} in 8 weeks"*
-    2. **Reason/Logic Check:** Risk reversal via guarantee (*"score to 80+ or money back"*)
-    3. **Courage-Sized Commitment:** Frame as a free start (*"free start, no charge for 3 days"*)
+    2. **Reason/Logic Check:** Risk reversal via guarantee (*"follow 90% of your plan for 8 weeks or get your money back"*) — the adherence condition is stated as the reason the promise is credible, not as fine print
+    3. **Courage-Sized Commitment:** Frame the price as small and the period as finite (*"$59 for 8 weeks, about $1 a day, cancel anytime"*) — there is no free trial to lean on
 
 ## 📈 High-Leverage Fixes (Ranked Priority)
 

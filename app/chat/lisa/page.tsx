@@ -33,6 +33,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { useTrialStatus } from "@/lib/useTrialStatus";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { WEB_APP_ENABLED } from "@/lib/constants";
+import GetTheAppScreen from "@/components/GetTheAppScreen";
 
 /* ===== Theme (matching app pink/purple theme, optimized for 40+ vision) ===== */
 const THEME = {
@@ -1721,7 +1723,7 @@ function ChatPageInner() {
       
       // Block sending if trial is expired
       if (trialStatus.expired) {
-        addNotification("Trial Expired", "Your trial has expired. Please upgrade to continue using the chat.");
+        addNotification("Subscription required", "Your subscription has ended. Please resubscribe to continue using the chat.");
         router.push("/dashboard");
         return;
       }
@@ -2043,9 +2045,9 @@ function ChatPageInner() {
       <div className="flex h-screen w-full items-center justify-center">
         <div className="text-center max-w-md mx-auto px-4">
           <div className="rounded-2xl border-2 p-8 shadow-lg" style={{ borderColor: THEME.pink[300], backgroundColor: THEME.background.white }}>
-            <h2 className="text-2xl font-bold mb-4" style={{ color: THEME.text[900] }}>Trial Expired</h2>
+            <h2 className="text-2xl font-bold mb-4" style={{ color: THEME.text[900] }}>Subscription required</h2>
             <p className="text-lg mb-6" style={{ color: THEME.text[700] }}>
-              Your trial has expired. Please upgrade to continue using the chat feature.
+              Your subscription has ended. Please resubscribe to continue using the chat.
             </p>
             <button
               onClick={() => router.push("/dashboard")}
@@ -2670,4 +2672,23 @@ function ChatPageInner() {
   );
 }
 
-export default dynamic(() => Promise.resolve(ChatPageInner), { ssr: false });
+/**
+ * Chat is the most expensive thing on the web app to keep running (every turn
+ * is an embedding plus a completion), so it is the first surface the flag takes
+ * down. The route stays mounted rather than redirecting: a woman who bookmarked
+ * it should land somewhere that explains the move and offers Account, not on a
+ * 404.
+ */
+function ChatPageGate() {
+  if (!WEB_APP_ENABLED) {
+    return (
+      <GetTheAppScreen
+        title="Lisa moved to the app"
+        description="Your conversations with Lisa — and all of your history with her — are in the MenoLisa app now. Install it and sign in with the same email to pick up where you left off."
+      />
+    );
+  }
+  return <ChatPageInner />;
+}
+
+export default dynamic(() => Promise.resolve(ChatPageGate), { ssr: false });

@@ -9,6 +9,8 @@ import { Book, BookOpen, Plus } from "lucide-react";
 import { useSymptoms } from "@/hooks/useSymptoms";
 import { useSymptomLogs } from "@/hooks/useSymptomLogs";
 import { useDashboardTrialStatus } from "@/lib/dashboardTrialContext";
+import { WEB_APP_ENABLED } from "@/lib/constants";
+import GetTheAppScreen from "@/components/GetTheAppScreen";
 import { useNotification } from "@/hooks/useNotification";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import SymptomCard from "@/components/symptom-tracker/SymptomCard";
@@ -102,6 +104,11 @@ function AnimatedSection({
 }
 
 export default function SymptomsPage() {
+  if (!WEB_APP_ENABLED) return <GetTheAppScreen />;
+  return <SymptomsPageInner />;
+}
+
+function SymptomsPageInner() {
   const router = useRouter();
   const trialStatus = useDashboardTrialStatus();
   const { showSuccess, showError, showLocal } = useNotification();

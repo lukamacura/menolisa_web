@@ -125,8 +125,6 @@ export async function POST(request: NextRequest) {
       if (!existingTrial) {
         const { error: trialError } = await supabaseAdmin.from("user_trials").insert({
           user_id: userId,
-          trial_start: null, // column defaults to now(); must be explicit null so the pending-payment email sequence (trial_start IS NULL) can match
-          trial_days: 3,
           account_status: "pending_payment",
         });
         if (trialError) {
@@ -141,15 +139,20 @@ export async function POST(request: NextRequest) {
       try {
         const origin =
           request.nextUrl?.origin ||
-          process.env.NEXT_PUBLIC_APP_URL ||
+          process.env.NEXT_PUBLIC_SITE_URL ||
           "http://localhost:3000";
+        // Forward the caller's credentials — the route derives the referred
+        // user from the session rather than trusting an id in the body.
+        const cookie = request.headers.get("cookie");
+        const authorization = request.headers.get("authorization");
         const applyRes = await fetch(`${origin}/api/referral/apply`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            referredUserId: userId,
-            referralCode: referralCode.trim(),
-          }),
+          headers: {
+            "Content-Type": "application/json",
+            ...(cookie && { cookie }),
+            ...(authorization && { authorization }),
+          },
+          body: JSON.stringify({ referralCode: referralCode.trim() }),
         });
         if (!applyRes.ok) {
           console.warn("Referral apply failed:", await applyRes.text());

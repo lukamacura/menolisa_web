@@ -8,29 +8,27 @@
  * must derive the id the same way via `purchaseEventId`.
  */
 
+import { PLAN_PRICE } from "@/lib/pricing";
+
 export const META_PIXEL_ID =
   process.env.NEXT_PUBLIC_META_PIXEL_ID ?? "7118800424899365";
 
 export const META_CURRENCY = "USD";
 
-export type MetaPlan = "annual" | "monthly";
-
 /**
- * Reported conversion value per plan, in USD.
+ * Reported conversion value, in USD.
  *
- * Annual is reported at its full $79 even though the 3-day trial charges $0 at
- * checkout - a deliberate choice to give Meta's optimizer enough Purchase volume
- * to learn on. Reported ad revenue therefore runs ahead of collected revenue by
- * the trial-cancel rate; reconcile in Stripe, not Events Manager.
+ * There is one plan and no free trial, so the reported value is money actually
+ * collected at checkout - Events Manager and Stripe should agree. (Before the
+ * $59/8-week plan, annual was reported at its full $79 while the 3-day trial
+ * charged $0, which made ad revenue run ahead of collected revenue by the
+ * trial-cancel rate. That gap is gone.)
+ *
+ * Renewals are deliberately *not* reported: Purchase fires from
+ * checkout.session.completed only, so Meta optimizes for new customers rather
+ * than being fed a second conversion every 8 weeks for someone it already won.
  */
-export const PLAN_VALUE: Record<MetaPlan, number> = {
-  annual: 79,
-  monthly: 12,
-};
-
-export function isMetaPlan(value: unknown): value is MetaPlan {
-  return value === "annual" || value === "monthly";
-}
+export const PLAN_VALUE = PLAN_PRICE;
 
 /** Dedup key linking the browser Purchase to the Conversions API Purchase. */
 export function purchaseEventId(stripeSessionId: string): string {

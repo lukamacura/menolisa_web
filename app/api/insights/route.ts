@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/getAuthenticatedUser';
+import { checkTrialExpired } from '@/lib/checkTrialStatus';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { generateAndPersistInsight } from '@/lib/insights/aiInsight';
 import type { InsightApiResponse } from '@/lib/insights/types';
@@ -13,6 +14,10 @@ export async function GET(req: NextRequest) {
   const user = await getAuthenticatedUser(req);
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  if (await checkTrialExpired(user.id)) {
+    return NextResponse.json({ error: 'Subscription required' }, { status: 403 });
   }
 
   const forceRefresh = req.nextUrl.searchParams.get('refresh') === 'true';

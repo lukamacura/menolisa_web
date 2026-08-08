@@ -42,7 +42,7 @@ export default function LandingFAQ() {
     {
       question: "How does the guarantee work?",
       answer:
-        "Your first 3 days are a full-access trial - cancel anytime before day 3 and you're never charged. If you stay on and don't feel more informed within 7 days after billing, email us for a full refund. No questions, no hoops.",
+        "You pay $59 for your full 8-week plan. Follow at least 90% of it, and if you still don't feel better after those 8 weeks, email us and we'll refund the whole $59. There's nothing to submit - your plan counts itself as you tick off each day, so we can see your progress without asking you for anything. The 90% is the only condition, and it's there because the plan can only work if you actually do it. You can cancel renewal anytime from your account in two taps, guarantee or not.",
     },
   ]
 

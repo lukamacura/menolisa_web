@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import type { Notification, NotificationAction } from "./NotificationProvider";
 import { useDashboardTrialStatus } from "@/lib/dashboardTrialContext";
+import { stateAllowsAccess } from "@/lib/getAccountState";
 
 interface NotificationCardProps {
   notification: Notification;
@@ -167,14 +168,9 @@ export default function NotificationCard({
         notificationWithMetadata.metadata?.primaryAction?.actionType;
 
       if (actionType === "open_pricing") {
-        // Paid / trialing-with-card users already have a subscription —
-        // route to account page. Anyone else goes to the paywall.
-        const hasAccess =
-          trialStatus.state === "active" ||
-          trialStatus.state === "canceling" ||
-          trialStatus.state === "past_due" ||
-          trialStatus.state === "trialing";
-        router.push(hasAccess ? "/dashboard/account" : "/paywall");
+        // Subscribers already have a plan — route to the account page.
+        // Anyone else goes to the paywall.
+        router.push(stateAllowsAccess(trialStatus.state) ? "/dashboard/account" : "/paywall");
       } else if (actionWithRoute.route) {
         // Navigate using Next.js router
         router.push(actionWithRoute.route);

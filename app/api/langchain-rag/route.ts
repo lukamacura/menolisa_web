@@ -412,7 +412,7 @@ export async function POST(req: NextRequest) {
     const isExpired = await checkTrialExpired(user_id);
     if (isExpired) {
       return NextResponse.json(
-        { error: "Trial expired. Please upgrade to continue using the chat feature." },
+        { error: "Subscription required. Please subscribe to continue using the chat." },
         { status: 403 }
       );
     }

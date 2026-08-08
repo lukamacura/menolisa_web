@@ -1,6 +1,13 @@
 import { buildEmailHtml } from "@/lib/resend";
+import {
+  PLAN_ADHERENCE_PCT,
+  PLAN_PRICE,
+  PLAN_PRICE_PER_DAY,
+  PLAN_WEEKS,
+  formatPrice,
+} from "@/lib/pricing";
 
-const DASHBOARD_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://menolisa.com";
+const DASHBOARD_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://menolisa.com";
 
 export type StepId =
   | "p-1" | "p-2" | "p-3" | "p-4" | "p-5" | "p-6"
@@ -109,17 +116,18 @@ ${btn("See my plan", PAYWALL_URL)}`,
 <p style="margin:0 0 16px">In the first week of tracking, most women find at least one surprise.</p>
 <p style="margin:0 0 16px">A symptom they thought was random turns out to happen every time after a bad night of sleep. A mood shift that always shows up after certain foods. A pattern they had never connected before.</p>
 <p style="margin:0">That is what Lisa does. She does not just log your symptoms. She connects them.</p>
-${btn("Start my 3 days free", PAYWALL_URL)}`,
+${btn(`Start my ${PLAN_WEEKS}-week plan`, PAYWALL_URL)}`,
   },
 
   "p-5": {
-    subject: "Nothing is charged until day 4, {{name}}",
+    subject: `${PLAN_WEEKS} weeks, or your money back`,
     html: `
 <p style="margin:0 0 16px;font-size:17px;font-weight:600;color:#2d1b3d">Hi {{name}},</p>
-<p style="margin:0 0 16px">I want to be direct about something.</p>
-<p style="margin:0 0 16px">The 3-day trial means your card is saved but nothing is charged. Not on day 1. Not on day 2. Not on day 3. If you cancel at any point before day 4, you pay zero. It takes about 10 seconds from your account page.</p>
-<p style="margin:0">No hoops.</p>
-${btn("Start my free trial", PAYWALL_URL)}`,
+<p style="margin:0 0 16px">I want to be direct about the money.</p>
+<p style="margin:0 0 16px">Your plan is ${formatPrice(PLAN_PRICE)} and it covers ${PLAN_WEEKS} full weeks. That is about $${PLAN_PRICE_PER_DAY.toFixed(2)} a day.</p>
+<p style="margin:0 0 16px">Follow at least ${PLAN_ADHERENCE_PCT}% of it, and if you still do not feel better after those ${PLAN_WEEKS} weeks, reply to this email and I will refund every cent. You do not have to prove anything to me - your plan counts itself as you tick off each day.</p>
+<p style="margin:0">That ${PLAN_ADHERENCE_PCT}% is the only thing I ask, and I ask it because the plan cannot work for you if you do not do it. The rest of the risk is mine.</p>
+${btn(`Start my ${PLAN_WEEKS}-week plan`, PAYWALL_URL)}`,
   },
 
   "p-6": {
@@ -158,11 +166,11 @@ ${btn("Open MenoLisa", DASHBOARD_URL)}`,
   },
 
   "3-3": {
-    subject: "Give a friend 3 days with Lisa and get 50% off your next month",
+    subject: "Share Lisa with a friend, get 50% off your next invoice",
     html: `
 <p style="margin:0 0 16px;font-size:17px;font-weight:600;color:#2d1b3d">Hi {{name}},</p>
 <p style="margin:0 0 16px">If you know someone going through menopause who could use a companion that actually gets it, share Lisa with her.</p>
-<p style="margin:0 0 16px">She gets a 3-day free trial. You get 50% off your next month when she signs up with your link.</p>
+<p style="margin:0 0 16px">She gets her own personalized ${PLAN_WEEKS}-week plan. You get 50% off your next invoice when she subscribes with your link.</p>
 <p style="margin:0 0 4px">So many women feel alone in this. You do not have to be, and neither does she.</p>
 ${btn("Get your invite link", `${DASHBOARD_URL}/dashboard/account`)}
 <p style="margin:16px 0 0;color:#9d7ec9;font-size:13px">Find your link in the app under Account &gt; Invite friends.</p>`,

@@ -6,6 +6,8 @@ import NotificationGroup from "@/components/notifications/NotificationGroup";
 import NotificationHelp from "@/components/notifications/NotificationHelp";
 import { groupNotificationsByTime } from "@/lib/notificationUtils";
 import { useUnreadCount } from "@/hooks/useUnreadCount";
+import { WEB_APP_ENABLED } from "@/lib/constants";
+import GetTheAppScreen from "@/components/GetTheAppScreen";
 
 interface Notification {
   id: string;
@@ -23,6 +25,18 @@ interface Notification {
 }
 
 export default function NotificationsPage() {
+  if (!WEB_APP_ENABLED) {
+    return (
+      <GetTheAppScreen
+        title="Notifications live in the app"
+        description="Reminders and Lisa's nudges arrive as push notifications on your phone, where they can actually reach you. Install the MenoLisa app and sign in with the same email."
+      />
+    );
+  }
+  return <NotificationsPageInner />;
+}
+
+function NotificationsPageInner() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);

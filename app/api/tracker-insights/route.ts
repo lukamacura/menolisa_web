@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchTrackerData, analyzeTrackerData } from "@/lib/trackerAnalysis";
 import { getAuthenticatedUser } from "@/lib/getAuthenticatedUser";
+import { checkTrialExpired } from "@/lib/checkTrialStatus";
 
 export const runtime = "nodejs";
 
@@ -11,6 +12,10 @@ export async function GET(req: NextRequest) {
     const user = await getAuthenticatedUser(req);
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (await checkTrialExpired(user.id)) {
+      return NextResponse.json({ error: "Subscription required" }, { status: 403 });
     }
 
     const { searchParams } = new URL(req.url);
