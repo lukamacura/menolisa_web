@@ -280,6 +280,22 @@ const DIAGNOSIS_SHOTS = [
   "/diagnosys/chat.webp",
 ];
 
+// ─── Social proof: one woman, one week past the end of the plan ─────────────
+// Sits on the results scroll directly under the 8-week plan, because "took this
+// same quiz" only means anything to someone who has just taken it, and the plan
+// she has been reading needs an end state attached to a face. The week count is
+// PLAN_WEEKS + 1 on purpose - it has to read as *finished*, not *in progress*.
+// `objectPosition` is the crop knob: the frame is a fixed 4:5 portrait, so
+// swapping the asset means retuning this one string, not the layout.
+const SOCIAL_PROOF = {
+  image: "/social_proof/social_proof.webp",
+  objectPosition: "58% 82%",
+  name: "Zoe",
+  age: 53,
+  quote: "I stopped planning my whole day around a hot flush.",
+};
+const SOCIAL_PROOF_WEEKS = PLAN_WEEKS + 1;
+
 // Build the same URL next/image requests, so the preload warms both the Vercel
 // optimizer cache and the browser HTTP cache (640/828 cover phone + desktop).
 const optimizedImageUrl = (src: string, w: number) =>
@@ -1130,6 +1146,73 @@ function ShotStage({
   );
 }
 
+/** Hand-drawn arrow curving down-right, from the caption into the photo. */
+function CaptionArrow({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 48 56"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M4 6c15-1 27 5 31 15 3 8 0 18-7 27" />
+      <path d="M35 39l-7 9 11 1" />
+    </svg>
+  );
+}
+
+/**
+ * The one human face on the results scroll. Everything above it is her own
+ * numbers and her own plan; this is the only block that says someone else
+ * already walked it. Deliberately one woman rather than a wall of five-star
+ * cards - a wall reads as marketing, one polaroid reads as a person.
+ */
+function SocialProofPolaroid({ reduced }: { reduced: boolean }) {
+  return (
+    <motion.div
+      initial={reduced ? false : { opacity: 0, y: 16 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.25 }}
+      className="mb-5"
+    >
+      <div className="flex items-end gap-1 pl-1 pr-8">
+        <p className="font-script text-2xl sm:text-3xl leading-tight text-[#3D3D3D]">
+          {SOCIAL_PROOF.name} took this same quiz {SOCIAL_PROOF_WEEKS} weeks ago
+        </p>
+        <CaptionArrow className="w-9 h-11 shrink-0 -mb-2 text-primary/70" />
+      </div>
+
+      {/* Polaroid. The tilt and the white border are doing the work here - a
+          square-cornered full-bleed photo reads as stock, a print reads as hers. */}
+      <div className="mx-auto w-[80%] max-w-[280px] -mt-1 rotate-[-2.5deg] rounded-sm bg-white p-2.5 pb-3 shadow-lg shadow-black/10 ring-1 ring-black/5">
+        <div className="relative aspect-4/5 overflow-hidden rounded-xs bg-[#E8DDD9]">
+          <Image
+            src={SOCIAL_PROOF.image}
+            alt={`${SOCIAL_PROOF.name}, ${SOCIAL_PROOF_WEEKS} weeks after taking the quiz`}
+            fill
+            sizes="280px"
+            className="object-cover"
+            style={{ objectPosition: SOCIAL_PROOF.objectPosition }}
+          />
+          <span className="absolute top-2 left-2 rounded-full bg-black/45 px-2 py-0.5 text-[10px] font-bold tracking-wide text-white backdrop-blur-xs">
+            Week {SOCIAL_PROOF_WEEKS}
+          </span>
+        </div>
+        <p className="mt-2.5 px-0.5 font-script text-lg leading-snug text-[#3D3D3D]">
+          &ldquo;{SOCIAL_PROOF.quote}&rdquo;
+        </p>
+        <p className="mt-1 px-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#9A9A9A]">
+          {SOCIAL_PROOF.name}, {SOCIAL_PROOF.age} &middot; finished her plan last week
+        </p>
+      </div>
+    </motion.div>
+  );
+}
+
 function RegisterPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -1161,7 +1244,7 @@ function RegisterPageContent() {
     if (phaseParam === "download" || phaseParam === "paywall") return phaseParam;
     // Dev-only: preview the diagnosis / relief / nutrition steps directly without finishing the quiz.
     if (
-      (phaseParam === "diagnosis" || phaseParam === "relief" || phaseParam === "nutrition") &&
+      (phaseParam === "results" || phaseParam === "diagnosis" || phaseParam === "relief" || phaseParam === "nutrition") &&
       process.env.NODE_ENV === "development"
     ) {
       return phaseParam;
@@ -2583,6 +2666,13 @@ function RegisterPageContent() {
                 </motion.div>
               );
             })()}
+
+            {/* ── Block 3b: Someone who already finished it. Placed between the
+                plan and the app because this is the moment the plan is at its most
+                abstract - she has just been shown eight weeks of tasks she hasn't
+                done yet, and the next honest question is "does anyone actually get
+                to the end of this". ─────────────────────────────────────────── */}
+            <SocialProofPolaroid reduced={!!prefersReducedMotion} />
 
             {/* ── Block 4: The app. Deliberately after the plan and deliberately
                 small - these are the tools she runs the plan with, not the offer.
