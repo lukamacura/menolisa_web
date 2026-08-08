@@ -296,7 +296,7 @@ function deriveSeverity(
   return "mild";
 }
 
-type Phase = "quiz" | "calculating" | "email" | "results" | "diagnosis" | "relief" | "nutrition" | "paywall" | "download";
+type Phase = "start" | "quiz" | "calculating" | "email" | "results" | "diagnosis" | "relief" | "nutrition" | "paywall" | "download";
 
 
 const getScoreColor = (score: number): string => {
@@ -1153,7 +1153,7 @@ function RegisterPageContent() {
     }
   }, [searchParams]);
 
-  // Always start with quiz; URL ?phase=download|paywall lets Stripe redirect skip back into the funnel.
+  // Always start on the start screen; URL ?phase=download|paywall lets Stripe redirect skip back into the funnel.
   // Initialize synchronously from URL so the auth-redirect effect below sees the correct phase on first render
   // (otherwise authenticated users sent here by middleware bounce back to /dashboard → infinite loop).
   const [phase, setPhase] = useState<Phase>(() => {
@@ -1166,12 +1166,13 @@ function RegisterPageContent() {
     ) {
       return phaseParam;
     }
-    return "quiz";
+    return "start";
   });
-  // Ad-funnel step 1: the quiz is actually in front of her. Guarded on the quiz
-  // phase so Stripe's ?phase=paywall|download returns and middleware bounces
-  // don't register as starts, leaving a true count of women who saw a first
-  // question.
+  // Ad-funnel step 1: she took the first step herself. Fires on entering the quiz
+  // phase, i.e. on the start screen's CTA - not on landing - so the count is women
+  // who chose to begin, and PageView stays the denominator for that rate.
+  // Guarded on the quiz phase so Stripe's ?phase=paywall|download returns and
+  // middleware bounces don't register as starts.
   useEffect(() => {
     if (phase !== "quiz") return;
     trackFunnelStep(META_FUNNEL_STEPS.quizStart);
@@ -1547,9 +1548,13 @@ function RegisterPageContent() {
     }
   }, [currentStep, stepIndex, stepIsAnswered, saveQuizAnswers, topProblems, goal]);
 
+  // Back off question 1 returns to the start screen rather than dead-ending, so
+  // the first tap stays as reversible as it was promised to be.
   const goBack = useCallback(() => {
     if (stepIndex > 0) {
       setStepIndex(stepIndex - 1);
+    } else {
+      setPhase("start");
     }
   }, [stepIndex]);
 
@@ -1778,6 +1783,115 @@ function RegisterPageContent() {
 
   return (
     <main className="overflow-hidden relative mx-auto p-3 sm:p-4 h-dvh flex flex-col pt-2 max-w-3xl min-h-0">
+
+      {/* Start Phase - the screen the ad lands on.
+          One job: enter on her own sentence, take the blame off her, and hand her
+          a single tap. The quiz used to start here, which meant the first thing
+          she was asked for was her age - an admin field, at the moment she is
+          least committed. Everything that belongs further up the funnel (price,
+          the app, credentials, social proof walls) stays off this screen. */}
+      {phase === "start" && (
+        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto items-center justify-center px-2 text-center">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: prefersReducedMotion ? 0 : 0.4 }}
+            className="w-full max-w-md mx-auto flex flex-col items-center py-2"
+          >
+            <motion.div
+              initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.94 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: "spring", stiffness: 220, damping: 22 }}
+              className="shrink-0"
+            >
+              <Image
+                src="/quiz/start.webp"
+                alt=""
+                width={640}
+                height={640}
+                priority
+                sizes="(max-width: 480px) 70vw, 300px"
+                className="w-auto max-h-[30vh] sm:max-h-[34vh] object-contain"
+              />
+            </motion.div>
+
+            <motion.h1
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: prefersReducedMotion ? 0 : 0.15, duration: 0.4 }}
+              className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] leading-tight px-2"
+            >
+              You don&apos;t feel like yourself anymore.
+            </motion.h1>
+
+            {/* The reframe. It has to land before she is asked to do any work -
+                self-blame is what keeps her from starting at all. */}
+            <motion.p
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: prefersReducedMotion ? 0 : 0.28, duration: 0.4 }}
+              className="mt-2.5 text-sm sm:text-base text-[#5A5A5A] leading-snug px-2"
+            >
+              The sleep, the mood, the fog - it isn&apos;t in your head, and it isn&apos;t your
+              fault. <span className="font-semibold text-[#3D3D3D]">Your hormones changed the
+              rules.</span>
+            </motion.p>
+
+            {/* What she actually walks away with. Named as the plan, and shown as
+                its three real pillars, so the outcome is concrete rather than
+                "take a quiz". */}
+            <motion.div
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: prefersReducedMotion ? 0 : 0.4, duration: 0.4 }}
+              className="mt-5 w-full rounded-2xl border border-foreground/10 bg-card px-4 py-3.5 shadow-sm"
+            >
+              <p className="text-sm sm:text-base font-bold text-[#3D3D3D]">
+                Answer {QUESTION_STEPS.length} questions, get your{" "}
+                <HighlightSweep>personalized {PLAN_WEEKS}-week plan</HighlightSweep>
+              </p>
+              <div className="mt-3 flex items-start justify-center gap-3 sm:gap-5">
+                {PLAN_PILLARS.slice(0, 3).map((pillar) => (
+                  <div key={pillar.key} className="flex flex-col items-center gap-1 w-16">
+                    <pillar.icon className={cn("w-5 h-5", pillar.tint)} />
+                    <span className="text-[11px] font-medium text-[#5A5A5A] leading-tight">
+                      {pillar.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2.5 text-[11px] text-[#9A9A9A] leading-snug">
+                Built around your symptoms and your life - not a template.
+              </p>
+            </motion.div>
+
+            {/* The one tap. Same gradient as the results and paywall CTAs, so the
+                first step and the last one look like the same size of decision. */}
+            <motion.div
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: prefersReducedMotion ? 0 : 0.52, duration: 0.4 }}
+              className="w-full mt-5"
+            >
+              <button
+                type="button"
+                onClick={() => setPhase("quiz")}
+                className="w-full min-h-13 py-3.5 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg cursor-pointer"
+                style={{
+                  background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)",
+                  boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)",
+                }}
+              >
+                Build my plan
+                <ArrowRight className="w-4 h-4" />
+              </button>
+              <p className="text-[11px] text-[#9A9A9A] text-center mt-2">
+                Takes 2 minutes · free to take · no download
+              </p>
+            </motion.div>
+          </motion.div>
+        </div>
+      )}
 
       {/* Calculating Phase - loader between quiz and email */}
       {phase === "calculating" && (
@@ -3447,42 +3561,16 @@ function RegisterPageContent() {
       {/* Quiz Phase */}
       {phase === "quiz" && (
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden pb-[calc(72px+env(safe-area-inset-bottom))]">
-          {/* Back to previous question - small, top-left, matches results/diagnosis back link */}
-          {stepIndex > 0 && (
-            <button
-              type="button"
-              onClick={goBack}
-              className="flex items-center gap-1 self-start shrink-0 text-xs text-[#9A9A9A] hover:text-[#5A5A5A] px-2 transition-colors"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" /> Back
-            </button>
-          )}
-          {/* Quiz entry headline (step 0 only) - strategy: curiosity-driven, 2-min assessment */}
-          {stepIndex === 0 && (
-            <div className="shrink-0 text-center mb-2 sm:mb-3 px-2">
-              <motion.div
-                initial={{ opacity: 0, y: -40 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{
-                  delay: prefersReducedMotion ? 0 : 0.6,
-                  type: "spring",
-                  stiffness: 320,
-                  damping: 22,
-                }}
-                className="inline-block mb-2 rounded-full bg-primary/10 border border-primary/20 px-3.5 py-1.5 shadow-sm"
-              >
-                <p className="text-xs sm:text-sm font-medium text-primary">
-                  If you don&apos;t feel like yourself lately, you&apos;re not imagining it.
-                </p>
-              </motion.div>
-              <h1 className="text-lg sm:text-xl font-bold text-[#3D3D3D]">
-                Take the Menopause Quiz
-              </h1>
-              <p className="text-xs sm:text-sm text-[#5A5A5A] mt-0.5">
-                Just 2 minutes, free. No download required.
-              </p>
-            </div>
-          )}
+          {/* Back - on question 1 this returns to the start screen (see goBack).
+              The entry headline that used to sit here is now the start screen,
+              so question 1 gets the full card. */}
+          <button
+            type="button"
+            onClick={goBack}
+            className="flex items-center gap-1 self-start shrink-0 text-xs text-[#9A9A9A] hover:text-[#5A5A5A] px-2 transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" /> Back
+          </button>
           {/* Progress: explicit "Question X of 9" above dots so users always see how much is left */}
           <div className="mb-2 sm:mb-3 shrink-0 pt-2 sm:pt-3 px-2">
             <p className="text-center text-base sm:text-lg font-semibold text-[#3D3D3D] mb-2 min-h-6" role="status" aria-live="polite">
