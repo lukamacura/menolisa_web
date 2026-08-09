@@ -53,9 +53,7 @@ import { META_FUNNEL_STEPS } from "@/lib/metaPixel";
 import {
   PLAN_ADHERENCE_PCT,
   PLAN_ID,
-  PLAN_PRICE,
   PLAN_WEEKS,
-  formatPrice,
 } from "@/lib/pricing";
 import { getSymptomTransforms } from "@/lib/testimonials";
 import { GOAL_PROMISE, getOfferPromise } from "@/lib/planTimeline";
@@ -403,14 +401,13 @@ function getResultsCtaCopy(qualifier: string): { sub: string } {
         return { sub: "See the why behind your symptoms, step by step with Lisa." };
 }}
 
-// Doorstep to the paywall, so the full risk reversal belongs HERE. There is no
-// free trial to lean on now, so the guarantee carries it - stated with its
-// adherence condition, since a one-line teaser that promises more than the
-// guarantee card two screens later is how a refund argument starts.
+// Doorstep to the paywall. This line used to lead with the price and the
+// adherence threshold, which sells before she has agreed to look - and the
+// paywall itself already states both, in full, one tap later. Her objection
+// here isn't "is it worth $59", it's "is this tap the one that costs me
+// something". So the line answers only that, and lets the paywall sell.
 function getCtaCopy(): { sub: string } {
-  return {
-    sub: `${formatPrice(PLAN_PRICE)} for ${PLAN_WEEKS} weeks · follow ${PLAN_ADHERENCE_PCT}% or get refunded · cancel anytime.`,
-  };
+  return { sub: "Free to look - nothing is charged unless you decide to start." };
 }
 // First-person CTA label driven by her #1 goal (multi-select; first = primary).
 // Used on the results screen, where the next tap is still about what she wants.
@@ -529,7 +526,7 @@ function getSymptomPhrase(topProblems: string[]): string {
 
 // Neither diagnosis nor relief is the doorstep to the paywall any more - the
 // nutrition checklist is. Both of these steps get pure forward motion, and
-// getCtaCopy()'s price + guarantee line lives on the nutrition CTA, where the
+// getCtaCopy()'s no-charge reassurance lives on the nutrition CTA, where the
 // commitment actually happens. Each promises the next step is short, because
 // the only thing standing between her and the plan now is two small screens.
 // She's read a long page and her guard is up: the next tap feels like the one
@@ -3397,7 +3394,8 @@ function RegisterPageContent() {
 
           {/* Fixed bottom CTA. During the checklist it's never disabled - zero
               ticks is an honest answer and gets its own label. After the
-              verdict it becomes the paywall doorstep and carries the trial. */}
+              verdict it becomes the paywall doorstep and carries the
+              no-charge reassurance instead of the price. */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
