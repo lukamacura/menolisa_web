@@ -4,6 +4,8 @@ import Image from "next/image";
 import { motion } from "framer-motion";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { HighlightSweep } from "@/components/HighlightSweep";
+import { PLAN_WEEKS } from "@/lib/pricing";
 import {
   DEFAULT_SYMPTOM_TRANSFORM_IDS,
   SOCIAL_PROOF,
@@ -26,7 +28,7 @@ function CaptionArrow({ className }: { className?: string }) {
       className={className}
     >
       <path d="M4 6c15-1 27 5 31 15 3 8 0 18-7 27" />
-      <path d="M35 39l-7 9 11 1" />
+      <path d="M38 45l-10 3 1-11" />
     </svg>
   );
 }
@@ -45,11 +47,11 @@ export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) 
       viewport={{ once: true, amount: 0.25 }}
       className="mb-5"
     >
-      <div className="flex items-end gap-1 pl-1 pr-8">
-        <p className="font-script text-2xl sm:text-3xl leading-tight text-[#3D3D3D]">
+      <div className="flex items-end gap-1.5 px-1">
+        <p className="flex-1 font-script text-2xl sm:text-3xl leading-tight text-[#3D3D3D]">
           {SOCIAL_PROOF.name} took this same quiz {SOCIAL_PROOF_WEEKS} weeks ago
         </p>
-        <CaptionArrow className="relative z-10 w-9 h-11 shrink-0 -mb-2 text-primary/70" />
+        <CaptionArrow className="relative z-10 w-8 h-10 sm:w-9 sm:h-11 shrink-0 -mb-1 text-primary" />
       </div>
 
       {/* Two prints, same size on purpose - "Day 1" beside "Week 9" only reads as
@@ -103,10 +105,8 @@ export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) 
  */
 export function SymptomOutcomeCards({
   topProblems,
-  headline = "What it can look like",
 }: {
   topProblems?: string[];
-  headline?: string;
 }) {
   const transforms = getSymptomTransforms(
     topProblems && topProblems.length > 0 ? topProblems : DEFAULT_SYMPTOM_TRANSFORM_IDS,
@@ -121,7 +121,9 @@ export function SymptomOutcomeCards({
       viewport={{ once: true, amount: 0.25 }}
       className="mb-4"
     >
-      <p className="text-sm font-bold text-[#3D3D3D] mb-2 px-1">{headline}</p>
+      <h2 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight mb-3 px-1">
+        What <HighlightSweep>{PLAN_WEEKS} weeks with Lisa</HighlightSweep> can look like
+      </h2>
       <div className="flex overflow-x-auto snap-x snap-mandatory gap-3 -mx-4 sm:-mx-6 px-4 sm:px-6 pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         {transforms.map((t, i) => (
           <motion.div
@@ -155,7 +157,7 @@ export function SymptomOutcomeCards({
                   <Check className="w-2.5 h-2.5 text-white" strokeWidth={3.5} />
                 </span>
                 <span className="text-[9px] font-bold text-green-700 tracking-wide">
-                  Tracked in the app
+                  8 week plan
                 </span>
               </span>
             </div>

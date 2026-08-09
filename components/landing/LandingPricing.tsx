@@ -297,7 +297,7 @@ export default function LandingPricing() {
               The {PLAN_WEEKS}-Week Guarantee
             </h4>
             <p className="text-sm sm:text-base text-center max-w-2xl mx-auto leading-relaxed" style={{ color: "var(--muted-foreground)" }}>
-              Follow at least {PLAN_ADHERENCE_PCT}% of your plan for {PLAN_WEEKS} weeks. If you still don&apos;t feel better, email us and we&apos;ll refund every penny. Your plan counts itself as you tick off each day, so there&apos;s nothing to submit and nothing to prove. We can promise this because the plan works when you actually do it &mdash; that&apos;s the only part we need from you.
+              {`Follow at least ${PLAN_ADHERENCE_PCT}% of your plan for ${PLAN_WEEKS} weeks. If you still don't feel better, email us and we'll refund every penny. Your plan counts itself as you tick off each day, so there's nothing to submit and nothing to prove. We can promise this because the plan works when you actually do it — that's the only part we need from you.`}
             </p>
           </div>
         </div>

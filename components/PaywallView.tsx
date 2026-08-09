@@ -49,6 +49,7 @@ import {
 } from "@/lib/planTimeline";
 import { getSymptomTransforms } from "@/lib/testimonials";
 import { trackFb } from "@/lib/metaPixelClient";
+import { HighlightSweep } from "@/components/HighlightSweep";
 
 export interface PaywallViewProps {
   onCheckout: () => void | Promise<void>;
@@ -411,7 +412,7 @@ export function PaywallView({
             }}
           />
           <Image
-            src="/paywall.webp"
+            src="/paywall/paywall.webp"
             alt=""
             width={280}
             height={280}
@@ -453,7 +454,7 @@ export function PaywallView({
               className="bg-clip-text text-transparent"
               style={{ backgroundImage: "linear-gradient(135deg, #ff74b1, #65dbff)" }}
             >
-              today
+              TODAY
             </span>
           </h2>
           <p className="text-sm sm:text-base text-[#5A5A5A]">
@@ -573,29 +574,26 @@ export function PaywallView({
                 </>
               ) : (
                 <>
-                  Billed {PRICE} today &middot; renews every {PLAN_WEEKS} weeks, cancel anytime
+                  Billed {PRICE} today &middot; renews every {PLAN_WEEKS} weeks, <br /> <b>cancel anytime</b> 
                 </>
               )}
             </p>
+
+            {/* What Stripe will actually accept, shown as the card/wallet marks
+                she recognizes. "Stripe secured" tells her the checkout is safe
+                but not that her wallet works there - and Apple Pay / Google Pay
+                are the difference between one tap and finding a card. */}
+            <div className="mt-3 flex justify-center border-t border-[#F0E6E2] pt-3">
+              <Image
+                src="/paywall/paywall_logos.webp"
+                alt="Visa, Mastercard, Google Pay and Apple Pay accepted"
+                width={430}
+                height={140}
+                className="h-auto w-full max-w-[200px] object-contain"
+              />
+            </div>
           </div>
         </motion.div>
-
-        {/* What Stripe will actually accept, named. "Stripe secured" tells her
-            the checkout is safe but not that her wallet works there - and Apple
-            Pay / Google Pay are the difference between one tap and finding a
-            card. Wordmarks rather than brand logos: no third-party image assets
-            to license, keep current, or ship on every page load. */}
-        <div className="flex flex-wrap items-center justify-center gap-1.5 mb-4">
-          {["Visa", "Mastercard", "Amex", "Apple Pay", "Google Pay"].map((m) => (
-            <span
-              key={m}
-              className="rounded-md border bg-white px-2 py-1 text-[10px] font-bold tracking-wide text-[#5A5A5A]"
-              style={{ borderColor: "#E8DDD9" }}
-            >
-              {m}
-            </span>
-          ))}
-        </div>
 
         {/* What's included - reminds her what she's paying for at the decision point */}
         <div
@@ -606,9 +604,9 @@ export function PaywallView({
             boxShadow: "0 0 16px rgba(245,197,24,0.18)",
           }}
         >
-          <p className="text-xs font-bold tracking-wide uppercase mb-2.5 text-[#8a6d00]">
-            Everything included
-          </p>
+          <h2 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight mb-3">
+            Everything included <HighlightSweep variant="yellow">for you</HighlightSweep>
+          </h2>
           <ul className="space-y-2.5">
             {[
               {
@@ -689,10 +687,7 @@ export function PaywallView({
             proof even when reached directly (e.g. a lapsed dashboard user who
             never saw the diagnosis screen this session). */}
         <SocialProofPolaroid />
-        <SymptomOutcomeCards
-          topProblems={topProblems}
-          headline={`What ${PLAN_WEEKS} weeks with Lisa can look like`}
-        />
+        <SymptomOutcomeCards topProblems={topProblems} />
 
         {error && (
           <div className="mb-3 rounded-xl border border-error/30 bg-error/10 p-3 text-sm text-error">
@@ -710,19 +705,24 @@ export function PaywallView({
             onClick={expired ? reclaim : handleCheckoutClick}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            // A deep gradient, not the funnel's pastel one. /register's CTA
-            // (pink -> yellow -> cyan, dark text) is too light to survive here:
-            // this screen is already a stack of pastel cards, and a pastel
-            // button stops reading as the one thing to press. So the payment
-            // button takes the same pink->cyan arc the brand uses, but travels
-            // only its saturated first half - magenta into fuchsia-violet. Both
-            // stops clear 4.5:1 against white text (4.6:1 and 6.3:1); anything
-            // lighter or warmer than #E0117A does not, which is why there is no
-            // coral or yellow in here.
+            // Green, layered so it reads bright without failing contrast. The
+            // base gradient travels through lighter greens (green-600 #16A34A
+            // 50%) but keeps its darkest points under the label ends (green-700
+            // #15803D at both corners, 4.9:1) so white text stays legible - a
+            // fully pale green fill would drop under 4.5:1 everywhere the text
+            // sits. On top, a lighter-green gloss highlight (green-400) fades
+            // from the top edge, giving the fresh, lit look without touching the
+            // text band. /register's pastel CTA can be light because it sits on
+            // white; this one sits on a stack of pastel cards, so it stays
+            // saturated to read as the one thing to press, and green echoes the
+            // refund guarantee card above ("safe to press"). The green glow lifts
+            // it off the page as one premium surface.
             className="relative w-full min-h-14 py-4 font-bold text-white rounded-2xl transition-all flex items-center justify-center gap-2 text-base sm:text-base disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden group"
             style={{
-              background: "linear-gradient(135deg, #E0117A 0%, #A21CAF 100%)",
-              boxShadow: "0 8px 24px rgba(177, 25, 148, 0.35), 0 2px 8px rgba(177, 25, 148, 0.20)",
+              background:
+                "linear-gradient(180deg, rgba(134,239,172,0.45) 0%, rgba(134,239,172,0) 46%), linear-gradient(135deg, #15803D 0%, #16A34A 50%, #15803D 100%)",
+              boxShadow:
+                "0 0 28px rgba(34,197,94,0.50), 0 8px 26px rgba(21,128,61,0.38), 0 2px 8px rgba(21,128,61,0.25)",
             }}
           >
             <span
@@ -737,7 +737,6 @@ export function PaywallView({
               <>
                 <RotateCcw className="w-4 h-4" />
                 Get my {PLAN_DISCOUNT_PCT}% discount back
-                <ArrowRight className="w-4 h-4" />
               </>
             ) : checkoutLoading ? (
               <>
@@ -747,8 +746,7 @@ export function PaywallView({
             ) : (
               <>
                 <Lock className="w-4 h-4" />
-                Get my {PLAN_WEEKS}-week plan &mdash; {PRICE}
-                <ArrowRight className="w-4 h-4" />
+                Get my plan for {PER_DAY}/day
               </>
             )}
           </motion.button>
@@ -759,9 +757,17 @@ export function PaywallView({
                 {PLAN_DISCOUNT_WINDOW_MINUTES} minutes.
               </>
             ) : (
-              <>
-                Billed {PRICE} today, then every {PLAN_WEEKS} weeks. Cancel anytime.
-              </>
+              <span className="inline-flex items-center justify-center gap-1 flex-wrap">
+                <b>Safe & Secure</b> with
+                <Image
+                  src="/paywall/stripe.webp"
+                  alt="Stripe"
+                  width={200}
+                  height={83}
+                  className="inline-block h-3.5 w-auto align-middle -translate-y-px"
+                />
+                . <b>Cancel anytime</b>.
+              </span>
             )}
           </p>
         </div>

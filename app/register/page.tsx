@@ -230,9 +230,10 @@ const FITNESS_OPTIONS = [
 ];
 
 const QUALIFIER_OPTIONS = [
-  { id: "ready_to_act", label: "Ready to start", image: "/quiz/readiness/ready.webp" },
-  { id: "exploring", label: "Still figuring it out", image: "/quiz/readiness/figuring.webp" },
-  { id: "understand_first", label: "Just learning for now", image: "/quiz/readiness/learning.webp" },
+  { id: "time_5", label: "5 min/day" },
+  { id: "time_10", label: "10 min/day" },
+  { id: "time_15", label: "15 min/day" },
+  { id: "time_more", label: "More" },
 ];
 
 // Shared option-tile footer styles - every quiz label is the same size, aligned,
@@ -269,7 +270,6 @@ const STEP_IMAGES: Partial<Record<Step, string[]>> = {
   q_fitness: FITNESS_OPTIONS.map((o) => o.image),
   q5_hrt: HRT_OPTIONS.map((o) => o.image),
   q6_how_long: TIMING_OPTIONS.map((o) => o.image),
-  q7_qualifier: QUALIFIER_OPTIONS.map((o) => o.image),
   q8_name: [`/quiz/${QUIZ_ILLUSTRATION.q8_name}`],
 };
 
@@ -390,16 +390,7 @@ const getSeverityPainText = (
 // Results-step sub: she's here to SEE her results, not to be sold. No price,
 // no "membership", no "guarantee" - any of those reads as a sales tell and
 // breaks trust. Keep it pure forward motion toward her own answers.
-function getResultsCtaCopy(qualifier: string): { sub: string } {
-    switch (qualifier) {
-      case "ready_to_act":
-        return { sub: "Your full breakdown is ready - see what's driving it." };
-      case "exploring":
-        return { sub: "No pressure - just see what Lisa found for you." };
-      case "understand_first":
-      default:
-        return { sub: "See the why behind your symptoms, step by step with Lisa." };
-}}
+const RESULTS_CTA_SUB = "See the why behind your symptoms, step by step with Lisa.";
 
 // Doorstep to the paywall. This line used to lead with the price and the
 // adherence threshold, which sells before she has agreed to look - and the
@@ -428,15 +419,8 @@ function getGoalCtaLabel(goals: string[]): string {
 
 // Diagnosis-step CTA (the doorstep to the paywall). She's already convinced she
 // wants the outcome - the only thing left is fear of committing/being charged.
-// So this label is resolve + safety, keyed to her readiness, never a "buy now".
-const DIAGNOSIS_CTA_LABEL: Record<string, string> = {
-  ready_to_act: "I'm ready - let's begin",
-  exploring: "I'm ready to explore with Lisa",
-  understand_first: "I'm ready to learn with Lisa",
-};
-function getDiagnosisCtaLabel(qualifier: string): string {
-  return DIAGNOSIS_CTA_LABEL[qualifier] ?? "I'm ready to feel better";
-}
+// So this label is resolve + safety, never a "buy now".
+const DIAGNOSIS_CTA_LABEL = "I'm ready to feel better";
 
 // ─── Relief exercise: paced breathing between diagnosis and paywall ─────────
 // One thing that works, done by her, before she's ever asked for money. The
@@ -997,7 +981,7 @@ function ToolkitStack({
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.7 + i * 0.09, duration: 0.35 }}
-            className="flex items-center gap-3 rounded-2xl border border-foreground/10 bg-foreground/[0.03] px-4 py-2.5 text-left"
+            className="flex items-center gap-3 rounded-2xl border border-foreground/10 bg-foreground/3 px-4 py-2.5 text-left"
           >
             <div className="w-6 h-6 rounded-full bg-foreground/5 flex items-center justify-center shrink-0">
               <Lock className="w-3.5 h-3.5 text-[#9A9A9A]" />
@@ -1309,14 +1293,15 @@ function RegisterPageContent() {
   // Quiz answers - same structure as mobile
   const [ageBand, setAgeBand] = useState<string>("");
   // Height: stored per-unit as raw strings; normalized to cm on save.
+  // Sliders always carry a value, so seed sensible mid-range defaults.
   const [heightUnit, setHeightUnit] = useState<"cm" | "ft">("cm");
-  const [heightCm, setHeightCm] = useState<string>("");
-  const [heightFt, setHeightFt] = useState<string>("");
-  const [heightIn, setHeightIn] = useState<string>("");
+  const [heightCm, setHeightCm] = useState<string>("165");
+  const [heightFt, setHeightFt] = useState<string>("5");
+  const [heightIn, setHeightIn] = useState<string>("5");
   // Weight: stored per-unit as raw strings; normalized to kg on save.
   const [weightUnit, setWeightUnit] = useState<"kg" | "lb">("kg");
-  const [weightKg, setWeightKg] = useState<string>("");
-  const [weightLb, setWeightLb] = useState<string>("");
+  const [weightKg, setWeightKg] = useState<string>("70");
+  const [weightLb, setWeightLb] = useState<string>("154");
   const [fitnessLevel, setFitnessLevel] = useState<string>("");
   const [hereFor, setHereFor] = useState<string>("");
   const [goal, setGoal] = useState<string[]>([]);
@@ -2199,23 +2184,16 @@ function RegisterPageContent() {
             className="fixed bottom-0 inset-x-0 z-30 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 pb-[env(safe-area-inset-bottom)]"
           >
             <div className="mx-auto max-w-md w-full px-4 sm:px-6 py-3">
-              {(() => {
-                const cta = getResultsCtaCopy(qualifier);
-                return (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setPhase("diagnosis")}
-                      className="w-full min-h-12 py-3.5 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
-                      style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)", boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)" }}
-                    >
-                      {getGoalCtaLabel(goal)}
-                      <ArrowRight className="w-4 h-4" />
-                    </button>
-                    <p className="text-[11px] text-[#9A9A9A] text-center mt-1.5">{cta.sub}</p>
-                  </>
-                );
-              })()}
+              <button
+                type="button"
+                onClick={() => setPhase("diagnosis")}
+                className="w-full min-h-12 py-3.5 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
+                style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)", boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)" }}
+              >
+                {getGoalCtaLabel(goal)}
+                <ArrowRight className="w-4 h-4" />
+              </button>
+              <p className="text-[11px] text-[#9A9A9A] text-center mt-1.5">{RESULTS_CTA_SUB}</p>
             </div>
           </motion.div>
         </div>
@@ -2359,7 +2337,7 @@ function RegisterPageContent() {
                               <Check className="w-2.5 h-2.5 text-white" strokeWidth={3.5} />
                             </span>
                             <span className="text-[9px] font-bold text-green-700 tracking-wide">
-                              Tracked in the app
+                              8 week plan
                             </span>
                           </span>
                         </div>
@@ -2763,7 +2741,7 @@ function RegisterPageContent() {
                       className="w-full min-h-12 py-3.5 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
                       style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)", boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)" }}
                     >
-                      {getDiagnosisCtaLabel(qualifier)}
+                      {DIAGNOSIS_CTA_LABEL}
                       <ArrowRight className="w-4 h-4" />
                     </button>
                     <p className="text-[11px] text-[#9A9A9A] text-center mt-1.5">{cta.sub}</p>
@@ -2811,7 +2789,7 @@ function RegisterPageContent() {
                 >
                   {/* Fixed-height copy slot: the two states swap inside it without
                       shifting the circle below. */}
-                  <div className="min-h-[128px] sm:min-h-[136px] flex flex-col justify-end w-full">
+                  <div className="min-h-32 sm:min-h-[136px] flex flex-col justify-end w-full">
                     <AnimatePresence mode="wait">
                       {reliefStage === "intro" ? (
                         <motion.div
@@ -3185,7 +3163,7 @@ function RegisterPageContent() {
                                     "w-full flex items-center gap-3 rounded-2xl border-2 px-3.5 py-2.5 text-left transition-colors duration-200",
                                     isOn
                                       ? "bg-primary/5 border-primary/30"
-                                      : "border-foreground/10 bg-foreground/[0.03] hover:bg-foreground/[0.06]"
+                                      : "border-foreground/10 bg-foreground/3 hover:bg-foreground/6"
                                   )}
                                 >
                                   <div
@@ -3243,7 +3221,7 @@ function RegisterPageContent() {
                                             "px-3 py-1.5 rounded-full text-[11px] font-semibold border-2 transition-colors",
                                             chipOn
                                               ? "bg-primary/10 border-primary/30 text-[#3D3D3D]"
-                                              : "border-foreground/10 bg-foreground/[0.03] text-[#8A8A8A] hover:bg-foreground/[0.06]"
+                                              : "border-foreground/10 bg-foreground/3 text-[#8A8A8A] hover:bg-foreground/6"
                                           )}
                                         >
                                           {s.label}
@@ -3731,9 +3709,12 @@ function RegisterPageContent() {
                   </div>
 
                   {/* Height */}
-                  <div className="space-y-2 shrink-0">
+                  <div className="space-y-3 shrink-0 rounded-xl border-2 border-foreground/10 bg-background p-4">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-semibold text-[#3D3D3D]">Height</p>
+                      <div className="flex items-center gap-2">
+                        <Ruler className="w-4 h-4 text-muted-foreground" />
+                        <p className="text-sm font-semibold text-[#3D3D3D]">Height</p>
+                      </div>
                       <div className="flex gap-1 p-1 rounded-lg bg-foreground/5">
                         {(["cm", "ft"] as const).map((u) => (
                           <button
@@ -3752,59 +3733,53 @@ function RegisterPageContent() {
                       </div>
                     </div>
 
+                    <div className="flex items-baseline justify-center gap-1 tabular-nums">
+                      {heightUnit === "cm" ? (
+                        <>
+                          <span className="text-4xl font-bold text-[#3D3D3D]">{heightCm}</span>
+                          <span className="text-base text-muted-foreground">cm</span>
+                        </>
+                      ) : (
+                        <span className="text-4xl font-bold text-[#3D3D3D]">
+                          {heightFt}′{heightIn}″
+                        </span>
+                      )}
+                    </div>
+
                     {heightUnit === "cm" ? (
-                      <div className="relative">
-                        <Ruler className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          value={heightCm}
-                          onChange={(e) => setHeightCm(e.target.value)}
-                          placeholder="Height in cm"
-                          min={100}
-                          max={250}
-                          className="w-full pl-10 sm:pl-12 pr-14 py-3 rounded-lg sm:rounded-xl border-2 border-foreground/15 bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all duration-200 text-base sm:text-lg"
-                          autoFocus
-                        />
-                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">cm</span>
-                      </div>
+                      <input
+                        type="range"
+                        min={120}
+                        max={210}
+                        step={1}
+                        value={heightCm || "165"}
+                        onChange={(e) => setHeightCm(e.target.value)}
+                        className="w-full accent-primary cursor-pointer"
+                      />
                     ) : (
-                      <div className="flex gap-3">
-                        <div className="relative flex-1">
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            value={heightFt}
-                            onChange={(e) => setHeightFt(e.target.value)}
-                            placeholder="Feet"
-                            min={3}
-                            max={8}
-                            className="w-full pl-4 pr-10 py-3 rounded-lg sm:rounded-xl border-2 border-foreground/15 bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all duration-200 text-base sm:text-lg"
-                            autoFocus
-                          />
-                          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">ft</span>
-                        </div>
-                        <div className="relative flex-1">
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            value={heightIn}
-                            onChange={(e) => setHeightIn(e.target.value)}
-                            placeholder="Inches"
-                            min={0}
-                            max={11}
-                            className="w-full pl-4 pr-10 py-3 rounded-lg sm:rounded-xl border-2 border-foreground/15 bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all duration-200 text-base sm:text-lg"
-                          />
-                          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">in</span>
-                        </div>
-                      </div>
+                      <input
+                        type="range"
+                        min={48}
+                        max={84}
+                        step={1}
+                        value={(parseInt(heightFt || "5", 10) * 12) + parseInt(heightIn || "0", 10)}
+                        onChange={(e) => {
+                          const total = parseInt(e.target.value, 10);
+                          setHeightFt(String(Math.floor(total / 12)));
+                          setHeightIn(String(total % 12));
+                        }}
+                        className="w-full accent-primary cursor-pointer"
+                      />
                     )}
                   </div>
 
                   {/* Weight */}
-                  <div className="space-y-2 shrink-0">
+                  <div className="space-y-3 shrink-0 rounded-xl border-2 border-foreground/10 bg-background p-4">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-semibold text-[#3D3D3D]">Weight</p>
+                      <div className="flex items-center gap-2">
+                        <Weight className="w-4 h-4 text-muted-foreground" />
+                        <p className="text-sm font-semibold text-[#3D3D3D]">Weight</p>
+                      </div>
                       <div className="flex gap-1 p-1 rounded-lg bg-foreground/5">
                         {(["kg", "lb"] as const).map((u) => (
                           <button
@@ -3823,26 +3798,26 @@ function RegisterPageContent() {
                       </div>
                     </div>
 
-                    <div className="relative">
-                      <Weight className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        value={weightUnit === "kg" ? weightKg : weightLb}
-                        onChange={(e) =>
-                          weightUnit === "kg"
-                            ? setWeightKg(e.target.value)
-                            : setWeightLb(e.target.value)
-                        }
-                        placeholder={weightUnit === "kg" ? "Weight in kg" : "Weight in lb"}
-                        min={30}
-                        max={400}
-                        className="w-full pl-10 sm:pl-12 pr-14 py-3 rounded-lg sm:rounded-xl border-2 border-foreground/15 bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all duration-200 text-base sm:text-lg"
-                      />
-                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                        {weightUnit}
+                    <div className="flex items-baseline justify-center gap-1 tabular-nums">
+                      <span className="text-4xl font-bold text-[#3D3D3D]">
+                        {weightUnit === "kg" ? weightKg : weightLb}
                       </span>
+                      <span className="text-base text-muted-foreground">{weightUnit}</span>
                     </div>
+
+                    <input
+                      type="range"
+                      min={weightUnit === "kg" ? 40 : 88}
+                      max={weightUnit === "kg" ? 160 : 352}
+                      step={1}
+                      value={weightUnit === "kg" ? (weightKg || "70") : (weightLb || "154")}
+                      onChange={(e) =>
+                        weightUnit === "kg"
+                          ? setWeightKg(e.target.value)
+                          : setWeightLb(e.target.value)
+                      }
+                      className="w-full accent-primary cursor-pointer"
+                    />
                   </div>
                 </div>
               )}
@@ -4306,10 +4281,10 @@ function RegisterPageContent() {
                 <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl font-bold mb-0.5">
-                      Where are you right now?
+                      How much time are you ready to spend to achieve your goal?
                     </h2>
                   </div>
-                  <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-2 min-h-0">
+                  <div className="flex-1 flex flex-col justify-center gap-2 min-h-0">
                     {QUALIFIER_OPTIONS.map((option) => {
                       const isSelected = qualifier === option.id;
                       return (
@@ -4317,26 +4292,14 @@ function RegisterPageContent() {
                           key={option.id}
                           type="button"
                           onClick={() => selectAndAdvance(() => setQualifier(option.id))}
-                          className={`flex flex-col min-h-0 rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer ${
+                          className={`w-full flex items-center justify-between gap-2 px-4 py-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer ${
                             isSelected
-                              ? "ring-2 ring-primary shadow-lg shadow-primary/30"
-                              : "hover:opacity-90"
+                              ? "border-primary bg-primary/10 ring-2 ring-primary shadow-lg shadow-primary/30"
+                              : "border-foreground/15 hover:border-primary/50"
                           }`}
                         >
-                          <div className="relative flex-1 min-h-0">
-                            <Image
-                              src={option.image}
-                              alt={option.label}
-                              fill
-                              sizes="50vw"
-                              className="object-cover"
-                            />
-                            {isSelected && <div className="absolute inset-0 bg-primary/15" />}
-                          </div>
-                          <div className={`${TILE_FOOTER_BASE} justify-between gap-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
-                            <span className={TILE_LABEL}>{option.label}</span>
-                            <ArrowRight className="w-3.5 h-3.5 shrink-0 text-white/70" />
-                          </div>
+                          <span className="font-semibold text-base sm:text-lg">{option.label}</span>
+                          <ArrowRight className={`w-4 h-4 shrink-0 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
                         </button>
                       );
                     })}
