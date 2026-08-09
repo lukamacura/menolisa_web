@@ -1,7 +1,7 @@
  
 "use client";
 
-import React, { useState, useCallback, useEffect, useMemo, Suspense } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -76,8 +76,7 @@ const QUIZ_ILLUSTRATION: Record<string, string> = {
 
 type Step =
   | "q1_age"
-  | "q_height"
-  | "q_weight"
+  | "q_body"
   | "q_fitness"
   | "q2_here_for"
   | "q3_goals"
@@ -95,14 +94,26 @@ const STEPS: Step[] = [
   "q4_symptoms",
   "q3_goals",
   "reward_symptoms",
-  "q_height",
-  "q_weight",
+  "q_body",
   "q_fitness",
   "q5_hrt",
   "q6_how_long",
   "reward_progress",
   "q7_qualifier",
   "q8_name",
+];
+
+// Single-choice steps advance on tap - the extra "Next" press on a question that
+// can only hold one answer is pure friction, and it's the same press she already
+// made. Multi-select, the two numeric inputs and the name step keep the button,
+// because there the tap is a toggle and only she knows when she's done.
+const AUTO_ADVANCE_STEPS: Step[] = [
+  "q1_age",
+  "q2_here_for",
+  "q_fitness",
+  "q5_hrt",
+  "q6_how_long",
+  "q7_qualifier",
 ];
 
 // Reward steps mirror her answers back with a stat - pure dopamine, not questions.
@@ -209,9 +220,12 @@ const HRT_OPTIONS = [
 // feeds the movement side of her plan (plus the "Lose weight" goal).
 const FITNESS_OPTIONS = [
   { id: "beginner", label: "Beginner", image: "/quiz/fitness/beginner.webp" },
-  { id: "medium", label: "Medium", image: "/quiz/fitness/medium.webp" },
+  { id: "medium", label: "Intermediate", image: "/quiz/fitness/medium.webp" },
   { id: "advanced", label: "Advanced", image: "/quiz/fitness/advanced.webp" },
-  { id: "movement_snacks", label: "Movement Snacks", image: "/quiz/fitness/movement-snacks.webp" },
+  // Ids are load-bearing (user_profiles + the mobile app read them), so this one
+  // keeps `movement_snacks` while the label drops the jargon: the other three are
+  // fitness ranks, and "Movement Snacks" was the only option not on that ladder.
+  { id: "movement_snacks", label: "Short bursts only", image: "/quiz/fitness/movement-snacks.webp" },
 ];
 
 const QUALIFIER_OPTIONS = [
@@ -429,6 +443,10 @@ function getCtaCopy(): { sub: string } {
   };
 }
 // First-person CTA label driven by her #1 goal (multi-select; first = primary).
+// Used on the results screen, where the next tap is still about what she wants.
+// Inside the trial sequence the sticky button stays progress-phrased instead
+// ("Unlock my next tool" -> "View my 8-week plan"), so those three screens read
+// as one ladder rather than three different voices.
 const GOAL_CTA_LABEL: Record<string, string> = {
   sleep_through_night: "I want to sleep again",
   think_clearly: "I want to think clearly again",
@@ -735,11 +753,14 @@ function getSymptomTransforms(topProblems: string[], n = 3): SymptomTransform[] 
 // the offer's mechanism - "track your symptoms" never explained how anyone gets
 // better, and the diagnosis screen is the Reason stage, so the plan has to be
 // the thing the page is about.
+// `chip` is the icon's badge background - the same tinted square the tracker
+// puts each pillar in, so a pillar looks like a thing in the app rather than a
+// bullet on a marketing page.
 const PLAN_PILLARS = [
-  { key: "movement",   label: "Movement",    icon: Footprints,   tint: "text-sky-500",     blurb: "A routine that matches your level, not a gym program" },
-  { key: "nutrition",  label: "Nutrition",   icon: Salad,        tint: "text-emerald-500", blurb: "The daily swaps that steady your hormones" },
-  { key: "relaxation", label: "Relaxation",  icon: Wind,         tint: "text-violet-500",  blurb: "Breathing and wind-downs you can do anywhere" },
-  { key: "habits",     label: "Your habits", icon: CheckCircle2, tint: "text-primary",     blurb: "The few small things that hold the rest together" },
+  { key: "movement",   label: "Movement",    icon: Footprints,   tint: "text-sky-500",     chip: "bg-sky-100",     blurb: "A routine that matches your level, not a gym program" },
+  { key: "nutrition",  label: "Nutrition",   icon: Salad,        tint: "text-emerald-500", chip: "bg-emerald-100", blurb: "The daily swaps that steady your hormones" },
+  { key: "relaxation", label: "Relaxation",  icon: Wind,         tint: "text-violet-500",  chip: "bg-violet-100",  blurb: "Breathing and wind-downs you can do anywhere" },
+  { key: "habits",     label: "Your habits", icon: CheckCircle2, tint: "text-primary",     chip: "bg-primary/10",  blurb: "The few small things that hold the rest together" },
 ] as const;
 
 // The 8-week arc, so the plan reads as a designed progression rather than a
@@ -1295,6 +1316,7 @@ function RegisterPageContent() {
 
   const [stepIndex, setStepIndex] = useState(0);
   const currentStep = STEPS[stepIndex];
+  const autoAdvances = AUTO_ADVANCE_STEPS.includes(currentStep);
 
   // Relief exercise (phase === "relief"). Stays "done" once finished, so coming
   // back from the paywall doesn't make her breathe through it a second time.
@@ -1593,10 +1615,8 @@ function RegisterPageContent() {
       switch (step) {
         case "q1_age":
           return ageBand !== "";
-        case "q_height":
-          return bodyMetrics.height_cm !== null;
-        case "q_weight":
-          return bodyMetrics.weight_kg !== null;
+        case "q_body":
+          return bodyMetrics.height_cm !== null && bodyMetrics.weight_kg !== null;
         case "q_fitness":
           return fitnessLevel !== "";
         case "q2_here_for":
@@ -1663,9 +1683,29 @@ function RegisterPageContent() {
     }
   }, [currentStep, stepIndex, stepIsAnswered, saveQuizAnswers, topProblems, goal]);
 
+  // Auto-advance for single-choice steps. The short delay is the point: she has
+  // to see her own tile light up before the screen moves, or the quiz feels like
+  // it answered for her. None of these steps is last in STEPS, so incrementing
+  // is always safe.
+  const advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (advanceTimer.current) clearTimeout(advanceTimer.current);
+    };
+  }, []);
+  const selectAndAdvance = useCallback((apply: () => void) => {
+    apply();
+    if (advanceTimer.current) clearTimeout(advanceTimer.current);
+    advanceTimer.current = setTimeout(() => {
+      setStepIndex((i) => Math.min(i + 1, STEPS.length - 1));
+    }, 260);
+  }, []);
+
   // Back off question 1 returns to the start screen rather than dead-ending, so
   // the first tap stays as reversible as it was promised to be.
   const goBack = useCallback(() => {
+    // Cancel a pending auto-advance, or Back mid-animation lands her forward.
+    if (advanceTimer.current) clearTimeout(advanceTimer.current);
     if (stepIndex > 0) {
       setStepIndex(stepIndex - 1);
     } else {
@@ -2459,6 +2499,17 @@ function RegisterPageContent() {
                           <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-green-600 text-[10px] font-bold text-white tracking-wide shadow-sm">
                             With Lisa
                           </span>
+                          {/* Verified check on the "after" half - stock photography
+                              on its own says nothing about software; the tick is
+                              what ties the outcome back to the app that tracked it. */}
+                          <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-white/95 pl-1 pr-2 py-0.5 shadow-md">
+                            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-600">
+                              <Check className="w-2.5 h-2.5 text-white" strokeWidth={3.5} />
+                            </span>
+                            <span className="text-[9px] font-bold text-green-700 tracking-wide">
+                              Tracked in the app
+                            </span>
+                          </span>
                         </div>
 
                         {/* Two equal columns - red before, green after */}
@@ -2510,7 +2561,7 @@ function RegisterPageContent() {
                       <HighlightSweep>8-week plan</HighlightSweep>
                     </h2>
                     <p className="text-xs text-[#5A5A5A] mt-1.5">
-                      Built from your 11 answers. About 15 minutes a day.
+                      Built from your {QUESTION_STEPS.length} answers. About 15 minutes a day.
                     </p>
                   </div>
 
@@ -2618,9 +2669,19 @@ function RegisterPageContent() {
                       <p className="text-sm font-bold text-[#3D3D3D] mb-2.5">Every day, four things:</p>
                       <div className="space-y-2">
                         {PLAN_PILLARS.map((p) => (
-                          <div key={p.key} className="flex items-start gap-2.5">
-                            <p.icon className={cn("w-4 h-4 shrink-0 mt-0.5", p.tint)} />
-                            <p className="text-xs text-[#5A5A5A] leading-snug">
+                          <div
+                            key={p.key}
+                            className="flex items-center gap-2.5 rounded-xl border border-[#E8DDD9] bg-background px-2.5 py-2"
+                          >
+                            <span
+                              className={cn(
+                                "inline-flex items-center justify-center w-8 h-8 rounded-lg shrink-0",
+                                p.chip
+                              )}
+                            >
+                              <p.icon className={cn("w-4 h-4", p.tint)} />
+                            </span>
+                            <p className="text-xs text-[#5A5A5A] leading-snug min-w-0">
                               <span className="font-bold text-[#3D3D3D]">{p.label}</span> — {p.blurb}
                             </p>
                           </div>
@@ -2679,7 +2740,14 @@ function RegisterPageContent() {
                             <div className="space-y-2">
                               {PLAN_PILLARS.map((p) => (
                                 <div key={p.key} className="flex items-start gap-2.5">
-                                  <p.icon className={cn("w-4 h-4 shrink-0 mt-0.5", p.tint)} />
+                                  <span
+                                    className={cn(
+                                      "inline-flex items-center justify-center w-8 h-8 rounded-lg shrink-0",
+                                      p.chip
+                                    )}
+                                  >
+                                    <p.icon className={cn("w-4 h-4", p.tint)} />
+                                  </span>
                                   <div className="min-w-0">
                                     <p className="text-[10px] font-semibold text-[#9A9A9A] uppercase tracking-wide leading-none">{p.label}</p>
                                     <p className="text-xs text-[#3D3D3D] leading-snug mt-0.5">{s.plan[p.key]}</p>
@@ -2817,7 +2885,7 @@ function RegisterPageContent() {
                   the paywall, not here - this page's job is belief, and naming the
                   charge two screens early just raises her guard. */}
               <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[11px] text-[#9A9A9A]">
-                <span className="flex items-center gap-1"><Check className="w-3.5 h-3.5 text-green-600" /> Built around your 11 answers</span>
+                <span className="flex items-center gap-1"><Check className="w-3.5 h-3.5 text-green-600" /> Built around your {QUESTION_STEPS.length} answers</span>
                 <span className="flex items-center gap-1"><Check className="w-3.5 h-3.5 text-green-600" /> Works alongside HRT</span>
                 <span className="flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5 text-green-600" /> Your data stays private</span>
               </div>
@@ -3494,7 +3562,7 @@ function RegisterPageContent() {
                   ? nutritionDone.length > 0
                     ? "See what this means"
                     : "I'm starting from scratch"
-                  : getGoalCtaLabel(goal)}
+                  : `View my ${PLAN_WEEKS}-week plan`}
                 <ArrowRight className="w-4 h-4" />
               </button>
               {nutritionStage === "done" && (
@@ -3589,6 +3657,7 @@ function RegisterPageContent() {
           checkoutLoading={checkoutLoading}
           error={error}
           onBack={() => setPhase("nutrition")}
+          firstName={firstName}
           trackingSource="register"
         />
       )}
@@ -3682,7 +3751,15 @@ function RegisterPageContent() {
 
       {/* Quiz Phase */}
       {phase === "quiz" && (
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden pb-[calc(72px+env(safe-area-inset-bottom))]">
+        <div
+          className={cn(
+            "flex-1 flex flex-col min-h-0 overflow-hidden",
+            // Room for the fixed Next bar - only reserved on the steps that have one.
+            autoAdvances
+              ? "pb-[env(safe-area-inset-bottom)]"
+              : "pb-[calc(72px+env(safe-area-inset-bottom))]"
+          )}
+        >
           {/* Back - on question 1 this returns to the start screen (see goBack).
               The entry headline that used to sit here is now the start screen,
               so question 1 gets the full card. */}
@@ -3755,7 +3832,7 @@ function RegisterPageContent() {
                         <button
                           key={option.id}
                           type="button"
-                          onClick={() => setAgeBand(option.id)}
+                          onClick={() => selectAndAdvance(() => setAgeBand(option.id))}
                           className={`flex flex-col min-h-0 rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer ${
                             isSelected
                               ? "ring-2 ring-primary shadow-lg shadow-primary/30"
@@ -3784,136 +3861,133 @@ function RegisterPageContent() {
                 </div>
               )}
 
-              {/* Q height */}
-              {currentStep === "q_height" && (
-                <div className="flex-1 flex flex-col justify-center space-y-3 sm:space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-                  <div>
+              {/* Body baseline - height + weight on one screen. Two consecutive
+                  numeric screens read as a form appearing mid-quiz; together they
+                  are one short detour she can finish without the page moving. */}
+              {currentStep === "q_body" && (
+                <div className="flex-1 flex flex-col justify-center gap-3 sm:gap-4 min-h-0 overflow-y-auto overscroll-contain animate-in fade-in slide-in-from-right-4 duration-300">
+                  <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-1">
-                      How tall are you?
+                      Your body baseline
                     </h2>
                     <p className="text-sm sm:text-base text-muted-foreground">
-                      Lisa uses this to personalize your plan
+                      Lisa uses this to size your movement and nutrition plan
                     </p>
                   </div>
 
-                  {/* Unit toggle */}
-                  <div className="flex gap-1.5 p-1 rounded-lg bg-foreground/5 w-fit">
-                    {(["cm", "ft"] as const).map((u) => (
-                      <button
-                        key={u}
-                        type="button"
-                        onClick={() => setHeightUnit(u)}
-                        className={`min-h-9 px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-150 cursor-pointer ${
-                          heightUnit === u
-                            ? "bg-primary text-primary-foreground shadow-sm"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        {u === "cm" ? "cm" : "ft / in"}
-                      </button>
-                    ))}
+                  {/* Height */}
+                  <div className="space-y-2 shrink-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-[#3D3D3D]">Height</p>
+                      <div className="flex gap-1 p-1 rounded-lg bg-foreground/5">
+                        {(["cm", "ft"] as const).map((u) => (
+                          <button
+                            key={u}
+                            type="button"
+                            onClick={() => setHeightUnit(u)}
+                            className={`min-h-8 px-3 py-1 rounded-md text-xs font-medium transition-all duration-150 cursor-pointer ${
+                              heightUnit === u
+                                ? "bg-primary text-primary-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            {u === "cm" ? "cm" : "ft / in"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {heightUnit === "cm" ? (
+                      <div className="relative">
+                        <Ruler className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          value={heightCm}
+                          onChange={(e) => setHeightCm(e.target.value)}
+                          placeholder="Height in cm"
+                          min={100}
+                          max={250}
+                          className="w-full pl-10 sm:pl-12 pr-14 py-3 rounded-lg sm:rounded-xl border-2 border-foreground/15 bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all duration-200 text-base sm:text-lg"
+                          autoFocus
+                        />
+                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">cm</span>
+                      </div>
+                    ) : (
+                      <div className="flex gap-3">
+                        <div className="relative flex-1">
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            value={heightFt}
+                            onChange={(e) => setHeightFt(e.target.value)}
+                            placeholder="Feet"
+                            min={3}
+                            max={8}
+                            className="w-full pl-4 pr-10 py-3 rounded-lg sm:rounded-xl border-2 border-foreground/15 bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all duration-200 text-base sm:text-lg"
+                            autoFocus
+                          />
+                          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">ft</span>
+                        </div>
+                        <div className="relative flex-1">
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            value={heightIn}
+                            onChange={(e) => setHeightIn(e.target.value)}
+                            placeholder="Inches"
+                            min={0}
+                            max={11}
+                            className="w-full pl-4 pr-10 py-3 rounded-lg sm:rounded-xl border-2 border-foreground/15 bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all duration-200 text-base sm:text-lg"
+                          />
+                          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">in</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  {heightUnit === "cm" ? (
+                  {/* Weight */}
+                  <div className="space-y-2 shrink-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-[#3D3D3D]">Weight</p>
+                      <div className="flex gap-1 p-1 rounded-lg bg-foreground/5">
+                        {(["kg", "lb"] as const).map((u) => (
+                          <button
+                            key={u}
+                            type="button"
+                            onClick={() => setWeightUnit(u)}
+                            className={`min-h-8 px-3 py-1 rounded-md text-xs font-medium transition-all duration-150 cursor-pointer ${
+                              weightUnit === u
+                                ? "bg-primary text-primary-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            {u}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     <div className="relative">
-                      <Ruler className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
+                      <Weight className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
                       <input
                         type="number"
                         inputMode="numeric"
-                        value={heightCm}
-                        onChange={(e) => setHeightCm(e.target.value)}
-                        placeholder="Height in cm"
-                        min={100}
-                        max={250}
-                        className="w-full pl-10 sm:pl-12 pr-14 py-3 sm:py-4 rounded-lg sm:rounded-xl border-2 border-foreground/15 bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all duration-200 text-base sm:text-lg"
-                        autoFocus
+                        value={weightUnit === "kg" ? weightKg : weightLb}
+                        onChange={(e) =>
+                          weightUnit === "kg"
+                            ? setWeightKg(e.target.value)
+                            : setWeightLb(e.target.value)
+                        }
+                        placeholder={weightUnit === "kg" ? "Weight in kg" : "Weight in lb"}
+                        min={30}
+                        max={400}
+                        className="w-full pl-10 sm:pl-12 pr-14 py-3 rounded-lg sm:rounded-xl border-2 border-foreground/15 bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all duration-200 text-base sm:text-lg"
                       />
-                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">cm</span>
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                        {weightUnit}
+                      </span>
                     </div>
-                  ) : (
-                    <div className="flex gap-3">
-                      <div className="relative flex-1">
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          value={heightFt}
-                          onChange={(e) => setHeightFt(e.target.value)}
-                          placeholder="Feet"
-                          min={3}
-                          max={8}
-                          className="w-full pl-4 pr-10 py-3 sm:py-4 rounded-lg sm:rounded-xl border-2 border-foreground/15 bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all duration-200 text-base sm:text-lg"
-                          autoFocus
-                        />
-                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">ft</span>
-                      </div>
-                      <div className="relative flex-1">
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          value={heightIn}
-                          onChange={(e) => setHeightIn(e.target.value)}
-                          placeholder="Inches"
-                          min={0}
-                          max={11}
-                          className="w-full pl-4 pr-10 py-3 sm:py-4 rounded-lg sm:rounded-xl border-2 border-foreground/15 bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all duration-200 text-base sm:text-lg"
-                        />
-                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">in</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Q weight */}
-              {currentStep === "q_weight" && (
-                <div className="flex-1 flex flex-col justify-center space-y-3 sm:space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-                  <div>
-                    <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-1">
-                      What&apos;s your weight?
-                    </h2>
-                    <p className="text-sm sm:text-base text-muted-foreground">
-                      This helps Lisa tailor nutrition and movement guidance
-                    </p>
-                  </div>
-
-                  {/* Unit toggle */}
-                  <div className="flex gap-1.5 p-1 rounded-lg bg-foreground/5 w-fit">
-                    {(["kg", "lb"] as const).map((u) => (
-                      <button
-                        key={u}
-                        type="button"
-                        onClick={() => setWeightUnit(u)}
-                        className={`min-h-9 px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-150 cursor-pointer ${
-                          weightUnit === u
-                            ? "bg-primary text-primary-foreground shadow-sm"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        {u}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="relative">
-                    <Weight className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      value={weightUnit === "kg" ? weightKg : weightLb}
-                      onChange={(e) =>
-                        weightUnit === "kg"
-                          ? setWeightKg(e.target.value)
-                          : setWeightLb(e.target.value)
-                      }
-                      placeholder={weightUnit === "kg" ? "Weight in kg" : "Weight in lb"}
-                      min={30}
-                      max={400}
-                      className="w-full pl-10 sm:pl-12 pr-14 py-3 sm:py-4 rounded-lg sm:rounded-xl border-2 border-foreground/15 bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all duration-200 text-base sm:text-lg"
-                      autoFocus
-                    />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                      {weightUnit}
-                    </span>
                   </div>
                 </div>
               )}
@@ -3936,7 +4010,7 @@ function RegisterPageContent() {
                         <button
                           key={option.id}
                           type="button"
-                          onClick={() => setFitnessLevel(option.id)}
+                          onClick={() => selectAndAdvance(() => setFitnessLevel(option.id))}
                           className={`flex flex-col min-h-0 rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer ${
                             isSelected
                               ? "ring-2 ring-primary shadow-lg shadow-primary/30"
@@ -3979,7 +4053,7 @@ function RegisterPageContent() {
                         <button
                           key={option.id}
                           type="button"
-                          onClick={() => setHereFor(option.id)}
+                          onClick={() => selectAndAdvance(() => setHereFor(option.id))}
                           className={`flex flex-col min-h-0 rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer ${
                             isSelected
                               ? "ring-2 ring-primary shadow-lg shadow-primary/30"
@@ -4021,7 +4095,11 @@ function RegisterPageContent() {
                     </p>
                   </div>
                   <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 -mr-1 pb-1 [scrollbar-width:thin]">
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {/* Flex-wrap, not grid: both of these lists have an odd option count,
+                        so a grid always left a hole in the last row. Wrapping with a
+                        centred last row fills the shelf and keeps every tile the same
+                        size. */}
+                    <div className="flex flex-wrap justify-center gap-2">
                       {GOAL_OPTIONS.map((option) => {
                         const isSelected = goal.includes(option.id);
                         return (
@@ -4029,7 +4107,7 @@ function RegisterPageContent() {
                             key={option.id}
                             type="button"
                             onClick={() => toggleGoal(option.id)}
-                            className={`flex flex-col rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer outline-none focus:outline-none ${
+                            className={`flex flex-col w-[calc(50%-0.25rem)] sm:w-[calc(33.333%-0.334rem)] rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer outline-none focus:outline-none ${
                               isSelected
                                 ? "ring-2 ring-inset ring-primary shadow-lg shadow-primary/30"
                                 : "hover:opacity-90"
@@ -4075,7 +4153,11 @@ function RegisterPageContent() {
                     </p>
                   </div>
                   <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 -mr-1 pb-1 [scrollbar-width:thin]">
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {/* Flex-wrap, not grid: both of these lists have an odd option count,
+                        so a grid always left a hole in the last row. Wrapping with a
+                        centred last row fills the shelf and keeps every tile the same
+                        size. */}
+                    <div className="flex flex-wrap justify-center gap-2">
                       {PROBLEM_OPTIONS.map((option) => {
                         const isSelected = (symptomSeverity[option.id] ?? 0) > 0;
                         return (
@@ -4083,7 +4165,7 @@ function RegisterPageContent() {
                             key={option.id}
                             type="button"
                             onClick={() => toggleProblem(option.id)}
-                            className={`flex flex-col rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer outline-none focus:outline-none ${
+                            className={`flex flex-col w-[calc(50%-0.25rem)] sm:w-[calc(33.333%-0.334rem)] rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer outline-none focus:outline-none ${
                               isSelected
                                 ? "ring-2 ring-inset ring-primary shadow-lg shadow-primary/30"
                                 : "hover:opacity-90"
@@ -4293,7 +4375,7 @@ function RegisterPageContent() {
                         <button
                           key={option.id}
                           type="button"
-                          onClick={() => setHrtStatus(option.id)}
+                          onClick={() => selectAndAdvance(() => setHrtStatus(option.id))}
                           className={`flex flex-col min-h-0 rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer ${
                             isSelected
                               ? "ring-2 ring-primary shadow-lg shadow-primary/30"
@@ -4336,7 +4418,7 @@ function RegisterPageContent() {
                         <button
                           key={option.id}
                           type="button"
-                          onClick={() => setTiming(option.id)}
+                          onClick={() => selectAndAdvance(() => setTiming(option.id))}
                           className={`flex flex-col min-h-0 rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer ${
                             isSelected
                               ? "ring-2 ring-primary shadow-lg shadow-primary/30"
@@ -4379,7 +4461,7 @@ function RegisterPageContent() {
                         <button
                           key={option.id}
                           type="button"
-                          onClick={() => setQualifier(option.id)}
+                          onClick={() => selectAndAdvance(() => setQualifier(option.id))}
                           className={`flex flex-col min-h-0 rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer ${
                             isSelected
                               ? "ring-2 ring-primary shadow-lg shadow-primary/30"
@@ -4439,20 +4521,23 @@ function RegisterPageContent() {
             </div>
           </div>
 
-          {/* Navigation Buttons - fixed to bottom of viewport, safe-area aware */}
-          <div className="fixed bottom-0 inset-x-0 z-30 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 pb-[env(safe-area-inset-bottom)]">
-            <div className="mx-auto max-w-3xl px-4 sm:px-6 py-3">
-              <button
-                type="button"
-                onClick={goNext}
-                disabled={!stepIsAnswered(currentStep)}
-                className="min-h-12 w-full flex items-center justify-center gap-1.5 px-5 sm:px-6 py-3 rounded-lg bg-primary text-primary-foreground hover:brightness-110 hover:shadow-lg hover:shadow-primary/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100 disabled:hover:shadow-none font-semibold text-sm sm:text-base"
-              >
-                {REWARD_STEPS.includes(currentStep) || stepIndex === STEPS.length - 1 ? "Continue" : "Next"}
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
+          {/* Navigation Buttons - fixed to bottom of viewport, safe-area aware.
+              Absent on single-choice steps, which advance themselves. */}
+          {!autoAdvances && (
+            <div className="fixed bottom-0 inset-x-0 z-30 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 pb-[env(safe-area-inset-bottom)]">
+              <div className="mx-auto max-w-3xl px-4 sm:px-6 py-3">
+                <button
+                  type="button"
+                  onClick={goNext}
+                  disabled={!stepIsAnswered(currentStep)}
+                  className="min-h-12 w-full flex items-center justify-center gap-1.5 px-5 sm:px-6 py-3 rounded-lg bg-primary text-primary-foreground hover:brightness-110 hover:shadow-lg hover:shadow-primary/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100 disabled:hover:shadow-none font-semibold text-sm sm:text-base"
+                >
+                  {REWARD_STEPS.includes(currentStep) || stepIndex === STEPS.length - 1 ? "Continue" : "Next"}
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 

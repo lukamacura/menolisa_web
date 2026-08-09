@@ -50,6 +50,12 @@ export interface PaywallViewProps {
   /** Optional back link (e.g. return to the diagnosis page). */
   onBack?: () => void;
   /**
+   * Her first name, when we have it. Only used to address the countdown to her
+   * plan ("reserved for Linda's plan") - a generic timer reads as site-wide
+   * theatre, the same one reads as held for something that is already hers.
+   */
+  firstName?: string;
+  /**
    * Which funnel this paywall belongs to. Sent to Meta as `content_category` so
    * the registration funnel and the expired-account paywall stay separable in
    * Events Manager.
@@ -196,9 +202,11 @@ export function PaywallView({
   error,
   banner,
   onBack,
+  firstName,
   trackingSource,
 }: PaywallViewProps) {
   const { remainingMs, expired, reclaim } = useDiscountWindow();
+  const name = firstName?.trim() ?? "";
   // The live price on the card. Only the discounted one is ever attached to a
   // checkout button - see PLAN_DISCOUNT_WINDOW_MS in lib/pricing.ts.
   const livePrice = expired ? ANCHOR : PRICE;
@@ -359,7 +367,9 @@ export function PaywallView({
             </p>
           ) : (
             <p className="text-xs sm:text-sm font-semibold text-[#3D3D3D]">
-              {PLAN_DISCOUNT_PCT}% off ends in{" "}
+              {name
+                ? `${PLAN_DISCOUNT_PCT}% off reserved for ${name}'s plan: `
+                : `${PLAN_DISCOUNT_PCT}% off ends in `}
               <span className="font-extrabold tabular-nums text-[#ff74b1]">
                 {formatRemaining(remainingMs)}
               </span>
@@ -430,6 +440,23 @@ export function PaywallView({
             </p>
           </div>
         </motion.div>
+
+        {/* What Stripe will actually accept, named. "Stripe secured" tells her
+            the checkout is safe but not that her wallet works there - and Apple
+            Pay / Google Pay are the difference between one tap and finding a
+            card. Wordmarks rather than brand logos: no third-party image assets
+            to license, keep current, or ship on every page load. */}
+        <div className="flex flex-wrap items-center justify-center gap-1.5 mb-4">
+          {["Visa", "Mastercard", "Amex", "Apple Pay", "Google Pay"].map((m) => (
+            <span
+              key={m}
+              className="rounded-md border bg-white px-2 py-1 text-[10px] font-bold tracking-wide text-[#5A5A5A]"
+              style={{ borderColor: "#E8DDD9" }}
+            >
+              {m}
+            </span>
+          ))}
+        </div>
 
         {/* What's included - reminds her what she's paying for at the decision point */}
         <div
@@ -534,11 +561,14 @@ export function PaywallView({
             onClick={expired ? reclaim : handleCheckoutClick}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            className="relative w-full min-h-14 py-4 font-bold text-foreground rounded-2xl transition-all flex items-center justify-center gap-2 text-base sm:text-base disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden group"
+            // Solid, not the pastel brand gradient. The gradient is the funnel's
+            // house style, but on this screen it sits on top of pastel cards and
+            // stops reading as the one thing to press - so the payment button is
+            // the only element on the page in solid magenta with white text.
+            className="relative w-full min-h-14 py-4 font-bold text-white rounded-2xl transition-all flex items-center justify-center gap-2 text-base sm:text-base disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden group"
             style={{
-              background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)",
-              boxShadow:
-                "0 8px 24px rgba(255, 116, 177, 0.4), 0 2px 8px rgba(101, 219, 255, 0.25)",
+              background: "#E0117A",
+              boxShadow: "0 8px 24px rgba(224, 17, 122, 0.38), 0 2px 8px rgba(224, 17, 122, 0.22)",
             }}
           >
             <span
