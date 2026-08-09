@@ -48,6 +48,7 @@ import {
 import OtpForm from "@/components/auth/OtpForm";
 import { PaywallView } from "@/components/PaywallView";
 import MetaPurchaseTracker from "@/components/MetaPurchaseTracker";
+import { SocialProofPolaroid } from "@/components/SocialProof";
 import { META_FUNNEL_STEPS } from "@/lib/metaPixel";
 import {
   PLAN_ADHERENCE_PCT,
@@ -56,6 +57,8 @@ import {
   PLAN_WEEKS,
   formatPrice,
 } from "@/lib/pricing";
+import { getSymptomTransforms } from "@/lib/testimonials";
+import { GOAL_PROMISE, getOfferPromise } from "@/lib/planTimeline";
 import { trackFunnelStep } from "@/lib/metaPixelClient";
 import AnimatedCounter from "@/components/landing/AnimatedCounter";
 import {
@@ -294,39 +297,6 @@ const DIAGNOSIS_SHOTS = [
   "/diagnosys/chat.webp",
 ];
 
-// ─── Social proof: one woman, one week past the end of the plan ─────────────
-// Sits on the results scroll directly under the 8-week plan, because "took this
-// same quiz" only means anything to someone who has just taken it, and the plan
-// she has been reading needs an end state attached to a face. The week count is
-// PLAN_WEEKS + 1 on purpose - it has to read as *finished*, not *in progress*.
-const SOCIAL_PROOF_WEEKS = PLAN_WEEKS + 1;
-
-// Two prints from the same roll, in order: the day she sat with the quiz, and
-// the week she finished. One photo can only show a happy woman; the pair shows
-// a change, and the first frame is the reader's own present moment - she is
-// holding the same screen right now. Order here is the order on screen.
-// `objectPosition` is the crop knob: both frames are a fixed 4:5 portrait, so
-// swapping an asset means retuning that one string, not the layout.
-const SOCIAL_PROOF_PHOTOS = [
-  {
-    src: "/social_proof/social_proof2.webp",
-    objectPosition: "50% 66%",
-    badge: "Day 1",
-    alt: "taking this quiz on her phone",
-  },
-  {
-    src: "/social_proof/social_proof.webp",
-    objectPosition: "58% 82%",
-    badge: `Week ${SOCIAL_PROOF_WEEKS}`,
-    alt: `${SOCIAL_PROOF_WEEKS} weeks later, on the beach`,
-  },
-];
-const SOCIAL_PROOF = {
-  name: "Zoe",
-  age: 53,
-  quote: "I stopped planning my whole day around a hot flush.",
-};
-
 // Build the same URL next/image requests, so the preload warms both the Vercel
 // optimizer cache and the browser HTTP cache (640/828 cover phone + desktop).
 const optimizedImageUrl = (src: string, w: number) =>
@@ -469,21 +439,6 @@ const DIAGNOSIS_CTA_LABEL: Record<string, string> = {
 };
 function getDiagnosisCtaLabel(qualifier: string): string {
   return DIAGNOSIS_CTA_LABEL[qualifier] ?? "I'm ready to feel better";
-}
-
-// Her #1 goal as a second-person outcome phrase, used to build the personalized
-// 8-week promise ("{outcome} in 8 weeks"). This is the spine of the offer - the
-// emotional finish line; the 80+ score is its measurable proof.
-const GOAL_PROMISE: Record<string, string> = {
-  sleep_through_night: "Sleep through the night",
-  think_clearly: "Think clearly again",
-  feel_like_myself: "Feel calm and steady again",
-  understand_patterns: "Understand your body", // legacy: retired option
-  data_for_doctor: "Walk into your doctor with real answers",
-  get_body_back: "Lose the weight",
-};
-function getOfferPromise(goals: string[]): string {
-  return GOAL_PROMISE[goals[0]] ?? "Feel like yourself again";
 }
 
 // ─── Relief exercise: paced breathing between diagnosis and paywall ─────────
@@ -721,32 +676,11 @@ const REFERRAL_STORAGE_KEY = "pending_referral_code";
 
 
 // ─── Diagnosis: personalized before/after transformations ───────────────────
-// Each image in /public/testimonials is one side-by-side shot: left = the hard
-// "before", right = the calmer "after". Keyed by PROBLEM_OPTIONS ids so the cards
-// shown match the symptoms she actually selected.
+// SYMPTOM_TRANSFORM / getSymptomTransforms live in lib/testimonials.ts, shared
+// with the paywall's SymptomOutcomeCards.
 // The "after" side is deliberately a *feeling*, not a piece of knowledge. The
 // guarantee she reads two blocks later promises she'll feel better, so an after
 // column that only promises understanding undercuts the offer it sits above.
-type SymptomTransform = { image: string; label: string; before: string; after: string };
-const SYMPTOM_TRANSFORM: Record<string, SymptomTransform> = {
-  hot_flashes:    { image: "/testimonials/hot_flashes.webp", label: "Hot flashes",    before: "Drenched, sleepless nights",        after: "Sleeping through, dry and cool" },
-  sleep_issues:   { image: "/testimonials/sleep.webp",       label: "Sleep",          before: "Tossing and turning till 3am",      after: "Falling asleep and staying there" },
-  brain_fog:      { image: "/testimonials/brain_fog.webp",   label: "Brain fog",      before: "Losing your train of thought",      after: "Words arriving when you need them" },
-  mood_swings:    { image: "/testimonials/mood_swings.webp", label: "Mood swings",    before: "Snapping at the people you love",   after: "Feeling steady around the people you love" },
-  weight_changes: { image: "/testimonials/weight_gain.webp", label: "Weight changes", before: "Nothing fitting like it used to",   after: "Your clothes fitting the way they should" },
-  low_energy:     { image: "/testimonials/fatigue.webp",     label: "Fatigue",        before: "Running on empty by midday",        after: "Still having something left at 4pm" },
-  anxiety:        { image: "/testimonials/anxiety.webp",     label: "Anxiety",        before: "A constant, low hum of worry",      after: "A quiet chest and a calmer day" },
-  joint_pain:     { image: "/testimonials/joint_pain.webp",  label: "Joint pain",     before: "Stiff, aching mornings",            after: "Getting out of bed without bracing" },
-  bloating:       { image: "/testimonials/bloating.webp",    label: "Bloating",       before: "Heavy and uncomfortable",           after: "Light and comfortable after meals" },
-};
-
-/** Her selected symptoms that have a before/after image (capped, original order). */
-function getSymptomTransforms(topProblems: string[], n = 3): SymptomTransform[] {
-  return topProblems
-    .filter((id) => SYMPTOM_TRANSFORM[id])
-    .slice(0, n)
-    .map((id) => SYMPTOM_TRANSFORM[id]);
-}
 
 // ─── The plan: what she actually buys ───────────────────────────────────────
 // The four daily task areas the mobile app builds her 8-week plan from. This is
@@ -1184,87 +1118,8 @@ function ShotStage({
   );
 }
 
-/** Hand-drawn arrow curving down-right, from the caption into the photo. */
-function CaptionArrow({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 48 56"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      className={className}
-    >
-      <path d="M4 6c15-1 27 5 31 15 3 8 0 18-7 27" />
-      <path d="M35 39l-7 9 11 1" />
-    </svg>
-  );
-}
-
-/**
- * The one human face on the results scroll. Everything above it is her own
- * numbers and her own plan; this is the only block that says someone else
- * already walked it. Deliberately one woman rather than a wall of five-star
- * cards - a wall reads as marketing, one polaroid reads as a person.
- */
-function SocialProofPolaroid({ reduced }: { reduced: boolean }) {
-  return (
-    <motion.div
-      initial={reduced ? false : { opacity: 0, y: 16 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.25 }}
-      className="mb-5"
-    >
-      <div className="flex items-end gap-1 pl-1 pr-8">
-        <p className="font-script text-2xl sm:text-3xl leading-tight text-[#3D3D3D]">
-          {SOCIAL_PROOF.name} took this same quiz {SOCIAL_PROOF_WEEKS} weeks ago
-        </p>
-        <CaptionArrow className="relative z-10 w-9 h-11 shrink-0 -mb-2 text-primary/70" />
-      </div>
-
-      {/* Two prints, same size on purpose - "Day 1" beside "Week 9" only reads as
-          a comparison if neither one is the hero, and overlapping them buried the
-          phone in the first shot, which is the only thing making it *this* quiz.
-          The opposite tilts and the white borders do the rest: a square-cornered
-          full-bleed photo reads as stock, a print reads as hers. */}
-      <div className="mx-auto mt-1 flex w-full max-w-[330px] items-start justify-center gap-2.5">
-        {SOCIAL_PROOF_PHOTOS.map((photo, i) => (
-          <figure
-            key={photo.src}
-            className={cn(
-              "w-1/2 rounded-sm bg-white p-1.5 pb-2 shadow-lg shadow-black/10 ring-1 ring-black/5",
-              i % 2 === 0 ? "mt-3 rotate-[-3.5deg]" : "rotate-[2.5deg]"
-            )}
-          >
-            <div className="relative aspect-4/5 overflow-hidden rounded-xs bg-[#E8DDD9]">
-              <Image
-                src={photo.src}
-                alt={`${SOCIAL_PROOF.name}, ${photo.alt}`}
-                fill
-                sizes="180px"
-                className="object-cover"
-                style={{ objectPosition: photo.objectPosition }}
-              />
-            </div>
-            <figcaption className="mt-1.5 text-center text-[10px] font-semibold uppercase tracking-wide text-[#9A9A9A]">
-              {photo.badge}
-            </figcaption>
-          </figure>
-        ))}
-      </div>
-
-      {/* Quote under the pair rather than on one print - it belongs to both. */}
-      <p className="mx-auto mt-3.5 max-w-[300px] px-2 text-center font-script text-lg leading-snug text-[#3D3D3D]">
-        &ldquo;{SOCIAL_PROOF.quote}&rdquo;
-      </p>
-      <p className="mx-auto mt-1 max-w-[300px] px-2 text-center text-[10px] font-semibold uppercase tracking-wide text-[#9A9A9A]">
-        {SOCIAL_PROOF.name}, {SOCIAL_PROOF.age} &middot; finished her plan last week
-      </p>
-    </motion.div>
-  );
-}
+// CaptionArrow / SocialProofPolaroid now live in components/SocialProof.tsx,
+// shared with the paywall.
 
 function RegisterPageContent() {
   const router = useRouter();
@@ -3659,6 +3514,8 @@ function RegisterPageContent() {
           onBack={() => setPhase("nutrition")}
           firstName={firstName}
           trackingSource="register"
+          topProblems={topProblems}
+          goal={goal}
         />
       )}
 

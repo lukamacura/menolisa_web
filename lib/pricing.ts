@@ -80,5 +80,8 @@ export function formatPrice(amount: number): string {
 /** Per-day cost, for "about a dollar a day" framing. */
 export const PLAN_PRICE_PER_DAY = PLAN_PRICE / (PLAN_WEEKS * 7);
 
+/** Per-day cost of the strikethrough anchor, for the same framing once the discount expires. */
+export const PLAN_ANCHOR_PRICE_PER_DAY = PLAN_ANCHOR_PRICE / (PLAN_WEEKS * 7);
+
 /** Per-week cost, for "less than a coffee a week" framing. */
 export const PLAN_PRICE_PER_WEEK = PLAN_PRICE / PLAN_WEEKS;

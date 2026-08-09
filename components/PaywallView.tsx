@@ -26,10 +26,12 @@ import {
   CreditCard,
 } from "lucide-react";
 import AnimatedCounter from "@/components/landing/AnimatedCounter";
+import { SocialProofPolaroid, SymptomOutcomeCards } from "@/components/SocialProof";
 import { META_CURRENCY, PLAN_VALUE } from "@/lib/metaPixel";
 import {
   PLAN_ADHERENCE_PCT,
   PLAN_ANCHOR_PRICE,
+  PLAN_ANCHOR_PRICE_PER_DAY,
   PLAN_DISCOUNT_PCT,
   PLAN_DISCOUNT_WINDOW_MINUTES,
   PLAN_DISCOUNT_WINDOW_MS,
@@ -39,6 +41,13 @@ import {
   PLAN_WEEKS,
   formatPrice,
 } from "@/lib/pricing";
+import {
+  PLAN_DAYS,
+  formatPlanDate,
+  getOfferPromise,
+  planFinishDate,
+} from "@/lib/planTimeline";
+import { getSymptomTransforms } from "@/lib/testimonials";
 import { trackFb } from "@/lib/metaPixelClient";
 
 export interface PaywallViewProps {
@@ -61,11 +70,23 @@ export interface PaywallViewProps {
    * Events Manager.
    */
   trackingSource?: "register" | "dashboard";
+  /**
+   * Her selected symptoms, when we have them (the /register funnel has just
+   * asked). Personalizes the before/after outcome cards; the dashboard paywall
+   * has no quiz to draw from, so it falls back to a representative set.
+   */
+  topProblems?: string[];
+  /**
+   * Her selected goal ids, when we have them. Only the first is used — the far
+   * end of the finish line is the outcome *she* picked, not one we assigned.
+   */
+  goal?: string[];
 }
 
 const PRICE = formatPrice(PLAN_PRICE);
 const ANCHOR = formatPrice(PLAN_ANCHOR_PRICE);
 const PER_DAY = `$${PLAN_PRICE_PER_DAY.toFixed(2)}`;
+const ANCHOR_PER_DAY = `$${PLAN_ANCHOR_PRICE_PER_DAY.toFixed(2)}`;
 
 /**
  * Where the deadline lives. sessionStorage, not state: a reload must not hand
@@ -163,6 +184,116 @@ function useDiscountWindow() {
   return { remainingMs, expired: remainingMs === 0, reclaim };
 }
 
+/**
+ * Her finish line, as a date.
+ *
+ * The one block on this page that belongs to her: today on the left in the words
+ * she used for her worst symptom, the day her plan ends on the right in the goal
+ * she picked. Everything else here — trust boxes, card wordmarks, guarantee — is
+ * identical for every visitor.
+ *
+ * It earns its place directly above the price by supplying the denominator. The
+ * card underneath quotes a per-day figure with nothing to divide by; "Aug 9 →
+ * Oct 4, 56 days" is what turns $1.05/day back into the $59 she is about to pay,
+ * and turns "8 weeks" from a duration into an appointment she can picture.
+ *
+ * No projected number appears here on purpose. See lib/planTimeline.ts.
+ */
+function PlanFinishLine({
+  firstName,
+  topProblems,
+  goal,
+}: {
+  firstName?: string;
+  topProblems?: string[];
+  goal?: string[];
+}) {
+  // Resolved once per mount rather than per render, so a re-render at midnight
+  // can't move her finish line by a day mid-session.
+  const [start] = useState(() => new Date());
+  const finish = planFinishDate(start);
+
+  // The dates are timezone-dependent, so the server (UTC) and a visitor west of
+  // it can disagree about today's date. The labels around them are stable, so
+  // only the two date strings sit out hydration.
+  const hydrated = useHydrated();
+  const startLabel = formatPlanDate(start);
+  const finishLabel = formatPlanDate(finish, true);
+
+  const name = firstName?.trim();
+  // Her own words on both ends: the "before" line for her #1 symptom, and the
+  // promise attached to the goal she chose. If either is missing (the dashboard
+  // paywall has no quiz behind it) the dates still stand on their own — a
+  // generic finish line is fine, a stranger's symptom in her place is not.
+  const before = getSymptomTransforms(topProblems ?? [], 1)[0]?.before;
+  const after = goal && goal.length > 0 ? getOfferPromise(goal) : undefined;
+  const personalized = Boolean(before && after);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.26 }}
+      className="rounded-2xl border bg-white p-3.5 mb-3 shadow-sm"
+      style={{ borderColor: "#E8DDD9" }}
+    >
+      <p className="text-[10px] font-bold tracking-wide uppercase text-[#9A9A9A] mb-2.5">
+        {name ? `${name}'s finish line` : "Your finish line"}
+      </p>
+
+      {/* The two ends, with the arrow doing the work of the word "becomes" */}
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-[#9A9A9A]">
+            Today
+          </p>
+          {/* Non-breaking space holds the row's height through hydration. */}
+          <p className="text-base font-bold text-[#7A7A7A] leading-tight tabular-nums">
+            {hydrated ? startLabel : " "}
+          </p>
+        </div>
+
+        <ArrowRight className="w-4 h-4 shrink-0 text-[#ff74b1]" aria-hidden />
+
+        <div className="text-right">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-[#ff74b1]">
+            Week {PLAN_WEEKS}
+          </p>
+          <p
+            className="text-base font-extrabold leading-tight tabular-nums bg-clip-text text-transparent"
+            style={{ backgroundImage: "linear-gradient(135deg, #ff74b1 0%, #65dbff 100%)" }}
+          >
+            {hydrated ? finishLabel : " "}
+          </p>
+        </div>
+      </div>
+
+      {personalized && (
+        <>
+          <div className="h-px my-3" style={{ background: "#E8DDD9" }} />
+          <div className="grid grid-cols-2 gap-3">
+            <p className="text-[11px] text-[#7A7A7A] leading-snug">{before}</p>
+            <p className="text-[11px] font-semibold text-[#3D3D3D] leading-snug text-right">
+              {after}
+            </p>
+          </div>
+        </>
+      )}
+
+      <p className="text-[10px] text-[#9A9A9A] leading-snug mt-2.5">
+        {hydrated ? (
+          <>
+            Your {PLAN_WEEKS} weeks run {startLabel} &ndash; {formatPlanDate(finish)}.
+          </>
+        ) : (
+          <>Your plan runs {PLAN_WEEKS} weeks.</>
+        )}{" "}
+        {PLAN_DAYS} days, {PER_DAY} a day.
+      </p>
+    </motion.div>
+  );
+}
+
 // Scannable 2x2 grid, one promise per box. At the payment moment she scans
 // rather than reads, so every box is a 2-3 word headline with one support line.
 const trustLabels = (price: string) => [
@@ -204,12 +335,15 @@ export function PaywallView({
   onBack,
   firstName,
   trackingSource,
+  topProblems,
+  goal,
 }: PaywallViewProps) {
   const { remainingMs, expired, reclaim } = useDiscountWindow();
   const name = firstName?.trim() ?? "";
   // The live price on the card. Only the discounted one is ever attached to a
   // checkout button - see PLAN_DISCOUNT_WINDOW_MS in lib/pricing.ts.
   const livePrice = expired ? ANCHOR : PRICE;
+  const livePricePerDay = expired ? ANCHOR_PER_DAY : PER_DAY;
 
   // ViewContent fires once when the paywall appears.
   const viewTracked = useRef(false);
@@ -338,6 +472,12 @@ export function PaywallView({
           </p>
         </motion.div>
 
+        {/* Her finish line, sitting above the countdown rather than between it
+            and the price card: the countdown and the price are a matched pair
+            (same pink border, same urgency), and splitting them to insert this
+            broke that read. Outcome, then urgency, then number. */}
+        <PlanFinishLine firstName={firstName} topProblems={topProblems} goal={goal} />
+
         {/* Countdown on the discounted price. Display only - the discount is
             always reclaimable, so the button below never quotes a price Stripe
             wouldn't charge. */}
@@ -406,7 +546,9 @@ export function PaywallView({
           <div className="pt-2 text-center">
             <div className="flex items-baseline justify-center gap-2 flex-wrap">
               {!expired && (
-                <span className="text-sm text-[#9A9A9A] line-through font-medium">{ANCHOR}</span>
+                <span className="text-sm text-[#9A9A9A] line-through font-medium">
+                  {ANCHOR_PER_DAY}
+                </span>
               )}
               <span
                 className={
@@ -420,11 +562,9 @@ export function PaywallView({
                     : { backgroundImage: "linear-gradient(135deg, #ff74b1 0%, #65dbff 100%)" }
                 }
               >
-                {livePrice}
+                {livePricePerDay}
               </span>
-              <span className="text-sm text-[#5A5A5A] font-medium">
-                / {PLAN_WEEKS} weeks
-              </span>
+              <span className="text-sm text-[#5A5A5A] font-medium">/ day</span>
             </div>
             <p className="text-xs text-[#5A5A5A] mt-1.5">
               {expired ? (
@@ -433,8 +573,7 @@ export function PaywallView({
                 </>
               ) : (
                 <>
-                  That&apos;s about {PER_DAY} a day &middot; renews every {PLAN_WEEKS} weeks,
-                  cancel anytime
+                  Billed {PRICE} today &middot; renews every {PLAN_WEEKS} weeks, cancel anytime
                 </>
               )}
             </p>
@@ -544,6 +683,16 @@ export function PaywallView({
             </p>
           </div>
         </div>
+
+        {/* Social proof + outcome cards, reused from the /register diagnosis
+            screen (components/SocialProof.tsx) so the paywall carries the same
+            proof even when reached directly (e.g. a lapsed dashboard user who
+            never saw the diagnosis screen this session). */}
+        <SocialProofPolaroid />
+        <SymptomOutcomeCards
+          topProblems={topProblems}
+          headline={`What ${PLAN_WEEKS} weeks with Lisa can look like`}
+        />
 
         {error && (
           <div className="mb-3 rounded-xl border border-error/30 bg-error/10 p-3 text-sm text-error">
