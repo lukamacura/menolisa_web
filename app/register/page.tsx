@@ -285,16 +285,33 @@ const DIAGNOSIS_SHOTS = [
 // same quiz" only means anything to someone who has just taken it, and the plan
 // she has been reading needs an end state attached to a face. The week count is
 // PLAN_WEEKS + 1 on purpose - it has to read as *finished*, not *in progress*.
-// `objectPosition` is the crop knob: the frame is a fixed 4:5 portrait, so
-// swapping the asset means retuning this one string, not the layout.
+const SOCIAL_PROOF_WEEKS = PLAN_WEEKS + 1;
+
+// Two prints from the same roll, in order: the day she sat with the quiz, and
+// the week she finished. One photo can only show a happy woman; the pair shows
+// a change, and the first frame is the reader's own present moment - she is
+// holding the same screen right now. Order here is the order on screen.
+// `objectPosition` is the crop knob: both frames are a fixed 4:5 portrait, so
+// swapping an asset means retuning that one string, not the layout.
+const SOCIAL_PROOF_PHOTOS = [
+  {
+    src: "/social_proof/social_proof2.webp",
+    objectPosition: "50% 66%",
+    badge: "Day 1",
+    alt: "taking this quiz on her phone",
+  },
+  {
+    src: "/social_proof/social_proof.webp",
+    objectPosition: "58% 82%",
+    badge: `Week ${SOCIAL_PROOF_WEEKS}`,
+    alt: `${SOCIAL_PROOF_WEEKS} weeks later, on the beach`,
+  },
+];
 const SOCIAL_PROOF = {
-  image: "/social_proof/social_proof.webp",
-  objectPosition: "58% 82%",
   name: "Zoe",
   age: 53,
   quote: "I stopped planning my whole day around a hot flush.",
 };
-const SOCIAL_PROOF_WEEKS = PLAN_WEEKS + 1;
 
 // Build the same URL next/image requests, so the preload warms both the Vercel
 // optimizer cache and the browser HTTP cache (640/828 cover phone + desktop).
@@ -1183,32 +1200,47 @@ function SocialProofPolaroid({ reduced }: { reduced: boolean }) {
         <p className="font-script text-2xl sm:text-3xl leading-tight text-[#3D3D3D]">
           {SOCIAL_PROOF.name} took this same quiz {SOCIAL_PROOF_WEEKS} weeks ago
         </p>
-        <CaptionArrow className="w-9 h-11 shrink-0 -mb-2 text-primary/70" />
+        <CaptionArrow className="relative z-10 w-9 h-11 shrink-0 -mb-2 text-primary/70" />
       </div>
 
-      {/* Polaroid. The tilt and the white border are doing the work here - a
-          square-cornered full-bleed photo reads as stock, a print reads as hers. */}
-      <div className="mx-auto w-[80%] max-w-[280px] -mt-1 rotate-[-2.5deg] rounded-sm bg-white p-2.5 pb-3 shadow-lg shadow-black/10 ring-1 ring-black/5">
-        <div className="relative aspect-4/5 overflow-hidden rounded-xs bg-[#E8DDD9]">
-          <Image
-            src={SOCIAL_PROOF.image}
-            alt={`${SOCIAL_PROOF.name}, ${SOCIAL_PROOF_WEEKS} weeks after taking the quiz`}
-            fill
-            sizes="280px"
-            className="object-cover"
-            style={{ objectPosition: SOCIAL_PROOF.objectPosition }}
-          />
-          <span className="absolute top-2 left-2 rounded-full bg-black/45 px-2 py-0.5 text-[10px] font-bold tracking-wide text-white backdrop-blur-xs">
-            Week {SOCIAL_PROOF_WEEKS}
-          </span>
-        </div>
-        <p className="mt-2.5 px-0.5 font-script text-lg leading-snug text-[#3D3D3D]">
-          &ldquo;{SOCIAL_PROOF.quote}&rdquo;
-        </p>
-        <p className="mt-1 px-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#9A9A9A]">
-          {SOCIAL_PROOF.name}, {SOCIAL_PROOF.age} &middot; finished her plan last week
-        </p>
+      {/* Two prints, same size on purpose - "Day 1" beside "Week 9" only reads as
+          a comparison if neither one is the hero, and overlapping them buried the
+          phone in the first shot, which is the only thing making it *this* quiz.
+          The opposite tilts and the white borders do the rest: a square-cornered
+          full-bleed photo reads as stock, a print reads as hers. */}
+      <div className="mx-auto mt-1 flex w-full max-w-[330px] items-start justify-center gap-2.5">
+        {SOCIAL_PROOF_PHOTOS.map((photo, i) => (
+          <figure
+            key={photo.src}
+            className={cn(
+              "w-1/2 rounded-sm bg-white p-1.5 pb-2 shadow-lg shadow-black/10 ring-1 ring-black/5",
+              i % 2 === 0 ? "mt-3 rotate-[-3.5deg]" : "rotate-[2.5deg]"
+            )}
+          >
+            <div className="relative aspect-4/5 overflow-hidden rounded-xs bg-[#E8DDD9]">
+              <Image
+                src={photo.src}
+                alt={`${SOCIAL_PROOF.name}, ${photo.alt}`}
+                fill
+                sizes="180px"
+                className="object-cover"
+                style={{ objectPosition: photo.objectPosition }}
+              />
+            </div>
+            <figcaption className="mt-1.5 text-center text-[10px] font-semibold uppercase tracking-wide text-[#9A9A9A]">
+              {photo.badge}
+            </figcaption>
+          </figure>
+        ))}
       </div>
+
+      {/* Quote under the pair rather than on one print - it belongs to both. */}
+      <p className="mx-auto mt-3.5 max-w-[300px] px-2 text-center font-script text-lg leading-snug text-[#3D3D3D]">
+        &ldquo;{SOCIAL_PROOF.quote}&rdquo;
+      </p>
+      <p className="mx-auto mt-1 max-w-[300px] px-2 text-center text-[10px] font-semibold uppercase tracking-wide text-[#9A9A9A]">
+        {SOCIAL_PROOF.name}, {SOCIAL_PROOF.age} &middot; finished her plan last week
+      </p>
     </motion.div>
   );
 }
