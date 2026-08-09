@@ -710,14 +710,19 @@ export function PaywallView({
             onClick={expired ? reclaim : handleCheckoutClick}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            // Solid, not the pastel brand gradient. The gradient is the funnel's
-            // house style, but on this screen it sits on top of pastel cards and
-            // stops reading as the one thing to press - so the payment button is
-            // the only element on the page in solid magenta with white text.
+            // A deep gradient, not the funnel's pastel one. /register's CTA
+            // (pink -> yellow -> cyan, dark text) is too light to survive here:
+            // this screen is already a stack of pastel cards, and a pastel
+            // button stops reading as the one thing to press. So the payment
+            // button takes the same pink->cyan arc the brand uses, but travels
+            // only its saturated first half - magenta into fuchsia-violet. Both
+            // stops clear 4.5:1 against white text (4.6:1 and 6.3:1); anything
+            // lighter or warmer than #E0117A does not, which is why there is no
+            // coral or yellow in here.
             className="relative w-full min-h-14 py-4 font-bold text-white rounded-2xl transition-all flex items-center justify-center gap-2 text-base sm:text-base disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden group"
             style={{
-              background: "#E0117A",
-              boxShadow: "0 8px 24px rgba(224, 17, 122, 0.38), 0 2px 8px rgba(224, 17, 122, 0.22)",
+              background: "linear-gradient(135deg, #E0117A 0%, #A21CAF 100%)",
+              boxShadow: "0 8px 24px rgba(177, 25, 148, 0.35), 0 2px 8px rgba(177, 25, 148, 0.20)",
             }}
           >
             <span
