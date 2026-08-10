@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { Settings, ArrowRight } from "lucide-react";
 import { TrialCard } from "@/components/TrialCard";
-import { InviteReferralSection } from "@/components/InviteReferralSection";
 import { useDashboardTrialStatus } from "@/lib/dashboardTrialContext";
 
 export const dynamic = "force-dynamic";
@@ -45,8 +44,6 @@ export default function AccountPage() {
           />
         )}
       </section>
-
-      <InviteReferralSection className="mb-6 sm:mb-8" />
 
       <Link
         href="/dashboard/settings"

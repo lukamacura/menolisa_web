@@ -65,7 +65,6 @@ web app/
 │   │   ├── langchain-rag/   # Main AI chat endpoint (Lisa)
 │   │   ├── notifications/   # In-app/push notification CRUD
 │   │   ├── plan/            # 8-week plan generation, habits, completion
-│   │   ├── referral/        # Referral system
 │   │   ├── stripe/          # Checkout, portal, webhook, sync
 │   │   ├── symptom-logs/    # Symptom log CRUD
 │   │   ├── symptoms/        # Symptom definitions (seeded defaults)
@@ -554,10 +553,10 @@ for on every page load. Before adding an image, shrink it (e.g. squoosh.app):
 - `app/api/cron/` — routes check `CRON_SECRET` header; never remove this check
 - `lib/supabaseAdmin.ts` — uses service role key (bypasses RLS); only call from server-side code
 - `proxy.ts` — modifying the matcher or auth logic can expose protected routes
-- **Never take a user id from a request body.** `/api/intake` and
-  `/api/referral/apply` both did, while writing with the service role, which let
-  anyone overwrite another woman's health profile or mint referral coupons.
-  Derive it from `getAuthenticatedUser(req)`, always.
+- **Never take a user id from a request body.** `/api/intake` and the
+  now-deleted `/api/referral/apply` both did, while writing with the service
+  role, which let anyone overwrite another woman's health profile or mint
+  referral coupons. Derive it from `getAuthenticatedUser(req)`, always.
 - **RLS policies must name their role.** A policy written without `TO
   service_role` applies to `public` — which includes `anon` and `authenticated`
   — and with `USING (true)` it hands the whole table to anyone holding the anon
@@ -735,6 +734,15 @@ again also works — that calls `sync-session`.
 ## 7. CURRENT STATUS
 
 Recent work:
+- **Referral system removed (2026-08-10)** — `/api/referral/*` (code,
+  discount-eligible, apply), `<InviteReferralSection />`, the `?ref=` capture in
+  `/register`, the `referralCode` field on save-quiz, the coupon check in the
+  Stripe `invoice.payment_succeeded` handler, `PLAN_PRICE_REFERRAL`,
+  `STRIPE_REFERRAL_COUPON_ID` and email step `3-3` are all gone. Schema drop
+  (the `referrals` table, `user_profiles.referral_code`,
+  `user_trials.referral_discount_used_at`) is
+  `scripts/sql/2026-08-10-drop-referral-system.sql` — **not applied yet**. The
+  Expo app calls these endpoints too; see §7 of `docs/mobile-app-changes.md`.
 - **Checkout fulfillment made webhook-independent (2026-08-10)** — the email
   bind, plan generation and welcome email moved out of the webhook into
   `lib/stripe/fulfillCheckout.ts`, which `/api/stripe/sync-session` now also

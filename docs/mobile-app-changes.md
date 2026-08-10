@@ -124,9 +124,35 @@ Only relevant if the Expo app shares any config with the web project:
   single base-URL variable.
 - `STRIPE_PRICE_MONTHLY` and `STRIPE_PRICE_ANNUAL` were removed — those plans
   no longer exist. `STRIPE_PRICE_8WEEK` is the only price.
+- `STRIPE_REFERRAL_COUPON_ID` was removed — see §7.
 
 `MOBILE_WEB_HANDOFF_SECRET` is unchanged; the mobile → web session handoff
 (`/api/auth/mobile-web-handoff`) still works exactly as before.
+
+---
+
+## 7. The referral system is gone (**breaking**) — 2026-08-10
+
+All three endpoints were deleted. They now return **404**, not an error payload:
+
+| Deleted endpoint | What it did |
+|---|---|
+| `GET /api/referral/code` | Returned/minted the user's referral code |
+| `GET /api/referral/discount-eligible` | Returned `inviteCopyState` for the invite UI |
+| `POST /api/referral/apply` | Recorded a referral and attached the 50%-off coupon |
+
+`POST /api/auth/save-quiz` no longer accepts a `referralCode` field. The body
+schema is strict-ish zod — send `{ quizAnswers }` only.
+
+Email step `3-3` ("share Lisa with a friend, get 50% off") no longer sends.
+
+The `referrals` table and the `user_profiles.referral_code` /
+`user_trials.referral_discount_used_at` columns are dropped by
+`scripts/sql/2026-08-10-drop-referral-system.sql`, so any mobile query touching
+them fails once that migration is applied.
+
+**Action:** delete the invite/share-code screen, every `/api/referral/*` call,
+the `referralCode` argument to save-quiz, and any read of those columns.
 
 ---
 
@@ -138,3 +164,5 @@ Only relevant if the Expo app shares any config with the web project:
 - [ ] Stop string-matching `"Trial expired"`; match on status `403`
 - [ ] Remove any trial countdown / "days left in trial" UI
 - [ ] Remove any "start your free trial" onboarding copy
+- [ ] Remove the invite/referral screen and every `/api/referral/*` call
+- [ ] Stop sending `referralCode` to `/api/auth/save-quiz`

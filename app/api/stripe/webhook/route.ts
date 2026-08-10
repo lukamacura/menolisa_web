@@ -306,36 +306,6 @@ async function handleInvoicePaymentSucceeded(
     ...(stripe_customer_id && { stripe_customer_id }),
   };
 
-  // If this paid invoice consumed the referral coupon, stamp the referrer's row.
-  const referralCouponId = process.env.STRIPE_REFERRAL_COUPON_ID;
-  if (referralCouponId && (invoice.amount_paid ?? 0) > 0 && userId) {
-    try {
-      const { data: existingTrial } = await supabaseAdmin
-        .from("user_trials")
-        .select("referral_discount_used_at")
-        .eq("user_id", userId)
-        .maybeSingle();
-      if (!existingTrial?.referral_discount_used_at) {
-        const fullInvoice = await stripe.invoices.retrieve(invoice.id!, {
-          expand: ["discounts.coupon"],
-        });
-        const discounts = (fullInvoice.discounts ?? []) as Array<{ coupon?: string | { id: string } } | string>;
-        const matched = discounts.some((d) => {
-          if (typeof d === "string") return false;
-          const coupon = d.coupon;
-          if (!coupon) return false;
-          const id = typeof coupon === "string" ? coupon : coupon.id;
-          return id === referralCouponId;
-        });
-        if (matched) {
-          updatePayload.referral_discount_used_at = new Date().toISOString();
-        }
-      }
-    } catch (err) {
-      console.error("Webhook invoice.payment_succeeded: referral coupon check failed:", err);
-    }
-  }
-
   const { data: updated, error } = await supabaseAdmin
     .from("user_trials")
     .update(updatePayload)

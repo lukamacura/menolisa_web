@@ -38,10 +38,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Referrals: delete where user is referrer; also where user is referee if column exists
-    const { error: refErr } = await supabase.from("referrals").delete().eq("referrer_id", userId);
-    if (refErr) console.warn("Account delete: referrals delete:", refErr.message);
-
     // Delete the auth user (so they cannot log in again)
     const { error: authError } = await supabase.auth.admin.deleteUser(userId);
     if (authError) {

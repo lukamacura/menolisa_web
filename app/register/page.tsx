@@ -654,8 +654,6 @@ function getNutritionVerdict(
   };
 }
 
-const REFERRAL_STORAGE_KEY = "pending_referral_code";
-
 
 
 
@@ -1034,24 +1032,6 @@ function RegisterPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const prefersReducedMotion = useReducedMotion();
-
-  const [ref, setRef] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fromUrl = searchParams.get("ref");
-    if (fromUrl && fromUrl.trim()) {
-      const code = fromUrl.trim();
-      setRef(code);
-      if (typeof sessionStorage !== "undefined") {
-        sessionStorage.setItem(REFERRAL_STORAGE_KEY, code);
-      }
-      return;
-    }
-    if (typeof sessionStorage !== "undefined") {
-      const stored = sessionStorage.getItem(REFERRAL_STORAGE_KEY);
-      if (stored) setRef(stored);
-    }
-  }, [searchParams]);
 
   // Always start on the start screen; URL ?phase=download|paywall lets Stripe redirect skip back into the funnel.
   // Initialize synchronously from URL so the auth-redirect effect below sees the correct phase on first render
@@ -1550,10 +1530,7 @@ function RegisterPageContent() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          quizAnswers,
-          ...(ref ? { referralCode: ref } : {}),
-        }),
+        body: JSON.stringify({ quizAnswers }),
       });
 
       if (!res.ok) {
@@ -1572,13 +1549,12 @@ function RegisterPageContent() {
       trackFunnelStep(META_FUNNEL_STEPS.lead);
 
       sessionStorage.removeItem("pending_quiz_answers");
-      if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(REFERRAL_STORAGE_KEY);
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error. Please try again.");
       return false;
     }
-  }, [ageBand, topProblems, timing, triedOptions, hrtStatus, goal, qualifier, hereFor, firstName, bodyMetrics, fitnessLevel, ref, router]);
+  }, [ageBand, topProblems, timing, triedOptions, hrtStatus, goal, qualifier, hereFor, firstName, bodyMetrics, fitnessLevel, router]);
 
   // Runs once per visit to the calculating screen. The ref guard matters: a
   // second run would mint a second anonymous account and orphan the first.

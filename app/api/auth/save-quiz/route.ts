@@ -36,7 +36,6 @@ const QuizSchema = z.object({
 
 const BodySchema = z.object({
   quizAnswers: QuizSchema,
-  referralCode: z.string().max(64).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -54,7 +53,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { quizAnswers, referralCode } = parsed.data;
+    const { quizAnswers } = parsed.data;
     const userId = user.id;
     const supabaseAdmin = getSupabaseAdmin();
 
@@ -133,33 +132,6 @@ export async function POST(request: NextRequest) {
       }
       // If a row already exists (mobile IAP, prior attempt), leave it untouched —
       // the Stripe webhook will flip it to "paid" on checkout completion.
-    }
-
-    if (referralCode && referralCode.trim()) {
-      try {
-        const origin =
-          request.nextUrl?.origin ||
-          process.env.NEXT_PUBLIC_SITE_URL ||
-          "http://localhost:3000";
-        // Forward the caller's credentials — the route derives the referred
-        // user from the session rather than trusting an id in the body.
-        const cookie = request.headers.get("cookie");
-        const authorization = request.headers.get("authorization");
-        const applyRes = await fetch(`${origin}/api/referral/apply`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(cookie && { cookie }),
-            ...(authorization && { authorization }),
-          },
-          body: JSON.stringify({ referralCode: referralCode.trim() }),
-        });
-        if (!applyRes.ok) {
-          console.warn("Referral apply failed:", await applyRes.text());
-        }
-      } catch (e) {
-        console.warn("Referral apply error:", e);
-      }
     }
 
     return NextResponse.json({ success: true, message: "Quiz answers saved" });

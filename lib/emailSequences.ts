@@ -11,11 +11,11 @@ const DASHBOARD_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://menolisa.com"
 
 export type StepId =
   | "p-1" | "p-2" | "p-3" | "p-4" | "p-5" | "p-6"
-  | "3-2" | "3-3" | "3-4" | "3-5";
+  | "3-2" | "3-4" | "3-5";
 
 export const EMAIL_SEQUENCE_STEPS: StepId[] = [
   "p-1", "p-2", "p-3", "p-4", "p-5", "p-6",
-  "3-2", "3-3", "3-4", "3-5",
+  "3-2", "3-4", "3-5",
 ];
 
 export interface EmailTemplate {
@@ -163,17 +163,6 @@ ${btn("See my plan", PAYWALL_URL)}
   </tr>
 </table>
 ${btn("Open MenoLisa", DASHBOARD_URL)}`,
-  },
-
-  "3-3": {
-    subject: "Share Lisa with a friend, get 50% off your next invoice",
-    html: `
-<p style="margin:0 0 16px;font-size:17px;font-weight:600;color:#2d1b3d">Hi {{name}},</p>
-<p style="margin:0 0 16px">If you know someone going through menopause who could use a companion that actually gets it, share Lisa with her.</p>
-<p style="margin:0 0 16px">She gets her own personalized ${PLAN_WEEKS}-week plan. You get 50% off your next invoice when she subscribes with your link.</p>
-<p style="margin:0 0 4px">So many women feel alone in this. You do not have to be, and neither does she.</p>
-${btn("Get your invite link", `${DASHBOARD_URL}/dashboard/account`)}
-<p style="margin:16px 0 0;color:#9d7ec9;font-size:13px">Find your link in the app under Account &gt; Invite friends.</p>`,
   },
 
   "3-4": {

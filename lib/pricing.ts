@@ -61,13 +61,6 @@ export const PLAN_DISCOUNT_PCT = Math.round(
 export const PLAN_DISCOUNT_WINDOW_MINUTES = 10;
 export const PLAN_DISCOUNT_WINDOW_MS = PLAN_DISCOUNT_WINDOW_MINUTES * 60 * 1000;
 
-/**
- * Referral reward: 50% off one invoice, granted by the Stripe coupon in
- * STRIPE_REFERRAL_COUPON_ID. Displayed price only — the actual discount is
- * applied by Stripe, so this must stay in sync with that coupon's percent off.
- */
-export const PLAN_PRICE_REFERRAL = PLAN_PRICE / 2;
-
 export function isPlanId(value: unknown): value is PlanId {
   return value === PLAN_ID;
 }
