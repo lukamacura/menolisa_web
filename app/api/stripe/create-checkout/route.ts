@@ -161,11 +161,15 @@ export async function POST(req: NextRequest) {
       success_url: useMobileReturns ? customSuccess : defaultSuccess,
       cancel_url: useMobileReturns ? customCancel : defaultCancel,
       client_reference_id: user.id,
-      // Undefined for a /register visitor: she is signed in anonymously and has
-      // no email yet, so Stripe collects one on its own page — and the webhook
+      // Omitted for a /register visitor: she is signed in anonymously and has no
+      // email yet, so Stripe collects one on its own page — and the webhook
       // stamps it onto this user id. Prefilled for everyone else (mobile app,
       // lapsed dashboard user) so they don't retype what we already know.
-      customer_email: user.email ?? undefined,
+      //
+      // An anonymous user's email is the empty STRING, not null, so `?? undefined`
+      // is not enough — Stripe rejects `customer_email: ""` outright with
+      // "Invalid email address" and the whole checkout 500s.
+      customer_email: user.email?.trim() ? user.email : undefined,
       metadata: { user_id: user.id, plan, ...metaMetadata },
       // No trial: the card is charged the full price at checkout and the
       // subscription renews every 8 weeks off the price's own interval.
