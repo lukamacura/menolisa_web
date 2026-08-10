@@ -51,7 +51,6 @@ import MetaPurchaseTracker from "@/components/MetaPurchaseTracker";
 import { SocialProofPolaroid } from "@/components/SocialProof";
 import { META_FUNNEL_STEPS } from "@/lib/metaPixel";
 import {
-  PLAN_ADHERENCE_PCT,
   PLAN_ID,
   PLAN_WEEKS,
 } from "@/lib/pricing";
@@ -685,81 +684,6 @@ const PLAN_ARC = [
   { weeks: "Week 3–5", label: "Build on what works" },
   { weeks: "Week 6–8", label: "Lock it in" },
 ] as const;
-
-// What her plan actually does about each symptom she picked, one line per pillar.
-// Nutrition and relaxation lines reuse the tracker's own vocabulary (see
-// docs/plan/pillars.md) so the funnel doesn't teach her one set of
-// words and the app greet her with another.
-type SymptomPlan = { movement: string; nutrition: string; relaxation: string; habits: string };
-const SYMPTOM_PLAN: Record<string, SymptomPlan> = {
-  hot_flashes: {
-    movement: "Low-impact strength, 3× a week",
-    nutrition: "Cut the spikes — sugar, alcohol, late caffeine",
-    relaxation: "4-2-6 breathing the moment one starts",
-    habits: "Cool the room before bed",
-  },
-  sleep_issues: {
-    movement: "Move in the morning, nothing hard after 7pm",
-    nutrition: "Fat & protein at breakfast, 12-hour fasting window",
-    relaxation: "A 10-minute wind-down before lights out",
-    habits: "Same wake time, daylight within 30 minutes",
-  },
-  brain_fog: {
-    movement: "A daily walk — blood flow before focus",
-    nutrition: "Fat & protein at breakfast, no snacking",
-    relaxation: "One reset between tasks, not after the crash",
-    habits: "Hardest task in your clearest hour",
-  },
-  mood_swings: {
-    movement: "Steady cardio on the days it builds",
-    nutrition: "Fat & protein with every meal, 5 hours between",
-    relaxation: "Paced breathing before you respond",
-    habits: "Name the trigger before the day ends",
-  },
-  weight_changes: {
-    movement: "Strength 3× a week — muscle is the lever now",
-    nutrition: "Low-glycemic fruit only, 12-hour fasting window",
-    relaxation: "An evening reset — cortisol drives the middle",
-    habits: "Weigh weekly, not daily",
-  },
-  low_energy: {
-    movement: "Short and early, never to exhaustion",
-    nutrition: "Fat & protein at breakfast, 6+ glasses of water",
-    relaxation: "A real 10-minute pause instead of a third coffee",
-    habits: "One 20-minute break, actually booked",
-  },
-  anxiety: {
-    movement: "20 minutes walking, outdoors",
-    nutrition: "No blood-sugar crashes — fat & protein every meal",
-    relaxation: "4-2-6 breathing twice a day, not only in the spike",
-    habits: "Caffeine cut-off at noon",
-  },
-  joint_pain: {
-    movement: "Mobility first, then light strength",
-    nutrition: "Omega-3 daily, added high-fiber foods",
-    relaxation: "An evening stretch and body scan",
-    habits: "Move every hour you sit",
-  },
-  bloating: {
-    movement: "A 10-minute walk after meals",
-    nutrition: "Add high-fiber foods slowly, no snacking between meals",
-    relaxation: "Slow breathing before you eat",
-    habits: "Water first thing, 6+ by evening",
-  },
-};
-
-/** Her worst symptoms first, capped, and only the ones the plan has copy for. */
-function getPlannedSymptoms(
-  topProblems: string[],
-  symptomSeverity: Record<string, number>,
-  n = 2
-): { id: string; label: string; plan: SymptomPlan }[] {
-  return [...topProblems]
-    .filter((id) => SYMPTOM_PLAN[id])
-    .sort((a, b) => (symptomSeverity[b] ?? 0) - (symptomSeverity[a] ?? 0))
-    .slice(0, n)
-    .map((id) => ({ id, label: SYMPTOM_LABELS[id] || id, plan: SYMPTOM_PLAN[id] }));
-}
 
 /** Two diverging trajectories over ~2 years: decline if untreated vs. climb with Lisa. */
 function TrajectoryChart({ score }: { score: number }) {
@@ -2373,10 +2297,6 @@ function RegisterPageContent() {
                 app blocks below are how it reaches her, not what she's buying,
                 so the plan gets the page's biggest, most personal asset. ───── */}
             {(() => {
-              // Just her #1 symptom: the generic pillar list right above already
-              // walks all four pillars once, so a second full-pillar card here
-              // was repeating the same shape twice in a row for no extra payoff.
-              const planned = getPlannedSymptoms(topProblems, symptomSeverity, 1);
               const goalLabel = (GOAL_PROMISE[goal[0]] ?? "feel like yourself again").toLowerCase();
               return (
                 <motion.div
@@ -2543,56 +2463,6 @@ function RegisterPageContent() {
                     </ShotStage>
                   </div>
 
-                  {/* ── What the plan does about HER symptoms. The four pillars above
-                      are the shape; this is the proof it was built for her. ───── */}
-                  {planned.length > 0 && (
-                    <div className="mt-5">
-                      <div className="px-1 mb-3">
-                        <h2 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight">
-                          {firstName.trim() ? `${firstName.trim()}, here's how we'll tackle ` : "Here's how we'll tackle "}
-                          <HighlightSweep>your {getSymptomPhrase(planned.map((s) => s.id))}</HighlightSweep>
-                        </h2>
-                        <p className="text-xs text-[#5A5A5A] mt-1.5">
-                          Every day, you&apos;ll have a few simple tasks to do - each one moving you toward feeling better.
-                        </p>
-                      </div>
-                      <div className="space-y-3">
-                        {planned.map((s, i) => (
-                          <motion.div
-                            key={s.id}
-                            initial={{ opacity: 0, y: 12 }}
-                            whileInView={{ opacity: 1, y: 0 }}
-                            viewport={{ once: true, amount: 0.3 }}
-                            transition={{ delay: i * 0.08 }}
-                            className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-3.5 shadow-sm"
-                          >
-                            <p className="text-sm font-bold text-[#3D3D3D] mb-2.5">{s.label}</p>
-                            <div className="space-y-2">
-                              {PLAN_PILLARS.map((p) => (
-                                <div key={p.key} className="flex items-start gap-2.5">
-                                  <span
-                                    className={cn(
-                                      "inline-flex items-center justify-center w-8 h-8 rounded-lg shrink-0",
-                                      p.chip
-                                    )}
-                                  >
-                                    <p.icon className={cn("w-4 h-4", p.tint)} />
-                                  </span>
-                                  <div className="min-w-0">
-                                    <p className="text-[10px] font-semibold text-[#9A9A9A] uppercase tracking-wide leading-none">{p.label}</p>
-                                    <p className="text-xs text-[#3D3D3D] leading-snug mt-0.5">{s.plan[p.key]}</p>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </motion.div>
-                        ))}
-                      </div>
-                      <p className="text-[10px] text-[#9A9A9A] mt-2 px-1 leading-snug">
-                        Illustrative - your plan is written from your own answers when you start.
-                      </p>
-                    </div>
-                  )}
                 </motion.div>
               );
             })()}
@@ -2663,42 +2533,6 @@ function RegisterPageContent() {
                 </motion.div>
               );
             })()}
-
-            {/* ── The 8-Week Guarantee. Risk reversal with exactly one condition:
-                she has to actually follow the plan. Stated as the reason the
-                promise can exist rather than as fine print, because "it works if
-                you do it" is a confident claim, not a catch - and it's the only
-                version that survives contact with people who never open the app.
-                Adherence comes from her own tick-offs, so there is nothing for
-                her to submit and nothing for us to adjudicate. ── */}
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.22 }}
-              className="relative rounded-2xl border-2 border-green-300 bg-green-50 p-4 mb-5 overflow-hidden"
-              style={{ boxShadow: "0 0 0 2px rgba(22,163,74,0.12), 0 8px 28px rgba(22,163,74,0.12)" }}
-            >
-              <div className="flex flex-col items-center text-center">
-                <ShieldCheck className="w-12 h-12 text-green-600 shrink-0 mb-2" />
-                <h2 className="text-base font-bold text-green-800 mb-2">
-                  The {PLAN_WEEKS}-Week Guarantee
-                </h2>
-                <p className="text-sm text-[#3D3D3D] leading-relaxed">
-                  {firstName.trim() ? `${firstName.trim()}, follow` : "Follow"}{" "}
-                  <b>{PLAN_ADHERENCE_PCT}% of your plan</b> for <b>{PLAN_WEEKS} weeks</b>. If you
-                  still don&apos;t feel better, we&apos;ll{" "}
-                  <HighlightSweep variant="green">
-                    <b>refund you</b>
-                  </HighlightSweep>{" "}
-                  in full.
-                </p>
-                <div className="w-16 h-px bg-green-300 my-3" />
-                <p className="text-xs text-[#5A5A5A] leading-snug">
-                  Your plan counts itself as you tick off each day &mdash; nothing to submit,
-                  nothing to prove. Do the work and the risk is ours.
-                </p>
-              </div>
-            </motion.div>
 
             {/* ── Trust strip ───────────────────────────────────────────────── */}
             <motion.div
