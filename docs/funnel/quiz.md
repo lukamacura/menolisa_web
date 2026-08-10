@@ -7,6 +7,13 @@
 > below. Everything else still describes the live `/register` quiz. See
 > [../archive/quiz1.md](../archive/quiz1.md).
 
+> **Note (2026-08-10):** the `email` phase is gone too. `/register` now signs her
+> in anonymously behind the calculating loader and Stripe collects the address at
+> checkout, so every "email gate" / "OTP" mention below describes a step that no
+> longer exists. The live phase machine is
+> `start → quiz → calculating → results → diagnosis → relief → nutrition → paywall → download`.
+> See "Anonymous accounts" in `CLAUDE.md` §4.
+
 ---
 
 ## 0. TL;DR

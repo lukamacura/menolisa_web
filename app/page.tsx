@@ -20,7 +20,7 @@ const ChaosToClarity = dynamic(() => import("@/components/landing/ChaosToClarity
   loading: () => <SectionPlaceholder className="h-[420px]" />
 });
 const LandingProblem = dynamic(() => import("@/components/landing/LandingProblem"), {
-  loading: () => <SectionPlaceholder className="h-[320px]" />
+  loading: () => <SectionPlaceholder className="h-80" />
 });
 const HowItWorksSteps = dynamic(() => import("@/components/landing/HowItWorksSteps"), {
   loading: () => <SectionPlaceholder className="h-[480px]" />
@@ -35,10 +35,10 @@ const LandingPricing = dynamic(() => import("@/components/landing/LandingPricing
   loading: () => <SectionPlaceholder className="h-[480px]" />
 });
 const LandingFAQ = dynamic(() => import("@/components/landing/LandingFAQ"), {
-  loading: () => <SectionPlaceholder className="h-[320px]" />
+  loading: () => <SectionPlaceholder className="h-80" />
 });
 const LandingFinalCTA = dynamic(() => import("@/components/landing/LandingFinalCTA"), {
-  loading: () => <SectionPlaceholder className="h-[160px]" />
+  loading: () => <SectionPlaceholder className="h-40" />
 });
 const LandingFooter = dynamic(() => import("@/components/landing/LandingFooter"), {
   loading: () => <SectionPlaceholder className="h-[180px]" />

@@ -95,6 +95,136 @@ async function resolveUserId(
   return opts.metadataUserId ?? null;
 }
 
+/** Quiz answers `/api/auth/save-quiz` writes. Listed explicitly so a merge copies
+ *  data and never identity columns. */
+const QUIZ_PROFILE_COLUMNS = [
+  "name",
+  "age_band",
+  "top_problems",
+  "timing",
+  "here_for",
+  "tried_options",
+  "hrt_status",
+  "doctor_status",
+  "goal",
+  "goals",
+  "qualifier",
+  "height_cm",
+  "weight_kg",
+  "height_unit",
+  "weight_unit",
+  "fitness_level",
+].join(",");
+
+/**
+ * Move the funnel's quiz answers onto the account that survives a merge — but
+ * only when that account has no profile of its own. An existing profile is real
+ * data she built up; a fresh re-take of the quiz does not outrank it.
+ */
+async function adoptQuizProfile(
+  supabaseAdmin: SupabaseClient,
+  fromUserId: string,
+  toUserId: string
+): Promise<void> {
+  const { data: target } = await supabaseAdmin
+    .from("user_profiles")
+    .select("user_id")
+    .eq("user_id", toUserId)
+    .maybeSingle();
+  if (target) return;
+
+  // The column list is built at runtime, so postgrest-js can't infer a row type
+  // for it — hence the cast.
+  const { data } = await supabaseAdmin
+    .from("user_profiles")
+    .select(QUIZ_PROFILE_COLUMNS)
+    .eq("user_id", fromUserId)
+    .maybeSingle();
+  const source = data as Record<string, unknown> | null;
+  if (!source) return;
+
+  const { error } = await supabaseAdmin
+    .from("user_profiles")
+    .insert({ ...source, user_id: toUserId });
+  if (error) console.error("Webhook: quiz profile adoption failed:", error);
+}
+
+/**
+ * Bind the email Stripe collected to the account that is paying, and return the
+ * user id the subscription belongs to.
+ *
+ * The `/register` funnel signs her in anonymously — no email is asked for
+ * anywhere before the card — so the account arriving here usually has none.
+ * That address has to land before anything else runs:
+ *   - it is how she logs into the mobile app afterwards (OTP needs an address);
+ *   - the welcome email below reads it back off `auth.users`;
+ *   - `sync_email_sequence_recipient()` returns early for an emailless user, so
+ *     the paid drip only ever starts if the email is set *before* `user_trials`
+ *     is written (that write is what fires the sync trigger).
+ *
+ * Usually the id is unchanged. When the address already belongs to another
+ * account — she bought before, or signed up in the app — the subscription goes
+ * to *that* account instead of minting a duplicate she could never log into.
+ */
+async function resolveCheckoutAccount(
+  supabaseAdmin: SupabaseClient,
+  userId: string,
+  email: string | null
+): Promise<string> {
+  if (!email) {
+    console.warn(`Webhook: checkout session for ${userId} carried no email`);
+    return userId;
+  }
+
+  const { data: authData, error: readError } = await supabaseAdmin.auth.admin.getUserById(userId);
+  if (readError || !authData?.user) {
+    console.error("Webhook: could not load user for email binding:", readError);
+    return userId;
+  }
+  // Already has an address (mobile signup, returning subscriber). Never
+  // overwrite it with whatever was typed into Stripe.
+  if (authData.user.email) return userId;
+
+  const { error: bindError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+    email,
+    email_confirm: true,
+  });
+  if (!bindError) return userId;
+
+  // Only one account can hold an address, so a failure here is almost always a
+  // collision. Find the account that already holds it and merge into it.
+  const { data: existingId, error: lookupError } = await supabaseAdmin.rpc(
+    "auth_user_id_by_email",
+    { p_email: email }
+  );
+  if (lookupError || !existingId) {
+    console.error(
+      `Webhook: could not bind ${email} to user ${userId}, and no existing account holds it`,
+      bindError,
+      lookupError
+    );
+    return userId;
+  }
+
+  console.warn(
+    `Webhook: checkout email already belongs to ${existingId}; merging ${userId} into it`
+  );
+  await adoptQuizProfile(supabaseAdmin, userId, existingId as string);
+
+  // Drop the funnel account's subscription row. Stripe does not guarantee
+  // delivery order, so `customer.subscription.created` may already have marked
+  // it paid off the same metadata user id — leaving two rows claiming one
+  // subscription, and an account the purge cron would then refuse to clean up
+  // because it looks like a paying customer.
+  const { error: dropError } = await supabaseAdmin
+    .from("user_trials")
+    .delete()
+    .eq("user_id", userId);
+  if (dropError) console.error("Webhook: could not drop merged trial row:", dropError);
+
+  return existingId as string;
+}
+
 /**
  * Out-of-order guard. Returns true when this event is older than the last one we processed for the user,
  * in which case the caller should short-circuit without writing. Updates the watermark on success.
@@ -130,13 +260,24 @@ async function handleCheckoutSessionCompleted(
   session: Stripe.Checkout.Session,
   eventCreatedSec: number
 ): Promise<HandlerResult> {
-  const userId = session.client_reference_id ?? (session.metadata?.user_id as string | undefined) ?? null;
-  if (!userId) {
+  const sessionUserId =
+    session.client_reference_id ?? (session.metadata?.user_id as string | undefined) ?? null;
+  if (!sessionUserId) {
     console.error("Webhook checkout.session.completed: no user id in session");
     return { ok: true };
   }
 
   const supabaseAdmin = getSupabaseAdmin();
+
+  // Give the account its email before touching user_trials — see
+  // resolveCheckoutAccount for why the order matters. May return a different id
+  // than the session carried, when the address belongs to an older account.
+  const userId = await resolveCheckoutAccount(
+    supabaseAdmin,
+    sessionUserId,
+    session.customer_details?.email ?? session.customer_email ?? null
+  );
+
   if (await isStaleEvent(supabaseAdmin, userId, eventCreatedSec)) return { ok: true };
 
   let subscription_ends_at: string | null = null;

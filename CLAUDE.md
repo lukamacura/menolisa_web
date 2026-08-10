@@ -35,7 +35,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Scheduled cron jobs (Vercel Cron)
 
 ### Key Design Decisions
-- **Passwordless auth only** — 6-digit email OTP via Supabase (`signInWithOtp` + `verifyOtp`). No passwords, no magic links. Shared `<OtpForm />` (`components/auth/OtpForm.tsx`) is the only auth UI.
+- **Passwordless auth only** — 6-digit email OTP via Supabase (`signInWithOtp` + `verifyOtp`). No passwords, no magic links. Shared `<OtpForm />` (`components/auth/OtpForm.tsx`) is the only auth UI, and `/login` is now its only caller.
+- **The `/register` funnel never asks for an email** — it signs her in anonymously and lets Stripe collect the address at checkout. See "Anonymous accounts" below.
 - **Dual auth paths** — cookie (web) and Bearer token (mobile) coexist in every API route via `getAuthenticatedUser()`
 - **Verbatim KB-first RAG** — AI chat tries to return exact knowledge base content before falling back to LLM generation; this ensures medically accurate, consistent answers
 - **Persona-based routing** — queries are classified into 4 personas before retrieval to ensure the right tone and knowledge domain
@@ -166,8 +167,9 @@ Don't add another.
 | `/api/cron/daily-reminders` | 9am UTC daily | Push notification to users who haven't logged today |
 | `/api/cron/weekly-insights` | 12am UTC Monday | Generate weekly insight summaries |
 | `/api/cron/email-sequences` | 11am UTC daily | Drip email sequences (pending-payment winback + paid drip) |
+| `/api/cron/purge-anon-accounts` | 3am UTC daily | Delete emailless, unpaid anonymous accounts older than 7 days |
 
-These three are the whole list — keep it in sync with `vercel.json`.
+These four are the whole list — keep it in sync with `vercel.json`.
 
 ---
 
@@ -238,12 +240,64 @@ const supabaseAdmin = getSupabaseAdmin(); // lazy singleton
 
 ### Authentication
 - `lib/getAuthenticatedUser.ts` — **always use this** in API routes; it handles both cookie-based (web) and Bearer token (mobile) auth
-- Auth UI: shared `components/auth/OtpForm.tsx` used by `app/login/page.tsx` and the email phase of `app/register/page.tsx`
+- Auth UI: shared `components/auth/OtpForm.tsx`, used by `app/login/page.tsx`. The `/register` funnel no longer has an email phase (see below), so login is its only caller.
 - Login flow: email → `signInWithOtp({ shouldCreateUser: false })` → 6-digit code → `verifyOtp` → session → honor `?redirectedFrom=` (validated, must start with `/` and not `//`)
-- Registration flow: quiz → `signInWithOtp({ shouldCreateUser: true })` → 6-digit code → `verifyOtp` → `POST /api/auth/save-quiz` (server reads `userId` from session, validates payload with zod, creates `user_trials` row in `pending_payment`) → results → paywall → Stripe checkout → webhook flips `account_status` to `paid`
+- Registration flow: quiz → **anonymous sign-in** behind the calculating loader → `POST /api/auth/save-quiz` (server reads `userId` from session, validates payload with zod, creates `user_trials` row in `pending_payment`) → results → diagnosis → relief → nutrition → paywall → Stripe checkout **collects the email** → webhook binds it to that same user id and flips `account_status` to `paid`
 - Mobile bridge (`app/auth/mobile-bridge/page.tsx`) is a session handoff (mobile → web token via `#hash`), not a login — leave it alone
 - Email template: paste branded HTML into Supabase Dashboard → Auth → Email Templates → Magic Link, with `{{ .Token }}` for the 6-digit code
 - `proxy.ts` (Next 16 renamed `middleware.ts` → `proxy.ts`, and the exported function from `middleware` → `proxy`) protects `/dashboard/*` and `/chat/lisa/*`. It runs two gates: a session check on everything in `PROTECTED_PREFIXES`, then a payment check that skips `PAYMENT_EXEMPT_PREFIXES` (`/dashboard/account`, `/dashboard/settings`) so cancellation and account deletion stay reachable after access ends. Select the full `TRIAL_SELECT_COLS` when reading `user_trials` — a partial select makes missing columns read as "no dispute, not canceled" and grants access it shouldn't.
+
+### Anonymous accounts (the `/register` funnel)
+
+The funnel asks for **nothing** before the card. No email box, no 6-digit code,
+no waiting on an inbox. It works because a Supabase anonymous user is a real row
+in `auth.users` with a real id and a real JWT — it just has no email — and every
+route here keys off `user.id`, never the address.
+
+The chain, and the order it must happen in:
+
+1. `completeRegistration()` (`app/register/page.tsx`) runs behind the
+   calculating loader: `supabase.auth.signInAnonymously()`, then `save-quiz`.
+   A ref guards it — running twice mints a second account and orphans the first.
+2. `create-checkout` passes `customer_email: user.email ?? undefined`. For a
+   funnel visitor that is `undefined`, so **Stripe collects the email**.
+3. `resolveCheckoutAccount()` (`app/api/stripe/webhook/route.ts`) binds
+   `session.customer_details.email` to the account with
+   `auth.admin.updateUserById(..., { email_confirm: true })`.
+
+**Bind the email before writing `user_trials`.** The `sync_email_sequence_recipient()`
+trigger fires on that write and returns early for a user with no email, so an
+email that lands afterwards means the paid drip never starts for her.
+
+Two consequences worth knowing before changing any of this:
+
+- **Collision is a real path, not an edge case.** Only one account can hold an
+  address, so a returning customer typing her usual email at Stripe fails the
+  bind. `resolveCheckoutAccount` then looks the address up via
+  `auth_user_id_by_email` and **returns that account's id**, so the subscription
+  lands on the account she can actually log into. Her quiz answers are copied
+  over only if that account has no profile yet — existing data outranks a
+  re-take.
+- **The address is never verified.** She proves nothing by typing it into
+  Stripe, so a typo is an account she has paid for and cannot log into. There is
+  no self-serve recovery; it is a support job.
+
+`is_anonymous` is **not** a reliable "never paid" flag — it may stay `true` after
+the webhook binds an email. Never gate anything on it alone. `purge_stale_anonymous_users()`
+requires `email is null` *and* no paid row for exactly this reason, and
+`completeRegistration()` checks the `user_trials` row for every session,
+anonymous or not, rather than trusting the flag.
+
+Housekeeping: every quiz finisher who never pays leaves an account behind, and
+Supabase bills monthly active users, so `/api/cron/purge-anon-accounts` deletes
+emailless, unpaid anonymous accounts older than 7 days. Public tables have no FK
+to `auth.users`, so nothing cascades — the SQL function clears all 15 `user_id`
+tables explicitly. Add a table with a `user_id`, add it there too.
+
+**Requires "Anonymous sign-ins" enabled** in Supabase Dashboard → Authentication
+→ Sign In / Providers. With it off, `/register` dead-ends at the calculating
+screen. Migration + verification commands:
+`scripts/sql/2026-08-10-anonymous-funnel-accounts.sql`.
 
 ### Database Schema (key tables)
 Supabase (PostgreSQL) — no ORM, raw SQL queries via Supabase JS client:
@@ -371,7 +425,7 @@ Ad tracking for the `/register` web2app funnel:
 | `PageView` | `components/MetaPixel.tsx` (in `app/layout.tsx`); re-fires on App Router route changes | — |
 | `QuizStart` *(custom)* | `app/register/page.tsx` on the quiz phase | — |
 | `QuizComplete` *(custom)* | `app/register/page.tsx` last step of `goNext()` | — |
-| `Lead` | `app/register/page.tsx` `handleOtpSuccess()`, after save-quiz succeeds | — |
+| `Lead` | `app/register/page.tsx` `completeRegistration()`, after save-quiz succeeds | — |
 | `ViewContent` | `components/PaywallView.tsx` on mount (once) | $59 |
 | `InitiateCheckout` | `components/PaywallView.tsx` CTA click | $59 |
 | `Purchase` | Browser: `components/MetaPurchaseTracker.tsx` on the success landing. Server: `sendMetaPurchase()` from the Stripe webhook | $59 |
@@ -381,7 +435,10 @@ Step names and their sessionStorage dedup keys are paired in `META_FUNNEL_STEPS`
 `QuizStart`/`QuizComplete` are custom events — each needs a **Custom Conversion**
 defined in Events Manager before it can be optimized for or used as an audience.
 `Lead` is standard and needs no setup, which is why it's the fallback
-optimization objective while Purchase volume is below learning-phase exit.
+optimization objective while Purchase volume is below learning-phase exit. Since
+the funnel stopped collecting an email, `Lead` carries no hashed address and
+matches on pixel signals alone — it fires one screen after `QuizComplete`, so
+treat it as "profile saved", not as a captured contact.
 
 `Purchase` is sent from **both** browser and server and deduplicated by a shared
 `event_id` (`purchaseEventId()` in `lib/metaPixel.ts`, derived from the Stripe
@@ -467,9 +524,16 @@ for on every page load. Before adding an image, shrink it (e.g. squoosh.app):
   curl "$NEXT_PUBLIC_SUPABASE_URL/rest/v1/user_profiles?select=name&limit=1" \
        -H "apikey: $NEXT_PUBLIC_SUPABASE_ANON_KEY"   # must return []
   ```
-- **`REVOKE ... FROM public`, not from `anon, authenticated`.** Postgres grants
-  EXECUTE on new functions to `PUBLIC` by default; revoking the named roles
-  leaves that grant intact and the function still callable.
+- **`REVOKE ... FROM public, anon, authenticated` — all three.** Postgres grants
+  EXECUTE on new functions to `PUBLIC` by default, *and* Supabase ships an
+  `ALTER DEFAULT PRIVILEGES` on `public` that hands `anon`/`authenticated` their
+  own direct grant at creation time. Revoking either side alone leaves the
+  other, and the function stays callable with the anon key. Both halves of this
+  have now been confirmed the hard way (2026-08-08 and 2026-08-10). Never assume
+  the revoke worked — check it:
+  ```sql
+  select has_function_privilege('anon', 'public.fn(text)', 'EXECUTE'); -- must be false
+  ```
 - Never commit a credential as a code fallback (`process.env.X || "secret"`).
   A default in the repo is a published secret; fail closed instead.
 
@@ -581,7 +645,15 @@ for on every page load. Before adding an image, shrink it (e.g. squoosh.app):
 
 **Trial not starting after registration**
 - Check `user_trials` table has a row for the user
-- `/api/auth/save-quiz` creates the trial row right after OTP verification; if it failed, create manually via Supabase dashboard
+- `/api/auth/save-quiz` creates the row right after the anonymous sign-in; if it failed, create manually via Supabase dashboard
+
+**`/register` stuck on "Getting to know you better..." / "We couldn't save your results."**
+- Anonymous sign-ins are disabled in Supabase → Authentication → Sign In / Providers. Nothing in the funnel works without it.
+- Confirm with `curl -X POST "$NEXT_PUBLIC_SUPABASE_URL/auth/v1/signup" -H "apikey: $NEXT_PUBLIC_SUPABASE_ANON_KEY" -H "Content-Type: application/json" -d '{}'` — `422 anonymous_provider_disabled` means it's off.
+
+**She paid but can't log into the app**
+- The address she typed at Stripe is what her account holds. Check `auth.users` for it — a typo is the usual cause, and there is no self-serve fix.
+- If the address already belonged to another account, the webhook merged the subscription onto that older account by design. Look there before creating anything.
 
 **Magic link OTP code not arriving**
 - Check Supabase Dashboard → Auth → Email Templates → Magic Link is enabled and template includes `{{ .Token }}`
@@ -592,6 +664,15 @@ for on every page load. Before adding an image, shrink it (e.g. squoosh.app):
 ## 7. CURRENT STATUS
 
 Recent work:
+- **Email step removed from the funnel (2026-08-10)** — `/register` signs her in
+  anonymously and Stripe collects the address at checkout; the webhook binds it
+  to that account. Removed the `email` phase, `handleOtpSuccess` and `<OtpForm />`
+  from the register page. See "Anonymous accounts" in §4 and
+  `scripts/sql/2026-08-10-anonymous-funnel-accounts.sql`.
+  **Side effect: the pending-payment winback (`p-1`…`p-6`) goes dark for web
+  signups** — nobody who abandons the paywall leaves an address any more. The
+  steps are deliberately left in `lib/emailSequences.ts` because mobile-app
+  signups still register with a real email and still receive them.
 - **RLS bypass fixed (2026-08-08)** — four `FOR ALL / USING (true)` policies with
   no `TO` clause were exposing every table to the anon key. Dropped; see
   `scripts/sql/2026-08-08-URGENT-fix-rls-bypass.sql`.

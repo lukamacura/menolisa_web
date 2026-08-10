@@ -3,7 +3,6 @@
 
 import React, { useState, useCallback, useEffect, useMemo, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import Image from "next/image";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { supabase } from "@/lib/supabaseClient";
@@ -45,7 +44,6 @@ import {
   Droplets,
   Pill,
 } from "lucide-react";
-import OtpForm from "@/components/auth/OtpForm";
 import { PaywallView } from "@/components/PaywallView";
 import MetaPurchaseTracker from "@/components/MetaPurchaseTracker";
 import { SocialProofPolaroid } from "@/components/SocialProof";
@@ -310,7 +308,13 @@ function deriveSeverity(
   return "mild";
 }
 
-type Phase = "start" | "quiz" | "calculating" | "email" | "results" | "diagnosis" | "relief" | "nutrition" | "paywall" | "download";
+// No email/OTP phase: the funnel never asks her to leave for an inbox. The
+// account is created silently (Supabase anonymous sign-in) while the
+// calculating loader runs, and Stripe Checkout collects the email at payment -
+// the webhook then stamps it onto that same user id. See
+// `completeRegistration()` below and `resolveCheckoutAccount()` in the Stripe
+// webhook.
+type Phase = "start" | "quiz" | "calculating" | "results" | "diagnosis" | "relief" | "nutrition" | "paywall" | "download";
 
 
 const getScoreColor = (score: number): string => {
@@ -1276,10 +1280,7 @@ function RegisterPageContent() {
     };
   }, [heightUnit, heightCm, heightFt, heightIn, weightUnit, weightKg, weightLb]);
 
-  // Email state
-  const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [, setSavingQuiz] = useState(false);
 
   const derivedSeverity = deriveSeverity(totalBurden, timing);
 
@@ -1308,7 +1309,7 @@ function RegisterPageContent() {
     return Math.min(95, 80 + Math.round(frac * 15));
   }, [totalBurden, topProblems.length]);
 
-  // Loading screen state (between quiz and email)
+  // Loading screen state (between quiz and results)
   const [messageIndex, setMessageIndex] = useState(0);
   const [displayScore, setDisplayScore] = useState(0);
 
@@ -1323,7 +1324,9 @@ function RegisterPageContent() {
     return () => clearTimeout(t);
   }, [phase]);
 
-  // Calculating screen: ~3s loader between quiz and email phases
+  // Calculating screen: the message carousel. The work that used to sit behind
+  // this loader (account + save-quiz) is driven by the effect next to
+  // completeRegistration below, which is also what advances the phase.
   useEffect(() => {
     if (phase !== "calculating") return;
     setMessageIndex(0);
@@ -1333,15 +1336,7 @@ function RegisterPageContent() {
       setMessageIndex((prev) => Math.min(prev + 1, LOADING_MESSAGES.length - 1));
     }, 1000);
 
-    const loadingTimer = setTimeout(() => {
-      clearInterval(messageInterval);
-      setPhase("email");
-    }, 3000);
-
-    return () => {
-      clearInterval(messageInterval);
-      clearTimeout(loadingTimer);
-    };
+    return () => clearInterval(messageInterval);
   }, [phase]);
 
   // Animate score counting up
@@ -1431,7 +1426,8 @@ function RegisterPageContent() {
     if (stepIndex < STEPS.length - 1) {
       setStepIndex(stepIndex + 1);
     } else {
-      // Quiz complete - show calculating loader, then move to email (verify before showing results)
+      // Quiz complete - the calculating loader creates her account and saves the
+      // answers, then opens the results.
       saveQuizAnswers();
       // Ad-funnel step 2, and the one that ranks angles: cheap clicks that never
       // reach here mean the ad pulled the wrong woman. Her symptom count and
@@ -1474,29 +1470,62 @@ function RegisterPageContent() {
     }
   }, [stepIndex]);
 
-  // Called by OtpForm after Supabase verifyOtp succeeds (session is live).
-  const handleOtpSuccess = useCallback(async () => {
+  /**
+   * Give her an account and save her answers - without asking her for anything.
+   *
+   * Runs behind the calculating loader, where the email + 6-digit code step used
+   * to be. Supabase anonymous sign-in mints a real user id with no email
+   * attached, which is all `/api/auth/save-quiz` and Stripe checkout need. The
+   * email arrives later, at Stripe, and the webhook stamps it onto this same id
+   * - so her profile, her plan and her subscription all hang off one account
+   * from the first question to the first charge.
+   *
+   * Returns false when the caller should stay put (an error to retry, or a
+   * redirect already in flight).
+   */
+  const completeRegistration = useCallback(async (): Promise<boolean> => {
     setError(null);
-    setSavingQuiz(true);
     try {
-      // Safety net: someone with an already-active account (e.g. existing paid
-      // customer) who slipped past the email check shouldn't be re-onboarded or
-      // shown the paywall - send them straight to the dashboard without touching
-      // their saved quiz/profile.
-      const { data: sessionData } = await supabase.auth.getSession();
-      const sessionUserId = sessionData?.session?.user?.id;
-      if (sessionUserId) {
+      // getUser() rather than getSession(): it validates against Supabase
+      // instead of trusting localStorage. A token for an account the purge cron
+      // has since deleted still parses locally but is dead server-side, and
+      // save-quiz would 401 on it with no way out but a cleared browser.
+      const { data: userData } = await supabase.auth.getUser();
+      let sessionUser = userData?.user ?? null;
+
+      // A session already here means she came back through the ad on an account
+      // she already has. If it still has access, send her to the product rather
+      // than re-onboarding her or selling her a second subscription. Checked for
+      // anonymous sessions too - one that already paid is exactly the case that
+      // must not be sold twice, and `is_anonymous` is not a reliable "never
+      // paid" signal once the webhook has bound an email to the account.
+      if (sessionUser) {
         const { data: trialRow } = await supabase
           .from("user_trials")
           .select(TRIAL_SELECT_COLS)
-          .eq("user_id", sessionUserId)
+          .eq("user_id", sessionUser.id)
           .maybeSingle();
         if (trialRow && stateAllowsAccess(getAccountState(trialRow).state)) {
           sessionStorage.removeItem("pending_quiz_answers");
           router.replace("/dashboard");
           router.refresh();
-          return;
+          return false;
         }
+      }
+
+      if (!sessionUser) {
+        // Drop any dead token locally first, or signInAnonymously refuses to
+        // replace what it thinks is a live session.
+        await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+        const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
+        if (anonError || !anonData?.user) {
+          // Almost always "Anonymous sign-ins are disabled" in the Supabase
+          // dashboard - see scripts/sql/2026-08-10-anonymous-funnel-accounts.sql.
+          console.error("Anonymous sign-in failed:", anonError);
+          setError("We couldn't save your results. Please try again.");
+          return false;
+        }
+        sessionUser = anonData.user;
       }
 
       const quizAnswers: Record<string, unknown> = {
@@ -1530,26 +1559,54 @@ function RegisterPageContent() {
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setError(typeof data.error === "string" ? data.error : "Couldn't save your answers. Please try again.");
-        return;
+        return false;
       }
 
-      // Ad-funnel step 3: email verified and her profile is saved. Deliberately a
-      // Meta *standard* event - it can be an optimization objective and an
-      // audience with no Custom Conversion setup, which is what makes it the
-      // fallback objective while Purchase volume is still below learning-phase
-      // exit. Fires after save-quiz succeeds, so an already-active account taking
-      // the early return above is never counted as a new lead.
+      // Ad-funnel step 3: her account exists and her profile is saved.
+      // Deliberately a Meta *standard* event - it can be an optimization
+      // objective and an audience with no Custom Conversion setup, which is what
+      // makes it the fallback objective while Purchase volume is still below
+      // learning-phase exit. It no longer carries an email (there is none until
+      // Stripe), so it matches on pixel signals alone. An already-active account
+      // takes the early return above and is never counted as a new lead.
       trackFunnelStep(META_FUNNEL_STEPS.lead);
 
       sessionStorage.removeItem("pending_quiz_answers");
       if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(REFERRAL_STORAGE_KEY);
-      setPhase("results");
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error. Please try again.");
-    } finally {
-      setSavingQuiz(false);
+      return false;
     }
   }, [ageBand, topProblems, timing, triedOptions, hrtStatus, goal, qualifier, hereFor, firstName, bodyMetrics, fitnessLevel, ref, router]);
+
+  // Runs once per visit to the calculating screen. The ref guard matters: a
+  // second run would mint a second anonymous account and orphan the first.
+  const registrationStarted = useRef(false);
+  const [registrationRetry, setRegistrationRetry] = useState(0);
+
+  useEffect(() => {
+    if (phase !== "calculating" || registrationStarted.current) return;
+    registrationStarted.current = true;
+
+    // No cleanup flag on purpose. StrictMode remounts this effect in dev, and
+    // the ref (which survives the remount) already blocks the second run - so a
+    // cancel-on-unmount guard would leave the only in-flight run unable to
+    // advance the phase, hanging the funnel on the loader in dev only.
+    void (async () => {
+      // The loader is a real 3s beat in the funnel - she is watching her plan be
+      // built - so hold it for its full length even when the network is fast,
+      // and hold it longer when it isn't. Results only open once the save has
+      // actually landed; otherwise she could reach the paywall with no profile
+      // and no account to check out with.
+      const [ok] = await Promise.all([
+        completeRegistration(),
+        new Promise((resolve) => setTimeout(resolve, 3000)),
+      ]);
+      if (ok) setPhase("results");
+      else registrationStarted.current = false; // let the retry button through
+    })();
+  }, [phase, completeRegistration, registrationRetry]);
 
   const toggleProblem = (problemId: string) => {
     setSymptomSeverity((prev) => {
@@ -1571,8 +1628,6 @@ function RegisterPageContent() {
     });
   };
 
-  const [otpStep, setOtpStep] = useState<"email" | "code">("email");
-
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [syncingPayment, setSyncingPayment] = useState(false);
 
@@ -1581,6 +1636,24 @@ function RegisterPageContent() {
     setError(null);
     setCheckoutLoading(true);
     try {
+      // The paywall is reachable without walking the funnel — proxy.ts sends
+      // lapsed accounts to `?phase=paywall`, and so does every "See my plan"
+      // link in the pending-payment emails. `create-checkout` needs a session,
+      // so mint one rather than dead-ending her on "Could not start checkout".
+      // If she is really an existing customer, the email she types at Stripe
+      // collides in the webhook and the subscription is merged onto her real
+      // account (see resolveCheckoutAccount).
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session) {
+        const { error: anonError } = await supabase.auth.signInAnonymously();
+        if (anonError) {
+          console.error("Anonymous sign-in failed before checkout:", anonError);
+          setError("Could not start checkout. Please try again.");
+          setCheckoutLoading(false);
+          return;
+        }
+      }
+
       const origin = typeof window !== "undefined" ? window.location.origin : "";
       const res = await fetch("/api/stripe/create-checkout", {
         method: "POST",
@@ -1615,7 +1688,6 @@ function RegisterPageContent() {
   useEffect(() => {
     if (
       phase === "calculating" ||
-      phase === "email" ||
       phase === "results" ||
       phase === "diagnosis" ||
       phase === "relief" ||
@@ -1677,9 +1749,8 @@ function RegisterPageContent() {
         }
 
         // Profile doesn't exist - user might need to complete quiz
-        // Only send back to quiz when not in the middle of registration (results -> email flow)
-        if (mounted && phase !== "results" && phase !== "email" && phase !== "calculating") {
-          // User has confirmed email but profile wasn't created
+        // Only send back to quiz when not in the middle of registration
+        if (mounted && phase !== "results" && phase !== "calculating") {
           setPhase("quiz");
           setStepIndex(0);
         }
@@ -1809,7 +1880,8 @@ function RegisterPageContent() {
         </div>
       )}
 
-      {/* Calculating Phase - loader between quiz and email */}
+      {/* Calculating Phase - loader between quiz and results; also where the
+          account is created and the quiz is saved (see completeRegistration) */}
       {phase === "calculating" && (
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden -mx-4 sm:-mx-6 px-4 sm:px-6">
           <motion.div
@@ -1844,19 +1916,42 @@ function RegisterPageContent() {
               Getting to know you better...
             </h2>
 
-            <AnimatePresence mode="wait">
-              <motion.p
-                key={messageIndex}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.28, ease: [0.42, 0, 0.58, 1] }}
-                className="h-6 font-medium min-w-48 text-center"
-                style={{ color: LOADING_MESSAGE_COLORS[messageIndex] ?? "#6B7280" }}
-              >
-                {LOADING_MESSAGES[messageIndex]}
-              </motion.p>
-            </AnimatePresence>
+            {/* Saving her answers happens behind this loader, so a failure has to
+                surface here - silently spinning forever would strand her one tap
+                short of her results. */}
+            {error ? (
+              <div className="w-full max-w-sm text-center">
+                <p className="text-sm text-error mb-3">{error}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError(null);
+                    setRegistrationRetry((n) => n + 1);
+                  }}
+                  className="min-h-11 px-6 py-2.5 font-bold text-foreground rounded-xl transition-all hover:scale-[1.02]"
+                  style={{
+                    background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)",
+                    boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)",
+                  }}
+                >
+                  Try again
+                </button>
+              </div>
+            ) : (
+              <AnimatePresence mode="wait">
+                <motion.p
+                  key={messageIndex}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.28, ease: [0.42, 0, 0.58, 1] }}
+                  className="h-6 font-medium min-w-48 text-center"
+                  style={{ color: LOADING_MESSAGE_COLORS[messageIndex] ?? "#6B7280" }}
+                >
+                  {LOADING_MESSAGES[messageIndex]}
+                </motion.p>
+              </AnimatePresence>
+            )}
           </motion.div>
         </div>
       )}
@@ -2432,7 +2527,7 @@ function RegisterPageContent() {
                               <p.icon className={cn("w-4 h-4", p.tint)} />
                             </span>
                             <p className="text-xs text-[#5A5A5A] leading-snug min-w-0">
-                              <span className="font-bold text-[#3D3D3D]">{p.label}</span> — {p.blurb}
+                              <span className="font-bold text-[#3D3D3D]">{p.label}</span> - {p.blurb}
                             </p>
                           </div>
                         ))}
@@ -2507,19 +2602,19 @@ function RegisterPageContent() {
                       <div className="flex items-start gap-2.5">
                         <Activity className="w-4 h-4 text-sky-500 shrink-0 mt-0.5" />
                         <p className="text-xs text-[#5A5A5A] leading-snug">
-                          <span className="font-bold text-[#3D3D3D]">Track</span> — tap what you felt today. Two minutes, done.
+                          <span className="font-bold text-[#3D3D3D]">Track</span> - tap what you felt today. Two minutes, done.
                         </p>
                       </div>
                       <div className="flex items-start gap-2.5">
                         <TrendingUp className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
                         <p className="text-xs text-[#5A5A5A] leading-snug">
-                          <span className="font-bold text-[#3D3D3D]">Understand</span> — Lisa reads your logs and adjusts what your plan asks of you next, around your {topLabel}.
+                          <span className="font-bold text-[#3D3D3D]">Understand</span> - Lisa reads your logs and adjusts what your plan asks of you next, around your {topLabel}.
                         </p>
                       </div>
                       <div className="flex items-start gap-2.5">
                         <MessageCircleHeart className="w-4 h-4 text-violet-500 shrink-0 mt-0.5" />
                         <p className="text-xs text-[#5A5A5A] leading-snug">
-                          <span className="font-bold text-[#3D3D3D]">Ask Lisa anything</span> — wide awake at 2am? Straight answers, no waiting room.
+                          <span className="font-bold text-[#3D3D3D]">Ask Lisa anything</span> - wide awake at 2am? Straight answers, no waiting room.
                         </p>
                       </div>
                     </div>
@@ -3238,83 +3333,6 @@ function RegisterPageContent() {
         </div>
       )}
 
-      {/* Email Phase - OTP sign-in / sign-up */}
-      {phase === "email" && (
-        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 py-4 sm:py-6">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="max-w-md mx-auto w-full flex-1 flex flex-col justify-center min-h-0"
-          >
-            {/* Blurred preview of the results she's about to unlock */}
-            <div aria-hidden className="flex justify-center mb-4 sm:mb-6 pointer-events-none">
-              <div className="w-full sm:w-78 max-h-[200px] sm:max-h-[200px] overflow-hidden rounded-xl">
-                <Image
-                  src="/quiz/results_blur.webp"
-                  alt=""
-                  width={437}
-                  height={951}
-                  priority={false}
-                  className="w-full object-cover object-top opacity-90 blur-[2px] select-none"
-                />
-              </div>
-            </div>
-
-            <div className="mb-4 sm:mb-6 text-center">
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-2 sm:mb-3">
-                Your personalized Menopause Plan{" "}
-                <span className="text-primary uppercase">is ready</span>
-              </h2>
-              {otpStep === "email" && (
-                <>
-                  <p className="text-sm sm:text-base text-[#5A5A5A]">
-                    Enter your email so we can save your score and free plan - so you don&apos;t
-                    lose it. We&apos;ll send a 6-digit code, no password.
-                  </p>
-                  {firstName.trim() && (
-                    <p className="text-sm text-[#5A5A5A] mt-2">
-                      We&apos;ll call you <strong>{firstName.trim()}</strong>.
-                    </p>
-                  )}
-                </>
-              )}
-            </div>
-
-            <OtpForm
-              mode="register"
-              variant="gradient"
-              initialEmail={email}
-              submitLabel="Send my code"
-              onStepChange={setOtpStep}
-              onExistingAccount={(existingEmail) => {
-                const msg = "You already have an account. Log in to pick up where you left off.";
-                router.push(
-                  `/login?email=${encodeURIComponent(existingEmail)}&message=${encodeURIComponent(msg)}`
-                );
-              }}
-              onSuccess={async (user) => {
-                setEmail(user.email ?? email);
-                await handleOtpSuccess();
-              }}
-            />
-
-
-            {error && (
-              <div className="mt-3 rounded-xl border border-error/30 bg-error/10 p-3 text-sm text-error">
-                {error}
-              </div>
-            )}
-
-            <p className="mt-4 text-sm text-[#5A5A5A] text-center">
-              Already have an account?{" "}
-              <Link href="/login" className="text-primary font-semibold hover:underline">
-                Log in
-              </Link>
-            </p>
-          </motion.div>
-        </div>
-      )}
-
       {/* Paywall Phase - charged in full at Stripe checkout, no trial */}
       {phase === "paywall" && (
         <PaywallView
@@ -3664,7 +3682,7 @@ function RegisterPageContent() {
                       How would you describe your fitness level?
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                      There&apos;s no wrong answer — it just sets your starting point
+                      There&apos;s no wrong answer - it just sets your starting point
                     </p>
                   </div>
                   <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-2 min-h-0">

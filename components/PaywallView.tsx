@@ -78,7 +78,7 @@ export interface PaywallViewProps {
    */
   topProblems?: string[];
   /**
-   * Her selected goal ids, when we have them. Only the first is used — the far
+   * Her selected goal ids, when we have them. Only the first is used - the far
    * end of the finish line is the outcome *she* picked, not one we assigned.
    */
   goal?: string[];
@@ -133,7 +133,7 @@ const subscribeToNothing = () => () => {};
  * `false` on the server and through hydration, `true` after. `/register` can
  * server-render the paywall (Stripe's cancel URL returns to `?phase=paywall`),
  * and by then sessionStorage may hold a half-spent deadline the server knew
- * nothing about — so the countdown has to sit out hydration rather than
+ * nothing about - so the countdown has to sit out hydration rather than
  * disagree with the HTML. useSyncExternalStore is the one hook that flips after
  * hydration without a mismatch warning.
  */
@@ -190,7 +190,7 @@ function useDiscountWindow() {
  *
  * The one block on this page that belongs to her: today on the left in the words
  * she used for her worst symptom, the day her plan ends on the right in the goal
- * she picked. Everything else here — trust boxes, card wordmarks, guarantee — is
+ * she picked. Everything else here - trust boxes, card wordmarks, guarantee - is
  * identical for every visitor.
  *
  * It earns its place directly above the price by supplying the denominator. The
@@ -224,7 +224,7 @@ function PlanFinishLine({
   const name = firstName?.trim();
   // Her own words on both ends: the "before" line for her #1 symptom, and the
   // promise attached to the goal she chose. If either is missing (the dashboard
-  // paywall has no quiz behind it) the dates still stand on their own — a
+  // paywall has no quiz behind it) the dates still stand on their own - a
   // generic finish line is fine, a stranger's symptom in her place is not.
   const before = getSymptomTransforms(topProblems ?? [], 1)[0]?.before;
   const after = goal && goal.length > 0 ? getOfferPromise(goal) : undefined;
