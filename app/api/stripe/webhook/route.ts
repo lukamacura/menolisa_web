@@ -3,11 +3,16 @@ import Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { writeSubscription } from "@/lib/subscriptionWrite";
-import { sendWelcomeEmail, sendChargeConfirmedEmail, sendAdminNotification } from "@/lib/resend";
-import { generatePlan, markPlanGenerating } from "@/lib/plan/generate";
+import { sendChargeConfirmedEmail, sendAdminNotification } from "@/lib/resend";
 import { sendMetaPurchase, metaMatchDataFrom } from "@/lib/metaCapi";
 import { META_CURRENCY, PLAN_VALUE, purchaseEventId } from "@/lib/metaPixel";
-import { PLAN_WEEKS } from "@/lib/pricing";
+import {
+  customerIdOf,
+  fallbackPeriodEndIso,
+  fulfillCheckout,
+  planFromSubscription,
+  subscriptionPeriodEndIso,
+} from "@/lib/stripe/fulfillCheckout";
 
 export const runtime = "nodejs";
 
@@ -17,56 +22,6 @@ const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 type HandlerResult = { ok: boolean; error?: string };
 
 // ---------- helpers ----------
-
-function customerIdOf(customer: Stripe.Subscription["customer"] | Stripe.Invoice["customer"]): string | null {
-  if (typeof customer === "string") return customer;
-  if (customer && typeof customer === "object" && "id" in customer && typeof customer.id === "string") {
-    return customer.id;
-  }
-  return null;
-}
-
-function subscriptionPeriodEndIso(subscription: Stripe.Subscription): string | null {
-  const firstItem = subscription.items?.data?.[0];
-  const periodEnd =
-    firstItem && "current_period_end" in firstItem
-      ? (firstItem as { current_period_end: number }).current_period_end
-      : null;
-  const endTs = subscription.cancel_at ?? periodEnd;
-  return endTs ? new Date(endTs * 1000).toISOString() : null;
-}
-
-/**
- * Access cutoff to use when Stripe gave us no period end but we are about to
- * mark the account paid.
- *
- * getAccountState() fails closed on a paid row with no cutoff, so writing null
- * here would lock out someone who just paid. One plan length from the event is
- * the honest guess: it is exactly what the price bills, and the next renewal
- * webhook overwrites it with Stripe's real date anyway.
- */
-function fallbackPeriodEndIso(fromSec: number): string {
-  return new Date(fromSec * 1000 + PLAN_WEEKS * 7 * 86_400_000).toISOString();
-}
-
-/**
- * Values `plan_type` can hold. `plan8w` — $59 per 8 weeks — is the only plan
- * sold, and there are no legacy subscribers on anything else.
- */
-type PlanType = "plan8w";
-
-/** Derive billing period + amount (cents) from the subscription's first price. */
-function planFromSubscription(
-  subscription: Stripe.Subscription
-): { plan_type: PlanType | null; plan_amount: number | null } {
-  const price = subscription.items?.data?.[0]?.price;
-  const interval = price?.recurring?.interval ?? null;
-  const intervalCount = price?.recurring?.interval_count ?? 1;
-  const plan_type: PlanType | null =
-    interval === "week" && intervalCount === PLAN_WEEKS ? "plan8w" : null;
-  const plan_amount = typeof price?.unit_amount === "number" ? price.unit_amount : null;
-  return { plan_type, plan_amount };
-}
 
 /**
  * Resolve a user_id either from the stored row (preferred) or from the Stripe object metadata.
@@ -95,139 +50,10 @@ async function resolveUserId(
   return opts.metadataUserId ?? null;
 }
 
-/** Quiz answers `/api/auth/save-quiz` writes. Listed explicitly so a merge copies
- *  data and never identity columns. */
-const QUIZ_PROFILE_COLUMNS = [
-  "name",
-  "age_band",
-  "top_problems",
-  "timing",
-  "here_for",
-  "tried_options",
-  "hrt_status",
-  "doctor_status",
-  "goal",
-  "goals",
-  "qualifier",
-  "height_cm",
-  "weight_kg",
-  "height_unit",
-  "weight_unit",
-  "fitness_level",
-].join(",");
-
 /**
- * Move the funnel's quiz answers onto the account that survives a merge — but
- * only when that account has no profile of its own. An existing profile is real
- * data she built up; a fresh re-take of the quiz does not outrank it.
- */
-async function adoptQuizProfile(
-  supabaseAdmin: SupabaseClient,
-  fromUserId: string,
-  toUserId: string
-): Promise<void> {
-  const { data: target } = await supabaseAdmin
-    .from("user_profiles")
-    .select("user_id")
-    .eq("user_id", toUserId)
-    .maybeSingle();
-  if (target) return;
-
-  // The column list is built at runtime, so postgrest-js can't infer a row type
-  // for it — hence the cast.
-  const { data } = await supabaseAdmin
-    .from("user_profiles")
-    .select(QUIZ_PROFILE_COLUMNS)
-    .eq("user_id", fromUserId)
-    .maybeSingle();
-  const source = data as Record<string, unknown> | null;
-  if (!source) return;
-
-  const { error } = await supabaseAdmin
-    .from("user_profiles")
-    .insert({ ...source, user_id: toUserId });
-  if (error) console.error("Webhook: quiz profile adoption failed:", error);
-}
-
-/**
- * Bind the email Stripe collected to the account that is paying, and return the
- * user id the subscription belongs to.
- *
- * The `/register` funnel signs her in anonymously — no email is asked for
- * anywhere before the card — so the account arriving here usually has none.
- * That address has to land before anything else runs:
- *   - it is how she logs into the mobile app afterwards (OTP needs an address);
- *   - the welcome email below reads it back off `auth.users`;
- *   - `sync_email_sequence_recipient()` returns early for an emailless user, so
- *     the paid drip only ever starts if the email is set *before* `user_trials`
- *     is written (that write is what fires the sync trigger).
- *
- * Usually the id is unchanged. When the address already belongs to another
- * account — she bought before, or signed up in the app — the subscription goes
- * to *that* account instead of minting a duplicate she could never log into.
- */
-async function resolveCheckoutAccount(
-  supabaseAdmin: SupabaseClient,
-  userId: string,
-  email: string | null
-): Promise<string> {
-  if (!email) {
-    console.warn(`Webhook: checkout session for ${userId} carried no email`);
-    return userId;
-  }
-
-  const { data: authData, error: readError } = await supabaseAdmin.auth.admin.getUserById(userId);
-  if (readError || !authData?.user) {
-    console.error("Webhook: could not load user for email binding:", readError);
-    return userId;
-  }
-  // Already has an address (mobile signup, returning subscriber). Never
-  // overwrite it with whatever was typed into Stripe.
-  if (authData.user.email) return userId;
-
-  const { error: bindError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-    email,
-    email_confirm: true,
-  });
-  if (!bindError) return userId;
-
-  // Only one account can hold an address, so a failure here is almost always a
-  // collision. Find the account that already holds it and merge into it.
-  const { data: existingId, error: lookupError } = await supabaseAdmin.rpc(
-    "auth_user_id_by_email",
-    { p_email: email }
-  );
-  if (lookupError || !existingId) {
-    console.error(
-      `Webhook: could not bind ${email} to user ${userId}, and no existing account holds it`,
-      bindError,
-      lookupError
-    );
-    return userId;
-  }
-
-  console.warn(
-    `Webhook: checkout email already belongs to ${existingId}; merging ${userId} into it`
-  );
-  await adoptQuizProfile(supabaseAdmin, userId, existingId as string);
-
-  // Drop the funnel account's subscription row. Stripe does not guarantee
-  // delivery order, so `customer.subscription.created` may already have marked
-  // it paid off the same metadata user id — leaving two rows claiming one
-  // subscription, and an account the purge cron would then refuse to clean up
-  // because it looks like a paying customer.
-  const { error: dropError } = await supabaseAdmin
-    .from("user_trials")
-    .delete()
-    .eq("user_id", userId);
-  if (dropError) console.error("Webhook: could not drop merged trial row:", dropError);
-
-  return existingId as string;
-}
-
-/**
- * Out-of-order guard. Returns true when this event is older than the last one we processed for the user,
- * in which case the caller should short-circuit without writing. Updates the watermark on success.
+ * Out-of-order guard. Returns true when this event is older than the last one we processed for the
+ * user, in which case the caller should short-circuit without writing. Each handler stamps the new
+ * watermark itself, as part of the write it was already making.
  */
 async function isStaleEvent(
   supabaseAdmin: SupabaseClient,
@@ -241,17 +67,6 @@ async function isStaleEvent(
     .maybeSingle();
   const last = data?.last_stripe_event_at ? new Date(data.last_stripe_event_at).getTime() : 0;
   return eventCreatedSec * 1000 < last;
-}
-
-async function stampEventWatermark(
-  supabaseAdmin: SupabaseClient,
-  userId: string,
-  eventCreatedSec: number
-): Promise<void> {
-  await supabaseAdmin
-    .from("user_trials")
-    .update({ last_stripe_event_at: new Date(eventCreatedSec * 1000).toISOString() })
-    .eq("user_id", userId);
 }
 
 // ---------- handlers ----------
@@ -269,108 +84,44 @@ async function handleCheckoutSessionCompleted(
 
   const supabaseAdmin = getSupabaseAdmin();
 
-  // Give the account its email before touching user_trials — see
-  // resolveCheckoutAccount for why the order matters. May return a different id
-  // than the session carried, when the address belongs to an older account.
-  const userId = await resolveCheckoutAccount(
-    supabaseAdmin,
-    sessionUserId,
-    session.customer_details?.email ?? session.customer_email ?? null
-  );
-
-  if (await isStaleEvent(supabaseAdmin, userId, eventCreatedSec)) return { ok: true };
-
-  let subscription_ends_at: string | null = null;
-  let stripe_customer_id: string | null = null;
-  let stripe_subscription_id: string | null = null;
-  let subscription_canceled = false;
-  let plan_type: PlanType | null = null;
-  let plan_amount: number | null = null;
-
-  if (session.subscription && typeof session.subscription === "string") {
-    try {
-      const subscription = await stripe.subscriptions.retrieve(session.subscription);
-      subscription_ends_at = subscriptionPeriodEndIso(subscription);
-      subscription_canceled = !!subscription.cancel_at;
-      stripe_customer_id = customerIdOf(subscription.customer);
-      stripe_subscription_id = subscription.id;
-      ({ plan_type, plan_amount } = planFromSubscription(subscription));
-    } catch (err) {
-      console.error("Webhook: failed to fetch subscription:", err);
-    }
-  } else if (session.customer && typeof session.customer === "string") {
-    stripe_customer_id = session.customer;
-  }
-
-  const extras: Record<string, unknown> = {
-    payment_failed_at: null,
-    last_stripe_event_at: new Date(eventCreatedSec * 1000).toISOString(),
-  };
-  if (stripe_customer_id) extras.stripe_customer_id = stripe_customer_id;
-  if (stripe_subscription_id) extras.stripe_subscription_id = stripe_subscription_id;
-  if (plan_type) extras.plan_type = plan_type;
-  if (plan_amount !== null) extras.plan_amount = plan_amount;
+  // Stale-check the id the session carried. The account can change under us in
+  // fulfillCheckout (email collision → merge), but the watermark belongs to the
+  // account Stripe has been talking to us about.
+  if (await isStaleEvent(supabaseAdmin, sessionUserId, eventCreatedSec)) return { ok: true };
 
   try {
-    const result = await writeSubscription(supabaseAdmin, {
-      userId,
-      provider: "stripe",
-      active: true,
-      expiresAt: subscription_ends_at ?? fallbackPeriodEndIso(eventCreatedSec),
-      canceled: subscription_canceled,
-      extras,
+    const result = await fulfillCheckout({
+      supabaseAdmin,
+      stripe,
+      session,
+      sessionUserId,
+      atSec: eventCreatedSec,
+      stampWatermark: true,
     });
-    if (!result.written) {
-      console.warn(
-        `Webhook: checkout.session.completed conflict — user ${userId} already has active ${result.existingProvider} sub`
-      );
-    } else {
+
+    if (result.written) {
       // Server-side Purchase for Meta ads attribution. Deduped against the
       // browser pixel copy on the success page via a shared event_id. Deferred
       // with after() so Stripe gets its 200 without waiting on Meta.
+      //
+      // Sent even when this call lost the fulfillment claim to sync-session:
+      // that fallback deliberately reports nothing to Meta, because it runs in
+      // the browser's request and cannot see whether the pixel copy fired.
       after(() =>
         sendMetaPurchase({
           eventId: purchaseEventId(session.id),
           eventTimeSec: eventCreatedSec,
           // Prefer the real amount off the Stripe price - it stays right even
           // for a legacy plan or a coupon-discounted first invoice. PLAN_VALUE
-          // is only the floor for when the subscription fetch above failed.
-          value: plan_amount != null ? plan_amount / 100 : PLAN_VALUE,
+          // is only the floor for when fulfillCheckout couldn't read the price.
+          value: result.planAmount != null ? result.planAmount / 100 : PLAN_VALUE,
           currency: META_CURRENCY,
           email: session.customer_details?.email ?? session.customer_email ?? null,
-          userId,
-          planType: plan_type,
+          userId: result.userId,
+          planType: result.planType,
           ...metaMatchDataFrom(session.metadata),
         })
       );
-
-      // Her 8-week plan. The row is claimed synchronously so the app can show
-      // "building your plan" the moment she opens it; the slow LLM call runs
-      // after Stripe already has its 200. If it never lands, GET /api/plan
-      // re-kicks it.
-      await markPlanGenerating(userId);
-      after(() => generatePlan(userId));
-
-      try {
-        const { data: authData } = await supabaseAdmin.auth.admin.getUserById(userId);
-        const email = authData.user?.email;
-        if (email) {
-          const { data: profile } = await supabaseAdmin
-            .from("user_profiles")
-            .select("name")
-            .eq("user_id", userId)
-            .maybeSingle();
-          await Promise.all([
-            sendWelcomeEmail(email, profile?.name ?? null),
-            sendAdminNotification(
-              `New subscriber — ${email}`,
-              `<p>New subscriber: <strong>${email}</strong>${profile?.name ? ` (${profile.name})` : ""}</p><p>Started: ${new Date().toUTCString()}</p>`
-            ),
-          ]);
-        }
-      } catch (e) {
-        console.error("Webhook: welcome emails failed:", e);
-      }
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to upsert";

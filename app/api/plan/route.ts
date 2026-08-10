@@ -7,6 +7,7 @@ import {
   generatePlan,
   hydrateExercises,
   hydrateRelaxation,
+  markPlanGenerating,
   type Plan,
 } from "@/lib/plan/generate";
 import { NUTRITION, SUPPLEMENT_OPTIONS, nutritionKey } from "@/lib/plan/catalog";
@@ -65,7 +66,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Failed to load plan" }, { status: 500 });
   }
   if (!row) {
-    return NextResponse.json({ status: "none" });
+    // checkTrialExpired passed, so she is paying and simply has no plan — the
+    // fulfillment that claims this row never ran for her. Kick it here rather
+    // than reporting "none", which she can't act on and which the stall re-kick
+    // below can never reach, since that needs a row to already exist.
+    await markPlanGenerating(user.id);
+    after(() => generatePlan(user.id));
+    return NextResponse.json({ status: "generating" });
   }
   if (row.status !== "ready" || !row.plan) {
     if (Date.now() - new Date(row.created_at).getTime() > STALL_MS) {

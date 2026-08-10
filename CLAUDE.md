@@ -261,7 +261,7 @@ The chain, and the order it must happen in:
    A ref guards it — running twice mints a second account and orphans the first.
 2. `create-checkout` passes `customer_email: user.email ?? undefined`. For a
    funnel visitor that is `undefined`, so **Stripe collects the email**.
-3. `resolveCheckoutAccount()` (`app/api/stripe/webhook/route.ts`) binds
+3. `resolveCheckoutAccount()` (`lib/stripe/fulfillCheckout.ts`) binds
    `session.customer_details.email` to the account with
    `auth.admin.updateUserById(..., { email_confirm: true })`.
 
@@ -299,6 +299,53 @@ tables explicitly. Add a table with a `user_id`, add it there too.
 screen. Migration + verification commands:
 `scripts/sql/2026-08-10-anonymous-funnel-accounts.sql`.
 
+### Checkout fulfillment (`lib/stripe/fulfillCheckout.ts`)
+
+Everything a paid checkout triggers lives in `fulfillCheckout()`, and **two
+callers run it**:
+
+- `app/api/stripe/webhook/route.ts` on `checkout.session.completed` — normal.
+- `app/api/stripe/sync-session/route.ts` — the fallback the success screen calls
+  with its `session_id`, authorized by `session.client_reference_id === user.id`.
+
+The fallback exists because a webhook genuinely may never arrive: a signing
+secret that no longer matches the endpoint, an endpoint pointed at the apex
+(`menolisa.com` **307s to `www`, and Stripe does not follow redirects**), a
+Stripe incident. It used to recover only the subscription row, so a missed
+webhook cost the customer her login address and her plan with no way back. Both
+paths now do the same four things: bind the email, write `user_trials`, kick the
+8-week plan, send the welcome email.
+
+**The one-time side effects are claimed, not checked.** She lands on the success
+screen at roughly the moment Stripe fires the event, so both callers really do
+race. `claimFulfillment()` does a conditional update:
+
+```sql
+update user_trials set fulfilled_at = now()
+ where user_id = $1 and fulfilled_at is null returning user_id;
+```
+
+Postgres serialises the two on the row lock, so exactly one gets a row back and
+sends the email / starts the plan. Add a new once-per-purchase side effect
+behind this claim, never beside it. Never set `fulfilled_at` by hand — a
+non-null value permanently suppresses them.
+
+Two things stay webhook-only:
+- **`last_stripe_event_at`**, the out-of-order watermark. It records how far
+  Stripe's *event stream* has been processed; stamping it from the fallback
+  would make the next genuine webhook look stale and be dropped. Hence
+  `stampWatermark`.
+- **The Meta CAPI `Purchase`**, which is deduped against the browser pixel by a
+  shared `event_id`. The fallback runs inside the browser's own request and
+  can't tell whether the pixel copy fired, so it reports nothing.
+
+If neither path ran, `GET /api/plan` is the last net: reaching it with no
+`user_plans` row means she is paying (`checkTrialExpired` already passed) and has
+no plan, so it claims the row and generates. It used to return `status: "none"`
+forever — the stall re-kick below it needs a row to already exist.
+
+Migration: `scripts/sql/2026-08-10-checkout-fulfillment-claim.sql`.
+
 ### Database Schema (key tables)
 Supabase (PostgreSQL) — no ORM, raw SQL queries via Supabase JS client:
 
@@ -308,7 +355,7 @@ Supabase (PostgreSQL) — no ORM, raw SQL queries via Supabase JS client:
 | `symptom_logs` | `id`, `user_id`, `symptom_id`, `severity` (1-3), `triggers[]`, `time_of_day`, `notes`, `logged_at` |
 | `daily_mood` | `user_id`, `date`, `mood` (1-4); unique on `(user_id, date)` |
 | `user_profiles` | `user_id`, `name`, `top_problems[]`, `severity`, `timing`, `goal`, `doctor_status` |
-| `user_trials` | `user_id`, `account_status` ("pending_payment"/"paid"/"expired"), `subscription_ends_at`, `subscription_canceled`, `payment_failed_at`, `dispute_flagged_at`, `provider`, `plan_type`, `plan_amount`. No trial columns — see below. The table name is legacy; it holds subscriptions. |
+| `user_trials` | `user_id`, `account_status` ("pending_payment"/"paid"/"expired"), `subscription_ends_at`, `subscription_canceled`, `payment_failed_at`, `dispute_flagged_at`, `provider`, `plan_type`, `plan_amount`, `fulfilled_at` (one-time-side-effect claim — see "Checkout fulfillment"). No trial columns — see below. The table name is legacy; it holds subscriptions. |
 | `documents` | Vector store — `id`, `content`, `metadata` (JSONB), `embedding` (vector 1536) |
 | `notifications` | `user_id`, `type`, `content`, `metadata` (JSONB), `is_read`, `created_at` |
 
@@ -639,9 +686,33 @@ for on every page load. Before adding an image, shrink it (e.g. squoosh.app):
 - Verify `NEXT_PUBLIC_SITE_URL` matches the domain in use (affects redirect URL in email)
 
 **Stripe webhook not updating user status**
-- Verify webhook URL matches the live domain (`https://menolisa.com/api/stripe/webhook`)
-- Check `STRIPE_WEBHOOK_SECRET` matches the secret shown in Stripe Dashboard for that endpoint
-- For local testing: `stripe listen --forward-to localhost:3000/api/stripe/webhook`
+
+`stripe_webhook_events` is the fastest read: the idempotency insert is the
+route's first DB write and it happens *after* signature verification, so an
+empty table means nothing ever got past `constructEvent`. Then, in order:
+
+- **The URL must be `https://www.menolisa.com/api/stripe/webhook`.** The apex
+  307s to `www` and **Stripe does not follow redirects** — every delivery fails
+  with nothing in our logs, because the request never reaches us.
+- Probe the endpoint. `curl -X POST <url> -d '{}'` should return
+  `400 {"error":"Missing stripe-signature"}`. A `500 Webhook not configured`
+  means `STRIPE_WEBHOOK_SECRET` is unset; an HTML 401 means Vercel Deployment
+  Protection is in front of it.
+- Check `STRIPE_WEBHOOK_SECRET` matches that endpoint's secret. A **Sandbox** is
+  not Test mode — it has its own endpoint list and its own `whsec_`. And a
+  changed env var on Vercel **does not apply until you redeploy**.
+- Confirm the endpoint is subscribed to `checkout.session.completed`. The
+  `customer.subscription.*` events alone create the row but do **not** bind the
+  email or generate the plan.
+- The delivery attempt's HTTP status (Stripe → Developers → Webhooks →
+  endpoint → Events → the event) distinguishes all of the above in one look.
+- For local testing: `stripe listen --forward-to localhost:3000/api/stripe/webhook`,
+  and put the `whsec_` it prints into `.env` — it is not the dashboard one.
+
+To repair an account after a missed webhook, **resend the
+`checkout.session.completed` event** from the Stripe dashboard rather than
+patching rows: it runs the real fulfillment. Her hitting the success screen
+again also works — that calls `sync-session`.
 
 **Trial not starting after registration**
 - Check `user_trials` table has a row for the user
@@ -664,6 +735,14 @@ for on every page load. Before adding an image, shrink it (e.g. squoosh.app):
 ## 7. CURRENT STATUS
 
 Recent work:
+- **Checkout fulfillment made webhook-independent (2026-08-10)** — the email
+  bind, plan generation and welcome email moved out of the webhook into
+  `lib/stripe/fulfillCheckout.ts`, which `/api/stripe/sync-session` now also
+  runs. Guarded by a `user_trials.fulfilled_at` claim so the two can't both fire.
+  `GET /api/plan` generates on a missing row instead of returning `"none"`
+  forever. Prompted by a live purchase where the webhook never arrived and the
+  customer ended up paid, emailless and planless. See "Checkout fulfillment" in
+  §4 and `scripts/sql/2026-08-10-checkout-fulfillment-claim.sql`.
 - **Email step removed from the funnel (2026-08-10)** — `/register` signs her in
   anonymously and Stripe collects the address at checkout; the webhook binds it
   to that account. Removed the `email` phase, `handleOtpSuccess` and `<OtpForm />`
