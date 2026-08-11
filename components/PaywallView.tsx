@@ -449,7 +449,7 @@ export function PaywallView({
           className="text-center mb-4 sm:mb-5"
         >
           <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-1.5 leading-tight">
-            Start your {PLAN_WEEKS}-week plan{" "}
+            Start your {PLAN_WEEKS} week plan{" "}
             <span
               className="bg-clip-text text-transparent"
               style={{ backgroundImage: "linear-gradient(135deg, #ff74b1, #65dbff)" }}
@@ -540,7 +540,7 @@ export function PaywallView({
             }}
           >
             <Sparkles className="w-3 h-3" />
-            {PLAN_WEEKS}-WEEK PLAN &middot;{" "}
+            {PLAN_WEEKS} WEEK PLAN &middot;{" "}
             {expired ? "REGULAR PRICE" : `${PLAN_DISCOUNT_PCT}% OFF`}
           </span>
 
@@ -610,7 +610,7 @@ export function PaywallView({
           <ul className="space-y-2.5">
             {[
               {
-                bold: `Personalized ${PLAN_WEEKS}-week plan`,
+                bold: `Personalized ${PLAN_WEEKS} week plan`,
                 sub: "daily movement, nutrition, relaxation & habits",
               },
               { bold: "Lisa", sub: "your 24/7 menopause AI companion" },
@@ -667,7 +667,7 @@ export function PaywallView({
           <div className="flex flex-col items-center text-center">
             <ShieldCheck className="w-12 h-12 text-green-600 shrink-0 mb-2" />
             <h2 className="text-base font-bold text-green-800 mb-2">
-              The {PLAN_WEEKS}-Week Guarantee
+              The {PLAN_WEEKS} Week Guarantee
             </h2>
             <p className="text-sm text-[#3D3D3D] leading-relaxed">
               Follow <b>{PLAN_ADHERENCE_PCT}% of your plan</b> for {PLAN_WEEKS} weeks. If you still

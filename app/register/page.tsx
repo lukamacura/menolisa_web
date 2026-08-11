@@ -2390,12 +2390,16 @@ function RegisterPageContent() {
                     {/* Her name written onto the plan, letter by letter in script -
                         the made-for-you moment, and the reason this reads as her
                         plan rather than a program she has to fit into. */}
-                    <div className="relative w-full">
+                    {/* Capped rather than full-bleed: the scroll is 2:3, so at the
+                        card's full width it ate a whole screen on a phone and
+                        pushed the plan arc below the fold. */}
+                    <div className="relative w-full max-w-[300px] mx-auto">
                       <Image
                         src="/quiz/offer.webp"
-                        alt={firstName.trim() ? `${firstName.trim()}'s personalized 8-week plan` : "Your personalized 8-week plan"}
+                        alt={firstName.trim() ? `${firstName.trim()}'s personalized 8 week plan` : "Your personalized 8 week plan"}
                         width={1024}
                         height={1536}
+                        sizes="300px"
                         className="w-full h-auto"
                         priority
                       />
@@ -2416,23 +2420,23 @@ function RegisterPageContent() {
                             {/* A wax seal, not the reward illustration - this scroll
                                 carries her name, so the crest has to read as her
                                 plan being sealed, and it has to survive at 80px. */}
-                            <motion.div variants={fade} className="mb-2">
+                            <motion.div variants={fade} className="mb-1.5">
                               <Image
                                 src="/personalized_plan.webp"
                                 alt=""
                                 width={500}
                                 height={500}
-                                sizes="96px"
-                                className="w-20 h-auto pointer-events-none select-none drop-shadow-lg"
+                                sizes="64px"
+                                className="w-14 h-auto pointer-events-none select-none drop-shadow-lg"
                               />
                             </motion.div>
 
                             <motion.span
                               variants={fade}
-                              className="text-[9px] sm:text-[10px] uppercase tracking-[0.28em] opacity-70 mb-2"
+                              className="text-[8px] sm:text-[9px] uppercase tracking-[0.24em] opacity-70 mb-1.5"
                               style={{ fontFamily: "var(--font-lora)" }}
                             >
-                              Your Personalized 8-Week Plan
+                              Your Personalized 8 Week Plan
                             </motion.span>
 
                             <motion.div
@@ -2446,25 +2450,25 @@ function RegisterPageContent() {
                                     hidden: { opacity: 0, y: 12, rotate: -5, filter: "blur(6px)" },
                                     show: { opacity: 1, y: 0, rotate: 0, filter: "blur(0px)", transition: { type: "spring", stiffness: 240, damping: 18 } },
                                   }}
-                                  className="font-script text-5xl sm:text-6xl leading-none"
+                                  className="font-script text-4xl sm:text-5xl leading-none"
                                 >
                                   {ch === " " ? " " : ch}
                                 </motion.span>
                               ))}
                             </motion.div>
 
-                            <motion.div variants={fade} className="my-2.5 h-px w-16" style={{ background: ink, opacity: 0.4 }} />
+                            <motion.div variants={fade} className="my-2 h-px w-12" style={{ background: ink, opacity: 0.4 }} />
 
                             <motion.p
                               variants={fade}
-                              className="text-xs sm:text-sm italic leading-snug max-w-[92%]"
+                              className="text-[11px] sm:text-xs italic leading-snug max-w-[92%]"
                               style={{ fontFamily: "var(--font-lora)" }}
                             >
                               Designed to help you {goalLabel}.
                             </motion.p>
 
-                            <motion.div variants={fade} className="mt-4 flex flex-col items-center">
-                              <span className="font-script text-2xl sm:text-3xl leading-none">Lisa</span>
+                            <motion.div variants={fade} className="mt-3 flex flex-col items-center">
+                              <span className="font-script text-xl sm:text-2xl leading-none">Lisa</span>
                             </motion.div>
                           </motion.div>
                         );
