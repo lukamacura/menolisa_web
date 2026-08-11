@@ -235,10 +235,7 @@ export async function GET(req: NextRequest) {
 
     // Fetch and analyze tracker data
     const trackerData = await fetchTrackerData(user.id, days);
-    const summary = analyzeTrackerData(
-      trackerData.symptomLogs,
-      trackerData.dailyMood
-    );
+    const summary = analyzeTrackerData(trackerData.symptomLogs);
 
     // Get user profile for name
     const supabaseAdmin = getSupabaseAdmin();

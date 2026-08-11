@@ -73,9 +73,9 @@ subscription row got the full product. It now denies in both cases.
 Affected routes — every paid feature:
 
 ```
-/api/symptoms          /api/symptom-logs      /api/daily-mood
+/api/symptoms          /api/symptom-logs
 /api/good-days         /api/langchain-rag     /api/chat-sessions
-/api/insights          /api/insights/weekly   /api/tracker-insights
+/api/insights/weekly
 /api/doctor-report     /api/health-summary
 /api/plan              /api/plan/complete     /api/plan/habits
 ```
@@ -190,6 +190,86 @@ day. For a target-3 row, her third tap sends `count: 3`.
 **Action:** render a `target`-segment control instead of a checkbox where
 `target > 1`, send the running total as `count`, give `why` a place to be read,
 and drop any local copy of the nutrition labels.
+
+---
+
+## 9. `GET /api/rewards` — XP, streaks and achievements (**new**) — 2026-08-11
+
+A new read-only route backing the app's reward system. Send the device's local
+date, same as `/api/plan`:
+
+```
+GET /api/rewards?date=2026-08-11
+```
+
+It writes nothing. Every number is **derived on read** from rows that already
+exist — `user_plan_logs`, `symptom_logs` — which is what makes it
+retroactive (a user three weeks in opens it and finds the badges she already
+earned) and what makes it impossible for XP to disagree with what she actually
+logged. Ticking a box via `POST /api/plan/complete` is the only thing that moves
+any of it.
+
+The XP model is one sentence: **finish something, get 10 XP.** Five a day is
+the goal; 500 is a level. What counts as finishing:
+
+| Finished thing | Counts when |
+|---|---|
+| Movement / relaxation session | every tick — one tap is one session |
+| Habit | every tick |
+| Nutrition row | it reaches its `target` for the day (not per tap) |
+| Symptom log | per entry |
+
+Partial progress on a nutrition row pays nothing until the row is done — that is
+what makes the completion itself the moment worth celebrating.
+
+```jsonc
+{
+  "date": "2026-08-11",
+  "xp":    { "total": 60, "today": 60, "goal": 50, "perCompletion": 10 },
+  "level": { "level": 1, "name": "Spark", "floor": 0, "ceiling": 500,
+             "intoLevel": 60, "levelSpan": 500, "toNext": 440, "progress": 0.12 },
+  "streak": { "current": 1, "best": 1, "activeToday": true },
+  "stats": { "totalXp": 60, "bestStreak": 1, "activeDays": 1, "goalDays": 1 /* …18 metrics… */ },
+  "achievements": [
+    {
+      "id": "wildfire", "name": "Wildfire", "blurb": "Days in a row with something logged…",
+      "metric": "bestStreak", "value": 1,
+      "tier": 0, "maxTier": 8, "target": 3, "floor": 0,
+      "goal": "Keep a 3-day streak",
+      "unlocked": false, "complete": false, "progress": 0.33,
+      "earned": []
+    }
+  ],
+  "earned": ["strong.1", "serene.1"]
+}
+```
+
+Notes for the client:
+
+- **The server owns the rulebook.** XP values, level thresholds and every badge
+  target live in `lib/rewards/catalog.ts`. The app must not re-derive a
+  threshold locally — a badge that unlocks on one side and not the other is
+  worse than no badge, and the two copies drift the first time a number is
+  tuned. The app owns icons, colours and celebration, nothing else. Label a
+  reward from `xp.perCompletion`, never from a literal `10`.
+- **The per-completion reward is fired client-side, not from this payload.**
+  Only the app sees the *transition* — that this tap is what finished the row —
+  and it has to be instant, so `PlanContext` detects it optimistically at tick
+  time. This route is what confirms the totals a few seconds later. Its rules
+  and the app's must stay in step: the app rewards exactly what earns XP here.
+- **`earned` is the celebration key.** Each entry is a stable `family.target`
+  id (`"wildfire.7"`). Diff it against what the device has already shown.
+  Seed that set silently on first run, or a long-standing user gets forty
+  modals at once — and a reinstall does it again.
+- **`streak.activeToday`** is false before her first tick of the day, while
+  `current` still counts to yesterday — the same rule the plan's per-row
+  streaks use, so a 40-day run doesn't read 0 every morning.
+- Subscription-gated like the plan routes: **403 means paywall**, not error.
+- Needs no generated plan. The stored plan is used only to tell a movement tick
+  from a relaxation one, and falls back to a key heuristic — so rewards keep
+  working while a plan is still being written.
+
+After changing any threshold, run `npx tsx scripts/verify-rewards.ts`.
 
 ---
 

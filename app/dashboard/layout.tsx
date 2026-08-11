@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Activity, LogOut, ChevronDown, Bell, MessageSquare, UserCircle } from "lucide-react";
+import { LogOut, ChevronDown, Bell, MessageSquare, UserCircle } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import SwipeButton from "@/components/SwipeButton";
 import {
@@ -81,18 +81,12 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   }, [trialStatus.loading, trialStatus.state, paymentExempt, router]);
 
   // With the product on mobile, Account is the only thing the web nav still
-  // leads to. The other routes stay mounted (they render GetTheAppScreen) so
-  // old bookmarks and email links explain themselves, but nothing here points
-  // at them any more.
+  // leads to. Chat and Notifications stay mounted (they render GetTheAppScreen)
+  // so old bookmarks explain themselves; the tracker is gone outright, and
+  // /get-the-app is where its old links now point.
   const navItems = [
     ...(WEB_APP_ENABLED
       ? [
-          {
-            href: "/dashboard/symptoms",
-            label: "Home",
-            icon: Activity,
-            requiresActiveSubscription: false,
-          },
           {
             href: "/chat/lisa",
             label: "Chat with Lisa",

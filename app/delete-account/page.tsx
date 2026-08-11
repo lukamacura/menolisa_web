@@ -71,7 +71,6 @@ export default function DeleteAccountPage() {
           </p>
           <ul className="list-disc pl-6 space-y-1 mb-4">
             <li>Symptom logs (type, severity, triggers, notes)</li>
-            <li>Daily mood data</li>
             <li>Conversations with Lisa (chat history)</li>
             <li>Profile information (name, age, preferences)</li>
             <li>Account and notification preferences</li>

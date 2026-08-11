@@ -24,7 +24,6 @@ export async function POST(req: NextRequest) {
       { table: "symptom_logs", column: "user_id" },
       { table: "symptoms", column: "user_id" },
       { table: "weekly_insights", column: "user_id" },
-      { table: "daily_mood", column: "user_id" },
       { table: "user_preferences", column: "user_id" },
       { table: "user_profiles", column: "user_id" },
       { table: "user_trials", column: "user_id" },

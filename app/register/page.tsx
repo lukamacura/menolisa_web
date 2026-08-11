@@ -568,8 +568,8 @@ const NUTRITION_GROUPS: NutritionGroup[] = [
     icon: Salad,
     items: [
       { id: "protein_25_30g", label: "25-30g protein", hint: "every meal", icon: Beef },
-      { id: "healthy_fats", label: "A healthy fat", hint: "every meal", icon: Nut },
-      { id: "high_fiber", label: "A high-fiber food", hint: "every meal", icon: Wheat },
+      { id: "healthy_fats", label: "Healthy fats", hint: "every meal", icon: Nut },
+      { id: "high_fiber", label: "High-fiber food", hint: "every meal", icon: Wheat },
       { id: "low_gi_fruit", label: "Low-glycemic fruit only", icon: Apple },
       { id: "post_meal_walk", label: "10-min walk after eating", hint: "every meal", icon: Footprints },
     ],

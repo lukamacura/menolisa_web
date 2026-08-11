@@ -141,14 +141,17 @@ export async function GET(req: NextRequest) {
         let notificationTitle: string;
         let notificationContent: string;
 
+        // The notification has to carry the finding itself: there is no longer
+        // an insights screen to send her to, on web or in the app. Copy that
+        // ends in "tap to see" would promise a destination that does not exist.
         if (totalLogs > 0) {
           notificationTitle = "Lisa spotted something this week";
           notificationContent = mostFrequentName
-            ? `${namePrefix}I tracked ${totalLogs} symptom${totalLogs === 1 ? "" : "s"} this week. ${mostFrequentName} showed up most — tap to see what I found.`
-            : `You logged ${totalLogs} symptom${totalLogs === 1 ? "" : "s"} this week. Tap to see your patterns.`;
+            ? `${namePrefix}I tracked ${totalLogs} symptom${totalLogs === 1 ? "" : "s"} this week, and ${mostFrequentName} showed up most.`
+            : `You logged ${totalLogs} symptom${totalLogs === 1 ? "" : "s"} this week.`;
         } else {
-          notificationTitle = "Your weekly summary is ready";
-          notificationContent = "Your weekly summary is ready. Tap to see your insights.";
+          notificationTitle = "A quiet week";
+          notificationContent = "Nothing logged this week. Whenever you are ready, I am here.";
         }
 
         await supabaseAdmin
@@ -161,11 +164,6 @@ export async function GET(req: NextRequest) {
             metadata: {
               weekStart: weekStart.toISOString().split('T')[0],
               weekEnd: weekEnd.toISOString().split('T')[0],
-              primaryAction: {
-                label: "See my insights",
-                route: "/dashboard/symptoms",
-                actionType: "navigate",
-              },
             },
           }]);
 

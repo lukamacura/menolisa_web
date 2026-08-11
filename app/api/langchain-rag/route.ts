@@ -207,10 +207,7 @@ async function generatePersonalizedGreeting(user_id: string): Promise<string> {
 
     const userProfile = profileResult.data;
     const preferences = preferencesResult.data;
-    const trackerSummary = analyzeTrackerData(
-      trackerData.symptomLogs,
-      trackerData.dailyMood
-    );
+    const trackerSummary = analyzeTrackerData(trackerData.symptomLogs);
 
     // Get user's name
     const userName = userProfile?.name || "";
@@ -448,10 +445,7 @@ export async function POST(req: NextRequest) {
     const userProfile = profileResult.data;
     const recentConversations = conversationsResult.data;
 
-    const trackerSummary = analyzeTrackerData(
-      trackerData.symptomLogs,
-      trackerData.dailyMood
-    );
+    const trackerSummary = analyzeTrackerData(trackerData.symptomLogs);
     const trackerContext = formatTrackerSummary(trackerSummary);
 
     // 3. Use RAG orchestrator for persona-based retrieval and response generation

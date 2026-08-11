@@ -118,7 +118,7 @@ export async function sendWelcomeEmail(to: string, name: string | null): Promise
 <table cellpadding="0" cellspacing="0" border="0">
   <tr>
     <td bgcolor="#7c3aed" style="background-color:#7c3aed;border-radius:10px">
-      <a href="${APP_URL}/dashboard/symptoms" target="_blank"
+      <a href="${APP_URL}/get-the-app" target="_blank"
          style="display:inline-block;padding:13px 28px;color:#ffffff;font-weight:600;font-size:15px;text-decoration:none">
         Open MenoLisa
       </a>
@@ -140,7 +140,7 @@ export async function sendChargeConfirmedEmail(to: string, name: string | null):
 <table cellpadding="0" cellspacing="0" border="0">
   <tr>
     <td bgcolor="#7c3aed" style="background-color:#7c3aed;border-radius:10px">
-      <a href="${APP_URL}/dashboard/symptoms" target="_blank"
+      <a href="${APP_URL}/get-the-app" target="_blank"
          style="display:inline-block;padding:13px 28px;color:#ffffff;font-weight:600;font-size:15px;text-decoration:none">
         Open MenoLisa
       </a>

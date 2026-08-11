@@ -9,9 +9,12 @@ import OtpForm from "@/components/auth/OtpForm";
 
 export const dynamic = "force-dynamic";
 
+/** Account is the fallback: it is the only web surface left that does something. */
+const DEFAULT_NEXT_PATH = "/dashboard/account";
+
 function safeNextPath(value: string | null): string {
-  if (!value) return "/dashboard/symptoms";
-  if (!value.startsWith("/") || value.startsWith("//")) return "/dashboard/symptoms";
+  if (!value) return DEFAULT_NEXT_PATH;
+  if (!value.startsWith("/") || value.startsWith("//")) return DEFAULT_NEXT_PATH;
   return value;
 }
 

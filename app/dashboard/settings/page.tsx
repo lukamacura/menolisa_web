@@ -113,7 +113,7 @@ export default function SettingsPage() {
         onClose={() => !isDeleting && setDeleteDialogOpen(false)}
         onConfirm={handleDeleteAccount}
         title="Delete account"
-        message="This will permanently delete your account and all your data (symptoms, mood, conversations, profile, and preferences). This action cannot be undone."
+        message="This will permanently delete your account and all your data (symptoms, conversations, profile, and preferences). This action cannot be undone."
         confirmLabel="Delete account"
         loadingLabel="Deleting account..."
         isLoading={isDeleting}

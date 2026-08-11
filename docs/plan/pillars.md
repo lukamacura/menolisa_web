@@ -52,8 +52,8 @@ three ticks.
 | id | Label | target |
 |---|---|---|
 | `protein_25_30g` | 25-30g protein | 3 |
-| `healthy_fats` | A healthy fat | 3 |
-| `high_fiber` | A high-fiber food | 3 |
+| `healthy_fats` | Healthy fats | 3 |
+| `high_fiber` | High-fiber food | 3 |
 | `low_gi_fruit` | Low-glycemic fruit only | 1 |
 | `post_meal_walk` | 10-min walk after eating | 3 |
 

@@ -1,6 +1,8 @@
+import { randomUUID } from "crypto";
 import OpenAI from "openai";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { recordLlmUsage } from "@/lib/llmUsage";
 import {
   MOVEMENT_VOLUME,
   NUTRITION,
@@ -17,6 +19,17 @@ import {
 } from "@/lib/plan/catalog";
 
 export const PLAN_WEEKS = 8;
+
+/**
+ * Both generation calls run on the same model. Named because it is also the key
+ * the cost table in lib/llmCost.ts is looked up by — change it in one place and
+ * the admin panel's cost-per-plan follows; change it in two and one of the
+ * calls silently prices as "unknown model".
+ */
+const PLAN_MODEL = "gpt-4o-mini";
+
+/** Ties the two calls of one generation together for cost reporting. */
+type PlanMeter = { userId: string | null; runId: string };
 
 /**
  * Nutrition is no longer one of these. All ten nutrition habits are shown
@@ -566,10 +579,15 @@ function nutritionWhy(raw: Record<string, unknown> | null | undefined): Record<s
 }
 
 /** Never throws and never returns a partial map — the plan must not fail over copy. */
-async function buildNutritionWhy(openai: OpenAI, profile: Profile): Promise<Record<string, string>> {
+async function buildNutritionWhy(
+  openai: OpenAI,
+  profile: Profile,
+  meter: PlanMeter
+): Promise<Record<string, string>> {
   try {
+    const startedAt = Date.now();
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: PLAN_MODEL,
       temperature: 0.7,
       response_format: { type: "json_object" },
       messages: [
@@ -580,6 +598,14 @@ async function buildNutritionWhy(openai: OpenAI, profile: Profile): Promise<Reco
         },
         { role: "user", content: buildWhyPrompt(profile) },
       ],
+    });
+    await recordLlmUsage({
+      userId: meter.userId,
+      runId: meter.runId,
+      kind: "plan_nutrition_why",
+      model: PLAN_MODEL,
+      usage: completion.usage,
+      durationMs: Date.now() - startedAt,
     });
     const raw = completion.choices[0]?.message?.content;
     const parsed = raw ? JSON.parse(raw) : null;
@@ -695,7 +721,10 @@ function fallbackPlan(profile: Profile, pool: Exercise[]): Plan {
  * Builds the plan from her answers. Never throws — falls back to the
  * deterministic plan so she always gets something usable.
  */
-export async function buildPlan(p: Profile): Promise<Plan> {
+export async function buildPlan(p: Profile, userId?: string | null): Promise<Plan> {
+  // One run id across both calls, so the admin panel can add them up into the
+  // cost of *a plan* rather than averaging two very differently sized calls.
+  const meter: PlanMeter = { userId: userId ?? null, runId: randomUUID() };
   const pool = allowedExercises(p.fitness_level ?? null, p.top_problems ?? []);
   const vol = MOVEMENT_VOLUME[p.fitness_level ?? "beginner"] ?? MOVEMENT_VOLUME.beginner;
 
@@ -716,11 +745,12 @@ export async function buildPlan(p: Profile): Promise<Plan> {
   // Two calls, in parallel: the weeks, and her ten nutrition reasons. They share
   // nothing, and running them together keeps generation inside the time the
   // success screen is willing to wait. buildNutritionWhy never rejects.
-  const whyPromise = buildNutritionWhy(openai, p);
+  const whyPromise = buildNutritionWhy(openai, p, meter);
 
   try {
+    const startedAt = Date.now();
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: PLAN_MODEL,
       temperature: 0.5,
       response_format: {
         type: "json_schema",
@@ -734,6 +764,15 @@ export async function buildPlan(p: Profile): Promise<Plan> {
         },
         { role: "user", content: buildPrompt(p, pool) },
       ],
+    });
+
+    await recordLlmUsage({
+      userId: meter.userId,
+      runId: meter.runId,
+      kind: "plan_weeks",
+      model: PLAN_MODEL,
+      usage: completion.usage,
+      durationMs: Date.now() - startedAt,
     });
 
     // A strict schema can be refused rather than answered, and a refusal comes
@@ -802,7 +841,7 @@ export async function generatePlan(userId: string): Promise<void> {
     .eq("user_id", userId)
     .maybeSingle();
 
-  const plan = await buildPlan((profile ?? {}) as Profile);
+  const plan = await buildPlan((profile ?? {}) as Profile, userId);
 
   const { error } = await supabaseAdmin
     .from("user_plans")

@@ -26,7 +26,7 @@ export default function TermsPage() {
           <p>MenoLisa is an educational application that provides:</p>
           <ul>
             <li><strong>Symptom tracker</strong> — Log and track menopause/perimenopause-related symptoms (e.g., hot flashes, night sweats, fatigue, brain fog, mood swings, anxiety, headaches, joint pain, bloating, insomnia, weight gain, low libido, period), including severity, timing, triggers, and notes</li>
-            <li><strong>Mood and hydration tracking</strong> — Daily mood ratings and optional water intake</li>
+            <li><strong>Hydration tracking</strong> — Optional water intake</li>
             <li><strong>Lisa (AI assistant)</strong> — An AI-powered chatbot that provides educational information and personalized insights based on your tracked data</li>
             <li><strong>Weekly insights and pattern analysis</strong> — Summaries of your data to help you spot patterns</li>
             <li><strong>Menopause Score</strong> — A non-clinical wellness indicator (0–100) calculated from the information you provide and track, to help you see change over time. It is not a medical measurement, diagnosis, or score</li>

@@ -236,14 +236,14 @@ export const NUTRITION: NutritionItem[] = [
   },
   {
     id: "healthy_fats",
-    label: "A healthy fat",
+    label: "Healthy fats",
     group: "Every meal",
     target: 3,
     why: "Fat is what your hormones are built from, and it's the part of a meal that actually holds you until the next one.",
   },
   {
     id: "high_fiber",
-    label: "A high-fiber food",
+    label: "High-fiber food",
     group: "Every meal",
     target: 3,
     why: "Fiber slows the sugar in a meal down, feeds your gut, and does most of the work of keeping you full without you noticing.",
@@ -442,7 +442,7 @@ export const RELAXATION: RelaxationItem[] = [
   },
   {
     id: "reset_pause",
-    label: "A 5-minute reset between tasks",
+    label: "5-minute reset between tasks",
     use: "Before the next thing, not after the day.",
     kind: "practice",
     minutes: 5,

@@ -40,11 +40,10 @@ export default function PrivacyPage() {
           <ul>
             <li><strong>Symptom logs</strong> — Symptom type (including but not limited to: period, hot flashes, night sweats, fatigue, brain fog, mood swings, anxiety, headaches, joint pain, bloating, insomnia, weight gain, low libido, and &quot;Good Day&quot; or other user-defined symptoms), severity (mild, moderate, severe), time of day (morning, afternoon, evening, night), triggers (e.g., stress, poor sleep, alcohol, coffee, spicy food, skipped meal, exercise, hot weather, work, travel, hormonal, unknown), and any notes you add</li>
             <li><strong>Period and reproductive health data</strong> — to the extent you log it as a symptom or in notes</li>
-            <li><strong>Daily mood data</strong> — mood ratings (e.g., rough, meh, good, great) and emotional wellness information</li>
             <li><strong>Sleep-related data</strong> — if you log sleep issues, insomnia, or related symptoms</li>
             <li><strong>Hydration data</strong> — water intake you choose to log</li>
             <li><strong>Onboarding/quiz data</strong> — main concerns (e.g., hot flashes, sleep issues, brain fog, mood swings, weight changes, low energy, anxiety, joint pain), severity, how long you&apos;ve had symptoms, what you&apos;ve tried, goals (e.g., sleep through the night, think clearly, feel like myself, understand patterns, data for doctor), height, weight, and similar information you provide during setup</li>
-            <li><strong>Menopause Score</strong> — a non-clinical wellness indicator (0–100) we calculate from your quiz answers, symptom logs, mood, and related tracked data to help you see change over time. It is derived from data you provide; it is not a medical measurement or diagnosis</li>
+            <li><strong>Menopause Score</strong> — a non-clinical wellness indicator (0–100) we calculate from your quiz answers, symptom logs, and related tracked data to help you see change over time. It is derived from data you provide; it is not a medical measurement or diagnosis</li>
           </ul>
 
           <h3 className="text-xl font-semibold mb-3 mt-6">2.3 AI Conversation Data</h3>
@@ -75,7 +74,7 @@ export default function PrivacyPage() {
         <section className="mb-8">
           <h2 className="text-2xl font-semibold mb-4">3. How We Collect Information</h2>
           <ul>
-            <li><strong>Directly from you</strong> — when you register, log symptoms, set mood, chat with Lisa, complete the onboarding/quiz, or update preferences</li>
+            <li><strong>Directly from you</strong> — when you register, log symptoms, chat with Lisa, complete the onboarding/quiz, or update preferences</li>
             <li><strong>Automatically</strong> — when you use the app or website (e.g., analytics on the website, device/log data)</li>
             <li><strong>From third-party services</strong> — authentication and session data from Supabase Auth; payment and subscription status from Stripe (see Section 5)</li>
           </ul>
@@ -84,7 +83,7 @@ export default function PrivacyPage() {
         <section className="mb-8">
           <h2 className="text-2xl font-semibold mb-4">4. How We Use Your Information</h2>
           <ul>
-            <li><strong>Provide and operate the Service</strong> — run the symptom tracker, mood and hydration tracking, and account management</li>
+            <li><strong>Provide and operate the Service</strong> — run the symptom tracker, hydration tracking, and account management</li>
             <li><strong>Generate AI (Lisa) responses</strong> — use your messages and relevant context (e.g., profile and symptom summaries) to personalize answers and suggestions</li>
             <li><strong>Generate doctor reports (&quot;What Lisa Noticed&quot;)</strong> — create summaries of your tracked data for you to share with healthcare providers</li>
             <li><strong>Calculate your Menopause Score</strong> — combine your quiz answers and tracked data into a single non-clinical wellness indicator so you can see progress over time</li>
@@ -115,7 +114,7 @@ export default function PrivacyPage() {
           <h3 className="text-xl font-semibold mb-3 mt-6">5.2 Other Service Providers</h3>
           <ul>
             <li><strong>OpenAI</strong> — as described in Section 5.1 above.</li>
-            <li><strong>Supabase (Supabase, Inc.)</strong> — We use Supabase for authentication (magic links, sessions), database storage (profiles, symptom logs, mood, conversations, preferences, etc.), and server-side logic. Data is stored and processed according to Supabase&apos;s infrastructure and privacy practices.</li>
+            <li><strong>Supabase (Supabase, Inc.)</strong> — We use Supabase for authentication (magic links, sessions), database storage (profiles, symptom logs, conversations, preferences, etc.), and server-side logic. Data is stored and processed according to Supabase&apos;s infrastructure and privacy practices.</li>
             <li><strong>Stripe</strong> — We use Stripe for subscription billing and payment processing. Stripe receives payment-related data (e.g., payment method, billing details) as needed to process payments. Stripe does not use your health data.</li>
             <li><strong>Resend</strong> — We use Resend to send transactional emails (e.g., magic links, notifications). Resend receives the email address and message content necessary to deliver these emails.</li>
             <li><strong>Vercel</strong> — Our website is hosted on Vercel. Vercel Analytics and Vercel Speed Insights may collect usage and performance data on the website (e.g., pages visited, performance metrics). This applies to website use, not in-app use.</li>
@@ -148,7 +147,7 @@ export default function PrivacyPage() {
           <h2 className="text-2xl font-semibold mb-4">7. Data Retention and Deletion</h2>
           <ul>
             <li><strong>Active accounts</strong> — We retain your data for as long as your account is active and you use the Service.</li>
-            <li><strong>Account deletion</strong> — You may request deletion of your account at any time (e.g., via app settings or by contacting us). When you delete your account, we delete your personal and health data from our systems (including symptom logs, mood, conversations, profile, preferences, push tokens, etc.) and remove your auth account. Deletion is typically completed promptly; some data may remain in backups for a limited period before being overwritten, or as required by law.</li>
+            <li><strong>Account deletion</strong> — You may request deletion of your account at any time (e.g., via app settings or by contacting us). When you delete your account, we delete your personal and health data from our systems (including symptom logs, conversations, profile, preferences, push tokens, etc.) and remove your auth account. Deletion is typically completed promptly; some data may remain in backups for a limited period before being overwritten, or as required by law.</li>
             <li><strong>Legal retention</strong> — We may retain certain data longer when required by law, regulation, or legal process.</li>
             <li><strong>Anonymized data</strong> — We may retain anonymized, aggregated data that cannot identify you.</li>
           </ul>
@@ -159,7 +158,7 @@ export default function PrivacyPage() {
           <p>Depending on where you live, you may have the right to:</p>
           <ul>
             <li><strong>Access</strong> — Request a copy of the personal data we hold about you</li>
-            <li><strong>Correction</strong> — Correct inaccurate or incomplete data (you can edit many items in the app, e.g., symptom entries, mood logs)</li>
+            <li><strong>Correction</strong> — Correct inaccurate or incomplete data (you can edit many items in the app, e.g., symptom entries)</li>
             <li><strong>Deletion</strong> — Request deletion of your data; deleting your account accomplishes this</li>
             <li><strong>Data portability</strong> — Receive your data in a portable format (e.g., you can use the health summary / doctor report feature to export a summary of your tracked data)</li>
             <li><strong>Withdraw consent</strong> — Where we rely on consent, you may withdraw it at any time (e.g., disable notifications, delete account)</li>

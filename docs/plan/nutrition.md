@@ -13,8 +13,8 @@ takes.
 | Label | Ticks a day |
 |---|---|
 | 25-30g protein | 3 |
-| A healthy fat | 3 |
-| A high-fiber food | 3 |
+| Healthy fats | 3 |
+| High-fiber food | 3 |
 | Low-glycemic fruit only | 1 |
 | 10-min walk after eating | 3 |
 

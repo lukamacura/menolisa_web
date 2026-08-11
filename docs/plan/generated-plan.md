@@ -295,7 +295,7 @@ tokens she cannot act on today, and a locked week in the prompt is a leak.
 ```
 HER PLAN — week 3 of 8, "Building endurance" (day 17, started 2026-08-05)
 This week's focus: Add one thing that holds the rest together.
-Pushing on: A high-fiber food (0/3 today)
+Pushing on: High-fiber food (0/3 today)
 
 Today:
 - Strength and endurance session — 1/2 sessions done this week

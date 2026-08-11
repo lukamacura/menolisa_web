@@ -150,9 +150,12 @@ export async function GET(req: NextRequest) {
               show_on_pages: [],
               metadata: {
                 reminder_kind: DAILY_SYMPTOM_LOG_REMINDER_KIND,
+                // Logging happens in the app now. On web this lands on the
+                // store badges rather than a 404; the mobile client ignores
+                // `route` and opens its own Today tab.
                 primaryAction: {
                   label: "Log now",
-                  route: "/dashboard/symptoms",
+                  route: "/get-the-app",
                   actionType: "navigate",
                 },
               },

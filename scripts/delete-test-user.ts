@@ -21,7 +21,6 @@ import { createClient } from "@supabase/supabase-js";
 
 const USER_TABLES = [
   "conversations",
-  "daily_mood",
   "email_sequence_recipients",
   "notifications",
   "symptom_logs",

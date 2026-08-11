@@ -310,7 +310,7 @@ function TakeControlAnimation({
   const reportData = [
     { label: "Hot Flashes", value: "8 this week", trend: "↓ 23%" },
     { label: "Sleep Quality", value: "6.2 avg", trend: "↑ 15%" },
-    { label: "Mood", value: "Good", trend: "Stable" },
+    { label: "Brain Fog", value: "4 this week", trend: "↓ 12%" },
   ]
 
   if (prefersReducedMotion) {

@@ -60,7 +60,7 @@ web app/
 │   │   ├── good-days/       # "Good day" logs
 │   │   ├── health-summary/  # Health summary report generation
 │   │   ├── iap/             # Apple IAP receipt verify + server notifications
-│   │   ├── insights/        # Insights generation endpoint
+│   │   ├── insights/weekly/ # Weekly summary read (cron writes the rows)
 │   │   ├── intake/          # Onboarding quiz data saving
 │   │   ├── langchain-rag/   # Main AI chat endpoint (Lisa)
 │   │   ├── notifications/   # In-app/push notification CRUD
@@ -68,7 +68,6 @@ web app/
 │   │   ├── stripe/          # Checkout, portal, webhook, sync
 │   │   ├── symptom-logs/    # Symptom log CRUD
 │   │   ├── symptoms/        # Symptom definitions (seeded defaults)
-│   │   ├── tracker-insights/# Tracker data analysis
 │   │   └── user-preferences/# Notification preferences
 │   ├── admin/               # Admin stats page
 │   ├── auth/                # Auth callback + mobile bridge
@@ -77,9 +76,9 @@ web app/
 │   ├── dashboard/           # Protected authenticated area
 │   │   ├── account/         # Plan, billing, cancellation — never payment-gated
 │   │   ├── notifications/
-│   │   ├── settings/
-│   │   └── symptoms/        # Main home/tracker page
+│   │   └── settings/
 │   ├── delete-account/      # Account deletion flow
+│   ├── get-the-app/         # Public store-badge page; target of every email CTA
 │   ├── login/               # OTP sign-in
 │   ├── paywall/
 │   ├── privacy/
@@ -89,12 +88,11 @@ web app/
 │   ├── auth/                # OtpForm — the only auth UI
 │   ├── landing/             # Landing page sections
 │   ├── notifications/
-│   ├── symptom-tracker/     # Main tracker UI (12 components)
 │   └── ui/                  # Base UI: button, badge, accordion
-├── hooks/                   # 10 custom React hooks (data fetching, UI state)
+├── hooks/                   # Custom React hooks (data fetching, UI state)
 ├── knowledge-base/          # Markdown KB files for RAG (gitignored; source of truth for AI)
 ├── lib/                     # Shared utilities and business logic
-│   ├── insights/            # Pure data insight generation (no AI)
+│   ├── insights/            # Weekly summary generation (no AI); feeds the cron
 │   ├── plan/                # 8-week plan catalog + generator
 │   ├── rag/                 # Full RAG pipeline (orchestrator, retrieval, personas, etc.)
 │   └── *.ts                 # Utilities, Supabase clients, auth helpers
@@ -357,6 +355,33 @@ Supabase (PostgreSQL) — no ORM, raw SQL queries via Supabase JS client:
 | `user_trials` | `user_id`, `account_status` ("pending_payment"/"paid"/"expired"), `subscription_ends_at`, `subscription_canceled`, `payment_failed_at`, `dispute_flagged_at`, `provider`, `plan_type`, `plan_amount`, `fulfilled_at` (one-time-side-effect claim — see "Checkout fulfillment"). No trial columns — see below. The table name is legacy; it holds subscriptions. |
 | `documents` | Vector store — `id`, `content`, `metadata` (JSONB), `embedding` (vector 1536) |
 | `notifications` | `user_id`, `type`, `content`, `metadata` (JSONB), `is_read`, `created_at` |
+| `llm_usage` | One row per OpenAI call — `user_id`, `run_id`, `kind`, `model`, `prompt_tokens`, `cached_prompt_tokens`, `completion_tokens`, `cost_usd`, `duration_ms`. Service-role only: RLS on, no policies, no grants. |
+
+### Admin panel (`/admin`)
+
+Password-gated by `ADMIN_PANEL_PASSWORD` (unset = closed, deliberately). One
+endpoint, `POST /api/admin/stats`, assembles three sources:
+
+- **Revenue comes from Stripe charges, never from `user_trials`.** The table
+  holds one row per person, overwritten on every renewal, so it can say who is
+  paying but not how many times or how much came in last month. The charge list
+  is the ledger; a customer's first successful charge is a new sale and the rest
+  are renewals, which is why no second API call is needed to split them. The
+  panel prints `livemode` loudly — test-mode figures look exactly like revenue.
+- **Conversion is Supabase-only on both sides** (accounts that ever paid ÷ quiz
+  finishers). Dividing Stripe purchases by quiz finishers mixes populations —
+  renewals and mobile IAP are in one and not the other — and reads over 100%.
+- **Cost per plan comes from `llm_usage`.** Generating an 8-week plan is two
+  gpt-4o-mini calls sharing a `run_id`, so cost-per-generation is a sum grouped
+  by that id, not an average over rows. Rates live in `lib/llmCost.ts` and are
+  applied at write time, so historical spend isn't rewritten when OpenAI changes
+  a price; an unlisted model stores `null`, never `0`, and the panel counts
+  those unpriced calls out loud. Roughly $0.0017 a plan at current prompt sizes.
+
+The endpoint reads `auth.users` for emails via `listUsers` (PostgREST can't see
+that schema and there is no bulk get-by-ids), and caps its Stripe walk, client
+list and usage read — each cap surfaces in the response rather than silently
+truncating. Migration: `scripts/sql/2026-08-11-llm-usage.sql`.
 
 ### Access control (who gets in)
 
@@ -408,11 +433,16 @@ app. The web app's job is the `/register` funnel that sells it, plus billing and
 account deletion.
 
 `WEB_APP_ENABLED` (`lib/constants.ts`, from `NEXT_PUBLIC_WEB_APP_ENABLED`,
-**off unless set to `"true"`**) is the switch. When off, `/dashboard/symptoms`,
-`/chat/lisa` and `/dashboard/notifications` render `<GetTheAppScreen />` instead
-of the product, the nav collapses to Account, and `/dashboard` redirects to
-`/dashboard/account`. The pages are still in the repo — this is a flag, not a
-deletion, so turning the web app back on is one env var.
+**off unless set to `"true"`**) is the switch. When off, `/chat/lisa` and
+`/dashboard/notifications` render `<GetTheAppScreen />` instead of the product.
+The nav collapses to Account and `/dashboard` redirects to `/dashboard/account`
+unconditionally. Those pages are still in the repo — a flag, not a deletion.
+
+**Symptom tracking is the exception: it was deleted, not flagged off.**
+`/dashboard/symptoms`, `components/symptom-tracker/`, the "What Lisa noticed"
+card and `/api/insights` + `/api/tracker-insights` are gone — tracking lives in
+the app's Today tab. `/get-the-app` is the stable public URL that old links
+(welcome and renewal emails, the daily log reminder) now point at.
 
 It is a **UI** switch only. The API routes stay open because the mobile app
 calls them; each enforces access itself via `checkTrialExpired()`. Any new route
@@ -734,6 +764,14 @@ again also works — that calls `sync-session`.
 ## 7. CURRENT STATUS
 
 Recent work:
+- **Admin panel rebuilt on real numbers (2026-08-11)** — `/admin` now shows
+  purchases and revenue read from Stripe charges (new vs renewal, refunds, fees,
+  today/7d/30d, six months), a full client table (name, email, account state,
+  lifetime spend, whether her plan generated), and cost per LLM plan generation.
+  The cost side is new plumbing: `llm_usage` records every OpenAI call with its
+  price frozen at write time (`lib/llmCost.ts`, `lib/llmUsage.ts`), and
+  `lib/plan/generate.ts` meters both of its calls under one `run_id`. Migration
+  `scripts/sql/2026-08-11-llm-usage.sql` — **applied**. See "Admin panel" in §4.
 - **Referral system removed (2026-08-10)** — `/api/referral/*` (code,
   discount-eligible, apply), `<InviteReferralSection />`, the `?ref=` capture in
   `/register`, the `referralCode` field on save-quiz, the coupon check in the

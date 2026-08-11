@@ -22,8 +22,8 @@ export const PLAY_STORE_URL =
   "https://play.google.com/store/apps/details?id=com.menolisa.app&pcampaignid=web_share";
 
 /**
- * Whether the web app still serves the product itself — symptom tracking, Lisa
- * chat, notifications.
+ * Whether the web app still serves the product itself — Lisa chat and
+ * notifications.
  *
  * The product lives in the Expo app now; the web app's job is the /register
  * funnel that sells it, plus the two things a subscriber must be able to do
@@ -32,9 +32,12 @@ export const PLAY_STORE_URL =
  * both hostile and, in several jurisdictions, illegal.
  *
  * Off by default, so a missing env var hides the half-migrated surface rather
- * than exposing it. Set NEXT_PUBLIC_WEB_APP_ENABLED=true to bring it back —
- * the pages are still here, not deleted, precisely so this stays a one-variable
- * decision.
+ * than exposing it. Set NEXT_PUBLIC_WEB_APP_ENABLED=true to bring the remaining
+ * pages back.
+ *
+ * Symptom tracking is no longer one of them. The tracker page, its components
+ * and the "What Lisa noticed" insights were deleted when tracking moved into
+ * the app's Today tab, so this flag cannot restore them.
  *
  * Note this is a UI switch, not a security boundary: the API routes stay open
  * because the mobile app calls them. They enforce access on their own, per
