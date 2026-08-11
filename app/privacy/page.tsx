@@ -109,7 +109,7 @@ export default function PrivacyPage() {
           </ul>
           <p><strong>How OpenAI uses this data:</strong> OpenAI processes this data solely to generate your responses. It is not sold to third parties. OpenAI&apos;s data handling is governed by our API agreement with OpenAI and meets equivalent privacy protection standards. You can review OpenAI&apos;s Privacy Policy at <a href="https://openai.com/policies/privacy-policy" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">https://openai.com/policies/privacy-policy</a>.</p>
           <p>
-            <strong>Consent:</strong> By using MenoLisa&apos;s AI chat features (Lisa), you consent to your chat messages, symptom logs, and basic health profile being sent to OpenAI for AI processing as described above. You may stop using the AI chat feature at any time to prevent further data sharing with OpenAI.
+            <strong>Consent:</strong> By using MenoLisa’s AI chat features (Lisa), you consent to your chat messages, symptom logs, and basic health profile being sent to OpenAI for AI processing as described above. You may stop using the AI chat feature at any time to prevent further data sharing with OpenAI.
           </p>
 
           <h3 className="text-xl font-semibold mb-3 mt-6">5.2 Other Service Providers</h3>

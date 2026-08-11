@@ -10,7 +10,12 @@ import {
   markPlanGenerating,
   type Plan,
 } from "@/lib/plan/generate";
-import { NUTRITION, SUPPLEMENT_OPTIONS, nutritionKey } from "@/lib/plan/catalog";
+import {
+  NUTRITION,
+  NUTRITION_GROUP_ORDER,
+  SUPPLEMENT_OPTIONS,
+  nutritionKey,
+} from "@/lib/plan/catalog";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +36,10 @@ function resolveDate(param: string | null): string {
 
 // A run that never finished (function evicted, OpenAI hung). Opening the plan
 // re-kicks it, which is why there's no separate sweep cron.
+//
+// `user_plans.created_at` is the clock: on an unfinished row it means "when the
+// current attempt was claimed", and the re-kick below moves it forward. It stops
+// being touched once the row is `ready`.
 const STALL_MS = 120_000;
 
 const PILLARS = new Set(["movement", "relaxation", "habit"]);
@@ -75,9 +84,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ status: "generating" });
   }
   if (row.status !== "ready" || !row.plan) {
-    if (Date.now() - new Date(row.created_at).getTime() > STALL_MS) {
-      after(() => generatePlan(user.id));
-    }
+    // The app polls this endpoint every few seconds while it shows "building
+    // your plan", so once the row goes stale an unguarded re-kick spawns a
+    // fresh pair of OpenAI calls on *every* poll. The conditional update is the
+    // claim: Postgres serialises concurrent pollers on the row lock, so exactly
+    // one of them matches `created_at < stale` and gets a row back.
+    const { data: claimed } = await supabaseAdmin
+      .from("user_plans")
+      .update({ created_at: new Date().toISOString() })
+      .eq("user_id", user.id)
+      .neq("status", "ready")
+      .lt("created_at", new Date(Date.now() - STALL_MS).toISOString())
+      .select("user_id");
+    if (claimed?.length) after(() => generatePlan(user.id));
     return NextResponse.json({ status: "generating" });
   }
 
@@ -109,24 +128,30 @@ export async function GET(req: NextRequest) {
       0
     );
 
-  // One pass over the logs, so streaks for nine nutrition rows plus every habit
-  // don't each re-walk the whole array.
-  const datesByKey = new Map<string, Set<string>>();
+  // One pass over the logs, so streaks for ten nutrition rows plus every habit
+  // don't each re-walk the whole array. Counts, not just dates: a row with a
+  // target of 3 needs to know whether that day reached 3 or stopped at 1.
+  const countsByKey = new Map<string, Map<string, number>>();
   for (const l of logs ?? []) {
-    let set = datesByKey.get(l.task_key);
-    if (!set) datesByKey.set(l.task_key, (set = new Set()));
-    set.add(l.date);
+    let days = countsByKey.get(l.task_key);
+    if (!days) countsByKey.set(l.task_key, (days = new Map()));
+    days.set(l.date, (days.get(l.date) ?? 0) + (l.count ?? 1));
   }
 
   /**
-   * Days in a row up to today. If she hasn't ticked it yet *today* the run is
-   * measured to yesterday instead — otherwise a 40-day streak would read as
-   * zero every morning until she opens the app, which is exactly the moment it
-   * needs to be motivating.
+   * Days in a row up to today, counting only days that reached `target`. If she
+   * hasn't ticked it yet *today* the run is measured to yesterday instead —
+   * otherwise a 40-day streak would read as zero every morning until she opens
+   * the app, which is exactly the moment it needs to be motivating.
    */
-  function streaks(key: string): { streak: number; bestStreak: number } {
-    const days = datesByKey.get(key);
-    if (!days?.size) return { streak: 0, bestStreak: 0 };
+  function streaks(key: string, target = 1): { streak: number; bestStreak: number } {
+    const counts = countsByKey.get(key);
+    if (!counts?.size) return { streak: 0, bestStreak: 0 };
+
+    const days = new Set(
+      [...counts].filter(([, n]) => n >= target).map(([d]) => d)
+    );
+    if (!days.size) return { streak: 0, bestStreak: 0 };
 
     let cursor = days.has(date) ? date : addDays(date, -1);
     let streak = 0;
@@ -186,26 +211,39 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  // Nutrition is not a weekly task — all nine show every day, for everyone, in
+  // Nutrition is not a weekly task — all ten show every day, for everyone, in
   // the funnel's order and grouping. The week only decides what's highlighted.
+  //
+  // `count`/`target`/`max` carry the meal structure: protein, fat, fiber and
+  // the post-meal walk are ticked once per meal, water once per glass.
+  // `doneToday` stays a boolean and now means "reached target", so a client
+  // that only knows about ticks still reads a full day correctly.
   const focusIds = new Set(plan.weeks.find((w) => w.number === currentWeek)?.nutritionFocus ?? []);
   const nutritionItems = NUTRITION.map((item) => {
     const key = nutritionKey(item.id);
+    const count = countIn(key, date, date);
     return {
       id: item.id,
       key,
       title: item.label,
       group: item.group,
       focus: focusIds.has(item.id),
-      doneToday: countIn(key, date, date) > 0,
-      ...streaks(key),
+      // Hers, written at generation. Plans made before nutritionWhy existed
+      // have none, so the catalog's default stands in — the row always opens
+      // on a reason.
+      why: plan.nutritionWhy?.[item.id] || item.why,
+      target: item.target,
+      max: item.max ?? item.target,
+      count,
+      doneToday: count >= item.target,
+      ...streaks(key, item.target),
     };
   });
 
   const nutrition = {
     total: nutritionItems.length,
     doneToday: nutritionItems.filter((n) => n.doneToday).length,
-    groups: [...new Set(NUTRITION.map((n) => n.group))].map((title) => ({
+    groups: NUTRITION_GROUP_ORDER.map((title) => ({
       title,
       items: nutritionItems.filter((n) => n.group === title),
     })),

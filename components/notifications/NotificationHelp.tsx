@@ -83,7 +83,7 @@ export default function NotificationHelp() {
                 <span className="text-pink-600 mt-0.5">•</span>
                 <span>
                   <strong>Toast notifications</strong> appear at the bottom of your screen when new
-                  notifications arrive. You can dismiss them, and they&apos;ll still be available here.
+                  notifications arrive. You can dismiss them, and they’ll still be available here.
                 </span>
               </li>
               <li className="flex items-start gap-2">

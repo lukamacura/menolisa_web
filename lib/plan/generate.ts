@@ -8,6 +8,7 @@ import {
   allowedExercises,
   exerciseMedia,
   getExercise,
+  isCardioId,
   isNutritionId,
   isRelaxationId,
   relaxationDetail,
@@ -17,7 +18,7 @@ import {
 export const PLAN_WEEKS = 8;
 
 /**
- * Nutrition is no longer one of these. All nine nutrition habits are shown
+ * Nutrition is no longer one of these. All ten nutrition habits are shown
  * every day to everyone (see catalog.NUTRITION), so they are not something a
  * week "contains" — the week only nominates which of them to push on.
  */
@@ -47,7 +48,23 @@ export type PlanWeek = {
 /** A temptation she gets rewarded for resisting. She opts in; we never assume. */
 export type ResistSuggestion = { title: string; why: string };
 
-export type Plan = { weeks: PlanWeek[]; resistSuggestions: ResistSuggestion[] };
+export type Plan = {
+  weeks: PlanWeek[];
+  resistSuggestions: ResistSuggestion[];
+  /**
+   * Why each nutrition row is on her list, written for her — keyed by nutrition
+   * id, one entry per item in catalog.NUTRITION.
+   *
+   * It lives on the plan rather than on the week because the ten rows don't
+   * change across the eight weeks; a per-week copy would be eighty strings
+   * saying the same thing. Written once at generation and never regenerated, so
+   * the reason she read in week 1 is the reason still there in week 8.
+   *
+   * Optional on read: plans generated before this existed have no such key, and
+   * `GET /api/plan` falls back to the catalog default per id.
+   */
+  nutritionWhy?: Record<string, string>;
+};
 
 export type Profile = {
   name: string | null;
@@ -126,6 +143,9 @@ const PlanSchema = z.object({
     .min(1)
     .max(PLAN_WEEKS),
   resist_suggestions: z.array(z.unknown()).max(8).nullish(),
+  // Keys are checked against the catalog in sanitize(), not here — an id the
+  // model invented should cost that one entry, not the whole plan.
+  nutrition_why: z.record(z.string(), z.unknown()).nullish(),
 });
 
 function buildPrompt(profile: Profile, pool: Exercise[]): string {
@@ -133,6 +153,9 @@ function buildPrompt(profile: Profile, pool: Exercise[]): string {
   const movement = vol.perDay
     ? `${vol.sessions} short bursts per day of about ${vol.minutes} minutes (cadence "per_day")`
     : `${vol.sessions} sessions per week of about ${vol.minutes} minutes (cadence "weekly", target ${vol.sessions})`;
+  // A 5-minute snack cannot hold six exercises; a 30-minute session should not
+  // hold one. sanitize() tops up to this same floor when the model under-delivers.
+  const [minEx, maxEx] = vol.perDay ? [2, 3] : [4, 6];
 
   return [
     `Woman in menopause. Build her 8-week plan.`,
@@ -150,20 +173,25 @@ function buildPrompt(profile: Profile, pool: Exercise[]): string {
     `RELAXATION — pick only these item_ids, and use their label as the title:`,
     RELAXATION.map((r) => `${r.id} = ${r.label} (${r.use})`).join(" | "),
     ``,
-    `NUTRITION — all nine of these are shown to her every day; you do not create`,
+    `NUTRITION — all ten of these are shown to her every day; you do not create`,
     `nutrition tasks. You only name 1-2 ids per week as "nutrition_focus":`,
-    NUTRITION.map((n) => `${n.id} = ${n.label}`).join(" | "),
+    NUTRITION.map(
+      (n) => `${n.id} = ${n.label}${n.target > 1 ? ` (${n.target}x a day)` : ""}`
+    ).join(" | "),
     ``,
     `Rules:`,
     `- Exactly 8 weeks, numbered 1-8. Weeks 1-2 steady the basics, 3-5 build, 6-8 lock it in.`,
     `- Each week: 3-4 tasks — at least one movement, one relaxation, one habit. No nutrition tasks.`,
     `- Each week also needs "nutrition_focus": 1-2 nutrition ids to push on that week. Build on the previous week; do not restart from the same id every week.`,
-    `- Habit tasks are yours to write: one small, concrete daily action she ADDS (e.g. "Cool the room before bed"). Cadence "daily". Never write a habit about quitting something — that is what resist_suggestions is for.`,
+    `- Habit tasks are yours to write: one small, concrete daily action she starts doing (e.g. "Cool the room before bed"). Cadence "daily". Name the action itself — never begin the title with "Add". Never write a habit about quitting something — that is what resist_suggestions is for.`,
+    `- Never write a habit or movement task that repeats a nutrition row — no walks after meals, no water, no protein, no meal timing. She already ticks those every day; put the id in nutrition_focus instead.`,
     `- Relaxation tasks need item_id and cadence "daily" (or "per_day" with a target). Match the item to her worst symptom: hot flashes get breath_hotflash, night waking gets breath_sleep, anxiety or palpitations get breath_sigh.`,
-    `- Movement tasks need an exercises array of 3-6 ids with sets/reps, or minutes for cardio. Title the session as a whole ("Lower body strength"), never after one exercise.`,
+    `- Movement tasks need an exercises array of ${minEx}-${maxEx} DIFFERENT ids — a session, not one move. Fewer than ${minEx} is a failed week. Ids starting with K are cardio: give them "minutes" and no sets or reps. Everything else gets "sets" and "reps".`,
+    `- Title each movement session after what is actually in it, and give all 8 weeks different titles. Never title a session after one exercise, and never repeat a title you have already used.`,
     `- Titles and focus lines are sentence case: "Steady the basics", not "Steady The Basics".`,
     `- Add difficulty gradually. Never introduce more than one new thing per week.`,
     `- "why" is one short sentence to her, in second person, tied to her symptoms. No medical claims, no dosages.`,
+    `- Never write "can help", "helps with", "supports", "improves", "boosts", "promotes", "is important", "is essential", "overall health" or "overall well-being" in any "why". Those say nothing. Name what actually happens instead.`,
     `- pillar and cadence must be lowercase, exactly as written above. Omit fields you have no value for — never send null.`,
     ``,
     `RESIST — separately, write 4 "resist_suggestions": specific temptations SHE`,
@@ -172,9 +200,10 @@ function buildPrompt(profile: Profile, pool: Exercise[]): string {
     `it helps ("No sweets after 8pm", "Phone stays out of the bedroom"). Draw them`,
     `from what her symptoms actually predict — sleep trouble suggests the late`,
     `screen and the evening wine, cravings suggest the 3pm sugar. Never suggest`,
-    `quitting a medication or HRT. "why" is one warm sentence, no shame.`,
+    `quitting a medication or HRT. "why" is one warm sentence, no shame, and the`,
+    `banned phrases above apply to it too.`,
     ``,
-    `Return JSON: {"weeks":[{"number":1,"title":"...","focus":"...","nutrition_focus":["protein_25_30g"],"tasks":[{"pillar":"...","title":"...","why":"...","cadence":"...","target":1,"item_id":"...","exercises":[{"id":"L01","sets":3,"reps":10}]}]}],"resist_suggestions":[{"title":"...","why":"..."}]}`,
+    `Return JSON: {"weeks":[{"number":1,"title":"...","focus":"...","nutrition_focus":["protein_25_30g"],"tasks":[{"pillar":"...","title":"...","why":"...","cadence":"...","target":1,"item_id":"...","exercises":[{"id":"...","sets":3,"reps":10},{"id":"...","sets":3,"reps":10},{"id":"...","sets":2,"reps":12},{"id":"...","minutes":15}]}]}],"resist_suggestions":[{"title":"...","why":"..."}]}`,
   ].join("\n");
 }
 
@@ -184,7 +213,27 @@ function buildPrompt(profile: Profile, pool: Exercise[]): string {
  * assigns the stable task keys — the model never sees them.
  */
 const MIN_EXERCISES = 3;
+/** A 5-minute burst done four times a day is two or three moves, not six. */
+const MIN_SNACK_EXERCISES = 2;
 const MAX_EXERCISES = 6;
+
+/**
+ * Habit titles that restate a nutrition row.
+ *
+ * The prompt forbids these in as many words and the model writes them anyway —
+ * "Take a 5-minute walk after meals", "Drink a glass of water before meals" —
+ * which puts one job on her list twice, in two places, with two streaks. It is
+ * caught here for the same reason exercise ids are: a rule the model can opt out
+ * of is not a rule. The offender is swapped for a written habit rather than
+ * dropped, because dropping it can leave the week under three tasks and throw
+ * away an otherwise good plan.
+ */
+const NUTRITION_ECHO =
+  /\b(protein|water|hydrat\w*|fib(?:er|re)|healthy fats?|snack\w*|fasting|fast\b|between meals|before (?:a |your )?meals?|after (?:you )?eat\w*|after (?:a |your |each )?meals?|after (?:breakfast|lunch|dinner)|supplements?|omega|magnesium|vitamin)\b/i;
+
+/** Rotates a list by `n`, so each week tops up from a different starting point. */
+const rotate = <T>(items: T[], n: number): T[] =>
+  items.length ? [...items.slice(n % items.length), ...items.slice(0, n % items.length)] : items;
 
 function sanitize(
   raw: z.infer<typeof PlanSchema>,
@@ -212,13 +261,27 @@ function sanitize(
         if (!exercises.length) continue;
 
         // The model routinely returns a single exercise however firmly it's
-        // asked for more, which is not a session. Top up from her own pool.
+        // asked for more, which is not a session. Top up from her own pool —
+        // her *first* exercise's family first (the id prefix is the movement
+        // pattern), so a squat day gets more legs rather than a neck stretch
+        // bolted onto it. The title the model wrote describes that first pick,
+        // and this is what keeps the title honest.
         const used = new Set(exercises.map((e) => e.id));
-        for (let k = 0; exercises.length < MIN_EXERCISES && k < pool.length; k++) {
-          const cand = pool[(n * 3 + k) % pool.length];
+        const family = exercises[0].id[0];
+        const candidates = [
+          ...rotate(pool.filter((e) => e.id[0] === family), n),
+          ...rotate(pool.filter((e) => e.id[0] !== family), n),
+        ];
+        const floor = vol.perDay ? MIN_SNACK_EXERCISES : MIN_EXERCISES;
+        for (const cand of candidates) {
+          if (exercises.length >= floor) break;
           if (used.has(cand.id)) continue;
           used.add(cand.id);
-          exercises.push({ id: cand.id, sets: n > 4 ? 3 : 2, reps: 10, minutes: undefined });
+          exercises.push(
+            isCardioId(cand.id)
+              ? { id: cand.id, sets: undefined, reps: undefined, minutes: vol.minutes }
+              : { id: cand.id, sets: n > 4 ? 3 : 2, reps: 10, minutes: undefined }
+          );
         }
 
         // Volume is a rule keyed off her fitness level, not something the model
@@ -244,17 +307,34 @@ function sanitize(
         tasks.push({ ...daily, key: id, title: RELAXATION.find((r) => r.id === id)!.label });
         continue;
       }
+
+      // A habit that restates a nutrition row is replaced, not kept — see
+      // NUTRITION_ECHO. The written substitute is indexed by week so a plan
+      // with two offenders doesn't get the same replacement twice.
+      if (NUTRITION_ECHO.test(daily.title)) {
+        tasks.push({
+          ...daily,
+          title: FALLBACK_HABITS[(n - 1) % FALLBACK_HABITS.length],
+          why: "Small, and it holds the rest of the day together.",
+        });
+        continue;
+      }
       tasks.push(daily);
     }
 
     if (tasks.length) {
-      // Keys must be unique within a week and stable forever — relaxation reuses
-      // its catalog id so the same practice keeps one key across weeks.
+      // Keys must be unique within a week and stable forever. Relaxation takes
+      // its catalog id as the suffix so the key says which practice it is; the
+      // week prefix stays on, so the same practice in week 1 and week 6 is two
+      // keys. Nothing derives a cross-week streak from a plan task (only
+      // nutrition and her own habits get streaks), so that is fine — but a
+      // per-task streak would need the prefix dropped and hydrateRelaxation
+      // taught to parse the bare id.
       weeks.push({
         number: n,
         title: w.title,
         focus: w.focus,
-        // A week with no valid focus still shows all nine; it just doesn't
+        // A week with no valid focus still shows all ten; it just doesn't
         // highlight any, which is a worse week, not a broken one.
         nutritionFocus: (w.nutrition_focus ?? []).filter(isNutritionId).slice(0, 2),
         tasks: tasks.map((t, i) => ({ ...t, key: `w${n}_${t.key || `${t.pillar}${i}`}` })),
@@ -262,12 +342,132 @@ function sanitize(
     }
   }
 
+  // A resist line whose reason is a stock hedge is dropped, not shown. Unlike a
+  // task, one of these costs nothing to lose — buildPlan tops the list back up
+  // from FALLBACK_RESIST, which is written.
   const resistSuggestions = (raw.resist_suggestions ?? []).flatMap((r) => {
     const parsed = ResistSchema.safeParse(r);
-    return parsed.success ? [parsed.data] : [];
+    if (!parsed.success || STOCK_PHRASES.test(parsed.data.why)) return [];
+    return [parsed.data];
   });
 
   return { weeks, resistSuggestions: resistSuggestions.slice(0, 6) };
+}
+
+// ─── Nutrition: why each row is on her list ─────────────────────────────────
+
+/**
+ * The ten reasons, rewritten for her.
+ *
+ * This is a **separate call** from the plan. Asked for as one more clause of
+ * the plan prompt, gpt-4o-mini returned ten interchangeable stock lines
+ * ("Walking after meals can aid digestion and support weight management") no
+ * matter how firmly the tone rules were worded — there is too much else in that
+ * prompt for them to survive. On its own, with the catalog sentence in front of
+ * it as the standard, it writes to her instead.
+ *
+ * The catalog sentence is the anchor on purpose: the mechanism stays ours,
+ * written and reviewable, and the model's job is to say that mechanism in the
+ * terms of *her* symptoms. It is the same bargain as the exercise catalog —
+ * the model personalises, it does not decide the medicine.
+ */
+function buildWhyPrompt(profile: Profile): string {
+  return [
+    `Woman in menopause. She sees these ten nutrition habits every day and can`,
+    `tap any of them to read why it is on her list. Rewrite each reason for her.`,
+    ``,
+    `Her answers:`,
+    `- Symptoms, worst first: ${profile.top_problems?.join(", ") || "general menopause symptoms"}`,
+    `- Goals, most important first: ${profile.goals?.join(", ") || profile.goal || "feeling like herself again"}`,
+    `- Stage: ${profile.here_for ?? "unknown"} · struggling for: ${profile.timing ?? "unknown"}`,
+    `- Age: ${profile.age_band ?? "unknown"} · HRT: ${profile.hrt_status ?? "unknown"}`,
+    ``,
+    `The habits, each with the reason as we would write it:`,
+    ...NUTRITION.map((n) => `${n.id} — ${n.label}: "${n.why}"`),
+    ``,
+    `Rules:`,
+    `- Keep the mechanism of the reference sentence. You are changing who it is`,
+    `  written to, not what is true. Never contradict it.`,
+    `- Connect it to her symptoms and goals where it honestly connects. Where it`,
+    `  doesn't, say the mechanism plainly rather than forcing a link.`,
+    `- Write to her, as "you". 120-220 characters. One or two real sentences.`,
+    `- Say the specific thing. "Ten minutes of walking gives the meal you just ate`,
+    `  somewhere to go, so the rise is a slope instead of a spike" is the standard.`,
+    `  "Walking after meals can aid digestion and support weight management" is a`,
+    `  failure — vague, stock, and it tells her nothing she hadn't assumed.`,
+    `- Never write "can help", "supports", "is essential", "is important",`,
+    `  "promotes", "boosts", "overall health" or "overall well-being". Those are`,
+    `  what generic health copy sounds like. Give the mechanism instead.`,
+    `- Vary the openings. No two of the ten may start the same way.`,
+    `- Never promise an outcome, never give a dosage, never name a condition she`,
+    `  hasn't mentioned, never tell her to start or stop a medication or HRT, and`,
+    `  never imply she should have been doing this already.`,
+    ``,
+    `Return JSON keyed by id: {${NUTRITION.map((n) => `"${n.id}":"..."`).join(",")}}`,
+  ].join("\n");
+}
+
+/**
+ * The stock-phrase list from the prompt, enforced. A model that ignores the
+ * tone rules gets that row dropped rather than shipped — she is better served
+ * by our sentence than by a worse rewrite of it.
+ */
+/**
+ * Also applied to `resist_suggestions[].why` — see sanitize(). The modal hedge
+ * ("can help", "can improve", "may reduce") is the real tell: it is what a model
+ * writes when it has been asked for a reason and has none, and it was in half of
+ * every resist line the model produced before this gate existed.
+ */
+const STOCK_PHRASES =
+  /\b(?:(?:can|may|will) (?:help|improve|enhance|reduce|support|boost|prevent|promote)|helps? (?:to )?(?:support|promote|improve|maintain)|supports?\b|is essential|is important|promotes?|boosts?|overall (?:health|well-?being|wellness))/i;
+const MIN_WHY_CHARS = 90;
+const MAX_WHY_CHARS = 240;
+
+function usableWhy(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const clean = value.trim();
+  if (clean.length < MIN_WHY_CHARS || clean.length > MAX_WHY_CHARS) return null;
+  if (STOCK_PHRASES.test(clean)) return null;
+  return clean;
+}
+
+/**
+ * Her ten reasons, always complete: anything the model skipped, invented, or
+ * wrote badly falls back to the catalog's own sentence. The row she taps must
+ * never open on nothing, and a gap here would stay invisible until she tapped
+ * that exact row weeks later.
+ */
+function nutritionWhy(raw: Record<string, unknown> | null | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const item of NUTRITION) {
+    out[item.id] = usableWhy(raw?.[item.id]) ?? item.why;
+  }
+  return out;
+}
+
+/** Never throws and never returns a partial map — the plan must not fail over copy. */
+async function buildNutritionWhy(openai: OpenAI, profile: Profile): Promise<Record<string, string>> {
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.7,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are Lisa, a warm, evidence-informed menopause companion. You explain why a habit is on a woman's list, in her terms, using the mechanism you are given. Plain language, no stock health-copy phrases, no promises. Return JSON only.",
+        },
+        { role: "user", content: buildWhyPrompt(profile) },
+      ],
+    });
+    const raw = completion.choices[0]?.message?.content;
+    const parsed = raw ? JSON.parse(raw) : null;
+    return nutritionWhy(parsed && typeof parsed === "object" ? parsed : null);
+  } catch (err) {
+    console.error("Plan: nutrition why generation failed, using catalog copy:", err);
+    return nutritionWhy(null);
+  }
 }
 
 // ─── Deterministic fallback ─────────────────────────────────────────────────
@@ -283,18 +483,26 @@ const FALLBACK_WEEKS: [string, string][] = [
   ["Lock it in", "Keep only what worked, and make it yours."],
 ];
 
+/**
+ * Also the replacement pool for a habit that restated a nutrition row, so no
+ * entry here may be one — nothing about protein, water, fiber, fasting, meal
+ * spacing or supplements. Each of those already has a row of its own, ticked
+ * daily, with its own streak.
+ */
 const FALLBACK_HABITS = [
   "Same wake time every day",
   "Daylight within 30 minutes of waking",
   "Caffeine cut-off at noon",
   "Cool the room before bed",
   "Move every hour you sit",
-  "Water first thing in the morning",
+  "Lights down an hour before bed",
   "Phone out of the bedroom",
   "One 20-minute break, actually booked",
 ];
 
 /** Generic but real. The LLM personalises these; this is what she gets if it can't. */
+const RESIST_TARGET = 4;
+
 const FALLBACK_RESIST: ResistSuggestion[] = [
   { title: "No sweets after 8pm", why: "Late sugar is what wakes you at 3am, not the heat." },
   { title: "Phone stays out of the bedroom", why: "The light is the part your body reads as morning." },
@@ -302,17 +510,37 @@ const FALLBACK_RESIST: ResistSuggestion[] = [
   { title: "No coffee after noon", why: "It's still in you at bedtime, even when you can't feel it." },
 ];
 
+/**
+ * Fills the resist list back to four after the stock-phrase gate ate some of
+ * the model's. Matched on title so a written duplicate of "No sweets after 8pm"
+ * never lands beside the model's version of the same idea.
+ */
+function topUpResist(kept: ResistSuggestion[], written: ResistSuggestion[]): ResistSuggestion[] {
+  const out = [...kept];
+  const taken = new Set(out.map((r) => r.title.toLowerCase()));
+  for (const r of written) {
+    if (out.length >= RESIST_TARGET) break;
+    if (taken.has(r.title.toLowerCase())) continue;
+    taken.add(r.title.toLowerCase());
+    out.push(r);
+  }
+  return out;
+}
+
 /** Used when the LLM fails. Still personalized: her level filters the pool, her symptoms filter impact. */
 function fallbackPlan(profile: Profile, pool: Exercise[]): Plan {
   const vol = MOVEMENT_VOLUME[profile.fitness_level ?? "beginner"] ?? MOVEMENT_VOLUME.beginner;
 
   return {
     resistSuggestions: FALLBACK_RESIST,
+    // No model ran, so every row gets the catalog's written reason.
+    nutritionWhy: nutritionWhy(undefined),
     weeks: FALLBACK_WEEKS.map(([title, focus], i) => {
       const n = i + 1;
       // Rotate through the pool so the weeks don't all look identical, and ramp
       // the set count once past the halfway mark.
-      const picks = Array.from({ length: 4 }, (_, k) => pool[(i * 3 + k) % pool.length]).filter(Boolean);
+      const count = vol.perDay ? MIN_SNACK_EXERCISES : 4;
+      const picks = Array.from({ length: count }, (_, k) => pool[(i * 3 + k) % pool.length]).filter(Boolean);
       const relaxation = RELAXATION[i % RELAXATION.length];
 
       const tasks: PlanTask[] = [
@@ -323,13 +551,18 @@ function fallbackPlan(profile: Profile, pool: Exercise[]): Plan {
           why: "Muscle and bone respond fastest to steady, repeatable work.",
           cadence: vol.perDay ? "per_day" : "weekly",
           target: vol.sessions,
-          exercises: picks.map((e) => ({ id: e.id, sets: n > 4 ? 3 : 2, reps: 10 })),
+          exercises: picks.map((e) =>
+            isCardioId(e.id)
+              ? { id: e.id, minutes: vol.minutes }
+              : { id: e.id, sets: n > 4 ? 3 : 2, reps: 10 }
+          ),
         },
         { key: `w${n}_${relaxation.id}`, pillar: "relaxation", title: relaxation.label, why: "Lowering the background stress softens the symptoms on top of it.", cadence: "daily", target: 1 },
         { key: `w${n}_habit`, pillar: "habit", title: FALLBACK_HABITS[i % FALLBACK_HABITS.length], why: "Small, and it holds the rest of the day together.", cadence: "daily", target: 1 },
       ];
-      // Walk the nine in priority order, two a week, so by week 8 she has been
-      // pushed on every one of them at least once.
+      // Walk the ten in priority order, two a week, so by week 5 she has been
+      // pushed on every one of them at least once, and the last three weeks
+      // come back round to the highest-leverage ones.
       const nutritionFocus = [NUTRITION[(i * 2) % NUTRITION.length].id, NUTRITION[(i * 2 + 1) % NUTRITION.length].id];
       return { number: n, title, focus, tasks, nutritionFocus };
     }),
@@ -348,8 +581,24 @@ export async function buildPlan(p: Profile): Promise<Plan> {
 
   const fallback = fallbackPlan(p, pool);
   let plan = fallback;
+
+  // The SDK constructor throws on a missing key, and it would throw from
+  // *outside* the try below — which, since generatePlan runs inside after(),
+  // is an unhandled rejection and no plan at all. She gets the deterministic
+  // one instead.
+  if (!process.env.OPENAI_API_KEY) {
+    console.error("Plan: OPENAI_API_KEY is not set, using fallback");
+    return fallback;
+  }
+
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+  // Two calls, in parallel: the weeks, and her ten nutrition reasons. They share
+  // nothing, and running them together keeps generation inside the time the
+  // success screen is willing to wait. buildNutritionWhy never rejects.
+  const whyPromise = buildNutritionWhy(openai, p);
+
   try {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.5,
@@ -373,12 +622,11 @@ export async function buildPlan(p: Profile): Promise<Plan> {
       const complete =
         cleaned.weeks.length === PLAN_WEEKS && cleaned.weeks.every((w) => w.tasks.length >= 3);
       if (complete) {
-        // Losing the resist list is not worth losing a good 8 weeks over.
+        // Losing the resist list is not worth losing a good 8 weeks over, and
+        // the stock-phrase gate routinely takes one or two of them.
         plan = {
           ...cleaned,
-          resistSuggestions: cleaned.resistSuggestions.length
-            ? cleaned.resistSuggestions
-            : fallback.resistSuggestions,
+          resistSuggestions: topUpResist(cleaned.resistSuggestions, fallback.resistSuggestions),
         };
       } else {
         console.error(
@@ -394,7 +642,10 @@ export async function buildPlan(p: Profile): Promise<Plan> {
     console.error("Plan: generation failed, using fallback:", err);
   }
 
-  return plan;
+  // The reasons survive a failed plan: they are keyed by nutrition id and owe
+  // nothing to the weeks, so a run that fell back to the deterministic plan
+  // still gets the ten written for her.
+  return { ...plan, nutritionWhy: await whyPromise };
 }
 
 /**

@@ -11,7 +11,12 @@ const BodySchema = z.object({
   taskKey: z.string().min(1).max(80),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   done: z.boolean().default(true),
-  /** For per_day tasks (movement snacks): how many times so far today. */
+  /**
+   * How many times so far today, for anything ticked more than once: movement
+   * snacks, and the nutrition rows with a target above 1 (protein, fat, fiber
+   * and the post-meal walk are per meal, water is per glass). It replaces the
+   * stored count rather than adding to it, so the client sends the new total.
+   */
   count: z.number().int().min(1).max(20).default(1),
   note: z.string().max(500).nullable().optional(),
 });

@@ -29,7 +29,6 @@ import {
   ShieldCheck,
   MessageCircleHeart,
   Activity,
-  Footprints,
   Wind,
   PartyPopper,
   Lock,
@@ -38,6 +37,7 @@ import {
   Nut,
   Wheat,
   Apple,
+  Footprints,
   Timer,
   Hourglass,
   Ban,
@@ -47,6 +47,8 @@ import {
 import { PaywallView } from "@/components/PaywallView";
 import MetaPurchaseTracker from "@/components/MetaPurchaseTracker";
 import { SocialProofPolaroid } from "@/components/SocialProof";
+import { PlanStage } from "@/components/PlanStage";
+import { PLAN_PILLARS } from "@/lib/planPillars";
 import { META_FUNNEL_STEPS } from "@/lib/metaPixel";
 import {
   PLAN_ID,
@@ -381,8 +383,8 @@ const getSeverityPainText = (
       return (
         <>
           {displayName}, {theseThis} {count} might feel manageable now. But without understanding
-          what&apos;s causing {themIt}, {theyIt}{" "}
-          <PainEmphasis>often get{symptomCount === 1 ? "s" : ""} worse</PainEmphasis>. Let&apos;s
+          what’s causing {themIt}, {theyIt}{" "}
+          <PainEmphasis>often get{symptomCount === 1 ? "s" : ""} worse</PainEmphasis>. Let’s
           figure this out <PainEmphasis>before {theyIt} {symptomCount === 1 ? "does" : "do"}</PainEmphasis>.
         </>
       );
@@ -527,7 +529,7 @@ function getDiagnosisForwardCopy(): { sub: React.ReactNode } {
 // the next tap is named as the thing that moves that bar, not as a preview of
 // something ("my day") the next screen never actually shows her.
 function getReliefForwardCopy(): { sub: React.ReactNode } {
-  return { sub: "9 quick taps about today - no wrong answers." };
+  return { sub: `${NUTRITION_TOTAL} quick taps about today - no wrong answers.` };
 }
 
 // ─── Nutrition checklist: the second app taste ──────────────────────────────
@@ -540,9 +542,18 @@ function getReliefForwardCopy(): { sub: React.ReactNode } {
 // Array order is priority order (highest-leverage habit first), because the
 // reward screen reuses it to pick her "first 3 swaps" from what she left blank.
 // IDs are the contract with the mobile habit tracker - see docs/plan/pillars.md.
+//
+// The list mirrors the daily vitality log, minus every line of it that was a
+// blank to write in — she is never asked here what she ate or what time she
+// broke her fast, only whether she did the thing. `hint` carries what the paper
+// log gets from printing the same block three times: "every meal" and "6+
+// glasses". In the funnel each row is still one tap; the tracker in the app is
+// where those become three ticks and six glasses.
 type NutritionItem = {
   id: string;
   label: string;
+  /** Cadence, shown as a chip. Omitted for plain once-a-day rows. */
+  hint?: string;
   icon: React.ComponentType<{ className?: string }>;
 };
 type NutritionGroup = {
@@ -553,21 +564,22 @@ type NutritionGroup = {
 
 const NUTRITION_GROUPS: NutritionGroup[] = [
   {
-    title: "Meals & nutrients",
+    title: "Every meal",
     icon: Salad,
     items: [
-      { id: "protein_25_30g", label: "25-30g protein per meal", icon: Beef },
-      { id: "healthy_fats", label: "Healthy fats", icon: Nut },
-      { id: "high_fiber", label: "Added high-fiber foods", icon: Wheat },
-      { id: "low_gi_fruit", label: "Low-glycemic fruits only", icon: Apple },
+      { id: "protein_25_30g", label: "25-30g protein", hint: "every meal", icon: Beef },
+      { id: "healthy_fats", label: "A healthy fat", hint: "every meal", icon: Nut },
+      { id: "high_fiber", label: "A high-fiber food", hint: "every meal", icon: Wheat },
+      { id: "low_gi_fruit", label: "Low-glycemic fruit only", icon: Apple },
+      { id: "post_meal_walk", label: "10-min walk after eating", hint: "every meal", icon: Footprints },
     ],
   },
   {
     title: "Timing & fasting",
     icon: Timer,
     items: [
+      { id: "fast_12h", label: "12-hour overnight fast", icon: Hourglass },
       { id: "gap_5h", label: "5 hours between meals", icon: Timer },
-      { id: "fast_12h", label: "12-hour fasting window", icon: Hourglass },
       { id: "no_snacking", label: "No snacking between meals", icon: Ban },
     ],
   },
@@ -575,14 +587,14 @@ const NUTRITION_GROUPS: NutritionGroup[] = [
     title: "Hydration & supplements",
     icon: Droplets,
     items: [
-      { id: "water_6", label: "Drank 6+ glasses of water", icon: Droplets },
+      { id: "water_6", label: "Glasses of water", hint: "6+", icon: Droplets },
       { id: "supplements", label: "Daily supplements taken", icon: Pill },
     ],
   },
 ];
 
 const NUTRITION_ITEMS: NutritionItem[] = NUTRITION_GROUPS.flatMap((g) => g.items);
-const NUTRITION_TOTAL = NUTRITION_ITEMS.length; // 9
+const NUTRITION_TOTAL = NUTRITION_ITEMS.length; // 10
 
 // Revealed under the supplements row once it's ticked. Deliberately excluded
 // from the score - they're here to name the three that matter, not to inflate
@@ -595,7 +607,7 @@ const SUPPLEMENT_OPTIONS = [
 
 // Every tier has to land on "you need the plan" - but for opposite reasons, and
 // none of them may shame her. Low scores get easy wins; high scores get the
-// reframe that matters most, because a woman already doing 8 of 9 has concluded
+// reframe that matters most, because a woman already doing 8 of 10 has concluded
 // she's tried everything. Naming her own symptoms back to her turns her
 // diligence into the argument: effort was never the missing piece.
 function getNutritionVerdict(
@@ -622,16 +634,18 @@ function getNutritionVerdict(
       headline: `${count} of ${NUTRITION_TOTAL}${suffix}.`,
       body: (
         <>
-          You&apos;re already doing {count} without anyone telling you to. The other {missing} are
-          the ones that move insulin, estrogen and sleep - and they&apos;re what Lisa hands you, one
+          You’re already doing {count} without anyone telling you to. The other {missing} are
+          the ones that move insulin, estrogen and sleep - and they’re what Lisa hands you, one
           day at a time.
         </>
       ),
     };
   }
-  if (count <= 6) {
+  if (count <= 7) {
     return {
-      headline: `${count} of ${NUTRITION_TOTAL} - over halfway.`,
+      // "Over halfway" is only true above 5, and a claim she can check and find
+      // wrong costs more than the phrase is worth.
+      headline: `${count} of ${NUTRITION_TOTAL}${count > NUTRITION_TOTAL / 2 ? " - over halfway" : ""}.`,
       body: (
         <>
           You&apos;re not doing this wrong, and you&apos;re not lazy. You&apos;re missing{" "}
@@ -665,27 +679,10 @@ function getNutritionVerdict(
 // column that only promises understanding undercuts the offer it sits above.
 
 // ─── The plan: what she actually buys ───────────────────────────────────────
-// The four daily task areas the mobile app builds her 8-week plan from. This is
-// the offer's mechanism - "track your symptoms" never explained how anyone gets
-// better, and the diagnosis screen is the Reason stage, so the plan has to be
-// the thing the page is about.
-// `chip` is the icon's badge background - the same tinted square the tracker
-// puts each pillar in, so a pillar looks like a thing in the app rather than a
-// bullet on a marketing page.
-const PLAN_PILLARS = [
-  { key: "movement",   label: "Movement",    icon: Footprints,   tint: "text-sky-500",     chip: "bg-sky-100",     blurb: "A routine that matches your level, not a gym program" },
-  { key: "nutrition",  label: "Nutrition",   icon: Salad,        tint: "text-emerald-500", chip: "bg-emerald-100", blurb: "The daily swaps that steady your hormones" },
-  { key: "relaxation", label: "Relaxation",  icon: Wind,         tint: "text-violet-500",  chip: "bg-violet-100",  blurb: "Breathing and wind-downs you can do anywhere" },
-  { key: "habits",     label: "Your habits", icon: CheckCircle2, tint: "text-primary",     chip: "bg-primary/10",  blurb: "The few small things that hold the rest together" },
-] as const;
-
-// The 8-week arc, so the plan reads as a designed progression rather than a
-// to-do list she has to keep up forever.
-const PLAN_ARC = [
-  { weeks: "Week 1–2", label: "Steady the basics" },
-  { weeks: "Week 3–5", label: "Build on what works" },
-  { weeks: "Week 6–8", label: "Lock it in" },
-] as const;
+// The four daily task areas and the 8-week arc live in lib/planPillars.ts.
+// They're the offer's mechanism - "track your symptoms" never explained how
+// anyone gets better - so on the diagnosis screen they aren't a list any more:
+// <PlanStage /> plays them inside the plan scroll.
 
 /** Two diverging trajectories over ~2 years: decline if untreated vs. climb with Lisa. */
 function TrajectoryChart({ score }: { score: number }) {
@@ -2387,132 +2384,18 @@ function RegisterPageContent() {
                   </div>
 
                   <div className="rounded-2xl overflow-hidden border-2 border-[#E8DDD9] bg-card shadow-md shadow-primary/5">
-                    {/* Her name written onto the plan, letter by letter in script -
-                        the made-for-you moment, and the reason this reads as her
-                        plan rather than a program she has to fit into. */}
-                    {/* Capped rather than full-bleed: the scroll is 2:3, so at the
-                        card's full width it ate a whole screen on a phone and
-                        pushed the plan arc below the fold. */}
-                    <div className="relative w-full max-w-[300px] mx-auto">
-                      <Image
-                        src="/quiz/offer.webp"
-                        alt={firstName.trim() ? `${firstName.trim()}'s personalized 8 week plan` : "Your personalized 8 week plan"}
-                        width={1024}
-                        height={1536}
-                        sizes="300px"
-                        className="w-full h-auto"
-                        priority
-                      />
-                      {(() => {
-                        const ink = "#5c4327";
-                        const fade = {
-                          hidden: { opacity: 0, y: 8 },
-                          show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" as const } },
-                        };
-                        return (
-                          <motion.div
-                            initial={prefersReducedMotion ? "show" : "hidden"}
-                            animate="show"
-                            variants={{ hidden: {}, show: { transition: { staggerChildren: 0.22, delayChildren: 0.45 } } }}
-                            className="absolute inset-0 flex flex-col items-center justify-center text-center px-[16%] py-[15%]"
-                            style={{ color: ink }}
-                          >
-                            {/* A wax seal, not the reward illustration - this scroll
-                                carries her name, so the crest has to read as her
-                                plan being sealed, and it has to survive at 80px. */}
-                            <motion.div variants={fade} className="mb-1.5">
-                              <Image
-                                src="/personalized_plan.webp"
-                                alt=""
-                                width={500}
-                                height={500}
-                                sizes="64px"
-                                className="w-14 h-auto pointer-events-none select-none drop-shadow-lg"
-                              />
-                            </motion.div>
-
-                            <motion.span
-                              variants={fade}
-                              className="text-[8px] sm:text-[9px] uppercase tracking-[0.24em] opacity-70 mb-1.5"
-                              style={{ fontFamily: "var(--font-lora)" }}
-                            >
-                              Your Personalized 8 Week Plan
-                            </motion.span>
-
-                            <motion.div
-                              variants={{ hidden: {}, show: { transition: { staggerChildren: 0.09 } } }}
-                              className="flex"
-                            >
-                              {(firstName.trim() || "Lisa").split("").map((ch, i) => (
-                                <motion.span
-                                  key={`${ch}-${i}`}
-                                  variants={{
-                                    hidden: { opacity: 0, y: 12, rotate: -5, filter: "blur(6px)" },
-                                    show: { opacity: 1, y: 0, rotate: 0, filter: "blur(0px)", transition: { type: "spring", stiffness: 240, damping: 18 } },
-                                  }}
-                                  className="font-script text-4xl sm:text-5xl leading-none"
-                                >
-                                  {ch === " " ? " " : ch}
-                                </motion.span>
-                              ))}
-                            </motion.div>
-
-                            <motion.div variants={fade} className="my-2 h-px w-12" style={{ background: ink, opacity: 0.4 }} />
-
-                            <motion.p
-                              variants={fade}
-                              className="text-[11px] sm:text-xs italic leading-snug max-w-[92%]"
-                              style={{ fontFamily: "var(--font-lora)" }}
-                            >
-                              Designed to help you {goalLabel}.
-                            </motion.p>
-
-                            <motion.div variants={fade} className="mt-3 flex flex-col items-center">
-                              <span className="font-script text-xl sm:text-2xl leading-none">Lisa</span>
-                            </motion.div>
-                          </motion.div>
-                        );
-                      })()}
-                    </div>
-
-                    {/* The arc. Eight weeks has to read as a designed progression
-                        she finishes, not a routine she keeps up forever. */}
-                    <div className="px-4 pt-3.5">
-                      <div className="grid grid-cols-3 gap-1.5">
-                        {PLAN_ARC.map((a) => (
-                          <div key={a.weeks} className="rounded-xl border border-[#E8DDD9] bg-background px-2 py-2 text-center">
-                            <p className="text-[10px] font-bold text-primary">{a.weeks}</p>
-                            <p className="text-[10px] text-[#5A5A5A] leading-snug mt-0.5">{a.label}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* The daily shape of the plan - four tasks, named the same way
-                        the tracker names them (docs/plan/pillars.md). */}
-                    <div className="px-4 pt-4 pb-3.5">
-                      <p className="text-sm font-bold text-[#3D3D3D] mb-2.5">Every day, four things:</p>
-                      <div className="space-y-2">
-                        {PLAN_PILLARS.map((p) => (
-                          <div
-                            key={p.key}
-                            className="flex items-center gap-2.5 rounded-xl border border-[#E8DDD9] bg-background px-2.5 py-2"
-                          >
-                            <span
-                              className={cn(
-                                "inline-flex items-center justify-center w-8 h-8 rounded-lg shrink-0",
-                                p.chip
-                              )}
-                            >
-                              <p.icon className={cn("w-4 h-4", p.tint)} />
-                            </span>
-                            <p className="text-xs text-[#5A5A5A] leading-snug min-w-0">
-                              <span className="font-bold text-[#3D3D3D]">{p.label}</span> - {p.blurb}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    {/* The scroll, staged. Her name is written on it, then it
+                        plays the two things the arc and the pillar list used to
+                        say in static grids: a day on the plan (four tasks
+                        ticking themselves off) and the eight weeks those days
+                        add up to. It loops on its own while it's on screen -
+                        nothing in it is tappable, so it never competes with the
+                        CTA for a thumb. */}
+                    <PlanStage
+                      firstName={firstName.trim() || undefined}
+                      goalLabel={goalLabel}
+                      className="pb-2"
+                    />
 
                     {/* Today's list front and centre, the three pillar screens
                         fanned behind it - the four tasks above, as they actually
@@ -2987,7 +2870,7 @@ function RegisterPageContent() {
       )}
 
       {/* Nutrition Phase - the second app taste. She audits her own day against
-          the nine habits, then gets told the gap is structural, not personal.
+          the ten habits, then gets told the gap is structural, not personal.
           This is the paywall's doorstep, so it carries the price + guarantee. */}
       {phase === "nutrition" && (
         <div
@@ -3097,6 +2980,19 @@ function RegisterPageContent() {
                                     )}
                                   >
                                     {item.label}
+                                    {/* The cadence rides inside the label rather
+                                        than in its own column, so a two-line
+                                        label doesn't push it off the row. */}
+                                    {item.hint && (
+                                      <span
+                                        className={cn(
+                                          "ml-1.5 text-[11px] font-medium whitespace-nowrap",
+                                          isOn ? "text-primary" : "text-[#9A9A9A]"
+                                        )}
+                                      >
+                                        {item.hint}
+                                      </span>
+                                    )}
                                   </span>
                                   <div
                                     className={cn(
@@ -3256,6 +3152,14 @@ function RegisterPageContent() {
                                       <SwapIcon className="w-4 h-4 text-primary shrink-0" />
                                       <span className="text-sm font-semibold text-[#3D3D3D] leading-tight">
                                         {s.label}
+                                        {/* Out of the checklist the row has no
+                                            group header above it, so "every
+                                            meal" has to travel with the label. */}
+                                        {s.hint && (
+                                          <span className="ml-1.5 text-[11px] font-medium text-primary">
+                                            {s.hint}
+                                          </span>
+                                        )}
                                       </span>
                                     </div>
                                   );

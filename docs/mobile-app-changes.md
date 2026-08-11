@@ -156,6 +156,43 @@ the `referralCode` argument to save-quiz, and any read of those columns.
 
 ---
 
+## 8. Nutrition rows are counted, not just ticked — 2026-08-11
+
+`GET /api/plan` now models the daily nutrition log the way the paper version
+does: the meal habits are done **per meal**, water **per glass**. Nothing was
+removed, so an old build keeps working — it just reads a three-meal row as a
+single tick.
+
+Each item under `nutrition.groups[].items[]` gained four fields:
+
+| Field | Meaning |
+|---|---|
+| `target` | Ticks a full day takes — `3` for the per-meal rows, `6` for water, `1` for the rest |
+| `max` | Ticks the UI should offer; only water differs from `target` (8) |
+| `count` | Ticks logged today, `0…max` |
+| `why` | One or two sentences on why this row is on *her* list — written for her at plan generation. Always present, on every plan including old ones. Needs somewhere to be read: a tap on the row, an expander, an info sheet. |
+
+`doneToday` is unchanged in type but **changed in meaning**: it is now
+`count >= target`, not `count > 0`. `streak` / `bestStreak` follow the same rule
+— a day only counts if it reached `target`. `nutrition.doneToday` is therefore
+the number of *fully* completed rows.
+
+There is one new row, `post_meal_walk` ("10-min walk after eating", target 3),
+and the labels and grouping changed — see `docs/plan/pillars.md`. **Do not
+hardcode either.** Render `title`, `group` and `target` from the response; the
+group headers are now `Every meal` / `Timing & fasting` / `Hydration &
+supplements`, in response order.
+
+`POST /api/plan/complete` is unchanged: send `count` as the **new total** for
+that row today (it replaces, it does not add), and `done: false` to clear the
+day. For a target-3 row, her third tap sends `count: 3`.
+
+**Action:** render a `target`-segment control instead of a checkbox where
+`target > 1`, send the running total as `count`, give `why` a place to be read,
+and drop any local copy of the nutrition labels.
+
+---
+
 ## Quick checklist
 
 - [ ] Remove `trial_start` / `trial_end` / `trial_days` reads
@@ -166,3 +203,6 @@ the `referralCode` argument to save-quiz, and any read of those columns.
 - [ ] Remove any "start your free trial" onboarding copy
 - [ ] Remove the invite/referral screen and every `/api/referral/*` call
 - [ ] Stop sending `referralCode` to `/api/auth/save-quiz`
+- [ ] Render nutrition rows from `target` / `count`, not as plain checkboxes
+- [ ] Drop any hardcoded nutrition labels, groups or the count of nine
+- [ ] Surface each nutrition row's `why` (tap-to-open, expander, info sheet)

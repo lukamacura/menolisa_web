@@ -90,7 +90,7 @@ export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) 
         &ldquo;{SOCIAL_PROOF.quote}&rdquo;
       </p>
       <p className="mx-auto mt-1 max-w-[300px] px-2 text-center text-[10px] font-semibold uppercase tracking-wide text-[#9A9A9A]">
-        {SOCIAL_PROOF.name}, {SOCIAL_PROOF.age} &middot; finished her plan last week
+        {SOCIAL_PROOF.name}, {SOCIAL_PROOF.age} · finished her plan last week
       </p>
     </motion.div>
   );

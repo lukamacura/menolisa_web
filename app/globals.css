@@ -532,6 +532,45 @@ input[type="button"],
   cursor: pointer;
 }
 
+/* The 56 plan days filling in inside <PlanStage />.
+   Driving 56 dots from React state meant 56 re-renders of the whole grid per
+   loop; each dot now runs its own compositor-only animation off an inline
+   --plan-day-delay, so the sweep costs zero renders. The parent flips
+   --plan-day-play to "paused" when the stage is offscreen. */
+@keyframes plan-day-fill {
+  from { opacity: 0; transform: scale(0.68); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.plan-day {
+  position: relative;
+  display: block;
+  border-radius: 9999px;
+  background: #F0E6DE;
+}
+
+.plan-day::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--plan-day-color);
+  opacity: 0;
+  transform: scale(0.68);
+  /* Deliberately no will-change: it would promote all 56 dots to their own
+     layer for the whole act. The browser promotes each one for the 260ms it is
+     actually animating, which is the part that matters. */
+  animation: plan-day-fill 260ms cubic-bezier(0.16, 1, 0.3, 1) var(--plan-day-delay, 0ms) forwards;
+  animation-play-state: var(--plan-day-play, running);
+}
+
+/* Reduced motion: the arc reads as already finished rather than never starting. */
+.plan-day--static::after {
+  animation: none;
+  opacity: 1;
+  transform: none;
+}
+
 /* Loading animation - slow spin for quiz results */
 @keyframes spin-slow {
   from { transform: rotate(0deg); }

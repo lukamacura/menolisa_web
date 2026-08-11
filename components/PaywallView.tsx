@@ -461,13 +461,13 @@ export function PaywallView({
             {expired ? (
               <>
                 Your <strong className="text-[#3D3D3D]">{PLAN_DISCOUNT_PCT}% off</strong> held
-                for {PLAN_DISCOUNT_WINDOW_MINUTES} minutes and just ran out &mdash; you can get
+                for {PLAN_DISCOUNT_WINDOW_MINUTES} minutes and just ran out — you can get
                 it back below.
               </>
             ) : (
               <>
                 <strong className="text-[#3D3D3D]">{PLAN_DISCOUNT_PCT}% off</strong> our regular
-                price. Do the {PLAN_WEEKS} weeks and still don&apos;t feel better? Full refund.
+                price. Do the {PLAN_WEEKS} weeks and still don’t feel better? Full refund.
               </>
             )}
           </p>
@@ -671,7 +671,7 @@ export function PaywallView({
             </h2>
             <p className="text-sm text-[#3D3D3D] leading-relaxed">
               Follow <b>{PLAN_ADHERENCE_PCT}% of your plan</b> for {PLAN_WEEKS} weeks. If you still
-              don&apos;t feel better, we&apos;ll{" "}
+              don’t feel better, we’ll{" "}
               <b className="text-green-700">refund you</b> in full.
             </p>
             <div className="w-16 h-px bg-green-300 my-3" />

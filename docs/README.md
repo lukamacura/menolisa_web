@@ -11,6 +11,8 @@
 ## Start here
 
 - **How the 8-week plan works** → [plan/instructions.md](plan/instructions.md)
+- **What the LLM actually stores per user, and how to feed it to an agent** →
+  [plan/generated-plan.md](plan/generated-plan.md)
 - **What we actually sell** → [marketing/offering.md](marketing/offering.md)
 - **How the funnel is built** → [funnel/quiz.md](funnel/quiz.md)
 

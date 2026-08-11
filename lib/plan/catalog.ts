@@ -104,6 +104,13 @@ export const EXERCISES: Exercise[] = E.map(([id, name, props, level, impact, sna
 const BY_ID = new Map(EXERCISES.map((e) => [e.id, e]));
 export const getExercise = (id: string): Exercise | undefined => BY_ID.get(id);
 
+/**
+ * Cardio is the one family measured in minutes rather than sets and reps —
+ * "Zone 2 walk, 2 sets of 10" is not a thing. The `K` prefix is the marker, and
+ * this is the only place that knowledge lives.
+ */
+export const isCardioId = (id: string) => id.startsWith("K");
+
 // ─── Exercise video ─────────────────────────────────────────────────────────
 
 /**
@@ -170,32 +177,140 @@ export const MOVEMENT_VOLUME: Record<string, { sessions: number; minutes: number
 // ─── Nutrition: the daily checklist ─────────────────────────────────────────
 
 /**
- * The nine daily nutrition habits, in priority order. These ids and labels are
+ * The ten daily nutrition habits, in priority order. These ids and labels are
  * the contract with the /register funnel (NUTRITION_GROUPS) — see
  * docs/plan/pillars.md. Do not reword them here alone.
  *
- * Unlike movement and relaxation, these are NOT selected by the LLM. All nine
+ * Unlike movement and relaxation, these are NOT selected by the LLM. All ten
  * appear every single day, in this order and grouping, for every user — she
  * ticks what she actually did. The LLM only nominates which ones a given week
  * should push on (`nutritionFocus`).
+ *
+ * The list is the daily vitality log, minus everything that would have been a
+ * text box. The paper version asks her to *write* the protein, the fat, the
+ * fiber, the time she broke her fast and the time she started it; none of that
+ * survives here. A habit only earns a row if ticking it is the whole
+ * interaction — what she ate is a diary, and a diary is the thing women stop
+ * filling in by day four.
+ *
+ * `target` is how many times a day the row can be ticked, which is what carries
+ * the meal structure the paper log gets from having three identical blocks:
+ * protein, fat, fiber and the post-meal walk are `3` (breakfast, lunch,
+ * dinner), water is `6` of a possible `max` 8, everything else is a yes/no for
+ * the day. She logs a count against one key rather than three per-meal keys, so
+ * "protein" stays one habit with one streak.
  */
-export type NutritionGroup = "Meals & nutrients" | "Timing & fasting" | "Hydration & supplements";
+export type NutritionGroup = "Every meal" | "Timing & fasting" | "Hydration & supplements";
 
-export const NUTRITION: { id: string; label: string; group: NutritionGroup }[] = [
-  { id: "protein_25_30g", label: "25-30g protein per meal", group: "Meals & nutrients" },
-  { id: "healthy_fats", label: "Healthy fats", group: "Meals & nutrients" },
-  { id: "high_fiber", label: "Added high-fiber foods", group: "Meals & nutrients" },
-  { id: "low_gi_fruit", label: "Low-glycemic fruits only", group: "Meals & nutrients" },
-  { id: "gap_5h", label: "5 hours between meals", group: "Timing & fasting" },
-  { id: "fast_12h", label: "12-hour fasting window", group: "Timing & fasting" },
-  { id: "no_snacking", label: "No snacking between meals", group: "Timing & fasting" },
-  { id: "water_6", label: "Drank 6+ glasses of water", group: "Hydration & supplements" },
-  { id: "supplements", label: "Daily supplements taken", group: "Hydration & supplements" },
+export type NutritionItem = {
+  id: string;
+  label: string;
+  group: NutritionGroup;
+  /** Ticks a full day needs. 1 = a plain yes/no. */
+  target: number;
+  /** Ticks the tracker offers, where going past target is allowed. Defaults to target. */
+  max?: number;
+  /**
+   * What she reads when she opens the row — the reason it is on her list.
+   *
+   * This is the **fallback**, not the copy she normally sees. The plan
+   * generator writes her own version of all ten (`Plan.nutritionWhy`), tied to
+   * her symptoms. These are what she gets when that never happened: OpenAI was
+   * down and she has the deterministic plan, the model skipped an id, or her
+   * plan predates the field. A row with no explanation is worse than a generic
+   * one, so every id keeps a written default here.
+   *
+   * Keep them mechanism-first and claim-free: what the habit does, not what it
+   * cures. No dosages, no "this will fix your hot flashes".
+   */
+  why: string;
+};
+
+export const NUTRITION: NutritionItem[] = [
+  {
+    id: "protein_25_30g",
+    label: "25-30g protein",
+    group: "Every meal",
+    target: 3,
+    why: "Holding on to muscle takes more protein than it used to, and your body can only use so much at a sitting — three moderate hits do what one big dinner can't.",
+  },
+  {
+    id: "healthy_fats",
+    label: "A healthy fat",
+    group: "Every meal",
+    target: 3,
+    why: "Fat is what your hormones are built from, and it's the part of a meal that actually holds you until the next one.",
+  },
+  {
+    id: "high_fiber",
+    label: "A high-fiber food",
+    group: "Every meal",
+    target: 3,
+    why: "Fiber slows the sugar in a meal down, feeds your gut, and does most of the work of keeping you full without you noticing.",
+  },
+  {
+    id: "low_gi_fruit",
+    label: "Low-glycemic fruit only",
+    group: "Every meal",
+    target: 1,
+    why: "Fruit is still sugar. Berries, apples and pears give you the sweetness without the rise-and-crash your afternoon doesn't need.",
+  },
+  // The paper log repeats this under all three meals, and it is the one line
+  // that makes the meal structure work — the walk is what flattens the glucose
+  // rise the meal just caused, so it lives with the meal, not with movement.
+  {
+    id: "post_meal_walk",
+    label: "10-min walk after eating",
+    group: "Every meal",
+    target: 3,
+    why: "Ten minutes of walking gives the meal you just ate somewhere to go, so the rise is a slope instead of a spike.",
+  },
+  {
+    id: "fast_12h",
+    label: "12-hour overnight fast",
+    group: "Timing & fasting",
+    target: 1,
+    why: "Twelve hours without food gives your body a long quiet stretch to repair in, and you sleep through most of it.",
+  },
+  {
+    id: "gap_5h",
+    label: "5 hours between meals",
+    group: "Timing & fasting",
+    target: 1,
+    why: "Insulin needs time to come back down between meals, and about five hours is how long that takes.",
+  },
+  {
+    id: "no_snacking",
+    label: "No snacking between meals",
+    group: "Timing & fasting",
+    target: 1,
+    why: "Every snack restarts the clock on the gap you just earned. It's the spacing that matters here, not eating less.",
+  },
+  {
+    id: "water_6",
+    label: "Glasses of water",
+    group: "Hydration & supplements",
+    target: 6,
+    max: 8,
+    why: "Thirst gets quieter with age while flashes and night sweats take more water out of you — so this is one you count rather than feel.",
+  },
+  {
+    id: "supplements",
+    label: "Daily supplements taken",
+    group: "Hydration & supplements",
+    target: 1,
+    why: "Omega-3, magnesium and vitamin D3 + K2 are the three most worth asking your doctor about for what you're going through.",
+  },
+];
+
+/** Group headers in list order, without a second hand-maintained copy of them. */
+export const NUTRITION_GROUP_ORDER: NutritionGroup[] = [
+  ...new Set(NUTRITION.map((n) => n.group)),
 ];
 
 /**
  * Revealed under the `supplements` row once it's ticked, exactly as in the
- * funnel. Never counted toward the nine — they name the three that matter.
+ * funnel. Never counted toward the ten — they name the three that matter.
  */
 export const SUPPLEMENT_OPTIONS = [
   { id: "omega3", label: "Omega-3" },
@@ -204,9 +319,11 @@ export const SUPPLEMENT_OPTIONS = [
 ];
 
 /**
- * Nutrition log keys are deliberately NOT week-prefixed. "25-30g protein per
- * meal" is the same habit in week 1 and week 8, so it keeps one key for the
- * plan's whole life and her streak runs unbroken across the week boundary.
+ * Nutrition log keys are deliberately NOT week-prefixed. "25-30g protein" is
+ * the same habit in week 1 and week 8, so it keeps one key for the plan's whole
+ * life and her streak runs unbroken across the week boundary. Nor are they
+ * meal-prefixed: the count on the single key is the meal, which is why
+ * switching to a per-meal log cost no keys and broke no streaks.
  */
 export const nutritionKey = (id: string) => `nut_${id}`;
 
