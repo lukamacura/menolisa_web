@@ -449,6 +449,52 @@ export const RELAXATION: RelaxationItem[] = [
   },
 ];
 
+/**
+ * Which practice stands in when the model names one that isn't in this catalog.
+ *
+ * It reads "relaxation" and reaches for a stretch — `M03` "Torso twist with arm
+ * swings" is a real id, just a *movement* one, and `isRelaxationId` rejects it.
+ * Dropping that task is what makes the failure expensive: a week left with two
+ * tasks fails the completeness check in buildPlan(), and the whole personalized
+ * plan is thrown away for the deterministic one. So the task is repaired
+ * instead, exactly as a habit that restates a nutrition row is swapped rather
+ * than deleted.
+ *
+ * Keyed by the nine `PROBLEM_OPTIONS` ids from the register funnel and read in
+ * her own priority order, so the substitute is still matched to her worst
+ * symptom. This is the same mapping the plan prompt states in prose — the
+ * difference is that the model can't opt out of this copy.
+ */
+const RELAXATION_FOR_SYMPTOM: Record<string, string> = {
+  hot_flashes: "breath_hotflash",
+  sleep_issues: "breath_sleep",
+  anxiety: "breath_sigh",
+  mood_swings: "breath_sigh",
+  brain_fog: "breath_paced_6",
+  low_energy: "breath_paced_6",
+  weight_changes: "slow_breath_meal",
+  bloating: "slow_breath_meal",
+  joint_pain: "body_scan",
+};
+
+/**
+ * Her best-matching practice, skipping any already used in the same week so a
+ * repaired task never duplicates the one beside it. Always returns something —
+ * a week with a relaxation task is the point.
+ */
+export function relaxationForSymptom(
+  topProblems: string[],
+  exclude: ReadonlySet<string> = new Set()
+): RelaxationItem {
+  for (const problem of topProblems) {
+    const id = RELAXATION_FOR_SYMPTOM[problem];
+    if (!id || exclude.has(id)) continue;
+    const item = RELAXATION.find((r) => r.id === id);
+    if (item) return item;
+  }
+  return RELAXATION.find((r) => !exclude.has(r.id)) ?? RELAXATION[0];
+}
+
 const cycleSeconds = (phases: BreathPhase[]) => phases.reduce((s, p) => s + p.seconds, 0);
 
 /** Everything the app needs to run the item, with the maths already done. */

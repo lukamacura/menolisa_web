@@ -90,8 +90,10 @@ copywriter**, never an author of content.
 | Why each nutrition row is on her list | **LLM**, from a separate call | `nutritionWhy`, gated |
 | The resist suggestions | **LLM** | gated, topped up from written copy |
 
-Every id the model emits is checked against the catalog and dropped if invented.
-An exercise outside her allowed pool is dropped even if it is a real exercise.
+Every id the model emits is an **enum in the response schema** (`strict: true`),
+so an invented id or an exercise outside her allowed pool cannot be emitted at
+all. The catalog checks in `sanitize()` remain as a second line of defence, but
+they now repair rather than drop — see §2 of `docs/plan/instructions.md`.
 
 ## 4. The JSON
 

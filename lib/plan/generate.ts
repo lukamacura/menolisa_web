@@ -12,6 +12,7 @@ import {
   isNutritionId,
   isRelaxationId,
   relaxationDetail,
+  relaxationForSymptom,
   type Exercise,
 } from "@/lib/plan/catalog";
 
@@ -148,6 +149,102 @@ const PlanSchema = z.object({
   nutrition_why: z.record(z.string(), z.unknown()).nullish(),
 });
 
+/**
+ * The response schema, enforced by OpenAI rather than asked for in prose.
+ *
+ * `json_object` mode only guarantees "some valid JSON", which is why the prompt
+ * had to spell out every id rule and why the model could ignore them: it
+ * routinely put a movement id in `item_id`, that task was dropped, and a week
+ * left with two tasks cost the entire personalized plan. Under `strict: true`
+ * the ids are enums, so an invalid one is not rejected downstream — it is
+ * unrepresentable. sanitize() still runs; it now only handles judgement calls
+ * (too few exercises, a habit restating nutrition), not malformed output.
+ *
+ * The pool is per-user, so the schema is built per-user too.
+ *
+ * Two constraints of strict mode shape what's below:
+ *  - every property must be listed in `required`, so what used to be omitted is
+ *    now sent explicitly as null (`item_id` on a habit, `exercises` on anything
+ *    that isn't movement). The prompt says so, and the zod layer already treats
+ *    null and absent alike.
+ *  - bounds keywords (minItems, maximum, …) are not supported here, so the
+ *    counts and lengths stay in PlanSchema, which clamps rather than rejects.
+ */
+function planJsonSchema(pool: Exercise[]) {
+  const nullableInt = { type: ["integer", "null"] };
+
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["weeks", "resist_suggestions"],
+    properties: {
+      weeks: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["number", "title", "focus", "nutrition_focus", "tasks"],
+          properties: {
+            number: { type: "integer" },
+            title: { type: "string" },
+            focus: { type: "string" },
+            nutrition_focus: {
+              type: "array",
+              items: { type: "string", enum: NUTRITION.map((n) => n.id) },
+            },
+            tasks: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["pillar", "title", "why", "cadence", "target", "item_id", "exercises"],
+                properties: {
+                  pillar: { type: "string", enum: ["movement", "relaxation", "habit"] },
+                  title: { type: "string" },
+                  why: { type: "string" },
+                  cadence: { type: "string", enum: ["daily", "weekly", "per_day"] },
+                  target: { type: "integer" },
+                  // Null on movement and habit. The null belongs in the enum as
+                  // well as the type — a nullable enum needs it in both.
+                  item_id: {
+                    type: ["string", "null"],
+                    enum: [...RELAXATION.map((r) => r.id), null],
+                  },
+                  exercises: {
+                    type: ["array", "null"],
+                    items: {
+                      type: "object",
+                      additionalProperties: false,
+                      required: ["id", "sets", "reps", "minutes"],
+                      properties: {
+                        // Her allowed pool only — this is the line that makes
+                        // an out-of-pool or invented exercise impossible.
+                        id: { type: "string", enum: pool.map((e) => e.id) },
+                        sets: nullableInt,
+                        reps: nullableInt,
+                        minutes: nullableInt,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      resist_suggestions: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["title", "why"],
+          properties: { title: { type: "string" }, why: { type: "string" } },
+        },
+      },
+    },
+  };
+}
+
 function buildPrompt(profile: Profile, pool: Exercise[]): string {
   const vol = MOVEMENT_VOLUME[profile.fitness_level ?? "beginner"] ?? MOVEMENT_VOLUME.beginner;
   const movement = vol.perDay
@@ -192,7 +289,7 @@ function buildPrompt(profile: Profile, pool: Exercise[]): string {
     `- Add difficulty gradually. Never introduce more than one new thing per week.`,
     `- "why" is one short sentence to her, in second person, tied to her symptoms. No medical claims, no dosages.`,
     `- Never write "can help", "helps with", "supports", "improves", "boosts", "promotes", "is important", "is essential", "overall health" or "overall well-being" in any "why". Those say nothing. Name what actually happens instead.`,
-    `- pillar and cadence must be lowercase, exactly as written above. Omit fields you have no value for — never send null.`,
+    `- Every task carries every field. Send "item_id": null on movement and habit tasks, and "exercises": null on anything that is not movement. Inside an exercise, send null for the props that don't apply — a cardio id has "sets": null and "reps": null, everything else has "minutes": null.`,
     ``,
     `RESIST — separately, write 4 "resist_suggestions": specific temptations SHE`,
     `is likely to face given her symptoms, each one she gets credit for resisting`,
@@ -203,7 +300,7 @@ function buildPrompt(profile: Profile, pool: Exercise[]): string {
     `quitting a medication or HRT. "why" is one warm sentence, no shame, and the`,
     `banned phrases above apply to it too.`,
     ``,
-    `Return JSON: {"weeks":[{"number":1,"title":"...","focus":"...","nutrition_focus":["protein_25_30g"],"tasks":[{"pillar":"...","title":"...","why":"...","cadence":"...","target":1,"item_id":"...","exercises":[{"id":"...","sets":3,"reps":10},{"id":"...","sets":3,"reps":10},{"id":"...","sets":2,"reps":12},{"id":"...","minutes":15}]}]}],"resist_suggestions":[{"title":"...","why":"..."}]}`,
+    `Return JSON: {"weeks":[{"number":1,"title":"...","focus":"...","nutrition_focus":["protein_25_30g"],"tasks":[{"pillar":"movement","title":"...","why":"...","cadence":"weekly","target":2,"item_id":null,"exercises":[{"id":"...","sets":3,"reps":10,"minutes":null},{"id":"...","sets":2,"reps":12,"minutes":null},{"id":"K01","sets":null,"reps":null,"minutes":15}]},{"pillar":"relaxation","title":"...","why":"...","cadence":"daily","target":1,"item_id":"breath_sleep","exercises":null},{"pillar":"habit","title":"...","why":"...","cadence":"daily","target":1,"item_id":null,"exercises":null}]}],"resist_suggestions":[{"title":"...","why":"..."}]}`,
   ].join("\n");
 }
 
@@ -238,9 +335,11 @@ const rotate = <T>(items: T[], n: number): T[] =>
 function sanitize(
   raw: z.infer<typeof PlanSchema>,
   pool: Exercise[],
-  vol: (typeof MOVEMENT_VOLUME)[string]
+  vol: (typeof MOVEMENT_VOLUME)[string],
+  profile: Profile
 ): Plan {
   const allowed = new Set(pool.map((e) => e.id));
+  const topProblems = profile.top_problems ?? [];
 
   const weeks: PlanWeek[] = [];
   for (let n = 1; n <= PLAN_WEEKS; n++) {
@@ -248,6 +347,9 @@ function sanitize(
     if (!w) continue;
 
     const tasks: PlanTask[] = [];
+    // Practices already placed this week, so a repaired task doesn't duplicate
+    // the one sitting next to it.
+    const usedRelaxation = new Set<string>();
     for (const rawTask of w.tasks) {
       const parsed = TaskSchema.safeParse(rawTask);
       if (!parsed.success) continue;
@@ -258,7 +360,6 @@ function sanitize(
         const exercises = (t.exercises ?? [])
           .filter((e) => allowed.has(e.id))
           .map((e) => ({ id: e.id, sets: e.sets ?? undefined, reps: e.reps ?? undefined, minutes: e.minutes ?? undefined }));
-        if (!exercises.length) continue;
 
         // The model routinely returns a single exercise however firmly it's
         // asked for more, which is not a session. Top up from her own pool —
@@ -266,12 +367,20 @@ function sanitize(
         // pattern), so a squat day gets more legs rather than a neck stretch
         // bolted onto it. The title the model wrote describes that first pick,
         // and this is what keeps the title honest.
+        //
+        // An empty array is filled from the pool rather than dropping the task:
+        // under the strict schema the ids can't be invalid, so empty means the
+        // model simply sent none, and a session built from her own pool is
+        // worth more than the week losing a task. Only an empty *pool* — which
+        // would mean no exercise is safe for her — leaves it unfixable.
         const used = new Set(exercises.map((e) => e.id));
-        const family = exercises[0].id[0];
-        const candidates = [
-          ...rotate(pool.filter((e) => e.id[0] === family), n),
-          ...rotate(pool.filter((e) => e.id[0] !== family), n),
-        ];
+        const family = exercises[0]?.id[0];
+        const candidates = family
+          ? [
+              ...rotate(pool.filter((e) => e.id[0] === family), n),
+              ...rotate(pool.filter((e) => e.id[0] !== family), n),
+            ]
+          : rotate(pool, n);
         const floor = vol.perDay ? MIN_SNACK_EXERCISES : MIN_EXERCISES;
         for (const cand of candidates) {
           if (exercises.length >= floor) break;
@@ -283,6 +392,7 @@ function sanitize(
               : { id: cand.id, sets: n > 4 ? 3 : 2, reps: 10, minutes: undefined }
           );
         }
+        if (!exercises.length) continue;
 
         // Volume is a rule keyed off her fitness level, not something the model
         // gets a vote on — it kept sending "daily x7" and "per_day x1".
@@ -300,11 +410,21 @@ function sanitize(
       const daily = { ...base, cadence: perDay ? ("per_day" as const) : ("daily" as const), target: perDay ? Math.min(t.target, 6) : 1 };
 
       if (t.pillar === "relaxation") {
-        const id = t.item_id ?? "";
-        if (!isRelaxationId(id)) continue;
+        // A named id that isn't in the catalog is repaired, not dropped. This
+        // used to `continue`, and it was the single most expensive line in the
+        // file: the model reads "relaxation" and reaches for a stretch (`M03`),
+        // the task disappears, the week is left with two, and buildPlan()
+        // throws away all eight weeks for the deterministic plan. One word
+        // association cost the whole personalized plan. The strict schema
+        // should now make this unreachable — this is the belt to its braces.
+        const named = t.item_id ?? "";
+        const item = isRelaxationId(named)
+          ? RELAXATION.find((r) => r.id === named)!
+          : relaxationForSymptom(topProblems, usedRelaxation);
+        usedRelaxation.add(item.id);
         // The catalog label wins over whatever the model typed, so the app and
         // the funnel always use the same words for the same practice.
-        tasks.push({ ...daily, key: id, title: RELAXATION.find((r) => r.id === id)!.label });
+        tasks.push({ ...daily, key: item.id, title: item.label });
         continue;
       }
 
@@ -602,7 +722,10 @@ export async function buildPlan(p: Profile): Promise<Plan> {
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.5,
-      response_format: { type: "json_object" },
+      response_format: {
+        type: "json_schema",
+        json_schema: { name: "eight_week_plan", strict: true, schema: planJsonSchema(pool) },
+      },
       messages: [
         {
           role: "system",
@@ -613,10 +736,18 @@ export async function buildPlan(p: Profile): Promise<Plan> {
       ],
     });
 
-    const raw = completion.choices[0]?.message?.content;
+    // A strict schema can be refused rather than answered, and a refusal comes
+    // back with no content — worth its own line in the log, since it means the
+    // prompt tripped a safety filter and retrying the same input won't help.
+    const message = completion.choices[0]?.message;
+    if (message?.refusal) {
+      console.error("Plan: model refused the request:", message.refusal);
+    }
+
+    const raw = message?.content;
     const parsed = raw ? PlanSchema.safeParse(JSON.parse(raw)) : null;
     if (parsed?.success) {
-      const cleaned = sanitize(parsed.data, pool, vol);
+      const cleaned = sanitize(parsed.data, pool, vol, p);
       // A thin plan means the model drifted off the catalog; the deterministic
       // fallback is better than handing her a week with two things in it.
       const complete =

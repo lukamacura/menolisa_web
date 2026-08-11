@@ -97,7 +97,22 @@ what it isn't allowed to give:
 > 8-week plans by selecting from an approved list. Never invent exercises or
 > supplements. Return JSON only.
 
-Model: `gpt-4o-mini` · temperature `0.5` · `response_format: json_object`
+Model: `gpt-4o-mini` · temperature `0.5` · `response_format: json_schema`, `strict: true`
+
+The schema is built per-user by `planJsonSchema(pool)` and every id is an
+**enum**: her allowed exercise ids, the nine relaxation ids, the ten nutrition
+ids, the three pillars, the three cadences. Under `json_object` these were
+prose rules the model could ignore — and did: it read "relaxation" and put the
+movement id `M03` in `item_id` about once in three plans, which dropped that
+task, left the week with two, and failed the completeness check so the whole
+personalized plan was thrown away for the deterministic one. As enums they are
+unrepresentable rather than rejected.
+
+Two consequences for the prompt: every field must be present, so `item_id` is
+sent as `null` on movement and habit tasks and `exercises` as `null` on
+anything that isn't movement; and bounds keywords (`minItems`, `maximum`, …)
+aren't supported in strict mode, so counts and lengths stay in `PlanSchema`,
+which clamps rather than rejects.
 
 ### User message
 
@@ -186,7 +201,13 @@ Everything below runs in `sanitize()` before the plan is saved.
    missing, over-long titles (truncated).
 2. **Validated one task at a time** — a single malformed task is dropped, not the
    whole plan. An unknown pillar (including a leftover `nutrition` task) is dropped.
-3. **Exercises checked against her filtered list** — anything outside it is removed.
+3. **Exercises checked against her filtered list** — anything outside it is removed,
+   and a movement task left with none is **filled from her pool**, not dropped.
+   Likewise a relaxation `item_id` that isn't in the catalog is **repaired** by
+   `relaxationForSymptom()`, matched to her worst symptom and skipping any
+   practice already used that week. Dropping it was what made one word
+   association cost the whole plan; the strict schema should now make both
+   cases unreachable, and they stay as the belt to its braces.
 4. **Sessions topped up** — the model often returns one exercise when asked for
    3–6. Short sessions are filled from her own list.
 5. **Volume overwritten** — movement cadence and target come from the table above,
