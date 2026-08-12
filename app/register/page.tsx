@@ -76,30 +76,34 @@ const QUIZ_ILLUSTRATION: Record<string, string> = {
 
 type Step =
   | "q1_age"
+  | "q2_here_for"
+  | "q_menopause_type"
+  | "q4_symptoms"
+  | "q3_goals"
+  | "reward_symptoms"
   | "q_body"
   | "q_fitness"
-  | "q2_here_for"
-  | "q3_goals"
-  | "q4_symptoms"
-  | "reward_symptoms"
+  | "q_nutrition"
+  | "q_relaxation"
   | "q5_hrt"
-  | "q6_how_long"
+  | "q_safety"
   | "reward_progress"
-  | "q7_qualifier"
   | "q8_name";
 
 const STEPS: Step[] = [
   "q1_age",
   "q2_here_for",
+  "q_menopause_type",
   "q4_symptoms",
   "q3_goals",
   "reward_symptoms",
   "q_body",
   "q_fitness",
+  "q_nutrition",
+  "q_relaxation",
   "q5_hrt",
-  "q6_how_long",
+  "q_safety",
   "reward_progress",
-  "q7_qualifier",
   "q8_name",
 ];
 
@@ -107,13 +111,17 @@ const STEPS: Step[] = [
 // can only hold one answer is pure friction, and it's the same press she already
 // made. Multi-select, the two numeric inputs and the name step keep the button,
 // because there the tap is a toggle and only she knows when she's done.
+//
+// q4_symptoms is multi-select *and* carries a follow-up severity tap, so it never
+// auto-advances even once the severity is chosen - she may still be adding tiles.
 const AUTO_ADVANCE_STEPS: Step[] = [
   "q1_age",
   "q2_here_for",
+  "q_menopause_type",
   "q_fitness",
+  "q_nutrition",
+  "q_relaxation",
   "q5_hrt",
-  "q6_how_long",
-  "q7_qualifier",
 ];
 
 // Reward steps mirror her answers back with a stat - pure dopamine, not questions.
@@ -138,14 +146,28 @@ const HERE_FOR_OPTIONS = [
   { id: "not_sure", label: "I'm not sure", image: "/quiz/status/notsure.webp" },
 ];
 
+// Four goals, and every one of them is something the 8-week plan actually moves.
+// "Have data for my doctor" was dropped here: it's an outcome of tracking rather
+// than a symptom the plan targets, and it pulled the results copy toward a
+// doctor's appointment instead of toward her own week. `data_for_doctor` stays
+// valid in save-quiz and GOAL_CTA_LABEL for the rows that already carry it.
 const GOAL_OPTIONS = [
   { id: "sleep_through_night", label: "Sleep through the night", image: "/quiz/goals/sleep.webp" },
   { id: "think_clearly", label: "Think clearly again", image: "/quiz/goals/thinkclearly.webp" },
   { id: "feel_like_myself", label: "Mental and emotional wellbeing", image: "/quiz/goals/feelmyself.webp" },
-  { id: "data_for_doctor", label: "Have data for my doctor", image: "/quiz/goals/data.webp" },
   // id kept as `get_body_back` on purpose - existing user_profiles rows and the
   // mobile app still carry it; only the copy/image moved to weight loss.
   { id: "get_body_back", label: "Lose weight", image: "/quiz/goals/weight.webp" },
+];
+
+// How menopause began. Surgical and medical menopause arrive overnight rather
+// than over years, and both change what the plan may safely suggest - so this is
+// asked immediately after her stage, while she's still thinking about it.
+const MENOPAUSE_TYPE_OPTIONS = [
+  { id: "natural", label: "Naturally, over time", image: "/quiz/menopause-type/natural.webp" },
+  { id: "surgical", label: "After surgery", image: "/quiz/menopause-type/surgical.webp" },
+  { id: "medical", label: "After cancer treatment", image: "/quiz/menopause-type/medical.webp" },
+  { id: "not_sure", label: "I'm not sure", image: "/quiz/menopause-type/notsure.webp" },
 ];
 
 // Image-based symptom tiles (same style as Q1 age / Q2 status). 9 options, multi-select.
@@ -167,8 +189,22 @@ const SYMPTOM_IMAGE: Record<string, string> = Object.fromEntries(
   PROBLEM_OPTIONS.map((o) => [o.id, o.image])
 );
 
-// Weight applied to each selected symptom (pure select, no per-symptom rating).
-// 2.5 keeps the Menopause Score spread and "you vs typical" comparison reading as before.
+// Follow-up on q4_symptoms: she rates the one symptom she picked first, which is
+// the one she came here for. Rating all nine is a chore nobody finishes; rating
+// the worst one is a single tap and gives the score a real intensity to work with
+// instead of a flat constant.
+const SYMPTOM_IMPACT_OPTIONS = [
+  { id: "mild", label: "Mild", hint: "I notice it, but I cope" },
+  { id: "moderate", label: "Moderate", hint: "It gets in the way most days" },
+  { id: "severe", label: "Severe", hint: "It runs my day" },
+];
+
+// Her tapped level, on the same 0-3 intensity scale calculateWellbeingScore uses.
+const IMPACT_VALUE: Record<string, number> = { mild: 1, moderate: 2, severe: 3 };
+
+// Fallback intensity for a selected symptom before she has rated anything, and the
+// value every symptom used to carry. 2.5 keeps the Menopause Score spread and the
+// "you vs typical" comparison reading as they did.
 const SELECTED_SEVERITY = 2.5;
 
 // Reward step 1: prevalence of each symptom among menopausal women. Used to mirror
@@ -194,21 +230,16 @@ const COHORT_PHRASE: Record<string, string> = {
   not_sure: "women your age",
 };
 
-// Reward step 2: pride line keyed off how long she's been managing symptoms.
-// Goal is for her to feel proud of acting today, whatever her starting point.
-const TIMING_PRIDE_LINE: Record<string, string> = {
-  just_started: "You caught it early. That's the smartest thing you could do.",
-  been_while: "You stopped guessing and started acting. That's real strength.",
-  over_year: "You waited long enough. Today, you take the lead.",
-  several_years: "After all these years, you chose yourself. That's everything.",
+// Reward step 2: pride line keyed off where she is in the journey. It used to key
+// off "how long have symptoms been affecting you", which the quiz no longer asks -
+// her stage is the closest honest proxy, and it lands the same way: proud of
+// acting today, whatever her starting point.
+const STAGE_PRIDE_LINE: Record<string, string> = {
+  pre_menopausal: "You caught it early. That's the smartest thing you could do.",
+  perimenopausal: "You stopped guessing and started acting. That's real strength.",
+  post_menopausal: "You waited long enough. Today, you take the lead.",
+  not_sure: "You didn't wait for a label to take yourself seriously. That's everything.",
 };
-
-const TIMING_OPTIONS = [
-  { id: "just_started", label: "Under 6 months", image: "/quiz/how-long/u6m.webp" },
-  { id: "been_while", label: "6–12 months", image: "/quiz/how-long/6to12m.webp" },
-  { id: "over_year", label: "Over a year", image: "/quiz/how-long/o1y.webp" },
-  { id: "several_years", label: "Several years", image: "/quiz/how-long/severaly.webp" },
-];
 
 const HRT_OPTIONS = [
   { id: "currently", label: "I am currently taking HRT", image: "/quiz/hrt/current.webp" },
@@ -228,11 +259,36 @@ const FITNESS_OPTIONS = [
   { id: "movement_snacks", label: "Short bursts only", image: "/quiz/fitness/movement-snacks.webp" },
 ];
 
-const QUALIFIER_OPTIONS = [
-  { id: "time_5", label: "5 min/day" },
-  { id: "time_10", label: "10 min/day" },
-  { id: "time_15", label: "15 min/day" },
-  { id: "time_more", label: "More" },
+// Where her eating actually starts, so the plan's nutrition focus opens at her
+// level instead of at week one of a textbook. Deliberately blame-free wording -
+// "skipping meals" is a description, not a verdict.
+const NUTRITION_STYLE_OPTIONS = [
+  { id: "skipping", label: "Skipping meals / on the run", image: "/quiz/nutrition/skipping.webp" },
+  { id: "convenience", label: "Mostly convenience food", image: "/quiz/nutrition/convenience.webp" },
+  { id: "inconsistent", label: "Balanced, but inconsistent", image: "/quiz/nutrition/inconsistent.webp" },
+  { id: "intentional", label: "Already intentional about it", image: "/quiz/nutrition/intentional.webp" },
+];
+
+// The relaxation pillar needs a starting point too. "I want to build one but
+// don't know where to start" is the answer the plan was built for, so it's a real
+// option rather than a polite version of "no".
+const RELAXATION_STYLE_OPTIONS = [
+  { id: "none", label: "I don't, really", image: "/quiz/relaxation/none.webp" },
+  { id: "occasional", label: "Occasionally", image: "/quiz/relaxation/occasional.webp" },
+  { id: "routine", label: "I have a routine", image: "/quiz/relaxation/routine.webp" },
+  { id: "want_to", label: "I want to start", image: "/quiz/relaxation/wanttostart.webp" },
+];
+
+// Safety screen. Text rows, no illustrations - a watercolor tile for "history of
+// breast cancer" would be grotesque. Multi-select, but the last two are exclusive:
+// ticking either clears the clinical flags and vice versa, because "none of the
+// above AND liver disease" is not an answer anyone means to give.
+const SAFETY_OPTIONS = [
+  { id: "breast_cancer", label: "History of breast cancer" },
+  { id: "clots_stroke", label: "History of blood clots or stroke" },
+  { id: "liver_disease", label: "Liver disease" },
+  { id: "none", label: "None of the above", exclusive: true },
+  { id: "prefer_not", label: "Prefer not to say", exclusive: true },
 ];
 
 // Shared option-tile footer styles - every quiz label is the same size, aligned,
@@ -262,13 +318,15 @@ const LOADING_MESSAGE_COLORS = [
 const STEP_IMAGES: Partial<Record<Step, string[]>> = {
   q1_age: AGE_OPTIONS.map((o) => o.image),
   q2_here_for: HERE_FOR_OPTIONS.map((o) => o.image),
+  q_menopause_type: MENOPAUSE_TYPE_OPTIONS.map((o) => o.image),
   q4_symptoms: PROBLEM_OPTIONS.map((o) => o.image),
   q3_goals: GOAL_OPTIONS.map((o) => o.image),
   reward_symptoms: ["/quiz/rewards/reward1.webp"],
   reward_progress: ["/quiz/rewards/reward2.webp"],
   q_fitness: FITNESS_OPTIONS.map((o) => o.image),
+  q_nutrition: NUTRITION_STYLE_OPTIONS.map((o) => o.image),
+  q_relaxation: RELAXATION_STYLE_OPTIONS.map((o) => o.image),
   q5_hrt: HRT_OPTIONS.map((o) => o.image),
-  q6_how_long: TIMING_OPTIONS.map((o) => o.image),
   q8_name: [`/quiz/${QUIZ_ILLUSTRATION.q8_name}`],
 };
 
@@ -299,14 +357,13 @@ const DIAGNOSIS_SHOTS = [
 const optimizedImageUrl = (src: string, w: number) =>
   `/_next/image?url=${encodeURIComponent(src)}&w=${w}&q=75`;
 
-/** Derive severity for results copy from symptoms count + duration (same as mobile). */
-function deriveSeverity(
-  totalBurden: number,
-  howLong: string
-): "mild" | "moderate" | "severe" {
-  const longDuration = howLong === "over_year" || howLong === "several_years";
-  if (totalBurden >= 10 && longDuration) return "severe";
-  if (totalBurden >= 6 || longDuration) return "moderate";
+/** Fallback severity for the results copy, from total symptom burden alone.
+ *  Only used when she skipped the impact tap - normally her own Mild/Moderate/
+ *  Severe answer is what drives that copy. The duration input this used to take
+ *  is gone with q6_how_long. */
+function deriveSeverity(totalBurden: number): "mild" | "moderate" | "severe" {
+  if (totalBurden >= 10) return "severe";
+  if (totalBurden >= 6) return "moderate";
   return "mild";
 }
 
@@ -1025,6 +1082,60 @@ function ShotStage({
 // CaptionArrow / SocialProofPolaroid now live in components/SocialProof.tsx,
 // shared with the paywall.
 
+type TileOption = { id: string; label: string; image: string };
+
+/** The single-choice image grid behind seven of the twelve questions - age,
+ *  status, how menopause began, fitness, nutrition, relaxation and HRT. Tap a
+ *  tile to answer; the step advances itself (see AUTO_ADVANCE_STEPS).
+ *  `priority` is for the first question only, which is above the fold on load. */
+function ImageChoiceGrid({
+  options,
+  selected,
+  onSelect,
+  priority = false,
+}: {
+  options: readonly TileOption[];
+  selected: string;
+  onSelect: (id: string) => void;
+  priority?: boolean;
+}) {
+  return (
+    <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-2 min-h-0">
+      {options.map((option) => {
+        const isSelected = selected === option.id;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => onSelect(option.id)}
+            className={`flex flex-col min-h-0 rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer ${
+              isSelected
+                ? "ring-2 ring-primary shadow-lg shadow-primary/30"
+                : "hover:opacity-90"
+            }`}
+          >
+            <div className="relative flex-1 min-h-0">
+              <Image
+                src={option.image}
+                alt={option.label}
+                fill
+                sizes="50vw"
+                priority={priority}
+                className="object-cover"
+              />
+              {isSelected && <div className="absolute inset-0 bg-primary/15" />}
+            </div>
+            <div className={`${TILE_FOOTER_BASE} justify-between gap-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
+              <span className={TILE_LABEL}>{option.label}</span>
+              <ArrowRight className="w-3.5 h-3.5 shrink-0 text-white/70" />
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function RegisterPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -1209,14 +1320,20 @@ function RegisterPageContent() {
   const [weightLb, setWeightLb] = useState<string>("154");
   const [fitnessLevel, setFitnessLevel] = useState<string>("");
   const [hereFor, setHereFor] = useState<string>("");
+  const [menopauseType, setMenopauseType] = useState<string>("");
   const [goal, setGoal] = useState<string[]>([]);
-  // id -> severity (1=A little, 2=Quite a bit, 3=Extremely). Absent = "Not at all".
+  // Selection set for the symptom tiles. Every entry carries SELECTED_SEVERITY -
+  // the real intensity comes from `symptomImpact` below and is applied in
+  // `scoredSeverity`, so insertion order (= the order she tapped) survives.
   const [symptomSeverity, setSymptomSeverity] = useState<Record<string, number>>({});
+  // Her Mild/Moderate/Severe answer for the symptom she picked first.
+  const [symptomImpact, setSymptomImpact] = useState<string>("");
   // "What have you tried" step removed; kept empty so the score calc + save-quiz payload stay intact.
   const [triedOptions] = useState<string[]>([]);
   const [hrtStatus, setHrtStatus] = useState<string>("");
-  const [timing, setTiming] = useState<string>("");
-  const [qualifier, setQualifier] = useState<string>("");
+  const [nutritionStyle, setNutritionStyle] = useState<string>("");
+  const [relaxationStyle, setRelaxationStyle] = useState<string>("");
+  const [safetyFlags, setSafetyFlags] = useState<string[]>([]);
   const [firstName, setFirstName] = useState<string>("");
 
   // Derived for funnel compatibility: save-quiz / user_profiles still consume top_problems[].
@@ -1224,9 +1341,23 @@ function RegisterPageContent() {
     () => Object.keys(symptomSeverity).filter((id) => symptomSeverity[id] > 0),
     [symptomSeverity]
   );
+
+  // The intensities everything downstream reads. Her worst symptom carries the
+  // level she tapped; the rest sit half a step under it, because she rated the
+  // hardest one and by definition the others aren't worse. Before she taps,
+  // every symptom keeps the old flat weight so nothing renders empty.
+  const scoredSeverity = useMemo(() => {
+    const level = IMPACT_VALUE[symptomImpact];
+    if (level === undefined) {
+      return Object.fromEntries(topProblems.map((id) => [id, SELECTED_SEVERITY]));
+    }
+    const rest = Math.max(1, level - 0.5);
+    return Object.fromEntries(topProblems.map((id, i) => [id, i === 0 ? level : rest]));
+  }, [topProblems, symptomImpact]);
+
   const totalBurden = useMemo(
-    () => Object.values(symptomSeverity).reduce((a, b) => a + b, 0),
-    [symptomSeverity]
+    () => Object.values(scoredSeverity).reduce((a, b) => a + b, 0),
+    [scoredSeverity]
   );
   // Normalized body metrics (canonical cm/kg) derived from the per-unit inputs.
   const bodyMetrics = useMemo(() => {
@@ -1259,22 +1390,25 @@ function RegisterPageContent() {
 
   const [error, setError] = useState<string | null>(null);
 
-  const derivedSeverity = deriveSeverity(totalBurden, timing);
+  // Her own answer outranks the fallback: she just told us how hard this hits.
+  const derivedSeverity = (symptomImpact || deriveSeverity(totalBurden)) as
+    | "mild"
+    | "moderate"
+    | "severe";
 
   // Menopause Wellbeing Score (0–100, higher = better) - reacts to every answer:
-  // symptoms, duration, stage, HRT, BMI (height+weight) and age.
+  // symptoms and their intensity, stage, HRT, BMI (height+weight) and age.
   const scoreBreakdown = useMemo(
     () =>
       calculateWellbeingScore({
-        symptomSeverity,
-        timing,
+        symptomSeverity: scoredSeverity,
         hereFor,
         hrtStatus,
         ageBand,
         heightCm: bodyMetrics.height_cm,
         weightKg: bodyMetrics.weight_kg,
       }),
-    [symptomSeverity, timing, hereFor, hrtStatus, ageBand, bodyMetrics]
+    [scoredSeverity, hereFor, hrtStatus, ageBand, bodyMetrics]
   );
   const score = scoreBreakdown.score;
 
@@ -1354,49 +1488,93 @@ function RegisterPageContent() {
           return fitnessLevel !== "";
         case "q2_here_for":
           return hereFor !== "";
+        case "q_menopause_type":
+          return menopauseType !== "";
         case "q3_goals":
           return goal.length > 0;
+        // Both halves: the tiles *and* the follow-up rating on the worst one.
         case "q4_symptoms":
-          return topProblems.length > 0;
+          return topProblems.length > 0 && symptomImpact !== "";
         case "reward_symptoms":
         case "reward_progress":
           return true;
+        case "q_nutrition":
+          return nutritionStyle !== "";
+        case "q_relaxation":
+          return relaxationStyle !== "";
         case "q5_hrt":
           return hrtStatus !== "";
-        case "q6_how_long":
-          return timing !== "";
-        case "q7_qualifier":
-          return qualifier !== "";
+        case "q_safety":
+          return safetyFlags.length > 0;
         case "q8_name":
           return firstName.trim().length > 0;
         default:
           return false;
       }
     },
-    [ageBand, bodyMetrics, fitnessLevel, hereFor, goal, topProblems, hrtStatus, timing, qualifier, firstName]
+    [
+      ageBand,
+      bodyMetrics,
+      fitnessLevel,
+      hereFor,
+      menopauseType,
+      goal,
+      topProblems,
+      symptomImpact,
+      nutritionStyle,
+      relaxationStyle,
+      hrtStatus,
+      safetyFlags,
+      firstName,
+    ]
   );
 
-  // Save quiz answers to sessionStorage (cleared when tab closes)
-  const saveQuizAnswers = useCallback(() => {
-    const quizAnswers = {
+  // One payload, two consumers: the sessionStorage stash below and the
+  // save-quiz POST in completeRegistration. They used to be two hand-kept copies
+  // of the same object literal, which is one place too many to forget a field.
+  const quizPayload = useMemo(
+    () => ({
       age_band: ageBand || null,
       top_problems: topProblems,
-      timing,
+      symptom_impact: symptomImpact || null,
       tried_options: triedOptions,
       hrt_status: hrtStatus || null,
       goal,
       goals: goal,
-      qualifier: qualifier || null,
       here_for: hereFor || null,
+      menopause_type: menopauseType || null,
+      nutrition_style: nutritionStyle || null,
+      relaxation_style: relaxationStyle || null,
+      safety_flags: safetyFlags,
       name: firstName.trim() || null,
       height_cm: bodyMetrics.height_cm,
       weight_kg: bodyMetrics.weight_kg,
       height_unit: bodyMetrics.height_unit,
       weight_unit: bodyMetrics.weight_unit,
       fitness_level: fitnessLevel || null,
-    };
-    sessionStorage.setItem("pending_quiz_answers", JSON.stringify(quizAnswers));
-  }, [ageBand, topProblems, timing, triedOptions, hrtStatus, goal, qualifier, hereFor, firstName, bodyMetrics, fitnessLevel]);
+    }),
+    [
+      ageBand,
+      topProblems,
+      symptomImpact,
+      triedOptions,
+      hrtStatus,
+      goal,
+      hereFor,
+      menopauseType,
+      nutritionStyle,
+      relaxationStyle,
+      safetyFlags,
+      firstName,
+      bodyMetrics,
+      fitnessLevel,
+    ]
+  );
+
+  // Save quiz answers to sessionStorage (cleared when tab closes)
+  const saveQuizAnswers = useCallback(() => {
+    sessionStorage.setItem("pending_quiz_answers", JSON.stringify(quizPayload));
+  }, [quizPayload]);
 
   const goNext = useCallback(() => {
     if (!stepIsAnswered(currentStep)) return;
@@ -1505,29 +1683,11 @@ function RegisterPageContent() {
         sessionUser = anonData.user;
       }
 
-      const quizAnswers: Record<string, unknown> = {
-        age_band: ageBand || null,
-        top_problems: topProblems,
-        timing,
-        tried_options: triedOptions,
-        hrt_status: hrtStatus || null,
-        goal,
-        goals: goal,
-        qualifier: qualifier || null,
-        here_for: hereFor || null,
-        name: firstName.trim() || null,
-        height_cm: bodyMetrics.height_cm,
-        weight_kg: bodyMetrics.weight_kg,
-        height_unit: bodyMetrics.height_unit,
-        weight_unit: bodyMetrics.weight_unit,
-        fitness_level: fitnessLevel || null,
-      };
-
       const res = await fetch("/api/auth/save-quiz", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ quizAnswers }),
+        body: JSON.stringify({ quizAnswers: quizPayload }),
       });
 
       if (!res.ok) {
@@ -1551,7 +1711,7 @@ function RegisterPageContent() {
       setError(e instanceof Error ? e.message : "Network error. Please try again.");
       return false;
     }
-  }, [ageBand, topProblems, timing, triedOptions, hrtStatus, goal, qualifier, hereFor, firstName, bodyMetrics, fitnessLevel, router]);
+  }, [quizPayload, router]);
 
   // Runs once per visit to the calculating screen. The ref guard matters: a
   // second run would mint a second anonymous account and orphan the first.
@@ -1583,12 +1743,27 @@ function RegisterPageContent() {
 
   const toggleProblem = (problemId: string) => {
     setSymptomSeverity((prev) => {
-      if (prev[problemId]) {
+      const on = Boolean(prev[problemId]);
+      // Untick her first pick and the follow-up is now rating a different
+      // symptom than the one she answered about, so the rating goes with it.
+      if (on && Object.keys(prev)[0] === problemId) setSymptomImpact("");
+      if (on) {
         const next = { ...prev };
         delete next[problemId];
         return next;
       }
       return { ...prev, [problemId]: SELECTED_SEVERITY };
+    });
+  };
+
+  // "None of the above" and "Prefer not to say" clear the clinical flags, and any
+  // clinical flag clears them - see SAFETY_OPTIONS.
+  const toggleSafetyFlag = (flagId: string) => {
+    const exclusive = SAFETY_OPTIONS.find((o) => o.id === flagId)?.exclusive;
+    setSafetyFlags((prev) => {
+      if (prev.includes(flagId)) return prev.filter((id) => id !== flagId);
+      if (exclusive) return [flagId];
+      return [...prev.filter((id) => !SAFETY_OPTIONS.find((o) => o.id === id)?.exclusive), flagId];
     });
   };
 
@@ -2095,7 +2270,7 @@ function RegisterPageContent() {
             {topProblems.length > 0 && (() => {
               const cohortLabel = AGE_BAND_LABELS[ageBand] ?? "women your age";
               const top3 = [...topProblems]
-                .sort((a, b) => (symptomSeverity[b] ?? 0) - (symptomSeverity[a] ?? 0))
+                .sort((a, b) => (scoredSeverity[b] ?? 0) - (scoredSeverity[a] ?? 0))
                 .slice(0, 3);
               return (
                 <motion.div
@@ -2118,7 +2293,7 @@ function RegisterPageContent() {
                   </div>
                   <div className="space-y-3">
                     {top3.map((id) => {
-                      const you = Math.round(((symptomSeverity[id] ?? 0) / 3) * 100);
+                      const you = Math.round(((scoredSeverity[id] ?? 0) / 3) * 100);
                       const avg = Math.round(((TYPICAL_SYMPTOM_SEVERITY[id] ?? 1.5) / 3) * 100);
                       return (
                         <div key={id}>
@@ -2438,7 +2613,7 @@ function RegisterPageContent() {
                 to stop feeling this way. ──────────────────────────────────────── */}
             {(() => {
               const topSymptom = [...topProblems]
-                .sort((a, b) => (symptomSeverity[b] ?? 0) - (symptomSeverity[a] ?? 0))[0];
+                .sort((a, b) => (scoredSeverity[b] ?? 0) - (scoredSeverity[a] ?? 0))[0];
               // No article - the sentence below supplies "your", so the fallback
               // must not repeat it.
               const topLabel = topSymptom
@@ -3394,39 +3569,12 @@ function RegisterPageContent() {
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl font-bold mb-0.5">What&apos;s your age?</h2>
                   </div>
-                  <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-2 min-h-0">
-                    {AGE_OPTIONS.map((option) => {
-                      const isSelected = ageBand === option.id;
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => selectAndAdvance(() => setAgeBand(option.id))}
-                          className={`flex flex-col min-h-0 rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer ${
-                            isSelected
-                              ? "ring-2 ring-primary shadow-lg shadow-primary/30"
-                              : "hover:opacity-90"
-                          }`}
-                        >
-                          <div className="relative flex-1 min-h-0">
-                            <Image
-                              src={option.image}
-                              alt={option.label}
-                              fill
-                              sizes="50vw"
-                              priority
-                              className="object-cover"
-                            />
-                            {isSelected && <div className="absolute inset-0 bg-primary/15" />}
-                          </div>
-                          <div className={`${TILE_FOOTER_BASE} justify-between gap-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
-                            <span className={TILE_LABEL}>{option.label}</span>
-                            <ArrowRight className="w-3.5 h-3.5 shrink-0 text-white/70" />
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <ImageChoiceGrid
+                    options={AGE_OPTIONS}
+                    selected={ageBand}
+                    onSelect={(id) => selectAndAdvance(() => setAgeBand(id))}
+                    priority
+                  />
                 </div>
               )}
 
@@ -3569,38 +3717,46 @@ function RegisterPageContent() {
                       There&apos;s no wrong answer - it just sets your starting point
                     </p>
                   </div>
-                  <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-2 min-h-0">
-                    {FITNESS_OPTIONS.map((option) => {
-                      const isSelected = fitnessLevel === option.id;
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => selectAndAdvance(() => setFitnessLevel(option.id))}
-                          className={`flex flex-col min-h-0 rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer ${
-                            isSelected
-                              ? "ring-2 ring-primary shadow-lg shadow-primary/30"
-                              : "hover:opacity-90"
-                          }`}
-                        >
-                          <div className="relative flex-1 min-h-0">
-                            <Image
-                              src={option.image}
-                              alt={option.label}
-                              fill
-                              sizes="50vw"
-                              className="object-cover"
-                            />
-                            {isSelected && <div className="absolute inset-0 bg-primary/15" />}
-                          </div>
-                          <div className={`${TILE_FOOTER_BASE} justify-between gap-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
-                            <span className={TILE_LABEL}>{option.label}</span>
-                            <ArrowRight className="w-3.5 h-3.5 shrink-0 text-white/70" />
-                          </div>
-                        </button>
-                      );
-                    })}
+                  <ImageChoiceGrid
+                    options={FITNESS_OPTIONS}
+                    selected={fitnessLevel}
+                    onSelect={(id) => selectAndAdvance(() => setFitnessLevel(id))}
+                  />
+                </div>
+              )}
+
+              {/* Nutrition starting point - feeds the plan's nutrition_focus */}
+              {currentStep === "q_nutrition" && (
+                <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                  <div className="shrink-0">
+                    <h2 className="text-lg sm:text-xl font-bold mb-0.5">
+                      How would you describe your eating right now?
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      Honestly - this is where your plan starts, not a test
+                    </p>
                   </div>
+                  <ImageChoiceGrid
+                    options={NUTRITION_STYLE_OPTIONS}
+                    selected={nutritionStyle}
+                    onSelect={(id) => selectAndAdvance(() => setNutritionStyle(id))}
+                  />
+                </div>
+              )}
+
+              {/* Relaxation starting point - feeds the relaxation pillar */}
+              {currentStep === "q_relaxation" && (
+                <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                  <div className="shrink-0">
+                    <h2 className="text-lg sm:text-xl font-bold mb-0.5">
+                      How do you currently unwind or manage stress?
+                    </h2>
+                  </div>
+                  <ImageChoiceGrid
+                    options={RELAXATION_STYLE_OPTIONS}
+                    selected={relaxationStyle}
+                    onSelect={(id) => selectAndAdvance(() => setRelaxationStyle(id))}
+                  />
                 </div>
               )}
 
@@ -3612,38 +3768,27 @@ function RegisterPageContent() {
                       What&apos;s your menopausal status?
                     </h2>
                   </div>
-                  <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-2 min-h-0">
-                    {HERE_FOR_OPTIONS.map((option) => {
-                      const isSelected = hereFor === option.id;
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => selectAndAdvance(() => setHereFor(option.id))}
-                          className={`flex flex-col min-h-0 rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer ${
-                            isSelected
-                              ? "ring-2 ring-primary shadow-lg shadow-primary/30"
-                              : "hover:opacity-90"
-                          }`}
-                        >
-                          <div className="relative flex-1 min-h-0">
-                            <Image
-                              src={option.image}
-                              alt={option.label}
-                              fill
-                              sizes="50vw"
-                              className="object-cover"
-                            />
-                            {isSelected && <div className="absolute inset-0 bg-primary/15" />}
-                          </div>
-                          <div className={`${TILE_FOOTER_BASE} justify-between gap-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
-                            <span className={TILE_LABEL}>{option.label}</span>
-                            <ArrowRight className="w-3.5 h-3.5 shrink-0 text-white/70" />
-                          </div>
-                        </button>
-                      );
-                    })}
+                  <ImageChoiceGrid
+                    options={HERE_FOR_OPTIONS}
+                    selected={hereFor}
+                    onSelect={(id) => selectAndAdvance(() => setHereFor(id))}
+                  />
+                </div>
+              )}
+
+              {/* Q3: How menopause began - surgical/medical onset changes the plan */}
+              {currentStep === "q_menopause_type" && (
+                <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                  <div className="shrink-0">
+                    <h2 className="text-lg sm:text-xl font-bold mb-0.5">
+                      How did menopause begin for you?
+                    </h2>
                   </div>
+                  <ImageChoiceGrid
+                    options={MENOPAUSE_TYPE_OPTIONS}
+                    selected={menopauseType}
+                    onSelect={(id) => selectAndAdvance(() => setMenopauseType(id))}
+                  />
                 </div>
               )}
 
@@ -3718,7 +3863,7 @@ function RegisterPageContent() {
                         : "Tap all that apply"}
                     </p>
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 -mr-1 pb-1 [scrollbar-width:thin]">
+                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 -mr-1 pb-1 [scrollbar-width:thin] scroll-smooth">
                     {/* Flex-wrap, not grid: both of these lists have an odd option count,
                         so a grid always left a hole in the last row. Wrapping with a
                         centred last row fills the shelf and keeps every tile the same
@@ -3759,6 +3904,61 @@ function RegisterPageContent() {
                         );
                       })}
                     </div>
+
+                    {/* Follow-up, revealed by her first tap: one rating, on the
+                        symptom she reached for first. Asking for nine ratings is
+                        the version of this question nobody finishes. It lives
+                        inside the same scroll area so the tiles stay reachable -
+                        she can still add or swap a symptom after rating. */}
+                    {topProblems.length > 0 && (
+                      <motion.div
+                        initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3 }}
+                        className="mt-3 rounded-2xl border-2 border-primary/25 bg-primary/5 p-3"
+                      >
+                        <p className="text-sm font-bold text-[#3D3D3D] leading-snug">
+                          How much is{" "}
+                          <span className="text-primary">
+                            {(SYMPTOM_LABELS[topProblems[0]] || topProblems[0]).toLowerCase()}
+                          </span>{" "}
+                          affecting your day-to-day?
+                        </p>
+                        <div className="mt-2.5 space-y-1.5">
+                          {SYMPTOM_IMPACT_OPTIONS.map((level) => {
+                            const isSelected = symptomImpact === level.id;
+                            return (
+                              <button
+                                key={level.id}
+                                type="button"
+                                onClick={() => setSymptomImpact(level.id)}
+                                className={`w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl border-2 text-left transition-all duration-200 cursor-pointer ${
+                                  isSelected
+                                    ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
+                                    : "border-foreground/15 bg-background hover:border-primary/50"
+                                }`}
+                              >
+                                <span className="min-w-0">
+                                  <span className="block text-sm font-semibold text-[#3D3D3D]">
+                                    {level.label}
+                                  </span>
+                                  <span className="block text-[11px] text-[#8A8A8A] leading-tight">
+                                    {level.hint}
+                                  </span>
+                                </span>
+                                {isSelected ? (
+                                  <span className="w-5 h-5 shrink-0 rounded-full bg-primary flex items-center justify-center animate-in zoom-in duration-200">
+                                    <Check className="w-3 h-3 text-primary-foreground" strokeWidth={3} />
+                                  </span>
+                                ) : (
+                                  <span className="w-5 h-5 shrink-0 rounded-full border-2 border-foreground/20" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </motion.div>
+                    )}
                   </div>
                 </div>
               )}
@@ -3861,9 +4061,9 @@ function RegisterPageContent() {
                 );
               })()}
 
-              {/* Reward 2: one fact (the 6-year wait) + one personal win (timing-keyed pride). No overlap. */}
+              {/* Reward 2: one fact (the 6-year wait) + one personal win (stage-keyed pride). No overlap. */}
               {currentStep === "reward_progress" && (() => {
-                const pride = TIMING_PRIDE_LINE[timing] ?? "You're finally putting yourself first - that takes strength.";
+                const pride = STAGE_PRIDE_LINE[hereFor] ?? "You're finally putting yourself first - that takes strength.";
                 return (
                   <div className="flex-1 flex flex-col justify-center items-center text-center space-y-4">
                     <motion.div
@@ -3934,112 +4134,65 @@ function RegisterPageContent() {
                       Have you ever taken any form of menopausal hormonal treatment (HRT)?
                     </h2>
                   </div>
-                  <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-2 min-h-0">
-                    {HRT_OPTIONS.map((option) => {
-                      const isSelected = hrtStatus === option.id;
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => selectAndAdvance(() => setHrtStatus(option.id))}
-                          className={`flex flex-col min-h-0 rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer ${
-                            isSelected
-                              ? "ring-2 ring-primary shadow-lg shadow-primary/30"
-                              : "hover:opacity-90"
-                          }`}
-                        >
-                          <div className="relative flex-1 min-h-0">
-                            <Image
-                              src={option.image}
-                              alt={option.label}
-                              fill
-                              sizes="50vw"
-                              className="object-cover"
-                            />
-                            {isSelected && <div className="absolute inset-0 bg-primary/15" />}
-                          </div>
-                          <div className={`${TILE_FOOTER_BASE} justify-between gap-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
-                            <span className={TILE_LABEL}>{option.label}</span>
-                            <ArrowRight className="w-3.5 h-3.5 shrink-0 text-white/70" />
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <ImageChoiceGrid
+                    options={HRT_OPTIONS}
+                    selected={hrtStatus}
+                    onSelect={(id) => selectAndAdvance(() => setHrtStatus(id))}
+                  />
                 </div>
               )}
 
-              {/* Q6: How long */}
-              {currentStep === "q6_how_long" && (
+              {/* Safety screen. Text rows, not tiles - see SAFETY_OPTIONS. The
+                  reassurance sits in the question itself because that is where
+                  the hesitation is: she is about to type a cancer history into a
+                  page she has not paid for yet. */}
+              {currentStep === "q_safety" && (
                 <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl font-bold mb-0.5">
-                      How long have symptoms been affecting you?
+                      Do any of these apply to you?
                     </h2>
+                    <p className="text-sm text-muted-foreground leading-snug">
+                      This keeps our suggestions safe for you - never shared without your
+                      permission.
+                    </p>
                   </div>
-                  <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-2 min-h-0">
-                    {TIMING_OPTIONS.map((option) => {
-                      const isSelected = timing === option.id;
+                  <div className="flex-1 flex flex-col justify-center gap-2 min-h-0 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
+                    {SAFETY_OPTIONS.map((option) => {
+                      const isSelected = safetyFlags.includes(option.id);
                       return (
                         <button
                           key={option.id}
                           type="button"
-                          onClick={() => selectAndAdvance(() => setTiming(option.id))}
-                          className={`flex flex-col min-h-0 rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer ${
+                          onClick={() => toggleSafetyFlag(option.id)}
+                          className={`w-full shrink-0 flex items-center justify-between gap-3 px-4 py-3.5 rounded-2xl border-2 text-left transition-all duration-200 cursor-pointer ${
                             isSelected
-                              ? "ring-2 ring-primary shadow-lg shadow-primary/30"
-                              : "hover:opacity-90"
-                          }`}
-                        >
-                          <div className="relative flex-1 min-h-0">
-                            <Image
-                              src={option.image}
-                              alt={option.label}
-                              fill
-                              sizes="50vw"
-                              className="object-cover"
-                            />
-                            {isSelected && <div className="absolute inset-0 bg-primary/15" />}
-                          </div>
-                          <div className={`${TILE_FOOTER_BASE} justify-between gap-1.5 ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
-                            <span className={TILE_LABEL}>{option.label}</span>
-                            <ArrowRight className="w-3.5 h-3.5 shrink-0 text-white/70" />
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Q7: Qualifier */}
-              {currentStep === "q7_qualifier" && (
-                <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
-                  <div className="shrink-0">
-                    <h2 className="text-lg sm:text-xl font-bold mb-0.5">
-                      How much time are you ready to spend to achieve your goal?
-                    </h2>
-                  </div>
-                  <div className="flex-1 flex flex-col justify-center gap-2 min-h-0">
-                    {QUALIFIER_OPTIONS.map((option) => {
-                      const isSelected = qualifier === option.id;
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => selectAndAdvance(() => setQualifier(option.id))}
-                          className={`w-full flex items-center justify-between gap-2 px-4 py-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer ${
-                            isSelected
-                              ? "border-primary bg-primary/10 ring-2 ring-primary shadow-lg shadow-primary/30"
+                              ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
                               : "border-foreground/15 hover:border-primary/50"
                           }`}
                         >
-                          <span className="font-semibold text-base sm:text-lg">{option.label}</span>
-                          <ArrowRight className={`w-4 h-4 shrink-0 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
+                          <span
+                            className={`font-semibold text-sm sm:text-base ${
+                              option.exclusive ? "text-[#5A5A5A]" : "text-[#3D3D3D]"
+                            }`}
+                          >
+                            {option.label}
+                          </span>
+                          {isSelected ? (
+                            <span className="w-5 h-5 shrink-0 rounded-md bg-primary flex items-center justify-center animate-in zoom-in duration-200">
+                              <Check className="w-3 h-3 text-primary-foreground" strokeWidth={3} />
+                            </span>
+                          ) : (
+                            <span className="w-5 h-5 shrink-0 rounded-md border-2 border-foreground/20" />
+                          )}
                         </button>
                       );
                     })}
                   </div>
+                  <p className="shrink-0 flex items-center justify-center gap-1.5 text-[11px] text-[#9A9A9A]">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    Private to your plan. Never sold, never shared.
+                  </p>
                 </div>
               )}
 

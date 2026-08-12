@@ -15,12 +15,33 @@ const VALID_GOALS = [
   "get_body_back",
 ] as const;
 
+// Multi-select on the quiz's safety screen. Enumerated rather than free strings
+// because these gate what the 8-week plan may suggest — an unrecognised value
+// would be silently ignored by the generator's safety rule.
+const SAFETY_FLAGS = [
+  "breast_cancer",
+  "clots_stroke",
+  "liver_disease",
+  "none",
+  "prefer_not",
+] as const;
+
 const QuizSchema = z.object({
   name: z.string().min(1).max(100).nullable().optional(),
   age_band: z.string().max(50).nullable().optional(),
   top_problems: z.array(z.string().max(50)).max(20).optional(),
+  // How hard her worst symptom hits. Replaces the duration question the web quiz
+  // no longer asks; `timing` stays accepted for mobile and legacy callers.
+  symptom_impact: z.enum(["mild", "moderate", "severe"]).nullable().optional(),
   timing: z.string().max(50).nullable().optional(),
   here_for: z.string().max(50).nullable().optional(),
+  menopause_type: z.enum(["natural", "surgical", "medical", "not_sure"]).nullable().optional(),
+  nutrition_style: z
+    .enum(["skipping", "convenience", "inconsistent", "intentional"])
+    .nullable()
+    .optional(),
+  relaxation_style: z.enum(["none", "occasional", "routine", "want_to"]).nullable().optional(),
+  safety_flags: z.array(z.enum(SAFETY_FLAGS)).max(SAFETY_FLAGS.length).optional(),
   tried_options: z.array(z.string().max(50)).max(20).optional(),
   hrt_status: z.string().max(50).nullable().optional(),
   doctor_status: z.string().max(50).nullable().optional(),
@@ -69,8 +90,13 @@ export async function POST(request: NextRequest) {
       name: quizAnswers.name ?? null,
       age_band: quizAnswers.age_band ?? null,
       top_problems: quizAnswers.top_problems ?? [],
+      symptom_impact: quizAnswers.symptom_impact ?? null,
       timing: quizAnswers.timing ?? null,
       here_for: quizAnswers.here_for ?? null,
+      menopause_type: quizAnswers.menopause_type ?? null,
+      nutrition_style: quizAnswers.nutrition_style ?? null,
+      relaxation_style: quizAnswers.relaxation_style ?? null,
+      safety_flags: quizAnswers.safety_flags ?? [],
       tried_options: quizAnswers.tried_options ?? [],
       hrt_status: quizAnswers.hrt_status ?? null,
       doctor_status: quizAnswers.doctor_status ?? null,

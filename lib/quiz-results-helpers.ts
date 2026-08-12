@@ -360,10 +360,13 @@ export function getScoreVerdict(score: number, benchmark: number): string {
 
 export interface ScoreInputs {
   // symptom id -> intensity 0..3 (0/absent = not selected, 3 = extreme).
-  // With plain checkboxes every selected symptom arrives at the same value; the
-  // model still works, but per-symptom intensity is what makes the score truly hers.
+  // The quiz rates her worst symptom (Mild/Moderate/Severe) and scales the rest
+  // from it, so these values really do differ per woman.
   symptomSeverity: Record<string, number>;
-  timing: string;        // just_started | been_while | over_year | several_years
+  // How long symptoms have been going on. The web quiz stopped asking on
+  // 2026-08-12; mobile and legacy rows may still supply it. Omitted = the
+  // mid-range DURATION_PENALTY below, applied uniformly.
+  timing?: string;       // just_started | been_while | over_year | several_years
   hereFor: string;       // pre_menopausal | perimenopausal | post_menopausal | not_sure
   hrtStatus: string;     // currently | past | never
   ageBand: string;       // under_40 | 40_45 | 46_50 | 51_plus | prefer_not
@@ -467,7 +470,7 @@ export function calculateWellbeingScore(inputs: ScoreInputs): ScoreBreakdown {
   }, 0);
   const symptomPenalty = burden * 2;
 
-  const durationPenalty = DURATION_PENALTY[timing] ?? 4;
+  const durationPenalty = timing ? DURATION_PENALTY[timing] ?? 4 : 4;
   const stagePenalty = STAGE_PENALTY[hereFor] ?? 0;
   const hrtPenalty = HRT_PENALTY[hrtStatus] ?? 0;
   const bmi = computeBmi(heightCm, weightKg);

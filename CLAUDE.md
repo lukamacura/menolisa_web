@@ -764,6 +764,20 @@ again also works — that calls `sync-session`.
 ## 7. CURRENT STATUS
 
 Recent work:
+- **Quiz v2 (2026-08-12)** — `/register` is now 12 questions in a new order, with
+  four new ones (`q_menopause_type`, `q_nutrition`, `q_relaxation`, `q_safety`)
+  and a follow-up severity tap on `q4_symptoms` that rates the symptom she picked
+  first. `q6_how_long` and `q7_qualifier` were **dropped from the web funnel** —
+  their columns (`timing`, `qualifier`) stay in the schema because the Expo app
+  still asks them and every existing row carries a value; web writes null now.
+  Two knock-ons: `calculateWellbeingScore`'s `timing` is optional and falls back
+  to a flat mid-range penalty, and the `reward_progress` pride line is keyed off
+  `here_for` instead. The new answers reach `lib/plan/generate.ts` — the safety
+  flags as a hard rule about hormone therapy, phytoestrogens and herbal
+  supplements, so **any new plan-prompt work must keep that rule intact**.
+  Migration `scripts/sql/2026-08-12-quiz-v2-columns.sql` — **not applied yet**.
+  Images for the three new tile questions do not exist yet
+  (`public/quiz/menopause-type/`, `nutrition/`, `relaxation/`).
 - **Admin panel rebuilt on real numbers (2026-08-11)** — `/admin` now shows
   purchases and revenue read from Stripe charges (new vs renewal, refunds, fees,
   today/7d/30d, six months), a full client table (name, email, account state,

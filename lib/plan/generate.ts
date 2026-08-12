@@ -83,15 +83,34 @@ export type Plan = {
 export type Profile = {
   name: string | null;
   top_problems: string[] | null;
+  symptom_impact: string | null;
   goals: string[] | null;
   goal: string | null;
   age_band: string | null;
   here_for: string | null;
+  menopause_type: string | null;
   timing: string | null;
   hrt_status: string | null;
   fitness_level: string | null;
+  nutrition_style: string | null;
+  relaxation_style: string | null;
+  safety_flags: string[] | null;
   qualifier: string | null;
 };
+
+/** Contraindications she ticked on the quiz's safety screen, as a line for the
+ *  prompt. "None" and "prefer not to say" are not contraindications, so they
+ *  never reach the model as one. */
+const SAFETY_LABEL: Record<string, string> = {
+  breast_cancer: "history of breast cancer",
+  clots_stroke: "history of blood clots or stroke",
+  liver_disease: "liver disease",
+};
+
+function safetyLine(flags: string[] | null): string | null {
+  const named = (flags ?? []).map((f) => SAFETY_LABEL[f]).filter(Boolean);
+  return named.length ? named.join(", ") : null;
+}
 
 // ─── LLM contract ───────────────────────────────────────────────────────────
 
@@ -271,11 +290,12 @@ function buildPrompt(profile: Profile, pool: Exercise[]): string {
     `Woman in menopause. Build her 8-week plan.`,
     ``,
     `Her answers:`,
-    `- Symptoms, worst first: ${profile.top_problems?.join(", ") || "general menopause symptoms"}`,
+    `- Symptoms, worst first: ${profile.top_problems?.join(", ") || "general menopause symptoms"}${profile.symptom_impact ? ` · the worst one hits her: ${profile.symptom_impact}` : ""}`,
     `- Goals, most important first: ${profile.goals?.join(", ") || profile.goal || "feeling like herself again"}`,
-    `- Stage: ${profile.here_for ?? "unknown"} · struggling for: ${profile.timing ?? "unknown"}`,
+    `- Stage: ${profile.here_for ?? "unknown"} · onset: ${profile.menopause_type ?? "unknown"}`,
     `- Age: ${profile.age_band ?? "unknown"} · HRT: ${profile.hrt_status ?? "unknown"}`,
-    `- Fitness level: ${profile.fitness_level ?? "beginner"} · readiness: ${profile.qualifier ?? "unknown"}`,
+    `- Fitness level: ${profile.fitness_level ?? "beginner"}`,
+    `- Eating right now: ${profile.nutrition_style ?? "unknown"} · unwinds: ${profile.relaxation_style ?? "unknown"}`,
     ``,
     `MOVEMENT — pick only these exercise ids, and give ${movement}:`,
     pool.map((e) => `${e.id} ${e.name}`).join(" | "),
@@ -293,6 +313,18 @@ function buildPrompt(profile: Profile, pool: Exercise[]): string {
     `- Exactly 8 weeks, numbered 1-8. Weeks 1-2 steady the basics, 3-5 build, 6-8 lock it in.`,
     `- Each week: 3-4 tasks — at least one movement, one relaxation, one habit. No nutrition tasks.`,
     `- Each week also needs "nutrition_focus": 1-2 nutrition ids to push on that week. Build on the previous week; do not restart from the same id every week.`,
+    `- Start the nutrition focus where her eating actually is. "skipping" or "convenience" means week 1 is one anchored meal, not fasting windows; "intentional" means skip the basics she already does and open on timing and fasting.`,
+    `- Match the relaxation cadence to how she already unwinds. "none" or "want_to" starts at one short daily practice and stays there for weeks 1-2; "routine" can carry two from the start.`,
+    ...(safetyLine(profile.safety_flags)
+      ? [
+          `- SAFETY — she has: ${safetyLine(profile.safety_flags)}. Never suggest hormone therapy, phytoestrogen or soy loading, herbal supplements, or high-intensity work she has not built up to. Where a task touches this, keep it to food, movement, sleep and breathing, and tell her to clear anything else with her doctor.`,
+        ]
+      : []),
+    ...(profile.menopause_type === "surgical" || profile.menopause_type === "medical"
+      ? [
+          `- Her menopause was ${profile.menopause_type === "surgical" ? "surgical" : "brought on by cancer treatment"}, so it arrived at once rather than over years. Do not write "as your hormones gradually shift" or anything that assumes a slow transition, and open movement one step gentler than her stated fitness level.`,
+        ]
+      : []),
     `- Habit tasks are yours to write: one small, concrete daily action she starts doing (e.g. "Cool the room before bed"). Cadence "daily". Name the action itself — never begin the title with "Add". Never write a habit about quitting something — that is what resist_suggestions is for.`,
     `- Never write a habit or movement task that repeats a nutrition row — no walks after meals, no water, no protein, no meal timing. She already ticks those every day; put the id in nutrition_focus instead.`,
     `- Relaxation tasks need item_id and cadence "daily" (or "per_day" with a target). Match the item to her worst symptom: hot flashes get breath_hotflash, night waking gets breath_sleep, anxiety or palpitations get breath_sigh.`,
@@ -512,8 +544,9 @@ function buildWhyPrompt(profile: Profile): string {
     `Her answers:`,
     `- Symptoms, worst first: ${profile.top_problems?.join(", ") || "general menopause symptoms"}`,
     `- Goals, most important first: ${profile.goals?.join(", ") || profile.goal || "feeling like herself again"}`,
-    `- Stage: ${profile.here_for ?? "unknown"} · struggling for: ${profile.timing ?? "unknown"}`,
+    `- Stage: ${profile.here_for ?? "unknown"} · onset: ${profile.menopause_type ?? "unknown"}`,
     `- Age: ${profile.age_band ?? "unknown"} · HRT: ${profile.hrt_status ?? "unknown"}`,
+    `- Eating right now: ${profile.nutrition_style ?? "unknown"}`,
     ``,
     `The habits, each with the reason as we would write it:`,
     ...NUTRITION.map((n) => `${n.id} — ${n.label}: "${n.why}"`),
@@ -837,7 +870,9 @@ export async function generatePlan(userId: string): Promise<void> {
 
   const { data: profile } = await supabaseAdmin
     .from("user_profiles")
-    .select("name, top_problems, goals, goal, age_band, here_for, timing, hrt_status, fitness_level, qualifier")
+    .select(
+      "name, top_problems, symptom_impact, goals, goal, age_band, here_for, menopause_type, timing, hrt_status, fitness_level, nutrition_style, relaxation_style, safety_flags, qualifier"
+    )
     .eq("user_id", userId)
     .maybeSingle();
 
