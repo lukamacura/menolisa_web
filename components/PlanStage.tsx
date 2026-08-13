@@ -66,19 +66,19 @@ const ACTS: { id: ActId; label: string; hold: number; caption: string }[] = [
   {
     id: "plan",
     label: "Your plan, sealed",
-    hold: 5200,
+    hold: 4200,
     caption: "Your symptoms, your goal, your name on it — before you start.",
   },
   {
     id: "today",
     label: "A day on the plan",
-    hold: 6200,
+    hold: 5200,
     caption: "Then four small things a day. Nothing that needs a gym or a free hour.",
   },
   {
     id: "weeks",
     label: "The 8-week arc",
-    hold: 6600,
+    hold: 5400,
     caption: "Eight weeks, three phases: steady the basics, build on what works, lock it in.",
   },
 ];
@@ -92,16 +92,18 @@ const INK = "#5c4327";
 
 const SCROLL_SIZES = "(max-width: 400px) 92vw, 340px";
 
-/* Act 2's beat sheet, in ms from the act's start. The rows land by ~0.6s, so
+/* Act 2's beat sheet, in ms from the act's start. The rows land by ~0.75s, so
    the first tick waits until she has had a moment to read them. */
-const TICK_START_MS = 1700;
-const TICK_EVERY_MS = 900;
+const TICK_START_MS = 1250;
+const TICK_EVERY_MS = 720;
 
 /* Act 3's beat sheet. Must stay in step with the per-dot delays below - the
-   week counter reads off the same arithmetic the CSS delays are built from. */
-const FILL_START_MS = 480;
-const FILL_SPAN_MS = 2400;
-const FILL_DOT_MS = 260;
+   week counter reads off the same arithmetic the CSS delays are built from,
+   and FILL_DOT_MS must match the `.plan-day` animation duration in
+   globals.css. */
+const FILL_START_MS = 380;
+const FILL_SPAN_MS = 2100;
+const FILL_DOT_MS = 220;
 /** Gap between one day lighting up and the next. */
 const FILL_STEP_MS = (FILL_SPAN_MS - FILL_DOT_MS) / (PLAN_DAYS - 1);
 
@@ -242,7 +244,7 @@ export function PlanStage({
             initial={reduced ? false : { opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: reduced ? 0 : 0.3 }}
+            transition={{ duration: reduced ? 0 : 0.26, ease: [0.16, 1, 0.3, 1] }}
             className="absolute inset-x-0 text-center text-[11px] leading-snug text-[#5A5A5A]"
           >
             {act.caption}
@@ -283,7 +285,7 @@ function SealedScroll({
 }) {
   const fade = {
     hidden: { opacity: 0, y: 8 },
-    show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" as const } },
+    show: { opacity: 1, y: 0, transition: { duration: 0.38, ease: [0.16, 1, 0.3, 1] as const } },
   };
 
   return (
@@ -291,8 +293,8 @@ function SealedScroll({
       initial={reduced ? "show" : "hidden"}
       animate="show"
       exit={reduced ? { opacity: 0 } : { opacity: 0, y: -10 }}
-      variants={{ hidden: {}, show: { transition: { staggerChildren: 0.2, delayChildren: 0.25 } } }}
-      transition={{ duration: 0.3 }}
+      variants={{ hidden: {}, show: { transition: { staggerChildren: 0.13, delayChildren: 0.14 } } }}
+      transition={{ duration: 0.26 }}
       className="absolute inset-0 z-10 flex flex-col items-center justify-center px-[15%] py-[19%] text-center"
       style={{ color: INK }}
     >
@@ -322,7 +324,7 @@ function SealedScroll({
       {/* Letter by letter, on opacity/transform only. This used to animate a
           per-letter blur, which is a filter repaint per glyph per frame. */}
       <motion.div
-        variants={{ hidden: {}, show: { transition: { staggerChildren: 0.09 } } }}
+        variants={{ hidden: {}, show: { transition: { staggerChildren: 0.06 } } }}
         className="flex"
       >
         {(firstName || "You").split("").map((ch, i) => (
@@ -334,7 +336,7 @@ function SealedScroll({
                 opacity: 1,
                 y: 0,
                 rotate: 0,
-                transition: { type: "spring", stiffness: 240, damping: 18 },
+                transition: { type: "spring", stiffness: 300, damping: 24 },
               },
             }}
             className="font-script text-4xl leading-none sm:text-5xl"
@@ -398,7 +400,7 @@ function PhoneMock({
       transition={
         reduced
           ? { duration: 0.2 }
-          : { type: "spring", stiffness: 130, damping: 19, mass: 0.9, opacity: { duration: 0.28 } }
+          : { type: "spring", stiffness: 190, damping: 24, mass: 0.8, opacity: { duration: 0.22 } }
       }
       style={{ containerType: "inline-size" }}
       className="w-[56%]"
@@ -419,7 +421,7 @@ function PhoneMock({
               initial="enter"
               animate="center"
               exit="exit"
-              transition={{ duration: reduced ? 0 : 0.42, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: reduced ? 0 : 0.34, ease: [0.22, 1, 0.36, 1] }}
               className="absolute inset-0 flex flex-col px-[5.5cqw] pt-[12cqw] pb-[4cqw]"
             >
               {screen === "today" ? (
@@ -511,7 +513,7 @@ function TodayScreen({ reduced, progress }: { reduced: boolean; progress: Motion
               key={p.key}
               initial={reduced ? false : { opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: reduced ? 0 : 0.34 + i * 0.09, duration: 0.34, ease: [0.16, 1, 0.3, 1] }}
+              transition={{ delay: reduced ? 0 : 0.22 + i * 0.07, duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
               className={cn(
                 "flex w-full items-center gap-[3.2cqw] rounded-[4.6cqw] border px-[3.6cqw] py-[4cqw] text-left transition-colors duration-200",
                 isDone ? "border-primary/35 bg-primary/8" : "border-[#EFE4DC] bg-white"
@@ -554,7 +556,7 @@ function TodayScreen({ reduced, progress }: { reduced: boolean; progress: Motion
                       initial={reduced ? false : { scale: 0 }}
                       animate={{ scale: 1 }}
                       exit={{ scale: 0 }}
-                      transition={{ type: "spring", stiffness: 520, damping: 17 }}
+                      transition={{ type: "spring", stiffness: 620, damping: 26 }}
                     >
                       <Check className="h-[4.4cqw] w-[4.4cqw] text-white" strokeWidth={4} />
                     </motion.span>
@@ -574,7 +576,7 @@ function TodayScreen({ reduced, progress }: { reduced: boolean; progress: Motion
               key="done"
               initial={reduced ? false : { opacity: 0, y: 8, scale: 0.92 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ type: "spring", stiffness: 300, damping: 18 }}
+              transition={{ type: "spring", stiffness: 380, damping: 26 }}
               className="absolute inset-x-0 flex items-center justify-center gap-[1.6cqw] rounded-[3.6cqw] bg-green-50 py-[2.4cqw] text-[3.8cqw] font-bold text-green-700 ring-1 ring-green-200"
             >
               <Sparkles className="h-[4.2cqw] w-[4.2cqw]" strokeWidth={2.4} />
@@ -679,7 +681,7 @@ function WeeksScreen({
               key="done"
               initial={reduced ? false : { opacity: 0, y: 8, scale: 0.9 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ type: "spring", stiffness: 280, damping: 17 }}
+              transition={{ type: "spring", stiffness: 360, damping: 26 }}
               className="absolute inset-x-0 flex items-center justify-center gap-[1.6cqw] rounded-[3.6cqw] bg-green-50 py-[2.2cqw] text-[3.9cqw] font-bold text-green-700 ring-1 ring-green-200"
             >
               <Check className="h-[4.2cqw] w-[4.2cqw]" strokeWidth={3.4} />
@@ -691,7 +693,7 @@ function WeeksScreen({
               initial={reduced ? false : { opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.28 }}
+              transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
               className="absolute inset-x-0 flex items-center justify-center gap-[2cqw] text-[3.9cqw] font-semibold text-[#5A5A5A]"
             >
               <span
