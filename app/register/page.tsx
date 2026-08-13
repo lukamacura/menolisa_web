@@ -192,14 +192,39 @@ const SYMPTOM_IMAGE: Record<string, string> = Object.fromEntries(
   PROBLEM_OPTIONS.map((o) => [o.id, o.image])
 );
 
+// Her symptom goes inside the impact question, so each one needs its own
+// grammar: four of the nine labels are plural. Dropping the raw label into the
+// sentence made it read "How much is hot flashes costing you" for nearly half
+// of them. `phrase` is also her word for it rather than the chart word - "the
+// broken sleep", not "sleep issues".
+const SYMPTOM_SUBJECT: Record<string, { phrase: string; plural: boolean }> = {
+  hot_flashes: { phrase: "hot flashes", plural: true },
+  sleep_issues: { phrase: "the broken sleep", plural: false },
+  brain_fog: { phrase: "the brain fog", plural: false },
+  mood_swings: { phrase: "the mood swings", plural: true },
+  weight_changes: { phrase: "the weight changes", plural: true },
+  low_energy: { phrase: "the exhaustion", plural: false },
+  anxiety: { phrase: "the anxiety", plural: false },
+  joint_pain: { phrase: "the joint pain", plural: false },
+  bloating: { phrase: "the bloating", plural: false },
+};
+
+const FALLBACK_SYMPTOM_SUBJECT = { phrase: "this", plural: false };
+
 // Its own step, straight after q4_symptoms: she rates the one symptom she picked
 // first, which is the one she came here for. Rating all nine is a chore nobody
 // finishes; rating the worst one is a single tap and gives the score a real
 // intensity to work with instead of a flat constant.
+//
+// The ids stay mild/moderate/severe - IMPACT_VALUE, the score and the results
+// copy all key off them - but she never sees those words. "Moderate" is what a
+// doctor writes on a chart after deciding her symptoms don't warrant much; the
+// label she taps should be a sentence she'd actually say, and the three of them
+// escalate by how much of her day the symptom has taken.
 const SYMPTOM_IMPACT_OPTIONS = [
-  { id: "mild", label: "Mild", hint: "I notice it, but I cope" },
-  { id: "moderate", label: "Moderate", hint: "It gets in the way most days" },
-  { id: "severe", label: "Severe", hint: "It runs my day" },
+  { id: "mild", label: "I work around it", hint: "It's there, but the day still goes to plan" },
+  { id: "moderate", label: "It gets in the way", hint: "Most days I'm pushing through it" },
+  { id: "severe", label: "It runs my life", hint: "I plan my days around it" },
 ];
 
 // Her tapped level, on the same 0-3 intensity scale calculateWellbeingScore uses.
@@ -3915,18 +3940,18 @@ function RegisterPageContent() {
               {/* Severity - its own screen, straight after the tiles. One rating,
                   on the symptom she reached for first; asking for nine is the
                   version of this question nobody finishes. */}
-              {currentStep === "q_symptom_impact" && (
+              {currentStep === "q_symptom_impact" && (() => {
+                const subject = SYMPTOM_SUBJECT[topProblems[0]] ?? FALLBACK_SYMPTOM_SUBJECT;
+                return (
                 <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl font-bold mb-0.5">
-                      How much is{" "}
-                      <span className="text-primary">
-                        {(SYMPTOM_LABELS[topProblems[0]] || topProblems[0] || "this").toLowerCase()}
-                      </span>{" "}
-                      affecting your day-to-day?
+                      How much {subject.plural ? "are" : "is"}{" "}
+                      <span className="text-primary">{subject.phrase}</span>{" "}
+                      costing you?
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                      Pick the one that sounds most like you
+                      No wrong answer — it shapes the plan we build for you
                     </p>
                   </div>
                   <div className="flex-1 flex flex-col justify-center gap-2.5 min-h-0 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
@@ -3963,7 +3988,8 @@ function RegisterPageContent() {
                     })}
                   </div>
                 </div>
-              )}
+                );
+              })()}
 
               {/* Reward 1: mirror her #1 symptom back as a prevalence stat ("you're not alone, and it's biology"). */}
               {currentStep === "reward_symptoms" && (() => {
