@@ -47,19 +47,19 @@ export const PLAN_DISCOUNT_PCT = Math.round(
 );
 
 /**
- * How long the paywall holds the discounted price open before the card reverts
- * to {@link PLAN_ANCHOR_PRICE}.
+ * How many days before a renewal we email her — and, because the paywall says so
+ * at the price, a promise made before she pays.
  *
- * The countdown is a display device only — Stripe has exactly one price
- * (`STRIPE_PRICE_8WEEK`, {@link PLAN_PRICE}) and charges it whenever a checkout
- * session is created. So the expired paywall must never offer a checkout button
- * at the anchor price: it offers a one-tap "reclaim the discount" instead, which
- * reopens the window. That way the number on the button is always the number on
- * the invoice. If we ever want expiry to actually bill more, it needs a second
- * Stripe Price plus a server-side deadline — the client clock can't be trusted.
+ * Three, not one. The week-8 charge is the single most disputable moment in the
+ * product: it lands exactly when she is least certain the plan worked, and a
+ * day's warning is not enough time to act on. Three days is also the floor
+ * several US auto-renewal statutes set, California's ARL among them.
+ *
+ * Read by `/api/cron/renewal-notices` (the send window) and by the paywall (the
+ * promise), so both move together. This is the only scheduled email left in the
+ * product — see `scripts/sql/2026-08-12-drop-email-sequences.sql`.
  */
-export const PLAN_DISCOUNT_WINDOW_MINUTES = 10;
-export const PLAN_DISCOUNT_WINDOW_MS = PLAN_DISCOUNT_WINDOW_MINUTES * 60 * 1000;
+export const RENEWAL_NOTICE_DAYS = 3;
 
 export function isPlanId(value: unknown): value is PlanId {
   return value === PLAN_ID;

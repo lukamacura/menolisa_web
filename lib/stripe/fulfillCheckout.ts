@@ -144,10 +144,14 @@ async function adoptQuizProfile(
  * anywhere before the card — so the account arriving here usually has none.
  * That address has to land before anything else runs:
  *   - it is how she logs into the mobile app afterwards (OTP needs an address);
- *   - the welcome email below reads it back off `auth.users`;
- *   - `sync_email_sequence_recipient()` returns early for an emailless user, so
- *     the paid drip only ever starts if the email is set *before* `user_trials`
- *     is written (that write is what fires the sync trigger).
+ *   - the welcome email below reads it back off `auth.users`.
+ *
+ * There used to be a third reason — a trigger on the `user_trials` write mirrored
+ * her into an email-sequence table and returned early if she had no address yet,
+ * so a late bind silently cost her the drip. That machinery was deleted on
+ * 2026-08-12 (`scripts/sql/2026-08-12-drop-email-sequences.sql`) and no write
+ * here races the email any more. Keep binding it first regardless: every later
+ * step reads the address rather than being handed it.
  *
  * Usually the id is unchanged. When the address already belongs to another
  * account — she bought before, or signed up in the app — the subscription goes

@@ -1,4 +1,10 @@
 import { Resend } from "resend";
+import {
+  PLAN_PRICE,
+  PLAN_WEEKS,
+  RENEWAL_NOTICE_DAYS,
+  formatPrice,
+} from "@/lib/pricing";
 
 let resendClient: Resend | null = null;
 
@@ -89,7 +95,13 @@ export function buildEmailHtml(body: string): string {
 </html>`;
 }
 
-export async function sendSequenceEmail(
+/**
+ * The one place an email leaves the product. Every message below is
+ * transactional — triggered by something that happened to her account, not by a
+ * marketing schedule. There is no drip: she has no email until she pays, and
+ * once she pays the app is where the relationship lives.
+ */
+export async function sendTransactionalEmail(
   to: string,
   subject: string,
   html: string
@@ -127,7 +139,7 @@ export async function sendWelcomeEmail(to: string, name: string | null): Promise
 </table>
 <p style="margin:24px 0 0;color:#9d7ec9;font-size:13px">${footerLine}</p>`;
 
-  await sendSequenceEmail(to, subject, buildEmailHtml(body));
+  await sendTransactionalEmail(to, subject, buildEmailHtml(body));
 }
 
 /** Sent on every renewal charge after the first. */
@@ -149,9 +161,56 @@ export async function sendChargeConfirmedEmail(to: string, name: string | null):
 </table>
 <p style="margin:24px 0 0;color:#9d7ec9;font-size:13px">To cancel or manage your subscription, go to Account in the app or reply to this email.</p>`;
 
-  await sendSequenceEmail(
+  await sendTransactionalEmail(
     to,
     "You've been charged. Welcome to MenoLisa.",
+    buildEmailHtml(body)
+  );
+}
+
+/**
+ * Sent {@link RENEWAL_NOTICE_DAYS} days before the card is charged again.
+ *
+ * This is the only scheduled email left in the product, and it is here because
+ * the week-8 renewal is the moment she is least sure the plan worked and most
+ * likely to dispute the charge rather than cancel it. Warning her while she can
+ * still act converts a chargeback into either a cancellation or a decision she
+ * made on purpose — both better outcomes than a surprise. The paywall promises
+ * this notice at the price, so it is also a claim we have to keep.
+ *
+ * Named amount, named date, and cancelling explicitly does not forfeit the weeks
+ * already paid for — she should never feel the choice is "act now or lose it".
+ */
+export async function sendRenewalNoticeEmail(
+  to: string,
+  name: string | null,
+  renewsAt: Date
+): Promise<{ id: string | null; error: Error | null }> {
+  const greeting = name?.trim() || "there";
+  const when = renewsAt.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+  const body = `
+<p style="margin:0 0 16px;font-size:17px;font-weight:600;color:#2d1b3d">Hi ${greeting},</p>
+<p style="margin:0 0 16px">A heads up with time to act on it: your MenoLisa subscription renews on <strong>${when}</strong>, and your card will be charged ${formatPrice(PLAN_PRICE)} for the next ${PLAN_WEEKS} weeks.</p>
+<p style="margin:0 0 28px">If you would rather not continue, cancelling takes about 30 seconds and you keep everything you have already paid for through ${when}. Nothing to do if you are staying.</p>
+<table cellpadding="0" cellspacing="0" border="0">
+  <tr>
+    <td bgcolor="#7c3aed" style="background-color:#7c3aed;border-radius:10px">
+      <a href="${APP_URL}/dashboard/account" target="_blank"
+         style="display:inline-block;padding:13px 28px;color:#ffffff;font-weight:600;font-size:15px;text-decoration:none">
+        Manage subscription
+      </a>
+    </td>
+  </tr>
+</table>
+<p style="margin:24px 0 0;color:#9d7ec9;font-size:13px">Questions about the charge? Just reply to this email.</p>`;
+
+  return sendTransactionalEmail(
+    to,
+    `Your subscription renews in ${RENEWAL_NOTICE_DAYS} days`,
     buildEmailHtml(body)
   );
 }
@@ -160,5 +219,5 @@ export async function sendChargeConfirmedEmail(to: string, name: string | null):
 export async function sendAdminNotification(subject: string, html: string): Promise<void> {
   const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL;
   if (!adminEmail) return;
-  await sendSequenceEmail(adminEmail, subject, html);
+  await sendTransactionalEmail(adminEmail, subject, html);
 }

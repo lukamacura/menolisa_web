@@ -163,7 +163,7 @@ Don't add another.
 |---|---|---|
 | `/api/cron/daily-reminders` | 9am UTC daily | Push notification to users who haven't logged today |
 | `/api/cron/weekly-insights` | 12am UTC Monday | Generate weekly insight summaries |
-| `/api/cron/email-sequences` | 11am UTC daily | Drip email sequences (pending-payment winback + paid drip) |
+| `/api/cron/renewal-notices` | 11am UTC daily | Warn paying subscribers `RENEWAL_NOTICE_DAYS` before the next charge |
 | `/api/cron/purge-anon-accounts` | 3am UTC daily | Delete emailless, unpaid anonymous accounts older than 7 days |
 
 These four are the whole list — keep it in sync with `vercel.json`.
@@ -262,9 +262,12 @@ The chain, and the order it must happen in:
    `session.customer_details.email` to the account with
    `auth.admin.updateUserById(..., { email_confirm: true })`.
 
-**Bind the email before writing `user_trials`.** The `sync_email_sequence_recipient()`
-trigger fires on that write and returns early for a user with no email, so an
-email that lands afterwards means the paid drip never starts for her.
+**Bind the email before writing `user_trials`.** This used to be load-bearing: a
+trigger on that write mirrored her into an email-sequence table and returned
+early if she had no address yet, so a late bind cost her the drip silently. That
+machinery is gone (2026-08-12) and nothing races the bind now — but keep the
+order anyway. Every step after it reads the address off `auth.users` rather than
+being handed it, and it is how she logs into the app.
 
 Two consequences worth knowing before changing any of this:
 
@@ -352,7 +355,7 @@ Supabase (PostgreSQL) — no ORM, raw SQL queries via Supabase JS client:
 | `symptom_logs` | `id`, `user_id`, `symptom_id`, `severity` (1-3), `triggers[]`, `time_of_day`, `notes`, `logged_at` |
 | `daily_mood` | `user_id`, `date`, `mood` (1-4); unique on `(user_id, date)` |
 | `user_profiles` | `user_id`, `name`, `top_problems[]`, `severity`, `timing`, `goal`, `doctor_status` |
-| `user_trials` | `user_id`, `account_status` ("pending_payment"/"paid"/"expired"), `subscription_ends_at`, `subscription_canceled`, `payment_failed_at`, `dispute_flagged_at`, `provider`, `plan_type`, `plan_amount`, `fulfilled_at` (one-time-side-effect claim — see "Checkout fulfillment"). No trial columns — see below. The table name is legacy; it holds subscriptions. |
+| `user_trials` | `user_id`, `account_status` ("pending_payment"/"paid"/"expired"), `subscription_ends_at`, `subscription_canceled`, `payment_failed_at`, `dispute_flagged_at`, `provider`, `plan_type`, `plan_amount`, `fulfilled_at` (one-time-side-effect claim — see "Checkout fulfillment"), `renewal_notice_sent_for` (the `subscription_ends_at` the renewal email already covered). No trial columns — see below. The table name is legacy; it holds subscriptions. |
 | `documents` | Vector store — `id`, `content`, `metadata` (JSONB), `embedding` (vector 1536) |
 | `notifications` | `user_id`, `type`, `content`, `metadata` (JSONB), `is_read`, `created_at` |
 | `llm_usage` | One row per OpenAI call — `user_id`, `run_id`, `kind`, `model`, `prompt_tokens`, `cached_prompt_tokens`, `completion_tokens`, `cost_usd`, `duration_ms`. Service-role only: RLS on, no policies, no grants. |
@@ -575,7 +578,7 @@ for on every page load. Before adding an image, shrink it (e.g. squoosh.app):
 | Supabase | Database, Auth, Vector search | `lib/supabaseClient.ts`, `lib/supabaseAdmin.ts` |
 | OpenAI | Embeddings (`text-embedding-3-large`) + Chat (`gpt-4o-mini`) | `app/api/langchain-rag/route.ts`, `scripts/ingest-documents.ts` |
 | Stripe | Payments, subscriptions | `app/api/stripe/`, `app/checkout/` |
-| Resend | Transactional email (magic links, sequences) | `lib/resend.ts`, `lib/emailSequences.ts` |
+| Resend | Transactional email (welcome, charge confirmed, renewal notice, admin alerts) | `lib/resend.ts` |
 | Vercel | Hosting + Cron jobs | `vercel.json` |
 
 ### Security-Sensitive Areas
@@ -764,6 +767,42 @@ again also works — that calls `sync-session`.
 ## 7. CURRENT STATUS
 
 Recent work:
+- **Email sequences deleted (2026-08-12)** — the whole system: `p-1`…`p-6`
+  (winback), `3-2`/`3-4` (paid drip), `lib/emailSequences.ts`,
+  `/api/cron/email-sequences`, the `email_sequence_recipients` mirror table, its
+  two sync triggers on `user_profiles`/`user_trials`, and all three
+  `*_email_sequence_*` functions. The winback needed an address from someone who
+  abandoned the paywall, and the funnel has collected none since 2026-08-10; the
+  drip was engagement mail, and engagement belongs to the Expo app now.
+  **One step survived**: the renewal notice, rebuilt as `/api/cron/renewal-notices`
+  reading `user_trials` directly, deduped by the new
+  `user_trials.renewal_notice_sent_for` column (it stores the
+  `subscription_ends_at` it warned about, so the next period arms it again with
+  no reset). It stays because it is about her money rather than her attention,
+  it is the cheapest chargeback insurance in the product, and the paywall
+  promises it at the price. `sendSequenceEmail` → `sendTransactionalEmail`;
+  `purge_stale_anonymous_users()` rewritten without the dropped table (it deletes
+  each `user_id` table explicitly, so dropping one it names breaks the 3am cron).
+  Migration `scripts/sql/2026-08-12-drop-email-sequences.sql` — **applied**.
+- **Funnel measurement unblocked + paywall credibility (2026-08-12)** —
+  `user_trials_account_status_check` still listed the pre-2026-08-08 trial states
+  and rejected `'pending_payment'`, so **every web signup's `user_trials` insert
+  failed** while `save-quiz` only `console.error`'d it. Nothing broke visibly
+  (`'paid'` passed, and `checkTrialExpired()` fails closed) but the entire
+  "reached the paywall, didn't buy" cohort had no row, and `p-1`…`p-6` selects on
+  `account_status = 'pending_payment'` so it matched nobody. Constraint narrowed
+  to the three states the code writes, 7 orphaned finishers backfilled, and the
+  insert now logs under `[save-quiz] FUNNEL-BLIND` and returns `trialRowReady`
+  rather than failing silently. The winback is still dark for web signups for the
+  separate reason that the funnel collects no email.
+  Also: the paywall's 10-minute countdown and its one-tap "get my discount back"
+  are gone — a timer that visibly resets teaches a 45-60 audience that the page
+  is staged, and the element on that screen that cannot afford doubt is the
+  refund guarantee. Replaced with a static price hold. And the renewal notice
+  moved from 1 day to `RENEWAL_NOTICE_DAYS` (3), stated on the paywall at the
+  price rather than in small print; the week-8 charge is the most disputable
+  moment in the product. Migration
+  `scripts/sql/2026-08-12-fix-account-status-check.sql` — **applied**.
 - **Quiz v2 (2026-08-12)** — `/register` is now 12 questions in a new order, with
   four new ones (`q_menopause_type`, `q_nutrition`, `q_relaxation`, `q_safety`)
   and a follow-up severity tap on `q4_symptoms` that rates the symptom she picked
@@ -808,10 +847,9 @@ Recent work:
   to that account. Removed the `email` phase, `handleOtpSuccess` and `<OtpForm />`
   from the register page. See "Anonymous accounts" in §4 and
   `scripts/sql/2026-08-10-anonymous-funnel-accounts.sql`.
-  **Side effect: the pending-payment winback (`p-1`…`p-6`) goes dark for web
-  signups** — nobody who abandons the paywall leaves an address any more. The
-  steps are deliberately left in `lib/emailSequences.ts` because mobile-app
-  signups still register with a real email and still receive them.
+  **Side effect: the pending-payment winback (`p-1`…`p-6`) went dark** — nobody
+  who abandons the paywall leaves an address any more. It was deleted outright
+  two days later; see the 2026-08-12 entry above.
 - **RLS bypass fixed (2026-08-08)** — four `FOR ALL / USING (true)` policies with
   no `TO` clause were exposing every table to the anon key. Dropped; see
   `scripts/sql/2026-08-08-URGENT-fix-rls-bypass.sql`.
@@ -828,7 +866,7 @@ Recent work:
 Active areas of the codebase:
 - Access control (`lib/getAccountState.ts`, `lib/checkTrialStatus.ts`, `proxy.ts`)
 - Stripe billing (`app/api/stripe/`, `lib/pricing.ts`, `lib/subscriptionWrite.ts`)
-- Email automation (`lib/emailSequences.ts`, `lib/resend.ts`)
+- Transactional email (`lib/resend.ts`)
 - The `/register` funnel (`app/register/page.tsx`, `lib/metaPixel.ts`)
 
 See `docs/mobile-app-changes.md` for the API contract changes the Expo app must

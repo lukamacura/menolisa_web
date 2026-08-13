@@ -140,6 +140,18 @@ export async function POST(request: NextRequest) {
     // Ensure a user_trials row exists in pending_payment state.
     // Upsert so re-registrations (e.g. mobile → web) don't silently fail on duplicate user_id.
     // The webhook flips account_status to "paid" once Stripe checkout completes.
+    //
+    // This row is the only record that she reached the paywall, so a failure here
+    // costs no access (checkTrialExpired fails closed either way) but silently
+    // deletes her from every funnel number and from the p-1…p-6 winback, which
+    // selects on account_status = 'pending_payment'. It went unnoticed for exactly
+    // that reason once already — a check constraint predating the pending_payment
+    // status rejected every insert while this branch only console.error'd it
+    // (fixed in scripts/sql/2026-08-12-fix-account-status-check.sql).
+    //
+    // So: never fail her checkout over bookkeeping, but never lose the failure
+    // either. It is logged under a greppable tag and reported in the response.
+    let trialRowReady = true;
     {
       const { data: existingTrial } = await supabaseAdmin
         .from("user_trials")
@@ -153,14 +165,22 @@ export async function POST(request: NextRequest) {
           account_status: "pending_payment",
         });
         if (trialError) {
-          console.error("Trial row creation failed:", trialError);
+          trialRowReady = false;
+          console.error(
+            "[save-quiz] FUNNEL-BLIND: user_trials insert failed, this signup is untracked",
+            { userId, code: trialError.code, message: trialError.message }
+          );
         }
       }
       // If a row already exists (mobile IAP, prior attempt), leave it untouched —
       // the Stripe webhook will flip it to "paid" on checkout completion.
     }
 
-    return NextResponse.json({ success: true, message: "Quiz answers saved" });
+    return NextResponse.json({
+      success: true,
+      message: "Quiz answers saved",
+      trialRowReady,
+    });
   } catch (error) {
     console.error("Error in save-quiz:", error);
     return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 });

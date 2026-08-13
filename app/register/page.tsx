@@ -79,6 +79,7 @@ type Step =
   | "q2_here_for"
   | "q_menopause_type"
   | "q4_symptoms"
+  | "q_symptom_impact"
   | "q3_goals"
   | "reward_symptoms"
   | "q_body"
@@ -95,6 +96,7 @@ const STEPS: Step[] = [
   "q2_here_for",
   "q_menopause_type",
   "q4_symptoms",
+  "q_symptom_impact",
   "q3_goals",
   "reward_symptoms",
   "q_body",
@@ -112,12 +114,13 @@ const STEPS: Step[] = [
 // made. Multi-select, the two numeric inputs and the name step keep the button,
 // because there the tap is a toggle and only she knows when she's done.
 //
-// q4_symptoms is multi-select *and* carries a follow-up severity tap, so it never
-// auto-advances even once the severity is chosen - she may still be adding tiles.
+// q4_symptoms keeps its button: it's multi-select, so only she knows when the
+// list is complete. The severity follow-up is its own single-choice step.
 const AUTO_ADVANCE_STEPS: Step[] = [
   "q1_age",
   "q2_here_for",
   "q_menopause_type",
+  "q_symptom_impact",
   "q_fitness",
   "q_nutrition",
   "q_relaxation",
@@ -189,10 +192,10 @@ const SYMPTOM_IMAGE: Record<string, string> = Object.fromEntries(
   PROBLEM_OPTIONS.map((o) => [o.id, o.image])
 );
 
-// Follow-up on q4_symptoms: she rates the one symptom she picked first, which is
-// the one she came here for. Rating all nine is a chore nobody finishes; rating
-// the worst one is a single tap and gives the score a real intensity to work with
-// instead of a flat constant.
+// Its own step, straight after q4_symptoms: she rates the one symptom she picked
+// first, which is the one she came here for. Rating all nine is a chore nobody
+// finishes; rating the worst one is a single tap and gives the score a real
+// intensity to work with instead of a flat constant.
 const SYMPTOM_IMPACT_OPTIONS = [
   { id: "mild", label: "Mild", hint: "I notice it, but I cope" },
   { id: "moderate", label: "Moderate", hint: "It gets in the way most days" },
@@ -1492,9 +1495,10 @@ function RegisterPageContent() {
           return menopauseType !== "";
         case "q3_goals":
           return goal.length > 0;
-        // Both halves: the tiles *and* the follow-up rating on the worst one.
         case "q4_symptoms":
-          return topProblems.length > 0 && symptomImpact !== "";
+          return topProblems.length > 0;
+        case "q_symptom_impact":
+          return symptomImpact !== "";
         case "reward_symptoms":
         case "reward_progress":
           return true;
@@ -3904,61 +3908,59 @@ function RegisterPageContent() {
                         );
                       })}
                     </div>
+                  </div>
+                </div>
+              )}
 
-                    {/* Follow-up, revealed by her first tap: one rating, on the
-                        symptom she reached for first. Asking for nine ratings is
-                        the version of this question nobody finishes. It lives
-                        inside the same scroll area so the tiles stay reachable -
-                        she can still add or swap a symptom after rating. */}
-                    {topProblems.length > 0 && (
-                      <motion.div
-                        initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.3 }}
-                        className="mt-3 rounded-2xl border-2 border-primary/25 bg-primary/5 p-3"
-                      >
-                        <p className="text-sm font-bold text-[#3D3D3D] leading-snug">
-                          How much is{" "}
-                          <span className="text-primary">
-                            {(SYMPTOM_LABELS[topProblems[0]] || topProblems[0]).toLowerCase()}
-                          </span>{" "}
-                          affecting your day-to-day?
-                        </p>
-                        <div className="mt-2.5 space-y-1.5">
-                          {SYMPTOM_IMPACT_OPTIONS.map((level) => {
-                            const isSelected = symptomImpact === level.id;
-                            return (
-                              <button
-                                key={level.id}
-                                type="button"
-                                onClick={() => setSymptomImpact(level.id)}
-                                className={`w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl border-2 text-left transition-all duration-200 cursor-pointer ${
-                                  isSelected
-                                    ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
-                                    : "border-foreground/15 bg-background hover:border-primary/50"
-                                }`}
-                              >
-                                <span className="min-w-0">
-                                  <span className="block text-sm font-semibold text-[#3D3D3D]">
-                                    {level.label}
-                                  </span>
-                                  <span className="block text-[11px] text-[#8A8A8A] leading-tight">
-                                    {level.hint}
-                                  </span>
-                                </span>
-                                {isSelected ? (
-                                  <span className="w-5 h-5 shrink-0 rounded-full bg-primary flex items-center justify-center animate-in zoom-in duration-200">
-                                    <Check className="w-3 h-3 text-primary-foreground" strokeWidth={3} />
-                                  </span>
-                                ) : (
-                                  <span className="w-5 h-5 shrink-0 rounded-full border-2 border-foreground/20" />
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </motion.div>
-                    )}
+              {/* Severity - its own screen, straight after the tiles. One rating,
+                  on the symptom she reached for first; asking for nine is the
+                  version of this question nobody finishes. */}
+              {currentStep === "q_symptom_impact" && (
+                <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                  <div className="shrink-0">
+                    <h2 className="text-lg sm:text-xl font-bold mb-0.5">
+                      How much is{" "}
+                      <span className="text-primary">
+                        {(SYMPTOM_LABELS[topProblems[0]] || topProblems[0] || "this").toLowerCase()}
+                      </span>{" "}
+                      affecting your day-to-day?
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      Pick the one that sounds most like you
+                    </p>
+                  </div>
+                  <div className="flex-1 flex flex-col justify-center gap-2.5 min-h-0 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
+                    {SYMPTOM_IMPACT_OPTIONS.map((level) => {
+                      const isSelected = symptomImpact === level.id;
+                      return (
+                        <button
+                          key={level.id}
+                          type="button"
+                          onClick={() => selectAndAdvance(() => setSymptomImpact(level.id))}
+                          className={`w-full shrink-0 flex items-center justify-between gap-3 px-4 py-3.5 rounded-2xl border-2 text-left transition-all duration-200 cursor-pointer ${
+                            isSelected
+                              ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
+                              : "border-foreground/15 hover:border-primary/50"
+                          }`}
+                        >
+                          <span className="min-w-0">
+                            <span className="block font-semibold text-sm sm:text-base text-[#3D3D3D]">
+                              {level.label}
+                            </span>
+                            <span className="block text-xs text-[#8A8A8A] leading-tight mt-0.5">
+                              {level.hint}
+                            </span>
+                          </span>
+                          {isSelected ? (
+                            <span className="w-5 h-5 shrink-0 rounded-full bg-primary flex items-center justify-center animate-in zoom-in duration-200">
+                              <Check className="w-3 h-3 text-primary-foreground" strokeWidth={3} />
+                            </span>
+                          ) : (
+                            <span className="w-5 h-5 shrink-0 rounded-full border-2 border-foreground/20" />
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
