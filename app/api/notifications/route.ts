@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getAuthenticatedUser } from "@/lib/getAuthenticatedUser";
 import { sendPushNotification } from "@/lib/sendPushNotification";
-import { DAILY_SYMPTOM_LOG_REMINDER_TITLES, isDailySymptomLogReminderTitle } from "@/lib/dailySymptomReminder";
+import { ALERT_NOTIFICATION_TYPES } from "@/lib/alerts/catalog";
 
 export const runtime = "nodejs";
 
@@ -116,16 +116,17 @@ export async function POST(req: NextRequest) {
     // Ensure message is a string (default to empty if not provided)
     const finalMessage = message || "";
 
+    // The scheduled alerts go through lib/alerts/send.ts, not this route — but
+    // their types are accepted here too, so an alert can be created by hand
+    // (support, a backfill) and still render with the right icon in the app.
     const validTypes = [
+      ...ALERT_NOTIFICATION_TYPES,
       "lisa_insight",
       "lisa_message",
       "achievement",
-      "reminder",
-      "trial",
       "welcome",
       "success",
       "error",
-      "symptom_logged",
     ];
     if (!validTypes.includes(type)) {
       return NextResponse.json(
@@ -158,55 +159,6 @@ export async function POST(req: NextRequest) {
       if (existing) {
         // Notification already exists, return existing ID
         return NextResponse.json({ data: existing }, { status: 200 });
-      }
-    }
-
-    // Special handling for "Tough Day Support" - prevent duplicates for the same day
-    if (type === "lisa_message" && title === "Tough Day Support") {
-      const supabaseAdmin = getSupabaseAdmin();
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-
-      const { data: existing } = await supabaseAdmin
-        .from("notifications")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("type", type)
-        .eq("title", title)
-        .gte("created_at", today.toISOString())
-        .lt("created_at", tomorrow.toISOString())
-        .eq("dismissed", false)
-        .limit(1)
-        .maybeSingle();
-
-      if (existing) {
-        // Notification already exists for today, return existing ID
-        return NextResponse.json({ data: existing }, { status: 200 });
-      }
-    }
-
-    // Daily symptom-logging reminder: one per user per UTC day (matches cron/daily-reminders)
-    if (type === "reminder" && isDailySymptomLogReminderTitle(title)) {
-      const supabaseAdmin = getSupabaseAdmin();
-      const todayUtc = new Date();
-      todayUtc.setUTCHours(0, 0, 0, 0);
-      const tomorrowUtc = new Date(todayUtc);
-      tomorrowUtc.setUTCDate(tomorrowUtc.getUTCDate() + 1);
-
-      const { data: existingRows } = await supabaseAdmin
-        .from("notifications")
-        .select("*")
-        .eq("user_id", user.id)
-        .eq("type", "reminder")
-        .in("title", [...DAILY_SYMPTOM_LOG_REMINDER_TITLES])
-        .gte("created_at", todayUtc.toISOString())
-        .lt("created_at", tomorrowUtc.toISOString())
-        .limit(1);
-
-      if (existingRows && existingRows.length > 0) {
-        return NextResponse.json({ data: existingRows[0] }, { status: 200 });
       }
     }
 

@@ -154,10 +154,79 @@ the model — beginner `weekly 2`, medium `weekly 3`, advanced `weekly 4`,
 movement_snacks `per_day 4`. Relaxation and habit are `daily 1` unless the model
 asked for `per_day`.
 
-`exercises` is present on movement tasks only, 2-6 entries. Strength ids carry
-`sets` + `reps`; cardio ids (prefix `K`) carry `minutes` instead. The id is the
-only stored fact — `name`, `props` and video URLs are joined from the catalog at
+`exercises` is present on movement tasks only, 2-6 entries. The id is the only
+identity stored — `name`, `props` and video URLs are joined from the catalog at
 read time and are **not** in the row.
+
+Each entry carries the dose the model prescribed for that exercise *in that
+week*, in exactly one of three shapes:
+
+| Exercise kind | Fields sent | Example |
+|---|---|---|
+| Repeated | `sets` + `reps` | `{"id":"L01","sets":3,"reps":12}` |
+| Held or carried | `sets` + `seconds` | `{"id":"C01","sets":3,"seconds":45}` |
+| Cardio (`K*`) or a flow | `minutes` | `{"id":"K01","minutes":12}` |
+
+#### Who decides what
+
+This is the line that matters, and it is not "the model writes the plan":
+
+| Fact | Owner | Why |
+|---|---|---|
+| Whether an id is repeated, held, carried or timed (`unit`) | **Catalog** | A fact about the exercise, identical for every woman and every week |
+| Whether it is per side (`perSide`) | **Catalog** | Same |
+| Rest between sets (`restSeconds`) | **Catalog**, from unit + level | Safety-adjacent; the model gets no vote |
+| How many sets, reps, seconds, minutes — and how they grow | **LLM** | This *is* the plan. A constant cannot make week 8 harder than week 1 |
+
+The generator used to give sets and reps to everything that was not cardio, so a
+wall sit came out as "3 × 10 reps" of a thing you hold and a step-up as "10 reps"
+when it meant 10 *per leg*. Putting `unit` in the catalog rather than the plan is
+what makes that unrepresentable: the model is never asked the question it kept
+getting wrong, and it cannot answer it even if it tries.
+
+#### `dose` — what the API actually returns
+
+`hydrateExercises()` joins the catalog facts onto the stored numbers and returns
+a single `dose` object, built by `hydrateDose()` in `lib/plan/catalog.ts`:
+
+```ts
+dose: {
+  unit: "reps" | "hold" | "carry" | "duration";
+  perSide: boolean;          // "10 each leg"; a hold runs twice per set
+  sets: number;              // always >= 1; `duration` is always 1
+  reps?: number;             // `reps` only
+  seconds?: number;          // per set for hold/carry, whole block for duration
+  restSeconds: number;       // between sets; 0 for duration
+  estimatedSeconds: number;  // including rest, for the session time estimate
+}
+```
+
+Everything the model wrote is **clamped into a safe band**, never trusted raw —
+holds to 10-90s, carries to 15-120s, sets to 1-6, reps to 1-50, cardio to the
+per-session cap. A 600-second wall sit prescribed to a woman new to loading is an
+injury, not an ambitious week. A value that is missing or nonsense falls back to
+the catalog's starting dose; a plan is never lost over a number.
+
+A dose field that does not belong to the exercise's unit is ignored rather than
+converted — `reps` on a hold means nothing, so it does not become seconds.
+
+`sets`, `reps`, `seconds` and `minutes` are still sent alongside `dose` for
+clients that predate it.
+
+#### Progression
+
+The prompt asks for a ladder — weeks 1-2 open at 2 sets / 8-10 reps / 20-30s
+holds, weeks 3-5 build, weeks 6-8 reach 3 sets / 12-15 reps / 45-60s — moving one
+number at a time and never shrinking a dose an exercise already had.
+
+`defaultDoseForWeek()` in the catalog mirrors that same ladder, and is used by
+the deterministic fallback plan and by the top-up that fills a session the model
+under-delivered, so a repaired exercise sits at the intensity of the ones around
+it instead of reading as a week-1 dose dropped into week 7.
+
+Run `npm run verify-plan-dose` after touching any of it — the prompt, the safe
+bands and the ladder live in two files and drift silently, because every wrong
+number still looks plausible.
 
 ### `weeks[].nutritionFocus`
 

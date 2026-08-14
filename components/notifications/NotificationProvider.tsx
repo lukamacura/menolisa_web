@@ -2,7 +2,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
-import { isSuppressDailySymptomLogReminderToast } from "@/lib/dailySymptomReminder";
+import { isMobileAlert } from "@/lib/alerts/catalog";
 
 export type NotificationType =
   | "lisa_insight"
@@ -62,7 +62,8 @@ interface DBNotification {
   show_once: boolean;
   show_on_pages: string[];
   metadata: {
-    reminder_kind?: string;
+    /** Set by lib/alerts — marks a row written for the mobile app. */
+    alert_kind?: string;
     primaryAction?: {
       label: string;
       route?: string;
@@ -251,13 +252,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
         if (data && Array.isArray(data)) {
           const clientNotifications = data
-            .filter((row: DBNotification) =>
-              !isSuppressDailySymptomLogReminderToast({
-                type: row.type,
-                title: row.title,
-                metadata: row.metadata,
-              })
-            )
+            // The scheduled alerts are written for the phone and are already
+            // delivered there as a push. Popping them here as well means she is
+            // told the same thing twice on two devices.
+            .filter((row: DBNotification) => !isMobileAlert({ metadata: row.metadata }))
             .map(dbToClientNotification)
             .filter((n: Notification) => !n.dismissed && n.seen === false)
             .sort(sortByPriority)
@@ -388,12 +386,16 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         if (notificationData.primaryAction) {
           const label = notificationData.primaryAction.label.toLowerCase();
           let route: string | null = null;
-          if (label.includes("lisa") || label.includes("talk to")) {
-            route = "/chat/lisa";
+          // Anything that used to open the web chat now points at the store
+          // page — Lisa lives in the Expo app.
+          if (
+            label.includes("lisa") ||
+            label.includes("talk to") ||
+            label.includes("open chat")
+          ) {
+            route = "/get-the-app";
           } else if (label.includes("see plans") || label.includes("upgrade") || label.includes("pricing")) {
             route = "/pricing";
-          } else if (label.includes("open chat")) {
-            route = "/chat/lisa";
           }
 
           actionMetadata.primaryAction = {

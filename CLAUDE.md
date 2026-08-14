@@ -71,12 +71,10 @@ web app/
 │   │   └── user-preferences/# Notification preferences
 │   ├── admin/               # Admin stats page
 │   ├── auth/                # Auth callback + mobile bridge
-│   ├── chat/lisa/           # Lisa AI chat page
 │   ├── checkout/            # Stripe checkout success
 │   ├── dashboard/           # Protected authenticated area
 │   │   ├── account/         # Plan, billing, cancellation — never payment-gated
-│   │   ├── notifications/
-│   │   └── settings/
+│   │   └── settings/        # Incl. push-notification preferences
 │   ├── delete-account/      # Account deletion flow
 │   ├── get-the-app/         # Public store-badge page; target of every email CTA
 │   ├── login/               # OTP sign-in
@@ -87,7 +85,7 @@ web app/
 ├── components/              # Shared React components
 │   ├── auth/                # OtpForm — the only auth UI
 │   ├── landing/             # Landing page sections
-│   ├── notifications/
+│   ├── notifications/       # Toast stack only (provider, container, card)
 │   └── ui/                  # Base UI: button, badge, accordion
 ├── hooks/                   # Custom React hooks (data fetching, UI state)
 ├── knowledge-base/          # Markdown KB files for RAG (gitignored; source of truth for AI)
@@ -242,7 +240,7 @@ const supabaseAdmin = getSupabaseAdmin(); // lazy singleton
 - Registration flow: quiz → **anonymous sign-in** behind the calculating loader → `POST /api/auth/save-quiz` (server reads `userId` from session, validates payload with zod, creates `user_trials` row in `pending_payment`) → results → diagnosis → relief → nutrition → paywall → Stripe checkout **collects the email** → webhook binds it to that same user id and flips `account_status` to `paid`
 - Mobile bridge (`app/auth/mobile-bridge/page.tsx`) is a session handoff (mobile → web token via `#hash`), not a login — leave it alone
 - Email template: paste branded HTML into Supabase Dashboard → Auth → Email Templates → Magic Link, with `{{ .Token }}` for the 6-digit code
-- `proxy.ts` (Next 16 renamed `middleware.ts` → `proxy.ts`, and the exported function from `middleware` → `proxy`) protects `/dashboard/*` and `/chat/lisa/*`. It runs two gates: a session check on everything in `PROTECTED_PREFIXES`, then a payment check that skips `PAYMENT_EXEMPT_PREFIXES` (`/dashboard/account`, `/dashboard/settings`) so cancellation and account deletion stay reachable after access ends. Select the full `TRIAL_SELECT_COLS` when reading `user_trials` — a partial select makes missing columns read as "no dispute, not canceled" and grants access it shouldn't.
+- `proxy.ts` (Next 16 renamed `middleware.ts` → `proxy.ts`, and the exported function from `middleware` → `proxy`) protects `/dashboard/*`. It runs two gates: a session check on everything in `PROTECTED_PREFIXES`, then a payment check that skips `PAYMENT_EXEMPT_PREFIXES` (`/dashboard/account`, `/dashboard/settings`) so cancellation and account deletion stay reachable after access ends. Select the full `TRIAL_SELECT_COLS` when reading `user_trials` — a partial select makes missing columns read as "no dispute, not canceled" and grants access it shouldn't.
 
 ### Anonymous accounts (the `/register` funnel)
 
@@ -433,27 +431,41 @@ keeps its legacy name; it gates subscriptions, not trials.
 
 The product — symptom tracking, Lisa chat, notifications — lives in the Expo
 app. The web app's job is the `/register` funnel that sells it, plus billing and
-account deletion.
+account deletion. **The web UI for all three is deleted, not flagged off**, as
+of 2026-08-14:
 
-`WEB_APP_ENABLED` (`lib/constants.ts`, from `NEXT_PUBLIC_WEB_APP_ENABLED`,
-**off unless set to `"true"`**) is the switch. When off, `/chat/lisa` and
-`/dashboard/notifications` render `<GetTheAppScreen />` instead of the product.
-The nav collapses to Account and `/dashboard` redirects to `/dashboard/account`
-unconditionally. Those pages are still in the repo — a flag, not a deletion.
+| Gone | Was |
+|---|---|
+| `app/chat/lisa/` | Lisa chat |
+| `app/dashboard/notifications/` + `NotificationGroup`/`ListItem`/`Help`, `hooks/useUnreadCount.ts`, `lib/notificationUtils.ts` | Notification centre |
+| `app/dashboard/symptoms/`, `components/symptom-tracker/`, `/api/insights`, `/api/tracker-insights` | Tracker + "What Lisa noticed" (removed earlier) |
+| `WEB_APP_ENABLED` / `NEXT_PUBLIC_WEB_APP_ENABLED` | The switch that used to hide them |
 
-**Symptom tracking is the exception: it was deleted, not flagged off.**
-`/dashboard/symptoms`, `components/symptom-tracker/`, the "What Lisa noticed"
-card and `/api/insights` + `/api/tracker-insights` are gone — tracking lives in
-the app's Today tab. `/get-the-app` is the stable public URL that old links
-(welcome and renewal emails, the daily log reminder) now point at.
+There is no flag to bring them back — restoring any of it means writing it
+again. The dashboard nav is Account alone, `/dashboard` redirects to
+`/dashboard/account`, and `/get-the-app` is the stable public URL that old links
+(welcome and renewal emails, the daily log reminder, notification CTAs
+mentioning Lisa) point at.
 
-It is a **UI** switch only. The API routes stay open because the mobile app
-calls them; each enforces access itself via `checkTrialExpired()`. Any new route
-serving paid content needs that check — auth alone is not enough.
+**What stayed, and why it must:**
 
-Account and Settings are never gated on payment or on this flag, in either
-`proxy.ts` or the dashboard layout. Someone whose subscription ended must still
-be able to cancel and delete.
+- **Every API route.** `/api/langchain-rag`, `/api/chat-sessions`,
+  `/api/symptoms`, `/api/symptom-logs`, `/api/notifications`, `lib/rag/`,
+  `lib/trackerAnalysis.ts`, `knowledge-base/` and `npm run ingest` are the
+  backend the Expo app calls — `/api/langchain-rag` *is* Lisa on mobile.
+  Deleting them because "chat is gone from the web app" takes the feature out
+  of the phone too. Each enforces access itself via `checkTrialExpired()`; any
+  new route serving paid content needs that check, because auth alone is not
+  enough.
+- **The toast stack** (`NotificationProvider`, `NotificationContainer`,
+  `NotificationCard`) — still mounted by the dashboard layout for trial and
+  billing toasts. Only the notification *centre* page went.
+- **`/dashboard/settings/notifications`** — push preferences, which govern what
+  the phone sends. A web setting for a mobile behaviour is still a web setting.
+
+Account and Settings are never gated on payment, in either `proxy.ts` or the
+dashboard layout. Someone whose subscription ended must still be able to cancel
+and delete.
 
 ### State Management
 No global state library (no Redux/Zustand). Patterns used:
@@ -767,6 +779,19 @@ again also works — that calls `sync-session`.
 ## 7. CURRENT STATUS
 
 Recent work:
+- **Web product surfaces deleted (2026-08-14)** — `app/chat/lisa/` (~2,700
+  lines), `app/dashboard/notifications/`, `components/CoffeeLoading.tsx`, the
+  three list-only notification components, `hooks/useUnreadCount.ts`,
+  `hooks/useIsMobile.ts` and `lib/notificationUtils.ts` are gone. The
+  `WEB_APP_ENABLED` flag went with them — with nothing left to toggle it was
+  just a stale branch in `proxy.ts`, the dashboard layout and `/register`.
+  `SwipeButton` lost its `"lisa"` variant and is now the landing CTA only;
+  notification CTAs whose label mentions Lisa route to `/get-the-app` instead
+  of the dead `/chat/lisa`. **No API route, no `lib/rag/`, no
+  `knowledge-base/` was touched** — that is the Expo app's backend, and
+  deleting it would have removed chat and symptom logging from the phone as
+  well as the browser. See "Web app vs mobile app" in §4 for the full
+  gone/stayed split.
 - **Email sequences deleted (2026-08-12)** — the whole system: `p-1`…`p-6`
   (winback), `3-2`/`3-4` (paid drip), `lib/emailSequences.ts`,
   `/api/cron/email-sequences`, the `email_sequence_recipients` mirror table, its
@@ -858,8 +883,9 @@ Recent work:
   One plan: $59 / 8 weeks, charged at checkout.
 - **Access gate fails closed** — `checkTrialExpired()` used to allow on a
   missing row or a query error.
-- **Mobile-only web** — `WEB_APP_ENABLED` hides the product surfaces; Account
-  and Settings stay reachable so cancellation and deletion always work.
+- **Mobile-only web** — the product surfaces are deleted outright (see the
+  2026-08-14 entry); Account and Settings stay reachable so cancellation and
+  deletion always work.
 - **Env consolidated** — `.env.example` is the authoritative list;
   `NEXT_PUBLIC_APP_URL` and the retired plan price ids are gone.
 

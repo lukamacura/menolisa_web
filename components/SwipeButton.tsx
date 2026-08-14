@@ -8,17 +8,17 @@ import { supabase } from "@/lib/supabaseClient";
 const SWIPE_THRESHOLD = 80;
 const DRAG_CAP_PX = 200;
 
-type SwipeButtonProps =
-  | { variant: "home" }
-  | { variant: "lisa"; trialExpired: boolean };
-
-export default function SwipeButton(props: SwipeButtonProps) {
+/**
+ * The landing page's call to action. There used to be a second "lisa" variant
+ * that opened the web chat; chat lives in the Expo app now, so this is the only
+ * one left.
+ */
+export default function SwipeButton() {
   const router = useRouter();
-  const variant = props.variant;
 
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(variant === "home" ? null : true);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [isGlowing, setIsGlowing] = useState(false);
 
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -26,14 +26,7 @@ export default function SwipeButton(props: SwipeButtonProps) {
   const dragOffsetRef = useRef(0);
   const didSwipeRef = useRef(false);
 
-  const isHome = variant === "home";
-  const isLisa = variant === "lisa";
-  const trialExpired = isLisa ? props.trialExpired : false;
-  const canNavigate = isHome || (isLisa && !trialExpired);
-
-  // Auth only for home variant
   useEffect(() => {
-    if (!isHome) return;
     const checkAuth = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setIsAuthenticated(!!user);
@@ -43,17 +36,11 @@ export default function SwipeButton(props: SwipeButtonProps) {
       setIsAuthenticated(!!session?.user);
     });
     return () => subscription.unsubscribe();
-  }, [isHome]);
+  }, []);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const navigate = () => {
-    if (!canNavigate) return;
-    if (isHome) {
-      if (isAuthenticated) router.push("/dashboard");
-      else router.push("/register");
-    } else {
-      router.push("/chat/lisa");
-    }
+    router.push(isAuthenticated ? "/dashboard" : "/register");
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -84,7 +71,7 @@ export default function SwipeButton(props: SwipeButtonProps) {
   const handleTouchEnd = (e: React.TouchEvent) => {
     e.preventDefault();
     const finalOffset = dragOffsetRef.current;
-    if (finalOffset >= SWIPE_THRESHOLD && canNavigate) {
+    if (finalOffset >= SWIPE_THRESHOLD) {
       didSwipeRef.current = true;
       navigate();
     }
@@ -114,10 +101,6 @@ export default function SwipeButton(props: SwipeButtonProps) {
         50% { box-shadow: 0 0 50px rgba(255, 116, 177, 0.7), 0 0 80px rgba(255, 116, 177, 0.5), 0 0 120px rgba(255, 116, 177, 0.4); transform: translateX(8px); }
         100% { box-shadow: 0 0 20px rgba(255, 116, 177, 0.3), 0 0 40px rgba(255, 116, 177, 0.2), 0 0 60px rgba(255, 116, 177, 0.15); transform: translateX(0); }
       }
-      @keyframes pulseGlow {
-        0%, 100% { box-shadow: 0 0 30px rgba(255, 116, 177, 0.7), 0 0 60px rgba(255, 116, 177, 0.5), 0 0 90px rgba(255, 116, 177, 0.4), 0 0 120px rgba(255, 116, 177, 0.3); }
-        50% { box-shadow: 0 0 50px rgba(255, 116, 177, 0.9), 0 0 100px rgba(255, 116, 177, 0.7), 0 0 150px rgba(255, 116, 177, 0.5), 0 0 200px rgba(255, 116, 177, 0.4); }
-      }
     `;
     document.head.appendChild(style);
     return () => {
@@ -126,9 +109,8 @@ export default function SwipeButton(props: SwipeButtonProps) {
     };
   }, []);
 
-  // Home: trigger glow every 5s
+  // Trigger glow every 5s
   useEffect(() => {
-    if (!isHome) return;
     const triggerGlow = () => {
       if (!isDragging) {
         setIsGlowing(false);
@@ -146,7 +128,7 @@ export default function SwipeButton(props: SwipeButtonProps) {
       clearTimeout(t);
       clearInterval(i);
     };
-  }, [isHome, isDragging]);
+  }, [isDragging]);
 
   // Desktop mouse move/up
   useEffect(() => {
@@ -162,7 +144,7 @@ export default function SwipeButton(props: SwipeButtonProps) {
     };
     const onUp = () => {
       const finalOffset = dragOffsetRef.current;
-      if (finalOffset >= SWIPE_THRESHOLD && canNavigate) {
+      if (finalOffset >= SWIPE_THRESHOLD) {
         didSwipeRef.current = true;
         navigate();
       }
@@ -176,15 +158,12 @@ export default function SwipeButton(props: SwipeButtonProps) {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
     };
-  }, [isDragging, canNavigate, isHome, isAuthenticated, router, navigate]);
+  }, [isDragging, isAuthenticated, router, navigate]);
 
   const handleClick = () => {
-    if (!canNavigate) return;
     if (didSwipeRef.current || dragOffsetRef.current !== 0 || isDragging) return;
     navigate();
   };
-
-  if (isLisa && trialExpired) return null;
 
   const swipeProgress = Math.min(dragOffset / SWIPE_THRESHOLD, 1);
 
@@ -201,31 +180,23 @@ export default function SwipeButton(props: SwipeButtonProps) {
         animation: "none",
       };
     }
-    if (isHome && isGlowing && !isDragging) {
+    if (isGlowing && !isDragging) {
       return { animation: "smoothGlow 1.5s ease-in-out", boxShadow: undefined };
     }
-    if (isHome) {
-      return { boxShadow: "0 0 20px rgba(255, 116, 177, 0.3), 0 0 40px rgba(255, 116, 177, 0.2)" };
-    }
-    return { animation: "pulseGlow 1.5s ease-in-out infinite", boxShadow: undefined };
+    return { boxShadow: "0 0 20px rgba(255, 116, 177, 0.3), 0 0 40px rgba(255, 116, 177, 0.2)" };
   };
 
   const getLabel = (): string => {
-    if (isLisa) return "Swipe to open Lisa chat";
     if (isAuthenticated === null) return "I want my Menopause Plan";
     return isAuthenticated ? "Swipe to see your overview" : "I want my Menopause Plan";
   };
 
-  // Home uses slightly different RGB for the circle
-  const bgR = isHome ? 255 - Math.floor(swipeProgress * 28) : 244 - Math.floor(swipeProgress * 54);
-  const bgG = isHome ? 123 - Math.floor(swipeProgress * 25) : 63 - Math.floor(swipeProgress * 45);
-  const bgB = isHome ? 156 - Math.floor(swipeProgress * 28) : 94 - Math.floor(swipeProgress * 34);
-
-  const zClass = isHome ? "z-9999" : "z-20";
-  const labelClass = isHome ? "text-white" : "text-gray-200";
+  const bgR = 255 - Math.floor(swipeProgress * 28);
+  const bgG = 123 - Math.floor(swipeProgress * 25);
+  const bgB = 156 - Math.floor(swipeProgress * 28);
 
   return (
-    <div className={`fixed bottom-0 left-1/2 -translate-x-1/2 ${zClass} mb-4 sm:mb-6 select-none`}>
+    <div className="fixed bottom-0 left-1/2 -translate-x-1/2 z-9999 mb-4 sm:mb-6 select-none">
       <div
         className="flex items-center justify-center rounded-full shadow-lg overflow-visible min-w-[280px] sm:min-w-[320px] px-5 pr-7 py-4 gap-4"
         style={{ backgroundColor: "#1A1B29" }}
@@ -256,7 +227,7 @@ export default function SwipeButton(props: SwipeButtonProps) {
               backgroundColor: swipeProgress > 0 ? `rgb(${bgR}, ${bgG}, ${bgB})` : undefined,
               transition: isDragging
                 ? "background-color 0.1s ease-out, box-shadow 0.1s ease-out"
-                : isHome && isGlowing
+                : isGlowing
                   ? "background-color 0.3s ease-out, box-shadow 0.3s ease-out"
                   : "background-color 0.3s ease-out, transform 0.3s ease-out, box-shadow 0.3s ease-out",
               ...getGlowStyle(),
@@ -272,7 +243,7 @@ export default function SwipeButton(props: SwipeButtonProps) {
             />
           </div>
         </button>
-        <span className={`text-sm sm:text-base font-medium whitespace-nowrap ${labelClass}`}>
+        <span className="text-sm sm:text-base font-medium whitespace-nowrap text-white">
           {getLabel()}
         </span>
       </div>

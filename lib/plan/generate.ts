@@ -8,8 +8,11 @@ import {
   NUTRITION,
   RELAXATION,
   allowedExercises,
+  cardioMinutes,
+  defaultDoseForWeek,
   exerciseMedia,
   getExercise,
+  hydrateDose,
   isCardioId,
   isNutritionId,
   isRelaxationId,
@@ -47,7 +50,13 @@ export type PlanTask = {
   /** daily = every day; weekly = `target` times this week; per_day = `target` times a day. */
   cadence: "daily" | "weekly" | "per_day";
   target: number;
-  exercises?: { id: string; sets?: number; reps?: number; minutes?: number }[];
+  /**
+   * The prescribed dose per exercise, written by the model and clamped in
+   * `sanitize()`. Which of these fields *apply* is a property of the exercise,
+   * not of the plan — the catalog decides that a wall sit is held rather than
+   * repeated, and `hydrateDose()` reads the matching field at request time.
+   */
+  exercises?: { id: string; sets?: number; reps?: number; seconds?: number; minutes?: number }[];
 };
 
 export type PlanWeek = {
@@ -148,6 +157,7 @@ const TaskSchema = z.object({
         ),
         sets: optNum(6),
         reps: optNum(50),
+        seconds: optNum(120),
         minutes: optNum(90),
       })
     )
@@ -247,13 +257,17 @@ function planJsonSchema(pool: Exercise[]) {
                     items: {
                       type: "object",
                       additionalProperties: false,
-                      required: ["id", "sets", "reps", "minutes"],
+                      required: ["id", "sets", "reps", "seconds", "minutes"],
                       properties: {
                         // Her allowed pool only — this is the line that makes
                         // an out-of-pool or invented exercise impossible.
                         id: { type: "string", enum: pool.map((e) => e.id) },
                         sets: nullableInt,
                         reps: nullableInt,
+                        // Holds and carries. The catalog still decides *that* an
+                        // id is held rather than repeated; the model only says
+                        // for how long, and how that grows over the eight weeks.
+                        seconds: nullableInt,
                         minutes: nullableInt,
                       },
                     },
@@ -277,7 +291,8 @@ function planJsonSchema(pool: Exercise[]) {
   };
 }
 
-function buildPrompt(profile: Profile, pool: Exercise[]): string {
+/** Exported for `scripts/verify-plan-dose.ts`, which reads the dose rules back. */
+export function buildPrompt(profile: Profile, pool: Exercise[]): string {
   const vol = MOVEMENT_VOLUME[profile.fitness_level ?? "beginner"] ?? MOVEMENT_VOLUME.beginner;
   const movement = vol.perDay
     ? `${vol.sessions} short bursts per day of about ${vol.minutes} minutes (cadence "per_day")`
@@ -285,6 +300,10 @@ function buildPrompt(profile: Profile, pool: Exercise[]): string {
   // A 5-minute snack cannot hold six exercises; a 30-minute session should not
   // hold one. sanitize() tops up to this same floor when the model under-delivers.
   const [minEx, maxEx] = vol.perDay ? [2, 3] : [4, 6];
+  // Only the ones she can actually be given — naming ids outside her pool would
+  // invite her to be given them.
+  const heldForTime = pool.filter((e) => e.dose === "hold" || e.dose === "carry").map((e) => e.id);
+  const continuous = pool.filter((e) => e.dose === "duration").map((e) => e.id);
 
   return [
     `Woman in menopause. Build her 8-week plan.`,
@@ -328,13 +347,41 @@ function buildPrompt(profile: Profile, pool: Exercise[]): string {
     `- Habit tasks are yours to write: one small, concrete daily action she starts doing (e.g. "Cool the room before bed"). Cadence "daily". Name the action itself — never begin the title with "Add". Never write a habit about quitting something — that is what resist_suggestions is for.`,
     `- Never write a habit or movement task that repeats a nutrition row — no walks after meals, no water, no protein, no meal timing. She already ticks those every day; put the id in nutrition_focus instead.`,
     `- Relaxation tasks need item_id and cadence "daily" (or "per_day" with a target). Match the item to her worst symptom: hot flashes get breath_hotflash, night waking gets breath_sleep, anxiety or palpitations get breath_sigh.`,
-    `- Movement tasks need an exercises array of ${minEx}-${maxEx} DIFFERENT ids — a session, not one move. Fewer than ${minEx} is a failed week. Ids starting with K are cardio: give them "minutes" and no sets or reps. Everything else gets "sets" and "reps".`,
+    `- Movement tasks need an exercises array of ${minEx}-${maxEx} DIFFERENT ids — a session, not one move. Fewer than ${minEx} is a failed week.`,
+    ``,
+    `DOSE — every exercise gets exactly one of these three shapes. Send null for the fields that don't apply:`,
+    // Not simply "ids starting with K": M01 is a continuous flow, so it is
+    // measured in minutes too, and asking for reps of it produces a dose that
+    // hydrateDose() has to throw away.
+    ...(continuous.length
+      ? [
+          `- Measured in minutes — ${continuous.join(", ")}: "minutes" only, never more than ${cardioMinutes(vol.minutes, minEx)}. "sets", "reps" and "seconds" are null.`,
+        ]
+      : []),
+    ...(heldForTime.length
+      ? [
+          // The catalog decides *that* these are held rather than repeated, and
+          // hydrateDose() reads "seconds" for them however the model answers. The
+          // model's job is only how long, and how that grows — but ask for reps
+          // here and it starts writing titles that count repetitions of a wall sit.
+          `- Held or carried for time — ${heldForTime.join(", ")}: "sets" and "seconds" only. "reps" and "minutes" are null. Never write a title or a "why" that counts repetitions of these.`,
+        ]
+      : []),
+    `- Everything else: "sets" and "reps" only. "seconds" and "minutes" are null.`,
+    ``,
+    `PROGRESSION — this is the point of an 8-week plan. The same exercise must not carry the same numbers in week 1 and week 8.`,
+    `- Weeks 1-2: 2 sets. 8-10 reps. Holds 20-30 seconds.`,
+    `- Weeks 3-5: 2-3 sets. 10-12 reps. Holds 30-45 seconds.`,
+    `- Weeks 6-8: 3 sets. 12-15 reps. Holds 45-60 seconds.`,
+    `- Move one number at a time. Add reps or seconds before adding a set, and never raise both in the same week.`,
+    `- Cardio minutes climb too, within the cap above.`,
+    `- If you bring an exercise back in a later week, it gets the later week's dose — never a smaller one than it had before.`,
     `- Title each movement session after what is actually in it, and give all 8 weeks different titles. Never title a session after one exercise, and never repeat a title you have already used.`,
     `- Titles and focus lines are sentence case: "Steady the basics", not "Steady The Basics".`,
     `- Add difficulty gradually. Never introduce more than one new thing per week.`,
     `- "why" is one short sentence to her, in second person, tied to her symptoms. No medical claims, no dosages.`,
     `- Never write "can help", "helps with", "supports", "improves", "boosts", "promotes", "is important", "is essential", "overall health" or "overall well-being" in any "why". Those say nothing. Name what actually happens instead.`,
-    `- Every task carries every field. Send "item_id": null on movement and habit tasks, and "exercises": null on anything that is not movement. Inside an exercise, send null for the props that don't apply — a cardio id has "sets": null and "reps": null, everything else has "minutes": null.`,
+    `- Every task carries every field. Send "item_id": null on movement and habit tasks, and "exercises": null on anything that is not movement. Inside an exercise, send null for every dose field its shape does not use, per DOSE above.`,
     ``,
     `RESIST — separately, write 4 "resist_suggestions": specific temptations SHE`,
     `is likely to face given her symptoms, each one she gets credit for resisting`,
@@ -345,7 +392,7 @@ function buildPrompt(profile: Profile, pool: Exercise[]): string {
     `quitting a medication or HRT. "why" is one warm sentence, no shame, and the`,
     `banned phrases above apply to it too.`,
     ``,
-    `Return JSON: {"weeks":[{"number":1,"title":"...","focus":"...","nutrition_focus":["protein_25_30g"],"tasks":[{"pillar":"movement","title":"...","why":"...","cadence":"weekly","target":2,"item_id":null,"exercises":[{"id":"...","sets":3,"reps":10,"minutes":null},{"id":"...","sets":2,"reps":12,"minutes":null},{"id":"K01","sets":null,"reps":null,"minutes":15}]},{"pillar":"relaxation","title":"...","why":"...","cadence":"daily","target":1,"item_id":"breath_sleep","exercises":null},{"pillar":"habit","title":"...","why":"...","cadence":"daily","target":1,"item_id":null,"exercises":null}]}],"resist_suggestions":[{"title":"...","why":"..."}]}`,
+    `Return JSON: {"weeks":[{"number":1,"title":"...","focus":"...","nutrition_focus":["protein_25_30g"],"tasks":[{"pillar":"movement","title":"...","why":"...","cadence":"weekly","target":2,"item_id":null,"exercises":[{"id":"...","sets":3,"reps":12,"seconds":null,"minutes":null},{"id":"C01","sets":3,"reps":null,"seconds":45,"minutes":null},{"id":"K01","sets":null,"reps":null,"seconds":null,"minutes":12}]},{"pillar":"relaxation","title":"...","why":"...","cadence":"daily","target":1,"item_id":"breath_sleep","exercises":null},{"pillar":"habit","title":"...","why":"...","cadence":"daily","target":1,"item_id":null,"exercises":null}]}],"resist_suggestions":[{"title":"...","why":"..."}]}`,
   ].join("\n");
 }
 
@@ -402,9 +449,23 @@ function sanitize(
       const base = { key: "", pillar: t.pillar, title: t.title, why: t.why, cadence: t.cadence, target: t.target };
 
       if (t.pillar === "movement") {
-        const exercises = (t.exercises ?? [])
+        const exercises: NonNullable<PlanTask["exercises"]> = (t.exercises ?? [])
           .filter((e) => allowed.has(e.id))
-          .map((e) => ({ id: e.id, sets: e.sets ?? undefined, reps: e.reps ?? undefined, minutes: e.minutes ?? undefined }));
+          .map((e) => ({
+            id: e.id,
+            sets: e.sets ?? undefined,
+            reps: e.reps ?? undefined,
+            seconds: e.seconds ?? undefined,
+            minutes: e.minutes ?? undefined,
+          }));
+
+        // A sensible 10 minutes of walking inside a 28-minute session survives;
+        // the model's habit of handing one cardio id the whole hour does not.
+        // Clamped rather than overwritten — the model is often right here.
+        const cardioCap = cardioMinutes(vol.minutes, Math.max(exercises.length, 2));
+        for (const e of exercises) {
+          if (isCardioId(e.id) && e.minutes) e.minutes = Math.min(e.minutes, cardioCap);
+        }
 
         // The model routinely returns a single exercise however firmly it's
         // asked for more, which is not a session. Top up from her own pool —
@@ -431,11 +492,9 @@ function sanitize(
           if (exercises.length >= floor) break;
           if (used.has(cand.id)) continue;
           used.add(cand.id);
-          exercises.push(
-            isCardioId(cand.id)
-              ? { id: cand.id, sets: undefined, reps: undefined, minutes: vol.minutes }
-              : { id: cand.id, sets: n > 4 ? 3 : 2, reps: 10, minutes: undefined }
-          );
+          // Same ladder the prompt asks the model for, so a topped-up exercise
+          // matches the intensity of the ones it is sitting next to.
+          exercises.push({ id: cand.id, ...defaultDoseForWeek(cand, n, vol.minutes, floor) });
         }
         if (!exercises.length) continue;
 
@@ -730,11 +789,10 @@ function fallbackPlan(profile: Profile, pool: Exercise[]): Plan {
           why: "Muscle and bone respond fastest to steady, repeatable work.",
           cadence: vol.perDay ? "per_day" : "weekly",
           target: vol.sessions,
-          exercises: picks.map((e) =>
-            isCardioId(e.id)
-              ? { id: e.id, minutes: vol.minutes }
-              : { id: e.id, sets: n > 4 ? 3 : 2, reps: 10 }
-          ),
+          exercises: picks.map((e) => ({
+            id: e.id,
+            ...defaultDoseForWeek(e, n, vol.minutes, picks.length),
+          })),
         },
         { key: `w${n}_${relaxation.id}`, pillar: "relaxation", title: relaxation.label, why: "Lowering the background stress softens the symptoms on top of it.", cadence: "daily", target: 1 },
         { key: `w${n}_habit`, pillar: "habit", title: FALLBACK_HABITS[i % FALLBACK_HABITS.length], why: "Small, and it holds the rest of the day together.", cadence: "daily", target: 1 },
@@ -916,8 +974,17 @@ export function hydrateExercises(task: PlanTask, includeMedia = false) {
   return task.exercises.flatMap((e) => {
     const ex = getExercise(e.id);
     if (!ex) return [];
+    // `dose` is the repaired, runnable version of the stored sets/reps/minutes.
+    // The raw three are still sent alongside it: an older app build reads those
+    // and is unaffected by any of this.
     return [
-      { ...e, name: ex.name, props: ex.props, ...(includeMedia ? exerciseMedia(e.id) : undefined) },
+      {
+        ...e,
+        name: ex.name,
+        props: ex.props,
+        dose: hydrateDose(ex, e),
+        ...(includeMedia ? exerciseMedia(e.id) : undefined),
+      },
     ];
   });
 }

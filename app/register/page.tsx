@@ -13,7 +13,7 @@ import {
 } from "@/lib/getAccountState";
 import { detectBrowser, hasBrowserMismatchIssue } from "@/lib/browserUtils";
 import { cn } from "@/lib/utils";
-import { APP_STORE_URL, PLAY_STORE_URL, WEB_APP_ENABLED } from "@/lib/constants";
+import { APP_STORE_URL, PLAY_STORE_URL } from "@/lib/constants";
 import {
   ArrowRight,
   ArrowLeft,
@@ -3512,11 +3512,7 @@ function RegisterPageContent() {
               }}
               className="text-sm text-[#9A9A9A] hover:text-[#5A5A5A] underline transition-colors disabled:opacity-50"
             >
-              {syncingPayment
-                ? "Loading…"
-                : WEB_APP_ENABLED
-                  ? "Continue to web dashboard instead"
-                  : "Manage my subscription"}
+              {syncingPayment ? "Loading…" : "Manage my subscription"}
             </button>
           </motion.div>
         </div>

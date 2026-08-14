@@ -8,6 +8,22 @@
 
 export type Impact = "none" | "low" | "high";
 
+/**
+ * What an exercise's dose is actually measured in.
+ *
+ * The plan JSON only ever stored `sets`/`reps`/`minutes`, and the generator's
+ * rule was "K prefix gets minutes, everything else gets sets and reps". That is
+ * true for a squat and false for a wall sit, which came out as "3 × 10 reps" of
+ * a thing you hold. It went unnoticed while the app only printed the number in a
+ * chip; a session timer has to decide what to count down, so it has to be right.
+ *
+ * - `reps`     — self-paced repetitions. The timer counts the REST, never the work.
+ * - `hold`     — an isometric. The seconds are the dose; the timer counts the work.
+ * - `carry`    — loaded carry. Honestly measured in time, not repetitions.
+ * - `duration` — one continuous block (all cardio, plus the mobility flow).
+ */
+export type DoseUnit = "reps" | "hold" | "carry" | "duration";
+
 export type Exercise = {
   id: string;
   name: string;
@@ -17,6 +33,16 @@ export type Exercise = {
   impact: Impact;
   /** Short, no real setup — usable as a "movement snack". */
   snack: boolean;
+  /** What this exercise's dose is measured in. */
+  dose: DoseUnit;
+  /** True when the dose is per limb — "10 each leg", and a hold runs twice per set. */
+  perSide: boolean;
+  /**
+   * Starting seconds per set for `hold`/`carry`, or the block length for
+   * `duration`. A floor and a fallback, not the dose — the plan prescribes how
+   * long a hold actually runs in a given week, and that grows across the eight.
+   */
+  seconds?: number;
 };
 
 // Source: docs/plan/exercises.md — all 59 exercises. X01 "Rest day" is an icon,
@@ -92,14 +118,46 @@ const E: [string, string, string, 1 | 2 | 3, Impact, boolean][] = [
   ["M04", "Hip circles", "None", 1, "none", true],
 ];
 
-export const EXERCISES: Exercise[] = E.map(([id, name, props, level, impact, snack]) => ({
-  id,
-  name,
-  props,
-  level,
-  impact,
-  snack,
-}));
+/**
+ * Every exercise whose dose is NOT plain both-sides repetitions.
+ *
+ * Listed as exceptions rather than as a seventh column on `E` so the table above
+ * stays readable — anything absent from here is `["reps", false]`, which is the
+ * honest default for the squat/press/row/hinge families that make up most of the
+ * catalog. Cardio is handled by prefix below and never needs a row here.
+ *
+ * The seconds are a starting dose for a woman new to loading, not a ceiling.
+ * They are deliberately conservative; progression is a separate piece of work.
+ */
+const DOSE: Record<string, [DoseUnit, boolean, number?]> = {
+  // Isometrics — the hold IS the exercise.
+  C01: ["hold", false, 30],
+  B01: ["hold", true, 30],
+  B02: ["hold", true, 30],
+  B03: ["hold", true, 30],
+  // She is standing on one leg while brushing her teeth, so it runs long.
+  B04: ["hold", true, 60],
+  // Carries — measured in time because the alternative is measuring hallways.
+  C04: ["carry", false, 40],
+  C05: ["carry", false, 40],
+  C06: ["carry", false, 40],
+  // Unilateral rep work — "10 reps" means 10 per leg, and always has.
+  C02: ["reps", true],
+  L05: ["reps", true],
+  L06: ["reps", true],
+  L07: ["reps", true],
+  L08: ["reps", true],
+  // A flow, not a set. Five minutes of moving through positions.
+  M01: ["duration", false, 300],
+};
+
+/** Cardio's default block length when nothing else says otherwise. */
+const CARDIO_DEFAULT_SECONDS = 900;
+
+export const EXERCISES: Exercise[] = E.map(([id, name, props, level, impact, snack]) => {
+  const [dose, perSide, seconds] = DOSE[id] ?? (isCardioId(id) ? (["duration", false, CARDIO_DEFAULT_SECONDS] as const) : (["reps", false, undefined] as const));
+  return { id, name, props, level, impact, snack, dose, perSide, seconds };
+});
 
 const BY_ID = new Map(EXERCISES.map((e) => [e.id, e]));
 export const getExercise = (id: string): Exercise | undefined => BY_ID.get(id);
@@ -109,7 +167,187 @@ export const getExercise = (id: string): Exercise | undefined => BY_ID.get(id);
  * "Zone 2 walk, 2 sets of 10" is not a thing. The `K` prefix is the marker, and
  * this is the only place that knowledge lives.
  */
-export const isCardioId = (id: string) => id.startsWith("K");
+export function isCardioId(id: string) {
+  return id.startsWith("K");
+}
+
+/** Mobility work. Short, unloaded, and it does not want a minute of rest after it. */
+const isMobilityId = (id: string) => id.startsWith("M");
+
+// ─── Dose, rest and session length ──────────────────────────────────────────
+
+/**
+ * Rest between sets, in seconds, by dose unit and exercise level.
+ *
+ * Rest is a prescription, not a UI nicety — it is where the strength adaptation
+ * actually happens — so it is derived in code and the model never gets a vote.
+ * Loaded work at level 3 needs the full ninety; a neck circle needs almost none.
+ */
+const REST_BY_UNIT: Record<DoseUnit, [number, number, number]> = {
+  reps: [45, 60, 90],
+  hold: [45, 45, 60],
+  carry: [60, 60, 75],
+  duration: [0, 0, 0],
+};
+
+export function restSeconds(exercise: Exercise): number {
+  if (isMobilityId(exercise.id)) return 15;
+  return REST_BY_UNIT[exercise.dose][exercise.level - 1];
+}
+
+/** Roughly how long one controlled repetition takes at this population's tempo. */
+const SECONDS_PER_REP = 3;
+
+/** Fallbacks for a stored row that carries nothing usable for its unit. */
+const DEFAULT_SETS = 3;
+const DEFAULT_REPS = 10;
+
+/**
+ * Safe bounds for a timed dose, by unit.
+ *
+ * The model writes the seconds so that a hold can grow from 20 to 60 across the
+ * eight weeks — that progression is the point of the plan and it cannot come
+ * from a constant. What it does not get is an unbounded number: a two-minute
+ * wall sit prescribed to a woman new to loading is an injury, not an ambitious
+ * week, so its answer is clamped into a range a physio would sign off on.
+ */
+const SECONDS_RANGE: Record<"hold" | "carry", { min: number; max: number }> = {
+  hold: { min: 10, max: 90 },
+  carry: { min: 15, max: 120 },
+};
+
+/** What the app needs to run one exercise: the dose, the rest, and an honest length. */
+export type HydratedDose = {
+  unit: DoseUnit;
+  perSide: boolean;
+  /** Working sets. Always at least 1; `duration` is always exactly 1. */
+  sets: number;
+  /** `reps` only — repetitions per set (per side when `perSide`). */
+  reps?: number;
+  /** `hold`/`carry` — seconds per set (per side when `perSide`). `duration` — the whole block. */
+  seconds?: number;
+  /** Seconds between sets. Zero for `duration`. */
+  restSeconds: number;
+  /** Estimated total seconds including rest between sets, for the session's time estimate. */
+  estimatedSeconds: number;
+};
+
+const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(n)));
+
+/**
+ * Turns what the plan stored into what the timer can run.
+ *
+ * The split of responsibility here is the whole design:
+ *
+ * - The **catalog** owns `unit` and `perSide`. Whether a wall sit is held or
+ *   repeated is a fact about the exercise, identical for every woman and every
+ *   week. Asking a model to restate it eight times per user is eight chances to
+ *   get it wrong for no benefit, and it got it wrong every time.
+ * - The **catalog** owns `restSeconds`, derived from unit and level. Rest is
+ *   safety-adjacent and the model has needed a guardrail on every other number.
+ * - The **model** owns the dose values, because the dose is the plan: it is what
+ *   makes week 8 harder than week 1, and a constant cannot do that.
+ *
+ * Everything the model writes is clamped into a safe band. A missing or absurd
+ * value falls back rather than failing — a plan is never lost over a number.
+ */
+export function hydrateDose(
+  exercise: Exercise,
+  stored: { sets?: number; reps?: number; seconds?: number; minutes?: number }
+): HydratedDose {
+  const rest = restSeconds(exercise);
+  const sides = exercise.perSide ? 2 : 1;
+
+  if (exercise.dose === "duration") {
+    const seconds = stored.minutes
+      ? clamp(stored.minutes, 1, 90) * 60
+      : exercise.seconds ?? CARDIO_DEFAULT_SECONDS;
+    return {
+      unit: "duration",
+      perSide: false,
+      sets: 1,
+      seconds,
+      restSeconds: 0,
+      estimatedSeconds: seconds,
+    };
+  }
+
+  const sets = clamp(stored.sets ?? DEFAULT_SETS, 1, 6);
+
+  if (exercise.dose === "reps") {
+    const reps = clamp(stored.reps ?? DEFAULT_REPS, 1, 50);
+    return {
+      unit: "reps",
+      perSide: exercise.perSide,
+      sets,
+      reps,
+      restSeconds: rest,
+      estimatedSeconds: sets * reps * sides * SECONDS_PER_REP + (sets - 1) * rest,
+    };
+  }
+
+  // hold | carry — the model's seconds, clamped. A stored `reps` on one of these
+  // is meaningless by definition and is ignored, not converted.
+  const range = SECONDS_RANGE[exercise.dose];
+  const seconds = stored.seconds
+    ? clamp(stored.seconds, range.min, range.max)
+    : exercise.seconds ?? range.min;
+  return {
+    unit: exercise.dose,
+    perSide: exercise.perSide,
+    sets,
+    seconds,
+    restSeconds: rest,
+    estimatedSeconds: sets * seconds * sides + (sets - 1) * rest,
+  };
+}
+
+/**
+ * The dose an exercise gets in a given week when the model did not supply one.
+ *
+ * Used by the deterministic fallback plan and by the top-up that fills a session
+ * the model under-delivered. The ladder matches the one the prompt asks for, so
+ * a topped-up exercise sits at the same intensity as the ones around it rather
+ * than reading as a week-1 dose dropped into week 7.
+ *
+ * Weeks 1-2 open conservatively, 3-5 build, 6-8 consolidate — one number moving
+ * at a time, which is the only progression pattern that is safe to apply without
+ * knowing how the last week actually went for her.
+ */
+export function defaultDoseForWeek(
+  exercise: Exercise,
+  week: number,
+  sessionMinutes: number,
+  exerciseCount: number
+): { sets?: number; reps?: number; seconds?: number; minutes?: number } {
+  const band = week <= 2 ? 0 : week <= 5 ? 1 : 2;
+
+  if (exercise.dose === "duration") {
+    const cap = cardioMinutes(sessionMinutes, exerciseCount);
+    // Cardio climbs toward the cap rather than starting at it.
+    return { minutes: Math.max(3, Math.round(cap * [0.7, 0.85, 1][band])) };
+  }
+
+  const sets = [2, week <= 4 ? 2 : 3, 3][band];
+
+  if (exercise.dose === "reps") return { sets, reps: [10, 12, 14][band] };
+
+  const range = SECONDS_RANGE[exercise.dose];
+  return { sets, seconds: clamp([25, 40, 55][band], range.min, range.max) };
+}
+
+/**
+ * How many minutes a cardio block gets inside a session that also has other work.
+ *
+ * Both the fallback builder and the code top-up used to hand a cardio id
+ * `MOVEMENT_VOLUME.minutes` — the ENTIRE session allowance — and then sit three
+ * strength exercises next to it, so a "28 minute" session really ran 45+. That
+ * was invisible while nothing displayed a total; the session player prints one.
+ */
+export function cardioMinutes(sessionMinutes: number, exerciseCount: number): number {
+  if (exerciseCount <= 1) return sessionMinutes;
+  return Math.max(3, Math.round(sessionMinutes * 0.5));
+}
 
 // ─── Exercise video ─────────────────────────────────────────────────────────
 
@@ -136,7 +374,7 @@ const MEDIA_BASE =
  * so a half-finished shoot never shows her a broken player.
  */
 const MEDIA_READY = new Set<string>([
-  // e.g. "L01", "L02", …
+  "L01",
 ]);
 
 export type ExerciseMedia = { video: string; poster: string };

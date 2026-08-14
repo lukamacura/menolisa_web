@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendRenewalNoticeEmail } from "@/lib/resend";
 import { RENEWAL_NOTICE_DAYS } from "@/lib/pricing";
+import { accessEndingCopy, renewalCopy } from "@/lib/alerts/catalog";
+import { sendAlerts, type AlertRequest } from "@/lib/alerts/send";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -37,13 +39,14 @@ export async function GET(req: NextRequest) {
     const from = new Date(Date.now() + RENEWAL_NOTICE_DAYS * 86_400_000);
     const to = new Date(from.getTime() + 86_400_000);
 
+    // Cancelled subscribers come along too now. No charge is coming for them, so
+    // no renewal email — but the date still matters to her, because it is the
+    // day the app stops working, and the in-app alert below is the only place
+    // she is told before it happens.
     const { data: due, error } = await supabase
       .from("user_trials")
-      .select("user_id, subscription_ends_at, renewal_notice_sent_for")
+      .select("user_id, subscription_ends_at, subscription_canceled, renewal_notice_sent_for")
       .eq("account_status", "paid")
-      // Already cancelled means no charge is coming, so there is nothing to warn
-      // about — telling her anyway reads as a threat to bill her regardless.
-      .eq("subscription_canceled", false)
       .gte("subscription_ends_at", from.toISOString())
       .lt("subscription_ends_at", to.toISOString());
 
@@ -54,9 +57,34 @@ export async function GET(req: NextRequest) {
 
     let sent = 0;
     const errors: { user_id: string; error: string }[] = [];
+    const alerts: AlertRequest[] = [];
 
     for (const row of due ?? []) {
       if (!row.subscription_ends_at) continue;
+
+      // The in-app + push half. Keyed on the period end, so it is sent once per
+      // renewal cycle and never repeated — the same rule as the email marker
+      // below, but enforced by sendAlerts rather than a column.
+      const endsAt = new Date(row.subscription_ends_at);
+      alerts.push(
+        row.subscription_canceled
+          ? {
+              userId: row.user_id,
+              kind: "access_ending",
+              copy: accessEndingCopy(endsAt),
+              occurrence: row.subscription_ends_at,
+            }
+          : {
+              userId: row.user_id,
+              kind: "renewal",
+              copy: renewalCopy(endsAt),
+              occurrence: row.subscription_ends_at,
+            }
+      );
+
+      // Telling a woman who already cancelled that we are about to bill her
+      // reads as a threat to charge her regardless. Email is for renewals only.
+      if (row.subscription_canceled) continue;
       // Already warned about this exact renewal.
       if (row.renewal_notice_sent_for === row.subscription_ends_at) continue;
 
@@ -101,9 +129,13 @@ export async function GET(req: NextRequest) {
       sent += 1;
     }
 
+    // After the emails, so a Resend outage cannot cost her the in-app warning too.
+    const alerted = (await sendAlerts(alerts)).filter(Boolean).length;
+
     return NextResponse.json({
       ok: true,
       sent,
+      alerted,
       ...(errors.length > 0 && { errors }),
     });
   } catch (e) {

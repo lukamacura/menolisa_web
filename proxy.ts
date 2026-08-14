@@ -13,7 +13,6 @@ const CORS_HEADERS = {
 // Single source of truth for protected routes (also used by `config.matcher` below).
 const PROTECTED_PREFIXES = [
   "/dashboard",
-  "/chat/lisa",
   "/api/vectorshift",
   "/api/langchain-rag",
   "/api/symptoms",
@@ -99,8 +98,7 @@ export async function proxy(req: NextRequest) {
 
   // Payment gate: only enforce on UI routes (cookie-auth API routes do their own check).
   const needsPaymentGate =
-    (pathname.startsWith("/dashboard") || pathname.startsWith("/chat/lisa")) &&
-    !isPaymentExempt(pathname);
+    pathname.startsWith("/dashboard") && !isPaymentExempt(pathname);
 
   if (needsPaymentGate) {
     const { data: trialRow } = await supabase
@@ -126,7 +124,6 @@ export async function proxy(req: NextRequest) {
 export const config = {
   matcher: [
     "/dashboard/:path*",
-    "/chat/lisa/:path*",
     "/api/vectorshift",
     "/api/langchain-rag",
     "/api/symptoms",

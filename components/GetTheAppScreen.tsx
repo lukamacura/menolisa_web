@@ -8,10 +8,11 @@ import { APP_STORE_URL, PLAY_STORE_URL } from "@/lib/constants";
 /**
  * Stands in for a product surface that has moved to the mobile app.
  *
- * Rendered by the tracker, chat and notifications pages while
- * {@link WEB_APP_ENABLED} is off. It always offers the way to Account, because
- * a subscriber who lands here still needs to reach billing and deletion, and
- * this screen would otherwise be a dead end for anyone without the app.
+ * The tracker, chat and notification pages it used to back are deleted; this
+ * now backs `/get-the-app`, the stable public URL every email CTA points at.
+ * It always offers the way to Account, because a subscriber who lands here
+ * still needs to reach billing and deletion, and this screen would otherwise
+ * be a dead end for anyone without the app.
  */
 export default function GetTheAppScreen({
   title = "This lives in the app now",

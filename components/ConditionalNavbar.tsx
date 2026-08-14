@@ -11,7 +11,6 @@ type ConditionalNavbarProps = {
 
 export default function ConditionalNavbar({ isAuthenticated: initialIsAuthenticated }: ConditionalNavbarProps) {
   const pathname = usePathname();
-  const isChatPage = pathname?.includes("/chat/lisa");
   const isRegisterPage = pathname?.startsWith("/register");
   // Start with server-side value - it's usually correct after redirect
   const [isAuthenticated, setIsAuthenticated] = useState(initialIsAuthenticated);
@@ -80,17 +79,7 @@ export default function ConditionalNavbar({ isAuthenticated: initialIsAuthentica
     };
   }, [initialIsAuthenticated]);
 
-  useEffect(() => {
-    const main = document.querySelector("main");
-    if (main) {
-      if (isChatPage) {
-        main.classList.remove("pt-20");
-      }
-      // Removed automatic pt-20 addition - control padding via className in layout.tsx instead
-    }
-  }, [isChatPage]);
-
-  if (isChatPage || isRegisterPage) {
+  if (isRegisterPage) {
     return null;
   }
 

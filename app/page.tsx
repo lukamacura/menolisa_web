@@ -239,7 +239,7 @@ export default function Home() {
         <LandingFAQ />
         <LandingFinalCTA />
         <LandingFooter />
-        <SwipeButton variant="home" />
+        <SwipeButton />
       </div>
     </main>
   );

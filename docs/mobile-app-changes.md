@@ -273,6 +273,55 @@ After changing any threshold, run `npx tsx scripts/verify-rewards.ts`.
 
 ---
 
+## 10. `GET /api/plan` — exercises gained a `dose` object (**additive**) — 2026-08-14
+
+Every entry in `tasks[].exercises[]` now also carries `dose`. Nothing was
+removed: `sets`, `reps` and `minutes` are still there, unchanged, so an older
+build keeps working exactly as before.
+
+```jsonc
+{
+  "id": "C01",
+  "name": "Wall sit",
+  "props": "Wall",
+  "sets": 3, "seconds": 45,     // the raw stored dose, still sent
+  "dose": {
+    "unit": "hold",             // "reps" | "hold" | "carry" | "duration"
+    "perSide": false,           // true means "10 each leg", and a hold runs twice per set
+    "sets": 3,
+    "seconds": 45,              // per set for hold/carry; the whole block for duration
+    "restSeconds": 45,          // between sets; 0 for duration
+    "estimatedSeconds": 225     // including rest — sum these for session length
+  }
+}
+```
+
+**Why:** the flat `sets`/`reps`/`minutes` cannot be run by a timer, and for part
+of the catalog they were wrong. The generator gave sets and reps to everything
+that was not cardio, so a wall sit arrived as "3 × 10 reps" of a thing you hold,
+balance work arrived without its per-side flag, and carries were counted in
+repetitions.
+
+The fix splits ownership: the **catalog** decides whether an id is repeated,
+held, carried or timed and how long the rest is; the **LLM** writes the actual
+numbers and grows them across the eight weeks. Everything the model writes is
+clamped into a safe band server-side, so the app can render `dose` as given.
+
+Exercise entries now also carry `seconds` next to `sets`/`reps`/`minutes` — the
+stored dose for a hold or a carry.
+
+**What the app should do:**
+
+- Prefer `dose` when present; keep the existing `sets`/`reps`/`minutes` path as
+  the fallback so the app is safe to ship before the API deploys.
+- Render `perSide` — "3 × 10 each side" is a different instruction from "3 × 10".
+- Drive any timer off `unit`: `reps` means time the rest, not the work;
+  `hold`/`carry` mean count the work down; `duration` is a single block.
+- `restSeconds` is a prescription derived in code, not a suggestion the model
+  wrote. Do not replace it with a constant.
+
+---
+
 ## Quick checklist
 
 - [ ] Remove `trial_start` / `trial_end` / `trial_days` reads
@@ -286,3 +335,5 @@ After changing any threshold, run `npx tsx scripts/verify-rewards.ts`.
 - [ ] Render nutrition rows from `target` / `count`, not as plain checkboxes
 - [ ] Drop any hardcoded nutrition labels, groups or the count of nine
 - [ ] Surface each nutrition row's `why` (tap-to-open, expander, info sheet)
+- [ ] Read `exercises[].dose` for reps/sets/holds; keep the flat fields as fallback
+- [ ] Show "each side" wherever `dose.perSide` is true

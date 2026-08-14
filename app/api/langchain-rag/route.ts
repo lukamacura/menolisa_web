@@ -13,7 +13,6 @@ export const runtime = "nodejs";
 
 // Import lazy Supabase admin client
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { sendPushNotification } from "@/lib/sendPushNotification";
 
 // Import RAG orchestrator
 import { orchestrateRAG } from "@/lib/rag/orchestrator";
@@ -901,26 +900,11 @@ IMPORTANT: The user is engaging in casual conversation, not asking for informati
               ? ` | Triggers: ${normalizedTriggers.join(", ")}`
               : "";
             const summaryMessage = `${name} (${severityLabel})${triggersText}`;
-            const notificationTitle = "Symptom logged";
 
-            await supabaseClient.from("notifications").insert([
-              {
-                user_id,
-                type: "symptom_logged",
-                title: notificationTitle,
-                message: summaryMessage,
-                priority: "medium",
-                seen: false,
-                dismissed: false,
-              },
-            ]);
-
-            sendPushNotification({
-              userId: user_id,
-              title: notificationTitle,
-              body: summaryMessage,
-              data: { screen: "Notifications" },
-            }).catch(() => {});
+            // No notification and no push. She is in the conversation that just
+            // logged this — both clients already confirm it inline (the app via
+            // `tool_notifications`, the dashboard via its own toast), so an
+            // alert here only buzzes the phone she is holding.
 
             return `Successfully logged 📝 symptom: ${summaryMessage}`;
           } catch (e: unknown) {

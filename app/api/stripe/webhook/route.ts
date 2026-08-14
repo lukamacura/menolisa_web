@@ -4,6 +4,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { writeSubscription } from "@/lib/subscriptionWrite";
 import { sendChargeConfirmedEmail, sendAdminNotification } from "@/lib/resend";
+import { paymentFailedCopy } from "@/lib/alerts/catalog";
+import { sendAlert } from "@/lib/alerts/send";
 import { sendMetaPurchase, metaMatchDataFrom } from "@/lib/metaCapi";
 import { META_CURRENCY, PLAN_VALUE, purchaseEventId } from "@/lib/metaPixel";
 import {
@@ -392,7 +394,10 @@ async function handleInvoicePaymentFailed(
     console.error("Webhook invoice.payment_failed: update failed:", error);
     return { ok: false, error: error.message };
   }
-  if (updated && updated.length > 0) return { ok: true };
+  if (updated && updated.length > 0) {
+    await alertPaymentFailed(updated[0].user_id, invoice.id);
+    return { ok: true };
+  }
 
   if (!userId) return { ok: true };
   const { error: fallbackError } = await supabaseAdmin
@@ -403,7 +408,37 @@ async function handleInvoicePaymentFailed(
     console.error("Webhook invoice.payment_failed: fallback update failed:", fallbackError);
     return { ok: false, error: fallbackError.message };
   }
+  await alertPaymentFailed(userId, invoice.id);
   return { ok: true };
+}
+
+/**
+ * Tell her the card failed, in the app and on her lock screen.
+ *
+ * She keeps access while Stripe's dunning retries, which is exactly why this
+ * has to be said out loud — the app carries on working, so nothing else in the
+ * product would ever let her notice before the subscription is cancelled out
+ * from under her.
+ *
+ * Keyed on the invoice, so the three or four retries Stripe fires over the
+ * following fortnight are one alert, not four. A genuinely new failing invoice
+ * next cycle is a new key and does get said again.
+ *
+ * Never allowed to fail the webhook: Stripe retries a non-2xx, and re-running
+ * the handler to salvage a notification would re-run the account update too.
+ */
+async function alertPaymentFailed(userId: string | null, invoiceId: string | undefined) {
+  if (!userId) return;
+  try {
+    await sendAlert({
+      userId,
+      kind: "payment_failed",
+      copy: paymentFailedCopy(),
+      occurrence: invoiceId ?? new Date().toISOString().slice(0, 10),
+    });
+  } catch (e) {
+    console.error("Webhook invoice.payment_failed: alert failed:", e);
+  }
 }
 
 async function handleChargeDisputeCreated(

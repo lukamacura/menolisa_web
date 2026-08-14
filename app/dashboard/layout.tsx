@@ -3,15 +3,13 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, ChevronDown, Bell, MessageSquare, UserCircle } from "lucide-react";
+import { LogOut, ChevronDown, UserCircle } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
-import SwipeButton from "@/components/SwipeButton";
 import {
   DashboardTrialProvider,
   useDashboardTrialStatus,
 } from "@/lib/dashboardTrialContext";
 import SessionVerification from "@/components/SessionVerification";
-import { WEB_APP_ENABLED } from "@/lib/constants";
 import { NotificationProvider } from "@/components/notifications/NotificationProvider";
 import NotificationContainer from "@/components/notifications/NotificationContainer";
 
@@ -80,27 +78,10 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
     }
   }, [trialStatus.loading, trialStatus.state, paymentExempt, router]);
 
-  // With the product on mobile, Account is the only thing the web nav still
-  // leads to. Chat and Notifications stay mounted (they render GetTheAppScreen)
-  // so old bookmarks explain themselves; the tracker is gone outright, and
-  // /get-the-app is where its old links now point.
+  // The product — Lisa chat, symptom tracking, notifications — lives in the
+  // Expo app. Account is the only thing the web nav leads to, and /get-the-app
+  // is where the old product links now point.
   const navItems = [
-    ...(WEB_APP_ENABLED
-      ? [
-          {
-            href: "/chat/lisa",
-            label: "Chat with Lisa",
-            icon: MessageSquare,
-            requiresActiveSubscription: false,
-          },
-          {
-            href: "/dashboard/notifications",
-            label: "Notifications",
-            icon: Bell,
-            requiresActiveSubscription: false,
-          },
-        ]
-      : []),
     {
       href: "/dashboard/account",
       label: "Account",
@@ -117,12 +98,10 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   };
 
   // Find active item
-  const activeItem = navItems.find(
-    (item) =>
-      pathname === item.href ||
-      (item.href !== "/chat/lisa" && pathname?.startsWith(item.href)) ||
-      (item.href === "/chat/lisa" && pathname === "/chat/lisa")
-  ) || navItems[0];
+  const activeItem =
+    navItems.find(
+      (item) => pathname === item.href || pathname?.startsWith(item.href)
+    ) || navItems[0];
 
   const ActiveIcon = activeItem.icon;
 
@@ -199,8 +178,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
                     const Icon = item.icon;
                     const isActive =
                       pathname === item.href ||
-                      (item.href !== "/dashboard" && item.href !== "/chat/lisa" && pathname?.startsWith(item.href)) ||
-                      (item.href === "/chat/lisa" && pathname === "/chat/lisa");
+                      (item.href !== "/dashboard" && pathname?.startsWith(item.href));
 
                     const isDisabled = item.requiresActiveSubscription && trialStatus.expired;
                     return (
@@ -249,8 +227,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
                 const Icon = item.icon;
                 const isActive =
                   pathname === item.href ||
-                  (item.href !== "/dashboard" && item.href !== "/chat/lisa" && pathname?.startsWith(item.href)) ||
-                  (item.href === "/chat/lisa" && pathname === "/chat/lisa");
+                  (item.href !== "/dashboard" && pathname?.startsWith(item.href));
 
                 const isDisabled = item.requiresActiveSubscription && trialStatus.expired;
                 return (
@@ -295,13 +272,6 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
 
       {/* Main Content */}
       <main className="flex-1 pt-36 sm:pt-[148px]">{children}</main>
-
-      {/* Fixed Lisa Swipe Button */}
-      {WEB_APP_ENABLED &&
-        pathname !== "/dashboard/account" &&
-        !pathname?.startsWith("/dashboard/settings") && (
-          <SwipeButton variant="lisa" trialExpired={trialStatus.expired} />
-        )}
 
         {/* Notification Container */}
         <NotificationContainer />
