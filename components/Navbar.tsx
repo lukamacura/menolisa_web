@@ -4,6 +4,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
+import { signOutAndRedirect } from "@/lib/signOut";
 
 type NavbarProps = {
   isAuthenticated: boolean;
@@ -11,6 +12,15 @@ type NavbarProps = {
 
 const Navbar: React.FC<NavbarProps> = ({ isAuthenticated }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  // Home rather than /login: from the public site she is signing out, not
+  // switching accounts, and the landing page is where the funnel starts.
+  async function handleSignOut() {
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+    await signOutAndRedirect("/");
+  }
 
   // Use constant className to prevent hydration mismatches from Tailwind class reordering
   const navbarContainerClass = "fixed left-0 right-0 top-0 z-50 flex justify-center pt-3 sm:pt-4";
@@ -72,13 +82,23 @@ const Navbar: React.FC<NavbarProps> = ({ isAuthenticated }) => {
             {/* Desktop: Right Auth buttons */}
             <div className="hidden lg:flex items-center gap-4">
               {isAuthenticated ? (
-                <Link
-                  href="/dashboard"
-                  prefetch={false}
-                  className="btn-primary px-5 py-1.5 text-sm shadow-md"
-                >
-                  My Overview
-                </Link>
+                <>
+                  <button
+                    type="button"
+                    onClick={handleSignOut}
+                    disabled={isSigningOut}
+                    className="font-medium text-white! transition-colors duration-200 hover:text-white text-sm cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {isSigningOut ? "Signing out…" : "Sign out"}
+                  </button>
+                  <Link
+                    href="/dashboard"
+                    prefetch={false}
+                    className="btn-primary px-5 py-1.5 text-sm shadow-md"
+                  >
+                    My Overview
+                  </Link>
+                </>
               ) : (
                 <>
                   <Link
@@ -167,14 +187,24 @@ const Navbar: React.FC<NavbarProps> = ({ isAuthenticated }) => {
           {/* Auth buttons */}
           <div className="flex flex-col gap-2">
             {isAuthenticated ? (
-              <Link 
-                href="/dashboard" 
-                prefetch={false}
-                className="btn-primary px-4 py-3 text-md shadow-md text-center"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                My overview
-              </Link>
+              <>
+                <Link
+                  href="/dashboard"
+                  prefetch={false}
+                  className="btn-primary px-4 py-3 text-md shadow-md text-center"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  My overview
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  disabled={isSigningOut}
+                  className="px-4 py-3 rounded-lg font-medium text-white! hover:bg-white/10 transition-colors text-md text-center disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isSigningOut ? "Signing out…" : "Sign out"}
+                </button>
+              </>
             ) : (
               <>
                 <Link 

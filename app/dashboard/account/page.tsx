@@ -1,7 +1,5 @@
 "use client";
 
-import Link from "next/link";
-import { Settings, ArrowRight } from "lucide-react";
 import { TrialCard } from "@/components/TrialCard";
 import { useDashboardTrialStatus } from "@/lib/dashboardTrialContext";
 
@@ -21,7 +19,7 @@ export default function AccountPage() {
         </p>
       </div>
 
-      <section className="mb-8 sm:mb-10" aria-label="Plan and subscription">
+      <section aria-label="Plan and subscription">
         {trialStatus.loading ? (
           <div className="animate-pulse space-y-3 rounded-2xl border border-white/10 bg-gray-900 p-4 sm:p-6">
             <div className="h-6 w-40 rounded bg-white/10" />
@@ -44,31 +42,6 @@ export default function AccountPage() {
           />
         )}
       </section>
-
-      <Link
-        href="/dashboard/settings"
-        className="group relative overflow-hidden block rounded-xl sm:rounded-2xl border border-border/30 bg-card backdrop-blur-lg p-4 sm:p-6 shadow-xl transition-all duration-300 hover:shadow-2xl hover:scale-[1.01] active:scale-[0.99]"
-      >
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-            <div
-              className="shrink-0 p-2.5 sm:p-3 rounded-xl shadow-md"
-              style={{ background: "linear-gradient(135deg, #ff74b1 0%, #d85a9a 100%)" }}
-            >
-              <Settings className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-            </div>
-            <div className="min-w-0">
-              <h3 className="text-lg sm:text-xl font-bold text-foreground mb-0.5 sm:mb-1 truncate">
-                Settings
-              </h3>
-              <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2">
-                Notification preferences and privacy controls
-              </p>
-            </div>
-          </div>
-          <ArrowRight className="h-5 w-5 text-primary shrink-0 transition-transform group-hover:translate-x-1" />
-        </div>
-      </Link>
     </div>
   );
 }

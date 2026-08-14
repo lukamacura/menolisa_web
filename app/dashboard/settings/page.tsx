@@ -24,6 +24,10 @@ export default function SettingsPage() {
         return;
       }
       setDeleteDialogOpen(false);
+      // Default `scope: "global"` on purpose — the account is gone, so every
+      // session it holds should die with it, including the Expo app's. This is
+      // the one place that differs from signOutAndRedirect(), which is local
+      // so that signing out of billing doesn't log her out of her phone.
       await supabase.auth.signOut();
       window.location.href = "/login";
     } catch {

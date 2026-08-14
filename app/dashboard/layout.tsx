@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, ChevronDown, UserCircle } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
+import { LogOut, ChevronDown, UserCircle, Loader2 } from "lucide-react";
+import { signOutAndRedirect } from "@/lib/signOut";
 import {
   DashboardTrialProvider,
   useDashboardTrialStatus,
@@ -60,6 +60,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const trialStatus = useDashboardTrialStatus();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const isDropdownOpenRef = useRef(false);
 
@@ -105,13 +106,11 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
 
   const ActiveIcon = activeItem.icon;
 
-  function handleLogout() {
-    // Navigate immediately - no waiting
-    window.location.href = "/login";
-    // Sign out in background (don't await, don't block)
-    supabase.auth.signOut().catch(() => {
-      // Silently fail - we're already navigating away
-    });
+  async function handleLogout() {
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+    // Must complete before navigating — see lib/signOut.ts for why.
+    await signOutAndRedirect("/login");
   }
 
   // Keep ref in sync with state
@@ -211,10 +210,15 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
                   <div className="border-t border-foreground/10">
                     <button
                       onClick={handleLogout}
-                      className="flex w-full items-center gap-3 px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-foreground/5 hover:text-foreground transition-colors duration-200"
+                      disabled={isSigningOut}
+                      className="flex w-full items-center gap-3 px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-foreground/5 hover:text-foreground transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      <LogOut className="h-5 w-5" />
-                      <span>Log out</span>
+                      {isSigningOut ? (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : (
+                        <LogOut className="h-5 w-5" />
+                      )}
+                      <span>{isSigningOut ? "Signing out…" : "Log out"}</span>
                     </button>
                   </div>
                 </div>
@@ -260,10 +264,15 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
             <div className="hidden lg:flex items-center gap-2">
               <button
                 onClick={handleLogout}
-                className="flex items-center bg-error/15 hover:bg-error/70 text-error cursor-pointer gap-2 rounded-lg px-4 py-2 text-sm font-bold  hover:text-foreground transition-colors duration-200"
+                disabled={isSigningOut}
+                className="flex items-center bg-error/15 hover:bg-error/70 text-error cursor-pointer gap-2 rounded-lg px-4 py-2 text-sm font-bold  hover:text-foreground transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <LogOut className="h-5 w-5" />
-                <span>Sign out</span>
+                {isSigningOut ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <LogOut className="h-5 w-5" />
+                )}
+                <span>{isSigningOut ? "Signing out…" : "Sign out"}</span>
               </button>
             </div>
           </div>
