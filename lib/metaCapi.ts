@@ -41,46 +41,17 @@ export function metaMatchDataFrom(
   };
 }
 
-export type SendMetaPurchaseParams = MetaMatchData & {
-  /** Must equal the browser event's eventID - see purchaseEventId(). */
-  eventId: string;
-  eventTimeSec: number;
-  value: number;
-  currency?: string;
-  email?: string | null;
-  userId?: string | null;
-  planType?: string | null;
-  eventSourceUrl?: string | null;
-};
-
 /**
- * Sends a Purchase to the Conversions API. Never throws and never rejects: a
- * Meta outage must not fail the Stripe webhook, or Stripe retries the event and
- * the user receives duplicate welcome emails.
+ * fbp/fbc/IP/UA are sent raw - hashing them breaks matching. Only PII is hashed.
+ *
+ * `external_id` is the Supabase user id, and it is what makes a server-side
+ * event matchable at all while the funnel has collected no email: Meta ties a
+ * later Purchase carrying the same external_id back to this one.
  */
-export async function sendMetaPurchase(params: SendMetaPurchaseParams): Promise<void> {
-  const accessToken = process.env.META_CAPI_ACCESS_TOKEN;
-  if (!accessToken) {
-    console.warn("Meta CAPI: META_CAPI_ACCESS_TOKEN not set, skipping Purchase");
-    return;
-  }
-
-  const {
-    eventId,
-    eventTimeSec,
-    value,
-    currency = META_CURRENCY,
-    email,
-    userId,
-    planType,
-    eventSourceUrl,
-    fbp,
-    fbc,
-    clientIp,
-    clientUa,
-  } = params;
-
-  // fbp/fbc/IP/UA are sent raw - hashing them breaks matching. Only PII is hashed.
+function buildUserData(
+  params: MetaMatchData & { email?: string | null; userId?: string | null }
+): Record<string, unknown> {
+  const { email, userId, fbp, fbc, clientIp, clientUa } = params;
   const userData: Record<string, unknown> = {};
   if (email) userData.em = [hashEmail(email)];
   if (userId) userData.external_id = [hash(userId)];
@@ -88,26 +59,24 @@ export async function sendMetaPurchase(params: SendMetaPurchaseParams): Promise<
   if (fbc) userData.fbc = fbc;
   if (clientIp) userData.client_ip_address = clientIp;
   if (clientUa) userData.client_user_agent = clientUa;
+  return userData;
+}
 
-  const payload: Record<string, unknown> = {
-    data: [
-      {
-        event_name: "Purchase",
-        event_time: eventTimeSec,
-        event_id: eventId,
-        action_source: "website",
-        ...(eventSourceUrl ? { event_source_url: eventSourceUrl } : {}),
-        user_data: userData,
-        custom_data: {
-          currency,
-          value,
-          content_type: "product",
-          num_items: 1,
-          ...(planType ? { content_name: planType } : {}),
-        },
-      },
-    ],
-  };
+/**
+ * POSTs one event to the Graph API. Never throws and never rejects: a Meta
+ * outage must not fail the caller. For the Stripe webhook that would mean
+ * Stripe retrying the event and the customer receiving duplicate welcome
+ * emails; for save-quiz it would mean a woman who just finished the quiz
+ * being shown "we couldn't save your results" because an ad platform was down.
+ */
+async function postEvent(event: Record<string, unknown>, label: string): Promise<void> {
+  const accessToken = process.env.META_CAPI_ACCESS_TOKEN;
+  if (!accessToken) {
+    console.warn(`Meta CAPI: META_CAPI_ACCESS_TOKEN not set, skipping ${label}`);
+    return;
+  }
+
+  const payload: Record<string, unknown> = { data: [event] };
   if (process.env.META_CAPI_TEST_EVENT_CODE) {
     payload.test_event_code = process.env.META_CAPI_TEST_EVENT_CODE;
   }
@@ -123,11 +92,93 @@ export async function sendMetaPurchase(params: SendMetaPurchaseParams): Promise<
     );
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      console.error(`Meta CAPI Purchase failed (${res.status}):`, body.slice(0, 500));
+      console.error(`Meta CAPI ${label} failed (${res.status}):`, body.slice(0, 500));
       return;
     }
-    console.log(`Meta CAPI Purchase sent: ${eventId} (${currency} ${value})`);
+    console.log(`Meta CAPI ${label} sent`);
   } catch (err) {
-    console.error("Meta CAPI Purchase request error:", err);
+    console.error(`Meta CAPI ${label} request error:`, err);
   }
+}
+
+export type SendMetaPurchaseParams = MetaMatchData & {
+  /** Must equal the browser event's eventID - see purchaseEventId(). */
+  eventId: string;
+  eventTimeSec: number;
+  value: number;
+  currency?: string;
+  email?: string | null;
+  userId?: string | null;
+  planType?: string | null;
+  eventSourceUrl?: string | null;
+};
+
+/** Sends a Purchase to the Conversions API. See `postEvent` - never throws. */
+export async function sendMetaPurchase(params: SendMetaPurchaseParams): Promise<void> {
+  const { eventId, eventTimeSec, value, currency = META_CURRENCY, planType, eventSourceUrl } =
+    params;
+
+  await postEvent(
+    {
+      event_name: "Purchase",
+      event_time: eventTimeSec,
+      event_id: eventId,
+      action_source: "website",
+      ...(eventSourceUrl ? { event_source_url: eventSourceUrl } : {}),
+      user_data: buildUserData(params),
+      custom_data: {
+        currency,
+        value,
+        content_type: "product",
+        num_items: 1,
+        ...(planType ? { content_name: planType } : {}),
+      },
+    },
+    `Purchase ${eventId} (${currency} ${value})`
+  );
+}
+
+export type SendMetaLeadParams = MetaMatchData & {
+  /** See `leadEventId()` - derived from the user id, so retries collapse. */
+  eventId: string;
+  eventTimeSec: number;
+  userId: string;
+  /** Usually absent — a funnel visitor has no email until Stripe collects one. */
+  email?: string | null;
+  eventSourceUrl?: string | null;
+  /** Segment carried on the event so a Lead audience can be split in Meta. */
+  symptomCount?: number | null;
+  goal?: string | null;
+};
+
+/**
+ * Sends a Lead to the Conversions API - fired from `/api/auth/save-quiz`, and
+ * **only when a `user_profiles` row is newly inserted**.
+ *
+ * This event is server-side rather than browser-side on purpose. The browser
+ * copy deduped in sessionStorage, which means "once per tab": a woman returning
+ * through a second ad in a fresh tab reported a second Lead. Repeat clickers
+ * therefore inflated the Lead count, which understated cost-per-lead, which
+ * taught Meta to buy more repeat clickers - a feedback loop paid for in ad
+ * spend. Keyed off the insert instead, one human is one Lead forever, on every
+ * device, with no browser storage involved.
+ */
+export async function sendMetaLead(params: SendMetaLeadParams): Promise<void> {
+  const { eventId, eventTimeSec, eventSourceUrl, symptomCount, goal } = params;
+
+  await postEvent(
+    {
+      event_name: "Lead",
+      event_time: eventTimeSec,
+      event_id: eventId,
+      action_source: "website",
+      ...(eventSourceUrl ? { event_source_url: eventSourceUrl } : {}),
+      user_data: buildUserData(params),
+      custom_data: {
+        ...(typeof symptomCount === "number" ? { symptom_count: symptomCount } : {}),
+        ...(goal ? { goal } : {}),
+      },
+    },
+    `Lead ${eventId}`
+  );
 }

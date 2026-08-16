@@ -797,6 +797,30 @@ again also works — that calls `sync-session`.
 ## 7. CURRENT STATUS
 
 Recent work:
+- **`q_safety` → `q_limitations` (2026-08-16)** — the `/register` screen that
+  read "Do any of these apply to you?" and collected clinical contraindications
+  now asks "Does anything hurt or hold you back when you move?" and collects
+  physical obstacles (`back`, `knee`, `hip`, `shoulder`, `pelvic_floor`,
+  `balance`, `none`) into `user_profiles.physical_limits`. The step count is
+  unchanged — this replaced the safety screen rather than joining it.
+  The answers are a **hard gate, not a prompt hint**: `LIMITATION_EXCLUDES` in
+  `lib/plan/catalog.ts` strips the aggravating exercises out of her pool before
+  the model sees it, the same way the `joint_pain` impact rule already did, so a
+  model can't opt out of it. The prompt gets a line too, but only so the copy
+  doesn't apologise for a plan that has already been adjusted. The ids are the
+  contract between three files (`LIMITATION_OPTIONS` in `app/register/page.tsx`,
+  `PHYSICAL_LIMITS` in save-quiz, `LIMITATION_EXCLUDES` in the catalog) — rename
+  in all three or nowhere, because an unmatched value is silently ignored, which
+  is a knee that gets lunges.
+  Excluding is capped by the pool it leaves behind: a beginner ticking all six
+  still keeps 20 exercises with every family represented (`movement_snacks` is
+  the floor at 18). Re-check that when adding a limitation — a starved pool
+  makes a worse plan than one that lets a step-up through.
+  **`safety_flags` was not removed**: the column, the zod field and the plan's
+  hormone-therapy/phytoestrogen/herbal rule all stay, because the Expo app still
+  asks and every profile written since 2026-08-12 carries a value. Web signups
+  just write an empty array now, so that rule no longer fires for them.
+  Migration `scripts/sql/2026-08-16-physical-limits.sql` — **not applied yet**.
 - **Funnel audit fixes (2026-08-16)** — sixteen changes to `/register`, in three
   groups.
   **Measurement first**: six new Meta events plus parameterized `QuizStep` and
@@ -887,6 +911,8 @@ Recent work:
   `here_for` instead. The new answers reach `lib/plan/generate.ts` — the safety
   flags as a hard rule about hormone therapy, phytoestrogens and herbal
   supplements, so **any new plan-prompt work must keep that rule intact**.
+  (`q_safety` itself was replaced by `q_limitations` on 2026-08-16 — see the
+  entry above. The rule and its column survive for the Expo app.)
   Migration `scripts/sql/2026-08-12-quiz-v2-columns.sql` — **not applied yet**.
   Images for the three new tile questions do not exist yet
   (`public/quiz/menopause-type/`, `nutrition/`, `relaxation/`).

@@ -36,16 +36,35 @@ export function purchaseEventId(stripeSessionId: string): string {
 }
 
 /**
+ * Dedup key for the server-side Lead, derived from the Supabase user id.
+ *
+ * There is no browser copy to pair with - Lead is server-only (see
+ * `sendMetaLead`). The id exists so that a retried or double-submitted
+ * save-quiz collapses to one Lead inside Meta's dedup window instead of
+ * reporting the same woman twice.
+ */
+export function leadEventId(userId: string): string {
+  return `lead_${userId}`;
+}
+
+/**
  * Every step of the `/register` funnel, in the order she walks them.
  *
- * All of these except `Lead` are custom events - each needs a Custom Conversion
- * defined in Events Manager before it can be optimized for or used to build an
- * audience. `Lead` is a Meta standard event and needs no setup, which is why the
- * profile-saved step uses it: while Purchase volume is too low to exit the
- * learning phase, Lead is the fallback optimization objective.
+ * These are all custom events - each needs a Custom Conversion defined in
+ * Events Manager before it can be optimized for or used to build an audience.
+ *
+ * **`Lead` is deliberately not in this list.** It is the one funnel event that
+ * has to mean "a new woman", because it is the fallback optimization objective
+ * while Purchase volume is below learning-phase exit - so it is sent
+ * server-side from `/api/auth/save-quiz` on profile insert instead, where the
+ * database already knows whether this account has finished the quiz before.
+ * See `sendMetaLead`.
  *
  * `onceKey` is the sessionStorage key `trackFbOnce` dedups on, so a refresh or a
- * StrictMode double-effect can't inflate a step.
+ * StrictMode double-effect can't inflate a step. Note what that dedup actually
+ * buys: "once per tab", not once per person - a returning ad click in a fresh
+ * tab reports these again, which is right for a visit-scoped event and was
+ * wrong for Lead.
  *
  * Names live here rather than inline because a typo doesn't fail - it silently
  * creates a new event in Events Manager and splits the funnel in half.
@@ -59,7 +78,6 @@ export function purchaseEventId(stripeSessionId: string): string {
 export const META_FUNNEL_STEPS = {
   quizStart: { name: "QuizStart", onceKey: "quiz_start" },
   quizComplete: { name: "QuizComplete", onceKey: "quiz_complete" },
-  lead: { name: "Lead", onceKey: "lead" },
   resultsView: { name: "ResultsView", onceKey: "results_view" },
   planView: { name: "PlanView", onceKey: "plan_view" },
   reliefDone: { name: "ReliefDone", onceKey: "relief_done" },

@@ -97,7 +97,7 @@ type Step =
   | "q_nutrition"
   | "q_relaxation"
   | "q5_hrt"
-  | "q_safety"
+  | "q_limitations"
   | "reward_progress"
   | "q8_name";
 
@@ -114,7 +114,7 @@ const STEPS: Step[] = [
   "q_nutrition",
   "q_relaxation",
   "q5_hrt",
-  "q_safety",
+  "q_limitations",
   "reward_progress",
   "q8_name",
 ];
@@ -365,16 +365,23 @@ const RELAXATION_STYLE_OPTIONS = [
   { id: "want_to", label: "I want to start", image: "/quiz/relaxation/wanttostart.webp" },
 ];
 
-// Safety screen. Text rows, no illustrations - a watercolor tile for "history of
-// breast cancer" would be grotesque. Multi-select, but the last two are exclusive:
-// ticking either clears the clinical flags and vice versa, because "none of the
-// above AND liver disease" is not an answer anyone means to give.
-const SAFETY_OPTIONS = [
-  { id: "breast_cancer", label: "History of breast cancer" },
-  { id: "clots_stroke", label: "History of blood clots or stroke" },
-  { id: "liver_disease", label: "Liver disease" },
-  { id: "none", label: "None of the above", exclusive: true },
-  { id: "prefer_not", label: "Prefer not to say", exclusive: true },
+// What hurts when she moves. Text rows, no illustrations - these are body parts,
+// and a watercolor tile per joint would be noise. Multi-select, but the last row
+// is exclusive: ticking it clears the pains and any pain clears it, because
+// "nothing holds me back AND knee pain" is not an answer anyone means to give.
+//
+// The ids are load-bearing twice over: `LIMITATION_EXCLUDES` in
+// `lib/plan/catalog.ts` filters the exercise pool on them in code, and
+// `limitationLine()` names them in the plan prompt. Renaming one here without
+// the other silently stops the filter.
+const LIMITATION_OPTIONS = [
+  { id: "back", label: "Lower back pain" },
+  { id: "knee", label: "Knee pain" },
+  { id: "hip", label: "Hip pain" },
+  { id: "shoulder", label: "Neck or shoulder pain" },
+  { id: "pelvic_floor", label: "Pelvic floor / leaking" },
+  { id: "balance", label: "Balance problems or dizziness" },
+  { id: "none", label: "Nothing holds me back", exclusive: true },
 ];
 
 // Shared option-tile footer styles - every quiz label is the same size, aligned,
@@ -1869,7 +1876,7 @@ function RegisterPageContent() {
   const [hrtStatus, setHrtStatus] = useState<string>("");
   const [nutritionStyle, setNutritionStyle] = useState<string>("");
   const [relaxationStyle, setRelaxationStyle] = useState<string>("");
-  const [safetyFlags, setSafetyFlags] = useState<string[]>([]);
+  const [physicalLimits, setPhysicalLimits] = useState<string[]>([]);
   const [firstName, setFirstName] = useState<string>("");
 
   // Derived for funnel compatibility: save-quiz / user_profiles still consume top_problems[].
@@ -2069,8 +2076,8 @@ function RegisterPageContent() {
           return relaxationStyle !== "";
         case "q5_hrt":
           return hrtStatus !== "";
-        case "q_safety":
-          return safetyFlags.length > 0;
+        case "q_limitations":
+          return physicalLimits.length > 0;
         case "q8_name":
           return firstName.trim().length > 0;
         default:
@@ -2089,7 +2096,7 @@ function RegisterPageContent() {
       nutritionStyle,
       relaxationStyle,
       hrtStatus,
-      safetyFlags,
+      physicalLimits,
       firstName,
     ]
   );
@@ -2110,7 +2117,7 @@ function RegisterPageContent() {
       menopause_type: menopauseType || null,
       nutrition_style: nutritionStyle || null,
       relaxation_style: relaxationStyle || null,
-      safety_flags: safetyFlags,
+      physical_limits: physicalLimits,
       name: firstName.trim() || null,
       height_cm: bodyMetrics.height_cm,
       weight_kg: bodyMetrics.weight_kg,
@@ -2129,26 +2136,24 @@ function RegisterPageContent() {
       menopauseType,
       nutritionStyle,
       relaxationStyle,
-      safetyFlags,
+      physicalLimits,
       firstName,
       bodyMetrics,
       fitnessLevel,
     ]
   );
 
-  // Save quiz answers to sessionStorage (cleared when tab closes)
-  const saveQuizAnswers = useCallback(() => {
-    sessionStorage.setItem("pending_quiz_answers", JSON.stringify(quizPayload));
-  }, [quizPayload]);
+  // There is no sessionStorage copy of the answers. There used to be a
+  // `pending_quiz_answers` stash written here, but nothing ever read it back —
+  // the three call sites were all `removeItem`. It was a copy of her health
+  // answers sitting in browser storage doing no work, so it is gone. The live
+  // `quizPayload` above is the only copy, and `completeRegistration` POSTs it.
 
   const goNext = useCallback(() => {
     if (!stepIsAnswered(currentStep)) return;
     if (stepIndex < STEPS.length - 1) {
       setStepIndex(stepIndex + 1);
     } else {
-      // Quiz complete - the calculating loader creates her account and saves the
-      // answers, then opens the results.
-      saveQuizAnswers();
       // Ad-funnel step 2, and the one that ranks angles: cheap clicks that never
       // reach here mean the ad pulled the wrong woman. Her symptom count and
       // primary goal ride along so a segment can be read off the event itself.
@@ -2158,7 +2163,7 @@ function RegisterPageContent() {
       });
       setPhase("calculating");
     }
-  }, [currentStep, stepIndex, stepIsAnswered, saveQuizAnswers, topProblems, goal]);
+  }, [currentStep, stepIndex, stepIsAnswered, topProblems, goal]);
 
   // Auto-advance for single-choice steps. The short delay is the point: she has
   // to see her own tile light up before the screen moves, or the quiz feels like
@@ -2226,7 +2231,6 @@ function RegisterPageContent() {
           .eq("user_id", sessionUser.id)
           .maybeSingle();
         if (trialRow && stateAllowsAccess(getAccountState(trialRow).state)) {
-          sessionStorage.removeItem("pending_quiz_answers");
           router.replace("/dashboard");
           router.refresh();
           return false;
@@ -2261,16 +2265,14 @@ function RegisterPageContent() {
         return false;
       }
 
-      // Ad-funnel step 3: her account exists and her profile is saved.
-      // Deliberately a Meta *standard* event - it can be an optimization
-      // objective and an audience with no Custom Conversion setup, which is what
-      // makes it the fallback objective while Purchase volume is still below
-      // learning-phase exit. It no longer carries an email (there is none until
-      // Stripe), so it matches on pixel signals alone. An already-active account
-      // takes the early return above and is never counted as a new lead.
-      trackFunnelStep(META_FUNNEL_STEPS.lead);
-
-      sessionStorage.removeItem("pending_quiz_answers");
+      // Ad-funnel step 3, `Lead`, is deliberately NOT fired here any more. It
+      // used to be, deduped in sessionStorage, which made it "once per tab" —
+      // and ads send the same woman back over and over, so every return in a
+      // fresh tab minted another Lead. Since Lead is the fallback optimization
+      // objective while Purchase volume is thin, that inflation taught delivery
+      // to chase repeat clickers. `/api/auth/save-quiz` now sends it from the
+      // server on profile *insert*, where the database can tell a new woman
+      // from a returning one. See `sendMetaLead`.
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error. Please try again.");
@@ -2322,23 +2324,26 @@ function RegisterPageContent() {
     });
   };
 
-  // "None of the above" and "Prefer not to say" clear the clinical flags, and any
-  // clinical flag clears them - see SAFETY_OPTIONS.
+  // "Nothing holds me back" clears the pains, and any pain clears it - see
+  // LIMITATION_OPTIONS.
   //
-  // Ticking an exclusive option also advances the step. It is a complete answer
-  // by definition - there is nothing to add to "none of the above" - so it was
-  // the only single-meaning tap left in the quiz that still demanded a second
-  // press on Next. The clinical rows keep the button, because there she may well
-  // have more than one to tick.
-  const toggleSafetyFlag = (flagId: string) => {
-    const exclusive = SAFETY_OPTIONS.find((o) => o.id === flagId)?.exclusive;
-    const alreadyOn = safetyFlags.includes(flagId);
+  // Ticking the exclusive option also advances the step. It is a complete answer
+  // by definition - there is nothing to add to "nothing holds me back" - so it
+  // was the only single-meaning tap left in the quiz that still demanded a second
+  // press on Next. The pain rows keep the button, because there she may well have
+  // more than one to tick.
+  const toggleLimitation = (limitId: string) => {
+    const exclusive = LIMITATION_OPTIONS.find((o) => o.id === limitId)?.exclusive;
+    const alreadyOn = physicalLimits.includes(limitId);
 
     const apply = () =>
-      setSafetyFlags((prev) => {
-        if (prev.includes(flagId)) return prev.filter((id) => id !== flagId);
-        if (exclusive) return [flagId];
-        return [...prev.filter((id) => !SAFETY_OPTIONS.find((o) => o.id === id)?.exclusive), flagId];
+      setPhysicalLimits((prev) => {
+        if (prev.includes(limitId)) return prev.filter((id) => id !== limitId);
+        if (exclusive) return [limitId];
+        return [
+          ...prev.filter((id) => !LIMITATION_OPTIONS.find((o) => o.id === id)?.exclusive),
+          limitId,
+        ];
       });
 
     if (exclusive && !alreadyOn) selectAndAdvance(apply);
@@ -2355,6 +2360,28 @@ function RegisterPageContent() {
   };
 
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+
+  /**
+   * Un-stick the buy button when she comes Back from Stripe.
+   *
+   * `handleStartCheckout` sets `checkoutLoading` and then leaves the page via
+   * `window.location.href`, so it never clears the flag — there is no "after"
+   * to clear it in. Browsers restore this page from bfcache *exactly as it was*,
+   * spinner and all, so pressing Back at Stripe returned her to a paywall whose
+   * only CTA was permanently disabled. Her sole remaining move was a hard
+   * refresh, and the visitor most likely to press Back at a payment form is
+   * precisely the hesitant one an ad is paying to re-engage.
+   *
+   * `pageshow` with `persisted` is the bfcache restore signal; a normal load
+   * mounts fresh with the flag already false, so the guard costs nothing.
+   */
+  useEffect(() => {
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) setCheckoutLoading(false);
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, []);
   const [syncingPayment, setSyncingPayment] = useState(false);
 
   /**
@@ -2445,6 +2472,20 @@ function RegisterPageContent() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        // She already has an active subscription on this account — the
+        // retargeted customer who walked the funnel a second time. Send her to
+        // what she has already bought instead of showing her a payment error
+        // for the crime of trying to pay us twice. Apple-managed subscriptions
+        // come back with a `manageUrl` and belong in Apple's settings, not ours.
+        if (res.status === 409 && data.error === "already_subscribed") {
+          if (data.manageUrl) {
+            window.location.href = data.manageUrl;
+            return;
+          }
+          router.replace("/dashboard");
+          router.refresh();
+          return;
+        }
         setError(data.error ?? "Could not start checkout. Please try again.");
         setCheckoutLoading(false);
         return;
@@ -2461,8 +2502,24 @@ function RegisterPageContent() {
     }
   };
 
-  // Check for authenticated session and redirect if profile exists.
-  // Do not redirect when in a registration phase that requires the user to keep going.
+  /**
+   * A session is already in the browser — decide whether she belongs in the app
+   * or in the funnel.
+   *
+   * **Gate on access, never on "a profile row exists."** The Supabase session
+   * lives in localStorage forever, so every woman who ever finished the quiz
+   * still has one on her next ad click. Keying off the profile row meant she was
+   * bounced to `/dashboard`, payment-gated by `proxy.ts`, and redirected right
+   * back to `/register?phase=paywall` — landing cold on the price screen with no
+   * quiz, no score, no plan and no relief exercise. Every piece of persuasion the
+   * funnel owns was skipped, for the one visitor who had already said no once,
+   * and the click was paid for.
+   *
+   * So: access → the app. No access → she walks the funnel again, on the same
+   * account. `save-quiz` UPDATEs an existing profile, so a re-run mints no second
+   * account and costs nothing. This now matches `completeRegistration()`, which
+   * has always made the decision this way; the two disagreeing was the bug.
+   */
   useEffect(() => {
     if (
       phase === "calculating" ||
@@ -2481,53 +2538,50 @@ function RegisterPageContent() {
       if (!mounted) return;
 
       try {
-        // Check for session
         const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        
+
         if (sessionError) {
           console.error("Session check error:", sessionError);
           return;
         }
 
-        if (!sessionData?.session?.user) {
-          // No session - user hasn't clicked magic link yet
-          return;
-        }
+        // No session at all: a first-time visitor. Leave her on the start screen.
+        if (!sessionData?.session?.user) return;
 
         const user = sessionData.session.user;
 
-        // Check if profile already exists
-        const { data: existingProfile, error: profileError } = await supabase
-          .from("user_profiles")
-          .select("user_id")
+        // The same read `proxy.ts` and the dashboard layout do. Selecting the
+        // full TRIAL_SELECT_COLS is load-bearing — a partial select makes the
+        // missing columns read as "no dispute, not canceled".
+        const { data: trialRow, error: trialError } = await supabase
+          .from("user_trials")
+          .select(TRIAL_SELECT_COLS)
           .eq("user_id", user.id)
           .maybeSingle();
 
-        if (profileError && profileError.code !== "PGRST116") {
-          console.error("Error checking profile:", profileError);
+        if (trialError) {
+          // Fail toward the funnel, not toward a redirect loop. Worst case she
+          // is shown a paywall she has already paid past, and `/dashboard` is
+          // one tap away; the opposite failure strands a paying customer.
+          console.error("Error checking account state:", trialError);
           return;
         }
 
-        if (existingProfile) {
-          // Profile already exists. If middleware sent us here (?phase=quiz|paywall), the user already
-          // failed the trial/paywall gate - sending them to /dashboard would just bounce back here (infinite loop).
-          // Show the paywall instead.
-          if (mounted) {
-            sessionStorage.removeItem("pending_quiz_answers");
-            const phaseParam = searchParams.get("phase");
-            if (phaseParam === "quiz" || phaseParam === "paywall") {
-              setPhase("paywall");
-            } else {
-              router.replace("/dashboard");
-              router.refresh();
-            }
-          }
+        if (!mounted) return;
+
+        if (trialRow && stateAllowsAccess(getAccountState(trialRow).state)) {
+          // She is paid up. This is the only case that belongs in the app, and
+          // it is the only one `proxy.ts` will not bounce straight back here.
+          router.replace("/dashboard");
+          router.refresh();
           return;
         }
 
-        // Profile doesn't exist - user might need to complete quiz
-        // Only send back to quiz when not in the middle of registration
-        if (mounted && phase !== "results" && phase !== "calculating") {
+        // No access. She stays in the funnel and sees all of it. The only thing
+        // worth honouring is `proxy.ts` sending an account with no onboarding to
+        // `?phase=quiz` — otherwise the start screen is the right landing, and
+        // it is emphatically the right landing for an ad click.
+        if (searchParams.get("phase") === "quiz" && phase !== "quiz") {
           setPhase("quiz");
           setStepIndex(0);
         }
@@ -2537,7 +2591,6 @@ function RegisterPageContent() {
       }
     }
 
-    // Check session on mount
     checkSessionAndRedirect();
 
     return () => {
@@ -4948,29 +5001,30 @@ function RegisterPageContent() {
                 </div>
               )}
 
-              {/* Safety screen. Text rows, not tiles - see SAFETY_OPTIONS. The
-                  reassurance sits in the question itself because that is where
-                  the hesitation is: she is about to type a cancer history into a
-                  page she has not paid for yet. */}
-              {currentStep === "q_safety" && (
+              {/* Physical limitations. Text rows, not tiles - see
+                  LIMITATION_OPTIONS. The subline names the payoff rather than
+                  reassuring her about privacy: nothing here is sensitive, and
+                  what she needs to know is that ticking a box changes the
+                  exercises she is about to be sold. */}
+              {currentStep === "q_limitations" && (
                 <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl font-bold mb-0.5">
-                      Do any of these apply to you?
+                      Does anything hurt or hold you back when you move?
                     </h2>
                     <p className="text-sm text-muted-foreground leading-snug">
-                      This keeps our suggestions safe for you - never shared without your
-                      permission.
+                      Your plan leaves out the exercises that would aggravate it, and swaps
+                      in ones that don&apos;t.
                     </p>
                   </div>
                   <div className="flex-1 flex flex-col justify-center gap-2 min-h-0 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
-                    {SAFETY_OPTIONS.map((option) => {
-                      const isSelected = safetyFlags.includes(option.id);
+                    {LIMITATION_OPTIONS.map((option) => {
+                      const isSelected = physicalLimits.includes(option.id);
                       return (
                         <button
                           key={option.id}
                           type="button"
-                          onClick={() => toggleSafetyFlag(option.id)}
+                          onClick={() => toggleLimitation(option.id)}
                           className={`w-full shrink-0 flex items-center justify-between gap-3 px-4 py-3.5 rounded-2xl border-2 text-left transition-all duration-200 cursor-pointer ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
@@ -4997,7 +5051,7 @@ function RegisterPageContent() {
                   </div>
                   <p className="shrink-0 flex items-center justify-center gap-1.5 text-[11px] text-[#9A9A9A]">
                     <ShieldCheck className="w-3.5 h-3.5" />
-                    Private to your plan. Never sold, never shared.
+                    Tick everything that applies. Your plan works around all of them.
                   </p>
                 </div>
               )}

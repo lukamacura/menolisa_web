@@ -3,6 +3,8 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getAuthenticatedUser } from "@/lib/getAuthenticatedUser";
+import { sendMetaLead } from "@/lib/metaCapi";
+import { leadEventId } from "@/lib/metaPixel";
 
 export const runtime = "nodejs";
 
@@ -18,12 +20,32 @@ const VALID_GOALS = [
 // Multi-select on the quiz's safety screen. Enumerated rather than free strings
 // because these gate what the 8-week plan may suggest — an unrecognised value
 // would be silently ignored by the generator's safety rule.
+//
+// The web funnel stopped asking for these on 2026-08-16 (the screen became
+// `q_limitations`), so web signups now send an empty array. Kept because the
+// Expo app still asks and every profile written before that date carries values
+// the plan generator reads.
 const SAFETY_FLAGS = [
   "breast_cancer",
   "clots_stroke",
   "liver_disease",
   "none",
   "prefer_not",
+] as const;
+
+// Multi-select on the quiz's `q_limitations` screen — what hurts when she moves.
+// Enumerated for the same reason as SAFETY_FLAGS, and more strictly: these ids
+// drive a code-level filter on the exercise pool (`LIMITATION_EXCLUDES` in
+// `lib/plan/catalog.ts`), so a value that doesn't match one there is a knee that
+// silently gets lunges.
+const PHYSICAL_LIMITS = [
+  "back",
+  "knee",
+  "hip",
+  "shoulder",
+  "pelvic_floor",
+  "balance",
+  "none",
 ] as const;
 
 const QuizSchema = z.object({
@@ -42,6 +64,7 @@ const QuizSchema = z.object({
     .optional(),
   relaxation_style: z.enum(["none", "occasional", "routine", "want_to"]).nullable().optional(),
   safety_flags: z.array(z.enum(SAFETY_FLAGS)).max(SAFETY_FLAGS.length).optional(),
+  physical_limits: z.array(z.enum(PHYSICAL_LIMITS)).max(PHYSICAL_LIMITS.length).optional(),
   tried_options: z.array(z.string().max(50)).max(20).optional(),
   hrt_status: z.string().max(50).nullable().optional(),
   doctor_status: z.string().max(50).nullable().optional(),
@@ -97,6 +120,7 @@ export async function POST(request: NextRequest) {
       nutrition_style: quizAnswers.nutrition_style ?? null,
       relaxation_style: quizAnswers.relaxation_style ?? null,
       safety_flags: quizAnswers.safety_flags ?? [],
+      physical_limits: quizAnswers.physical_limits ?? [],
       tried_options: quizAnswers.tried_options ?? [],
       hrt_status: quizAnswers.hrt_status ?? null,
       doctor_status: quizAnswers.doctor_status ?? null,
@@ -115,6 +139,13 @@ export async function POST(request: NextRequest) {
       .select("user_id")
       .eq("user_id", userId)
       .maybeSingle();
+
+    // Captured before the write decides which branch it takes: this is the Lead
+    // signal. "A profile row did not exist for this account until now" is the
+    // only definition of a new lead that survives a woman clicking a second ad
+    // in a fresh tab, on a new phone, three weeks later. See the CAPI send at
+    // the end of this handler.
+    const isNewProfile = !existingProfile;
 
     if (existingProfile) {
       const { error: updateError } = await supabaseAdmin
@@ -174,6 +205,46 @@ export async function POST(request: NextRequest) {
       }
       // If a row already exists (mobile IAP, prior attempt), leave it untouched —
       // the Stripe webhook will flip it to "paid" on checkout completion.
+    }
+
+    // Meta `Lead`, server-side, once per human.
+    //
+    // It used to fire from the browser in `completeRegistration()`, deduped in
+    // sessionStorage — i.e. once per *tab*. Ads send the same woman back
+    // repeatedly, and every return in a fresh tab reported another Lead, so the
+    // count drifted above the number of real people. Lead is the fallback
+    // optimization objective while Purchase volume is thin, so that inflation
+    // is not a reporting nuisance: it understates cost-per-lead and steers
+    // delivery toward women who click ads again without buying.
+    //
+    // Gated on `isNewProfile`, the answer comes from the database instead of
+    // the browser and is therefore correct across tabs, devices and months.
+    //
+    // Mobile is excluded: the Expo app calls this endpoint too, and a phone
+    // signup is not a web ad conversion. Bearer auth is the clean signal — a
+    // funnel visitor authenticates by cookie.
+    const isMobileCaller = request.headers
+      .get("authorization")
+      ?.startsWith("Bearer ");
+
+    if (isNewProfile && !isMobileCaller) {
+      // fbp/fbc/IP/UA are the only things tying this server event back to the ad
+      // click; they exist here because save-quiz runs inside her browser's own
+      // request. Awaited rather than fired-and-forgotten so the serverless
+      // invocation can't be frozen mid-flight, and `sendMetaLead` never throws.
+      await sendMetaLead({
+        eventId: leadEventId(userId),
+        eventTimeSec: Math.floor(Date.now() / 1000),
+        userId,
+        email: user.email?.trim() ? user.email : null,
+        fbp: request.cookies.get("_fbp")?.value,
+        fbc: request.cookies.get("_fbc")?.value,
+        clientIp: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
+        clientUa: request.headers.get("user-agent") ?? undefined,
+        eventSourceUrl: request.headers.get("referer"),
+        symptomCount: quizAnswers.top_problems?.length ?? null,
+        goal: goalValue,
+      });
     }
 
     return NextResponse.json({

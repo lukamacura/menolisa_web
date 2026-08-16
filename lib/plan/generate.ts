@@ -16,6 +16,7 @@ import {
   isCardioId,
   isNutritionId,
   isRelaxationId,
+  limitationLine,
   relaxationDetail,
   relaxationForSymptom,
   type Exercise,
@@ -107,6 +108,7 @@ export type Profile = {
   nutrition_style: string | null;
   relaxation_style: string | null;
   safety_flags: string[] | null;
+  physical_limits: string[] | null;
   qualifier: string | null;
 };
 
@@ -315,6 +317,9 @@ export function buildPrompt(profile: Profile, pool: Exercise[]): string {
     `- Stage: ${profile.here_for ?? "unknown"} · onset: ${profile.menopause_type ?? "unknown"}`,
     `- Age: ${profile.age_band ?? "unknown"} · HRT: ${profile.hrt_status ?? "unknown"}`,
     `- Fitness level: ${profile.fitness_level ?? "beginner"}`,
+    ...(limitationLine(profile.physical_limits)
+      ? [`- Hurts or holds her back when she moves: ${limitationLine(profile.physical_limits)}`]
+      : []),
     `- Eating right now: ${profile.nutrition_style ?? "unknown"} · unwinds: ${profile.relaxation_style ?? "unknown"}`,
     ``,
     `MOVEMENT — pick only these exercise ids, and give ${movement}:`,
@@ -338,6 +343,11 @@ export function buildPrompt(profile: Profile, pool: Exercise[]): string {
     ...(safetyLine(profile.safety_flags)
       ? [
           `- SAFETY — she has: ${safetyLine(profile.safety_flags)}. Never suggest hormone therapy, phytoestrogen or soy loading, herbal supplements, or high-intensity work she has not built up to. Where a task touches this, keep it to food, movement, sleep and breathing, and tell her to clear anything else with her doctor.`,
+        ]
+      : []),
+    ...(limitationLine(profile.physical_limits)
+      ? [
+          `- She has ${limitationLine(profile.physical_limits)}. The exercise ids above have ALREADY had everything that aggravates that removed, so build from them normally — do not apologise for the plan, do not tell her to skip anything, and never name a movement that isn't in the list. Where a "why" touches the sore part, say what the move does for it.`,
         ]
       : []),
     ...(profile.menopause_type === "surgical" || profile.menopause_type === "medical"
@@ -812,7 +822,11 @@ export async function buildPlan(p: Profile, userId?: string | null): Promise<Pla
   // One run id across both calls, so the admin panel can add them up into the
   // cost of *a plan* rather than averaging two very differently sized calls.
   const meter: PlanMeter = { userId: userId ?? null, runId: randomUUID() };
-  const pool = allowedExercises(p.fitness_level ?? null, p.top_problems ?? []);
+  const pool = allowedExercises(
+    p.fitness_level ?? null,
+    p.top_problems ?? [],
+    p.physical_limits ?? []
+  );
   const vol = MOVEMENT_VOLUME[p.fitness_level ?? "beginner"] ?? MOVEMENT_VOLUME.beginner;
 
   const fallback = fallbackPlan(p, pool);
@@ -925,7 +939,7 @@ export async function generatePlan(userId: string): Promise<void> {
   const { data: profile } = await supabaseAdmin
     .from("user_profiles")
     .select(
-      "name, top_problems, symptom_impact, goals, goal, age_band, here_for, menopause_type, timing, hrt_status, fitness_level, nutrition_style, relaxation_style, safety_flags, qualifier"
+      "name, top_problems, symptom_impact, goals, goal, age_band, here_for, menopause_type, timing, hrt_status, fitness_level, nutrition_style, relaxation_style, safety_flags, physical_limits, qualifier"
     )
     .eq("user_id", userId)
     .maybeSingle();

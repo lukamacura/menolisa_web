@@ -383,24 +383,112 @@ export function exerciseMedia(id: string): ExerciseMedia | undefined {
 }
 
 /**
+ * What each answer to the quiz's `q_limitations` screen takes off the table.
+ *
+ * The ids are the contract with `LIMITATION_OPTIONS` in
+ * `app/register/page.tsx` and `PHYSICAL_LIMITS` in
+ * `app/api/auth/save-quiz/route.ts`. A stored value matching none of these keys
+ * is silently ignored, which is exactly the failure this exists to prevent —
+ * rename in all three places or nowhere.
+ *
+ * `impact` is the jarring, landing-on-your-joints kind of work, so every
+ * limitation except a sore shoulder drops it wholesale. `ids` is then the
+ * specific list for that body part, and the reasoning is deliberately
+ * conservative: this is an unsupervised plan for a woman who has told us the
+ * part already hurts, so a move stays out if it is a common aggravator, not
+ * only if it is contraindicated.
+ *
+ * "none" is not a key — she is saying nothing applies, so nothing is removed.
+ */
+const LIMITATION_EXCLUDES: Record<string, { impact: boolean; ids: string[] }> = {
+  // Loaded spinal flexion, hinging under load and anything that hangs or drags
+  // the spine.
+  back: {
+    impact: true,
+    ids: ["L04", "L08", "P03", "P04", "P05", "C03", "C04", "K10"],
+  },
+  // Lunges, step-ups and deep loaded knee flexion. L01 box squat and L02
+  // bodyweight squat stay — sitting to a chair is the knee-friendly pattern and
+  // dropping it would leave her no lower-body strength work at all.
+  knee: {
+    impact: true,
+    ids: ["L04", "L05", "L06", "L07", "L08", "C01", "K11"],
+  },
+  hip: {
+    impact: true,
+    ids: ["L04", "L07", "L08", "P05", "K10"],
+  },
+  // Overhead, hanging, and pressing from the floor. No impact rule — a sore
+  // shoulder is not a reason to drop cardio.
+  shoulder: {
+    impact: false,
+    ids: ["U04", "U06", "U07", "U08", "U11", "U12", "C03"],
+  },
+  // Anything that spikes intra-abdominal pressure. Heavy carries and heavy
+  // hinging go with the jumping.
+  pelvic_floor: {
+    impact: true,
+    ids: ["C03", "C04", "K10", "L04", "P05"],
+  },
+  // Unstable surfaces and anything she could fall from or during. B01 and B04 —
+  // the *supported* balance holds — stay in on purpose: they are the training
+  // for this, not a risk of it.
+  balance: {
+    impact: true,
+    ids: ["B02", "B03", "L08", "K10"],
+  },
+};
+
+/**
  * The exercises this user may be given.
  *
  * `movement_snacks` is a cadence, not a difficulty — it gets short, no-setup
- * moves she can do many times a day. Joint pain removes high-impact work; that
- * filter runs in code, never in the prompt, so a model can't opt out of it.
+ * moves she can do many times a day. Joint pain and the `q_limitations` answers
+ * remove work she shouldn't be given; those filters run in code, never in the
+ * prompt, so a model can't opt out of them.
+ *
+ * The pool is never emptied by this: a beginner ticking every limitation still
+ * keeps 20 exercises, including lower body, upper body, core, balance, cardio
+ * and mobility. Adding a limitation means re-checking that — the exclusions are
+ * a hard gate, and a gate that starves the generator produces a worse plan than
+ * one that lets a step-up through.
  */
 export function allowedExercises(
   fitnessLevel: string | null,
-  topProblems: string[]
+  topProblems: string[],
+  physicalLimits: string[] = []
 ): Exercise[] {
   const maxLevel = fitnessLevel === "advanced" ? 3 : fitnessLevel === "medium" ? 2 : 1;
   const snacksOnly = fitnessLevel === "movement_snacks";
+  const rules = physicalLimits.map((l) => LIMITATION_EXCLUDES[l]).filter(Boolean);
+  const excludedIds = new Set(rules.flatMap((r) => r.ids));
+  const noImpact = rules.some((r) => r.impact);
+
   return EXERCISES.filter((e) => {
     if (snacksOnly ? !e.snack : e.level > maxLevel) return false;
     if (topProblems.includes("joint_pain") && e.impact === "high") return false;
+    if (noImpact && e.impact === "high") return false;
+    if (excludedIds.has(e.id)) return false;
     return true;
   });
 }
+
+/** Her limitations as a readable list, for the plan prompt. Null when none apply. */
+export function limitationLine(physicalLimits: string[] | null): string | null {
+  const named = (physicalLimits ?? [])
+    .map((l) => LIMITATION_LABEL[l])
+    .filter(Boolean);
+  return named.length ? named.join(", ") : null;
+}
+
+const LIMITATION_LABEL: Record<string, string> = {
+  back: "lower back pain",
+  knee: "knee pain",
+  hip: "hip pain",
+  shoulder: "neck or shoulder pain",
+  pelvic_floor: "pelvic floor problems / leaking",
+  balance: "balance problems or dizziness",
+};
 
 /** Weekly movement volume by fitness level. `perDay` marks the snack cadence. */
 export const MOVEMENT_VOLUME: Record<string, { sessions: number; minutes: number; perDay: boolean }> = {

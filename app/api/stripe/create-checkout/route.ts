@@ -92,7 +92,12 @@ export async function POST(req: NextRequest) {
     const useMobileReturns =
       customSuccess && customCancel;
 
-    // Block double-subscribe: refuse if user already has an active subscription managed by another provider.
+    // Block double-subscribe.
+    //
+    // Two shapes of the same mistake, and the funnel makes both reachable: it
+    // asks for no email, so nothing before the card recognises a returning
+    // customer, and a retargeting ad puts her back at the paywall as readily as
+    // it puts a stranger there.
     {
       const supabaseAdmin = getSupabaseAdmin();
       const { data: existing } = await supabaseAdmin
@@ -100,10 +105,35 @@ export async function POST(req: NextRequest) {
         .select("provider, account_status, subscription_ends_at")
         .eq("user_id", user.id)
         .maybeSingle();
+
+      // (1) This account is already paid up with Stripe. Previously only a
+      // *foreign* provider was blocked, so a customer who clicked a retargeting
+      // ad in the browser she bought in walked back through the funnel and was
+      // sold a second $59 subscription against the same account. Refusing here
+      // costs nothing — she has access; the client sends her to the dashboard.
+      const endsMs = existing?.subscription_ends_at
+        ? new Date(existing.subscription_ends_at).getTime()
+        : 0;
+      if (
+        existing?.account_status === "paid" &&
+        endsMs > Date.now() &&
+        (!existing.provider || existing.provider === "stripe")
+      ) {
+        return NextResponse.json(
+          {
+            error: "already_subscribed",
+            provider: "stripe",
+            message: "You already have an active subscription.",
+          },
+          { status: 409 }
+        );
+      }
+
+      // (2) An active subscription managed by someone else (Apple IAP).
       if (existing?.provider && existing.provider !== "stripe") {
-        const endsMs = existing.subscription_ends_at
-          ? new Date(existing.subscription_ends_at).getTime()
-          : 0;
+        // A missing period end counts as active here, unlike in (1): an IAP row
+        // we can't date is still someone else's live subscription, and selling
+        // a second one on top is worse than making her tap through to Apple.
         const stillActive =
           existing.account_status === "paid" && (!endsMs || endsMs > Date.now());
         if (stillActive) {
