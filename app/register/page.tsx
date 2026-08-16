@@ -43,6 +43,7 @@ import {
   Ban,
   Droplets,
   Pill,
+  Sparkles,
 } from "lucide-react";
 import { PaywallView } from "@/components/PaywallView";
 import MetaPurchaseTracker from "@/components/MetaPurchaseTracker";
@@ -226,6 +227,33 @@ const SYMPTOM_IMPACT_OPTIONS = [
   { id: "moderate", label: "It gets in the way", hint: "Most days I'm pushing through it" },
   { id: "severe", label: "It runs my life", hint: "I plan my days around it" },
 ];
+
+// Green/amber/red so the three levels read as a scale before she reads a word.
+// Full class strings, never interpolated - Tailwind only ships classes it can
+// find as literal text in the source.
+const IMPACT_TONE: Record<
+  string,
+  { idle: string; selected: string; dot: string; label: string }
+> = {
+  mild: {
+    idle: "border-[#2E9E6B]/30 hover:border-[#2E9E6B]/70 hover:bg-[#2E9E6B]/5",
+    selected: "border-[#2E9E6B] bg-[#2E9E6B]/10 shadow-md shadow-[#2E9E6B]/20",
+    dot: "bg-[#2E9E6B]",
+    label: "text-[#1F7A50]",
+  },
+  moderate: {
+    idle: "border-[#E0A32E]/30 hover:border-[#E0A32E]/70 hover:bg-[#E0A32E]/5",
+    selected: "border-[#E0A32E] bg-[#E0A32E]/10 shadow-md shadow-[#E0A32E]/20",
+    dot: "bg-[#E0A32E]",
+    label: "text-[#A9741A]",
+  },
+  severe: {
+    idle: "border-[#DB4F45]/30 hover:border-[#DB4F45]/70 hover:bg-[#DB4F45]/5",
+    selected: "border-[#DB4F45] bg-[#DB4F45]/10 shadow-md shadow-[#DB4F45]/20",
+    dot: "bg-[#DB4F45]",
+    label: "text-[#B23A31]",
+  },
+};
 
 // Her tapped level, on the same 0-3 intensity scale calculateWellbeingScore uses.
 const IMPACT_VALUE: Record<string, number> = { mild: 1, moderate: 2, severe: 3 };
@@ -937,6 +965,167 @@ function HighlightSweep({
         />
       )}
     </span>
+  );
+}
+
+// Results reveal: her letter rises out of an envelope.
+//
+// The whole thing is CSS boxes, one clip-path and one inline SVG - no new
+// asset, no Lottie, no canvas - so it costs nothing to download and paints the
+// same on a five-year-old Android as on an iPhone. The only property animated
+// per frame is a transform (plus one opacity on entry), which is the pair the
+// compositor handles without touching layout; there is no width, top or
+// margin animation anywhere in here.
+//
+// Geometry is percentages of one 10:11 container, so it scales with the
+// column instead of needing breakpoints. Read it bottom-up, in % from the
+// container's bottom edge:
+//
+//     0-46%   envelope body, the front face she sees        (z-30)
+//    16-46%   flap, closed - hinged along its top edge      (z-40)
+//              ...rotateX(-180deg) lands it at 46-76%       (z-10)
+//     9-94%   the letter, parked 64% of its own height low  (z-20)
+//
+// The frame is taller than it is wide because the envelope is the packaging,
+// not the point: the shorter the pocket, the more sheet clears its mouth, and
+// the illustration she is actually here to see gets that room.
+//
+// The envelope has to reach the container floor exactly. Float it even a few
+// percent and the letter, parked below it, shows as a sliver under the
+// envelope before it has any business being seen.
+//
+// The flap has to be *in front of* the body while it's shut and *behind* the
+// letter once it's open, so its z-index is swapped once, in a zero-duration
+// step partway through the fold. Nothing overlaps the flap at that instant -
+// the letter is still parked inside the pocket - which is the only reason the
+// swap is invisible. That is an invariant, not a coincidence: the swap must
+// land before LETTER_DELAY, or she watches the sheet slide up *behind* the
+// open flap. Everything else keeps a static z-index.
+const ENVELOPE_EASE = [0.22, 1, 0.36, 1] as const;
+const FLAP_DELAY = 0.2;
+const FLAP_DURATION = 0.55;
+const FLAP_ZSWAP = FLAP_DELAY + FLAP_DURATION / 2; // 0.475s
+const LETTER_DELAY = 0.58;
+
+function EnvelopeReveal({ src }: { src: string }) {
+  const prefersReducedMotion = useReducedMotion();
+
+  // Reduced motion gets the finished picture: envelope open, letter out, no
+  // travel. `initial={false}` on each mover skips the animation entirely.
+  const still = Boolean(prefersReducedMotion);
+
+  return (
+    <div
+      className="relative mx-auto w-full max-w-[300px] sm:max-w-[320px]"
+      style={{
+        background:
+          "radial-gradient(58% 46% at 50% 60%, rgba(255,141,161,0.20), rgba(255,141,161,0) 72%)",
+      }}
+    >
+      {/* Decorative in full: the score card below carries the same "Your
+          results" heading and the number itself, so announcing this would only
+          make a screen reader read the payoff twice. */}
+      <motion.div
+        aria-hidden
+        initial={still ? false : { opacity: 0, scale: 0.94 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.45, ease: ENVELOPE_EASE }}
+        // The letter is parked below the frame before it rises, so the frame
+        // has to clip.
+        className="relative w-full aspect-10/11 overflow-hidden"
+      >
+        {/* ── The letter ─────────────────────────────────────────────────
+            Rides up with its face already printed, rather than fading its
+            contents in on arrival - paper that arrives blank and then fills
+            reads as a loading state, not as a letter. */}
+        <motion.div
+          initial={still ? false : { y: "64%", rotate: 0 }}
+          animate={{ y: "0%", rotate: still ? 0 : [0, -1.2, 0] }}
+          transition={{
+            y: { duration: 0.8, delay: LETTER_DELAY, ease: ENVELOPE_EASE },
+            rotate: { duration: 0.8, delay: LETTER_DELAY, times: [0, 0.5, 1], ease: "easeInOut" },
+          }}
+          className="absolute inset-x-[6%] top-[6%] bottom-[9%] z-20 rounded-xl border border-[#EFE2DE] bg-white shadow-[0_14px_26px_-16px_rgba(61,61,61,0.55)]"
+        >
+          {/* Everything printed on the sheet lives in its top 56% - the band
+              that clears the envelope's mouth once the letter is out. The rest
+              of the sheet is inside the pocket forever, so ink down there is
+              ink she never sees. */}
+          <div className="absolute inset-x-0 top-0 flex h-[56%] flex-col items-center px-3 pt-2.5">
+            <div className="flex items-center gap-1.5">
+              <Sparkles className="w-3 h-3 text-primary shrink-0" />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#9A9A9A]">
+                Your results
+              </span>
+            </div>
+            <div className="relative mt-1 w-full flex-1">
+              <Image
+                src={src}
+                alt=""
+                fill
+                sizes="(max-width: 640px) 62vw, 280px"
+                className="object-contain"
+                priority
+              />
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ── The flap ───────────────────────────────────────────────────
+            A rectangle cut to a downward triangle by clip-path, hinged along
+            its top edge. clip-path is applied in the element's own coordinate
+            space, so the shape folds with the element and the apex ends up
+            pointing away from the envelope, as a real flap does. */}
+        <motion.div
+          initial={still ? false : { rotateX: 0, zIndex: 40 }}
+          animate={{ rotateX: -180, zIndex: 10 }}
+          transition={{
+            rotateX: { duration: FLAP_DURATION, delay: FLAP_DELAY, ease: ENVELOPE_EASE },
+            zIndex: { duration: 0, delay: FLAP_ZSWAP },
+          }}
+          style={{
+            clipPath: "polygon(0% 0%, 100% 0%, 50% 100%)",
+            transformOrigin: "50% 0%",
+            transformPerspective: 700,
+            background: "linear-gradient(180deg,#F7E7E3 0%,#EAD1CB 100%)",
+            zIndex: still ? 10 : undefined,
+          }}
+          className="absolute inset-x-0 bottom-[16%] h-[30%]"
+        />
+
+        {/* ── The envelope body ──────────────────────────────────────────
+            Static. The seams are one preserveAspectRatio="none" SVG so they
+            stay pinned to the corners at any width, with non-scaling strokes
+            so the fold lines never thicken as the box grows.
+
+            The shadow is thrown *upward* on purpose. A downward one would be
+            clipped by the frame, and pointing it up costs nothing and buys the
+            detail that sells the whole illusion: the envelope's mouth casting
+            a shadow onto the sheet coming out of it. It lands because the body
+            paints above the letter (z-30 over z-20). */}
+        <div
+          className="absolute inset-x-0 bottom-0 z-30 h-[46%] overflow-hidden rounded-b-2xl rounded-t-md border border-[#E3CFC9] shadow-[0_-10px_18px_-8px_rgba(61,61,61,0.4)]"
+          style={{ background: "linear-gradient(180deg,#FBEFEC 0%,#F1DBD5 100%)" }}
+        >
+          <svg
+            viewBox="0 0 100 60"
+            preserveAspectRatio="none"
+            className="absolute inset-0 h-full w-full"
+            aria-hidden
+          >
+            <path d="M0 0 L50 34 L100 0 Z" fill="rgba(0,0,0,0.035)" />
+            <path d="M0 60 L50 26 L100 60 Z" fill="rgba(255,255,255,0.55)" />
+            <path
+              d="M0 60 L50 26 L100 60"
+              fill="none"
+              stroke="rgba(196,166,158,0.6)"
+              strokeWidth="1"
+              vectorEffect="non-scaling-stroke"
+            />
+          </svg>
+        </div>
+      </motion.div>
+    </div>
   );
 }
 
@@ -2142,28 +2331,18 @@ function RegisterPageContent() {
             animate={{ opacity: 1 }}
             className="max-w-md mx-auto w-full pt-2"
           >
-            {/* Results image */}
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.05 }}
-              className="mb-4 mx-auto w-full sm:w-5/6 md:w-2/3"
-            >
-              <Image
-                src="/results.webp"
-                alt="Your menopause results"
-                width={500}
-                height={300}
-                className="w-full object-contain"
-                priority
-              />
-            </motion.div>
+            {/* Results image, delivered: the envelope opens and her letter
+                rises out of it. The copy below is re-timed to cascade behind
+                the letter rather than land on top of it - see the delays. */}
+            <div className="mb-3">
+              <EnvelopeReveal src="/results.webp" />
+            </div>
 
             {/* Headline */}
             <motion.h1
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
+              transition={{ delay: 0.75 }}
               className="text-3xl sm:text-4xl font-normal text-[#3D3D3D] text-center leading-tight mb-2"
             >
               <span className="font-bold">{firstName.trim() || "You"}</span>
@@ -2174,7 +2353,7 @@ function RegisterPageContent() {
             <motion.p
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
+              transition={{ delay: 0.85 }}
               className="text-sm text-[#5A5A5A] text-center leading-relaxed mb-4"
             >
               {getSeverityPainText(derivedSeverity, topProblems.length, firstName || "you")}
@@ -2189,7 +2368,7 @@ function RegisterPageContent() {
                 <motion.div
                   initial={{ opacity: 0, y: 16 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3 }}
+                  transition={{ delay: 0.95 }}
                   className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-4 shadow-md shadow-primary/5"
                 >
                   <div className="flex items-center justify-between mb-2.5">
@@ -2233,7 +2412,7 @@ function RegisterPageContent() {
                 <motion.div
                   initial={{ opacity: 0, y: 16 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.35 }}
+                  transition={{ delay: 1.02 }}
                   className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-4 shadow-md shadow-primary/5"
                 >
                   {/* The headline stat - one number that frames everything below */}
@@ -2284,7 +2463,7 @@ function RegisterPageContent() {
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                transition={{ delay: 0.4 }}
+                transition={{ delay: 1.08 }}
                 className="flex flex-wrap gap-1.5 justify-center mb-6"
               >
                 {topProblems.map((s) => (
@@ -2305,7 +2484,7 @@ function RegisterPageContent() {
                 <motion.div
                   initial={{ opacity: 0, y: 16 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.45 }}
+                  transition={{ delay: 1.14 }}
                   className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-5 shadow-md shadow-primary/5"
                 >
                   <h2 className="text-base font-bold text-[#3D3D3D] mb-0.5">You&apos;re not alone</h2>
@@ -2363,7 +2542,7 @@ function RegisterPageContent() {
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: 0.7 }}
+              transition={{ delay: 1.22 }}
               className="flex items-center justify-center gap-2 text-xs text-[#5A5A5A] mb-5 px-2 text-left"
             >
               <TrendingUp className="w-4 h-4 text-info shrink-0" />
@@ -3953,28 +4132,39 @@ function RegisterPageContent() {
                   <div className="flex-1 flex flex-col justify-center gap-2.5 min-h-0 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
                     {SYMPTOM_IMPACT_OPTIONS.map((level) => {
                       const isSelected = symptomImpact === level.id;
+                      const tone = IMPACT_TONE[level.id];
                       return (
                         <button
                           key={level.id}
                           type="button"
                           onClick={() => selectAndAdvance(() => setSymptomImpact(level.id))}
                           className={`w-full shrink-0 flex items-center justify-between gap-3 px-4 py-3.5 rounded-2xl border-2 text-left transition-all duration-200 cursor-pointer ${
-                            isSelected
-                              ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
-                              : "border-foreground/15 hover:border-primary/50"
+                            isSelected ? tone.selected : tone.idle
                           }`}
                         >
-                          <span className="min-w-0">
-                            <span className="block font-semibold text-sm sm:text-base text-[#3D3D3D]">
-                              {level.label}
-                            </span>
-                            <span className="block text-xs text-[#8A8A8A] leading-tight mt-0.5">
-                              {level.hint}
+                          <span className="flex items-center gap-3 min-w-0">
+                            <span
+                              aria-hidden
+                              className={`w-2.5 h-2.5 shrink-0 rounded-full ${tone.dot}`}
+                            />
+                            <span className="min-w-0">
+                              <span
+                                className={`block font-semibold text-sm sm:text-base ${
+                                  isSelected ? tone.label : "text-[#3D3D3D]"
+                                }`}
+                              >
+                                {level.label}
+                              </span>
+                              <span className="block text-xs text-[#8A8A8A] leading-tight mt-0.5">
+                                {level.hint}
+                              </span>
                             </span>
                           </span>
                           {isSelected ? (
-                            <span className="w-5 h-5 shrink-0 rounded-full bg-primary flex items-center justify-center animate-in zoom-in duration-200">
-                              <Check className="w-3 h-3 text-primary-foreground" strokeWidth={3} />
+                            <span
+                              className={`w-5 h-5 shrink-0 rounded-full flex items-center justify-center animate-in zoom-in duration-200 ${tone.dot}`}
+                            >
+                              <Check className="w-3 h-3 text-white" strokeWidth={3} />
                             </span>
                           ) : (
                             <span className="w-5 h-5 shrink-0 rounded-full border-2 border-foreground/20" />

@@ -150,9 +150,9 @@ Rules:
 - Relaxation tasks need item_id and cadence "daily" (or "per_day" with a target).
   Match the item to her worst symptom: hot flashes get breath_hotflash, night
   waking gets breath_sleep, anxiety or palpitations get breath_sigh.
-- Movement tasks need an exercises array of 3-6 ids with sets/reps, or minutes for
-  cardio. Title the session as a whole ("Lower body strength"), never after one
-  exercise.
+- Movement tasks need an exercises array of 3-6 ids with sets/seconds, or minutes
+  for one continuous block. Every dose is time — there are no repetitions. Title
+  the session as a whole ("Lower body strength"), never after one exercise.
 - Titles and focus lines are sentence case: "Steady the basics", not
   "Steady The Basics".
 - Add difficulty gradually. Never introduce more than one new thing per week.
@@ -172,7 +172,7 @@ wine, cravings suggest the 3pm sugar. Never suggest quitting a medication or HRT
 Return JSON: {"weeks":[{"number":1,"title":"...","focus":"...",
 "nutrition_focus":["protein_25_30g"],"tasks":[{"pillar":"...","title":"...",
 "why":"...","cadence":"...","target":1,"item_id":"...",
-"exercises":[{"id":"L01","sets":3,"reps":10}]}]}],
+"exercises":[{"id":"L01","sets":3,"seconds":40}]}]}],
 "resist_suggestions":[{"title":"...","why":"..."}]}
 ```
 

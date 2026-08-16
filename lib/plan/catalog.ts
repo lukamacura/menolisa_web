@@ -11,18 +11,20 @@ export type Impact = "none" | "low" | "high";
 /**
  * What an exercise's dose is actually measured in.
  *
- * The plan JSON only ever stored `sets`/`reps`/`minutes`, and the generator's
- * rule was "K prefix gets minutes, everything else gets sets and reps". That is
- * true for a squat and false for a wall sit, which came out as "3 × 10 reps" of
- * a thing you hold. It went unnoticed while the app only printed the number in a
- * chip; a session timer has to decide what to count down, so it has to be right.
+ * **Every dose is time.** Repetitions are gone from the plan entirely: a set is
+ * a number of seconds of work, and the app counts them down. That is the whole
+ * simplification — one thing on the screen, one thing to obey, and no set where
+ * she has to keep a count in her head while the phone shows her something else.
+ * `sets` survives, because how many times she comes back to a movement is a real
+ * part of the prescription.
  *
- * - `reps`     — self-paced repetitions. The timer counts the REST, never the work.
- * - `hold`     — an isometric. The seconds are the dose; the timer counts the work.
- * - `carry`    — loaded carry. Honestly measured in time, not repetitions.
+ * - `timed`    — sets of work for time. Squats, presses, rows: she moves at her
+ *                own tempo for the seconds prescribed.
+ * - `hold`     — an isometric. Same shape, but she is holding one position.
+ * - `carry`    — loaded carry. Time was always the honest measure for it.
  * - `duration` — one continuous block (all cardio, plus the mobility flow).
  */
-export type DoseUnit = "reps" | "hold" | "carry" | "duration";
+export type DoseUnit = "timed" | "hold" | "carry" | "duration";
 
 export type Exercise = {
   id: string;
@@ -35,12 +37,12 @@ export type Exercise = {
   snack: boolean;
   /** What this exercise's dose is measured in. */
   dose: DoseUnit;
-  /** True when the dose is per limb — "10 each leg", and a hold runs twice per set. */
+  /** True when the dose is per limb — the set runs twice, once per side. */
   perSide: boolean;
   /**
-   * Starting seconds per set for `hold`/`carry`, or the block length for
-   * `duration`. A floor and a fallback, not the dose — the plan prescribes how
-   * long a hold actually runs in a given week, and that grows across the eight.
+   * Starting seconds per set, or the block length for `duration`. A floor and a
+   * fallback, not the dose — the plan prescribes how long a set actually runs in
+   * a given week, and that grows across the eight.
    */
   seconds?: number;
 };
@@ -119,10 +121,10 @@ const E: [string, string, string, 1 | 2 | 3, Impact, boolean][] = [
 ];
 
 /**
- * Every exercise whose dose is NOT plain both-sides repetitions.
+ * Every exercise whose dose is NOT a plain both-sides timed set.
  *
  * Listed as exceptions rather than as a seventh column on `E` so the table above
- * stays readable — anything absent from here is `["reps", false]`, which is the
+ * stays readable — anything absent from here is `["timed", false]`, which is the
  * honest default for the squat/press/row/hinge families that make up most of the
  * catalog. Cardio is handled by prefix below and never needs a row here.
  *
@@ -141,12 +143,12 @@ const DOSE: Record<string, [DoseUnit, boolean, number?]> = {
   C04: ["carry", false, 40],
   C05: ["carry", false, 40],
   C06: ["carry", false, 40],
-  // Unilateral rep work — "10 reps" means 10 per leg, and always has.
-  C02: ["reps", true],
-  L05: ["reps", true],
-  L06: ["reps", true],
-  L07: ["reps", true],
-  L08: ["reps", true],
+  // Unilateral work — the seconds are per leg, so the set runs twice.
+  C02: ["timed", true],
+  L05: ["timed", true],
+  L06: ["timed", true],
+  L07: ["timed", true],
+  L08: ["timed", true],
   // A flow, not a set. Five minutes of moving through positions.
   M01: ["duration", false, 300],
 };
@@ -155,7 +157,7 @@ const DOSE: Record<string, [DoseUnit, boolean, number?]> = {
 const CARDIO_DEFAULT_SECONDS = 900;
 
 export const EXERCISES: Exercise[] = E.map(([id, name, props, level, impact, snack]) => {
-  const [dose, perSide, seconds] = DOSE[id] ?? (isCardioId(id) ? (["duration", false, CARDIO_DEFAULT_SECONDS] as const) : (["reps", false, undefined] as const));
+  const [dose, perSide, seconds] = DOSE[id] ?? (isCardioId(id) ? (["duration", false, CARDIO_DEFAULT_SECONDS] as const) : (["timed", false, undefined] as const));
   return { id, name, props, level, impact, snack, dose, perSide, seconds };
 });
 
@@ -163,9 +165,9 @@ const BY_ID = new Map(EXERCISES.map((e) => [e.id, e]));
 export const getExercise = (id: string): Exercise | undefined => BY_ID.get(id);
 
 /**
- * Cardio is the one family measured in minutes rather than sets and reps —
- * "Zone 2 walk, 2 sets of 10" is not a thing. The `K` prefix is the marker, and
- * this is the only place that knowledge lives.
+ * Cardio is the one family measured in minutes rather than sets of seconds —
+ * "Zone 2 walk, 3 sets of 40 seconds" is not a thing. The `K` prefix is the
+ * marker, and this is the only place that knowledge lives.
  */
 export function isCardioId(id: string) {
   return id.startsWith("K");
@@ -184,7 +186,7 @@ const isMobilityId = (id: string) => id.startsWith("M");
  * Loaded work at level 3 needs the full ninety; a neck circle needs almost none.
  */
 const REST_BY_UNIT: Record<DoseUnit, [number, number, number]> = {
-  reps: [45, 60, 90],
+  timed: [45, 60, 90],
   hold: [45, 45, 60],
   carry: [60, 60, 75],
   duration: [0, 0, 0],
@@ -195,23 +197,29 @@ export function restSeconds(exercise: Exercise): number {
   return REST_BY_UNIT[exercise.dose][exercise.level - 1];
 }
 
-/** Roughly how long one controlled repetition takes at this population's tempo. */
-const SECONDS_PER_REP = 3;
+/**
+ * Roughly how long one controlled repetition takes at this population's tempo.
+ *
+ * Only used to read plans generated before the dose became time — those rows
+ * stored `reps`, and a stored plan is never regenerated, so "3 × 10" has to keep
+ * turning into something a timer can run for the rest of that plan's eight weeks.
+ */
+const LEGACY_SECONDS_PER_REP = 3;
 
 /** Fallbacks for a stored row that carries nothing usable for its unit. */
 const DEFAULT_SETS = 3;
-const DEFAULT_REPS = 10;
 
 /**
  * Safe bounds for a timed dose, by unit.
  *
- * The model writes the seconds so that a hold can grow from 20 to 60 across the
+ * The model writes the seconds so that a set can grow from 25 to 60 across the
  * eight weeks — that progression is the point of the plan and it cannot come
  * from a constant. What it does not get is an unbounded number: a two-minute
  * wall sit prescribed to a woman new to loading is an injury, not an ambitious
  * week, so its answer is clamped into a range a physio would sign off on.
  */
-const SECONDS_RANGE: Record<"hold" | "carry", { min: number; max: number }> = {
+const SECONDS_RANGE: Record<"timed" | "hold" | "carry", { min: number; max: number }> = {
+  timed: { min: 15, max: 90 },
   hold: { min: 10, max: 90 },
   carry: { min: 15, max: 120 },
 };
@@ -222,10 +230,8 @@ export type HydratedDose = {
   perSide: boolean;
   /** Working sets. Always at least 1; `duration` is always exactly 1. */
   sets: number;
-  /** `reps` only — repetitions per set (per side when `perSide`). */
-  reps?: number;
-  /** `hold`/`carry` — seconds per set (per side when `perSide`). `duration` — the whole block. */
-  seconds?: number;
+  /** Seconds per set (per side when `perSide`). `duration` — the whole block. */
+  seconds: number;
   /** Seconds between sets. Zero for `duration`. */
   restSeconds: number;
   /** Estimated total seconds including rest between sets, for the session's time estimate. */
@@ -239,10 +245,10 @@ const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, M
  *
  * The split of responsibility here is the whole design:
  *
- * - The **catalog** owns `unit` and `perSide`. Whether a wall sit is held or
- *   repeated is a fact about the exercise, identical for every woman and every
- *   week. Asking a model to restate it eight times per user is eight chances to
- *   get it wrong for no benefit, and it got it wrong every time.
+ * - The **catalog** owns `unit` and `perSide`. Whether a wall sit is held still
+ *   or worked through is a fact about the exercise, identical for every woman
+ *   and every week. Asking a model to restate it eight times per user is eight
+ *   chances to get it wrong for no benefit, and it got it wrong every time.
  * - The **catalog** owns `restSeconds`, derived from unit and level. Rest is
  *   safety-adjacent and the model has needed a guardrail on every other number.
  * - The **model** owns the dose values, because the dose is the plan: it is what
@@ -250,6 +256,10 @@ const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, M
  *
  * Everything the model writes is clamped into a safe band. A missing or absurd
  * value falls back rather than failing — a plan is never lost over a number.
+ *
+ * `stored.reps` only appears on plans generated before the dose became time. It
+ * is converted at a controlled tempo rather than dropped, so those plans keep
+ * running with numbers that still mean what they meant.
  */
 export function hydrateDose(
   exercise: Exercise,
@@ -272,26 +282,14 @@ export function hydrateDose(
     };
   }
 
+  // timed | hold | carry — one shape: sets of seconds, run once per side.
   const sets = clamp(stored.sets ?? DEFAULT_SETS, 1, 6);
-
-  if (exercise.dose === "reps") {
-    const reps = clamp(stored.reps ?? DEFAULT_REPS, 1, 50);
-    return {
-      unit: "reps",
-      perSide: exercise.perSide,
-      sets,
-      reps,
-      restSeconds: rest,
-      estimatedSeconds: sets * reps * sides * SECONDS_PER_REP + (sets - 1) * rest,
-    };
-  }
-
-  // hold | carry — the model's seconds, clamped. A stored `reps` on one of these
-  // is meaningless by definition and is ignored, not converted.
   const range = SECONDS_RANGE[exercise.dose];
-  const seconds = stored.seconds
-    ? clamp(stored.seconds, range.min, range.max)
+  const written = stored.seconds ?? (stored.reps ? stored.reps * LEGACY_SECONDS_PER_REP : undefined);
+  const seconds = written
+    ? clamp(written, range.min, range.max)
     : exercise.seconds ?? range.min;
+
   return {
     unit: exercise.dose,
     perSide: exercise.perSide,
@@ -319,7 +317,7 @@ export function defaultDoseForWeek(
   week: number,
   sessionMinutes: number,
   exerciseCount: number
-): { sets?: number; reps?: number; seconds?: number; minutes?: number } {
+): { sets?: number; seconds?: number; minutes?: number } {
   const band = week <= 2 ? 0 : week <= 5 ? 1 : 2;
 
   if (exercise.dose === "duration") {
@@ -329,11 +327,11 @@ export function defaultDoseForWeek(
   }
 
   const sets = [2, week <= 4 ? 2 : 3, 3][band];
-
-  if (exercise.dose === "reps") return { sets, reps: [10, 12, 14][band] };
-
   const range = SECONDS_RANGE[exercise.dose];
-  return { sets, seconds: clamp([25, 40, 55][band], range.min, range.max) };
+  // A per-side set runs its seconds twice, so the same number would be twice the
+  // work — and a session of them would quietly run double the minutes promised.
+  const ladder = exercise.perSide ? [15, 25, 35] : [25, 40, 55];
+  return { sets, seconds: clamp(ladder[band], range.min, range.max) };
 }
 
 /**

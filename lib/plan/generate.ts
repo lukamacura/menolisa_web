@@ -53,8 +53,11 @@ export type PlanTask = {
   /**
    * The prescribed dose per exercise, written by the model and clamped in
    * `sanitize()`. Which of these fields *apply* is a property of the exercise,
-   * not of the plan — the catalog decides that a wall sit is held rather than
-   * repeated, and `hydrateDose()` reads the matching field at request time.
+   * not of the plan — the catalog decides that a walk is one continuous block,
+   * and `hydrateDose()` reads the matching field at request time.
+   *
+   * `reps` is only ever present on plans stored before the dose became time.
+   * Nothing writes it now; `hydrateDose()` converts it on the way out.
    */
   exercises?: { id: string; sets?: number; reps?: number; seconds?: number; minutes?: number }[];
 };
@@ -156,7 +159,6 @@ const TaskSchema = z.object({
           z.string().max(8)
         ),
         sets: optNum(6),
-        reps: optNum(50),
         seconds: optNum(120),
         minutes: optNum(90),
       })
@@ -257,16 +259,15 @@ function planJsonSchema(pool: Exercise[]) {
                     items: {
                       type: "object",
                       additionalProperties: false,
-                      required: ["id", "sets", "reps", "seconds", "minutes"],
+                      required: ["id", "sets", "seconds", "minutes"],
                       properties: {
                         // Her allowed pool only — this is the line that makes
                         // an out-of-pool or invented exercise impossible.
                         id: { type: "string", enum: pool.map((e) => e.id) },
                         sets: nullableInt,
-                        reps: nullableInt,
-                        // Holds and carries. The catalog still decides *that* an
-                        // id is held rather than repeated; the model only says
-                        // for how long, and how that grows over the eight weeks.
+                        // Seconds of work per set. There is no reps field to
+                        // reach for: every dose in the plan is time, so the
+                        // model's only job is how long, and how that grows.
                         seconds: nullableInt,
                         minutes: nullableInt,
                       },
@@ -302,8 +303,8 @@ export function buildPrompt(profile: Profile, pool: Exercise[]): string {
   const [minEx, maxEx] = vol.perDay ? [2, 3] : [4, 6];
   // Only the ones she can actually be given — naming ids outside her pool would
   // invite her to be given them.
-  const heldForTime = pool.filter((e) => e.dose === "hold" || e.dose === "carry").map((e) => e.id);
   const continuous = pool.filter((e) => e.dose === "duration").map((e) => e.id);
+  const perSide = pool.filter((e) => e.perSide).map((e) => e.id);
 
   return [
     `Woman in menopause. Build her 8-week plan.`,
@@ -349,31 +350,27 @@ export function buildPrompt(profile: Profile, pool: Exercise[]): string {
     `- Relaxation tasks need item_id and cadence "daily" (or "per_day" with a target). Match the item to her worst symptom: hot flashes get breath_hotflash, night waking gets breath_sleep, anxiety or palpitations get breath_sigh.`,
     `- Movement tasks need an exercises array of ${minEx}-${maxEx} DIFFERENT ids — a session, not one move. Fewer than ${minEx} is a failed week.`,
     ``,
-    `DOSE — every exercise gets exactly one of these three shapes. Send null for the fields that don't apply:`,
+    `DOSE — every exercise is measured in TIME. There are no repetitions anywhere in this plan: she works for the seconds you prescribe and the app counts them down. Never write a rep count in a title or a "why". Every exercise gets one of these two shapes, with null for the fields that don't apply:`,
     // Not simply "ids starting with K": M01 is a continuous flow, so it is
-    // measured in minutes too, and asking for reps of it produces a dose that
+    // measured in minutes too, and asking for sets of it produces a dose that
     // hydrateDose() has to throw away.
     ...(continuous.length
       ? [
-          `- Measured in minutes — ${continuous.join(", ")}: "minutes" only, never more than ${cardioMinutes(vol.minutes, minEx)}. "sets", "reps" and "seconds" are null.`,
+          `- One continuous block — ${continuous.join(", ")}: "minutes" only, never more than ${cardioMinutes(vol.minutes, minEx)}. "sets" and "seconds" are null.`,
         ]
       : []),
-    ...(heldForTime.length
+    `- Everything else: "sets" and "seconds" only — "seconds" is how long ONE set runs. "minutes" is null.`,
+    ...(perSide.length
       ? [
-          // The catalog decides *that* these are held rather than repeated, and
-          // hydrateDose() reads "seconds" for them however the model answers. The
-          // model's job is only how long, and how that grows — but ask for reps
-          // here and it starts writing titles that count repetitions of a wall sit.
-          `- Held or carried for time — ${heldForTime.join(", ")}: "sets" and "seconds" only. "reps" and "minutes" are null. Never write a title or a "why" that counts repetitions of these.`,
+          `- ${perSide.join(", ")} are worked one side at a time, so "seconds" is per side and the set runs twice. Keep them shorter than a both-sides move.`,
         ]
       : []),
-    `- Everything else: "sets" and "reps" only. "seconds" and "minutes" are null.`,
     ``,
     `PROGRESSION — this is the point of an 8-week plan. The same exercise must not carry the same numbers in week 1 and week 8.`,
-    `- Weeks 1-2: 2 sets. 8-10 reps. Holds 20-30 seconds.`,
-    `- Weeks 3-5: 2-3 sets. 10-12 reps. Holds 30-45 seconds.`,
-    `- Weeks 6-8: 3 sets. 12-15 reps. Holds 45-60 seconds.`,
-    `- Move one number at a time. Add reps or seconds before adding a set, and never raise both in the same week.`,
+    `- Weeks 1-2: 2 sets. 25-30 seconds per set.`,
+    `- Weeks 3-5: 2-3 sets. 30-45 seconds per set.`,
+    `- Weeks 6-8: 3 sets. 45-60 seconds per set.`,
+    `- Move one number at a time. Add seconds before adding a set, and never raise both in the same week.`,
     `- Cardio minutes climb too, within the cap above.`,
     `- If you bring an exercise back in a later week, it gets the later week's dose — never a smaller one than it had before.`,
     `- Title each movement session after what is actually in it, and give all 8 weeks different titles. Never title a session after one exercise, and never repeat a title you have already used.`,
@@ -392,7 +389,7 @@ export function buildPrompt(profile: Profile, pool: Exercise[]): string {
     `quitting a medication or HRT. "why" is one warm sentence, no shame, and the`,
     `banned phrases above apply to it too.`,
     ``,
-    `Return JSON: {"weeks":[{"number":1,"title":"...","focus":"...","nutrition_focus":["protein_25_30g"],"tasks":[{"pillar":"movement","title":"...","why":"...","cadence":"weekly","target":2,"item_id":null,"exercises":[{"id":"...","sets":3,"reps":12,"seconds":null,"minutes":null},{"id":"C01","sets":3,"reps":null,"seconds":45,"minutes":null},{"id":"K01","sets":null,"reps":null,"seconds":null,"minutes":12}]},{"pillar":"relaxation","title":"...","why":"...","cadence":"daily","target":1,"item_id":"breath_sleep","exercises":null},{"pillar":"habit","title":"...","why":"...","cadence":"daily","target":1,"item_id":null,"exercises":null}]}],"resist_suggestions":[{"title":"...","why":"..."}]}`,
+    `Return JSON: {"weeks":[{"number":1,"title":"...","focus":"...","nutrition_focus":["protein_25_30g"],"tasks":[{"pillar":"movement","title":"...","why":"...","cadence":"weekly","target":2,"item_id":null,"exercises":[{"id":"...","sets":3,"seconds":40,"minutes":null},{"id":"C01","sets":3,"seconds":45,"minutes":null},{"id":"K01","sets":null,"seconds":null,"minutes":12}]},{"pillar":"relaxation","title":"...","why":"...","cadence":"daily","target":1,"item_id":"breath_sleep","exercises":null},{"pillar":"habit","title":"...","why":"...","cadence":"daily","target":1,"item_id":null,"exercises":null}]}],"resist_suggestions":[{"title":"...","why":"..."}]}`,
   ].join("\n");
 }
 
@@ -454,7 +451,6 @@ function sanitize(
           .map((e) => ({
             id: e.id,
             sets: e.sets ?? undefined,
-            reps: e.reps ?? undefined,
             seconds: e.seconds ?? undefined,
             minutes: e.minutes ?? undefined,
           }));

@@ -80,7 +80,7 @@ copywriter**, never an author of content.
 | Which exercises exist, their names, equipment, level, impact | Catalog | `EXERCISES` in `lib/plan/catalog.ts` |
 | Which exercises *she* may be given | Code | `allowedExercises(fitness_level, top_problems)` — joint pain removes high impact |
 | How many movement sessions, and how long | Code | `MOVEMENT_VOLUME[fitness_level]` — the model's cadence/target is overwritten |
-| Which exercises go in a session, and sets/reps/minutes | **LLM**, filtered to her pool | topped up by code if it under-delivers |
+| Which exercises go in a session, and sets/seconds/minutes | **LLM**, filtered to her pool | topped up by code if it under-delivers |
 | Session title, week title, week focus, task `why` | **LLM** | ungated copy — see §7 |
 | Which relaxation practice each week | **LLM**, by id | title is forced back to the catalog label |
 | The breathing pattern, rounds, timings | Catalog | `RELAXATION` — never in `plan` |
@@ -119,7 +119,9 @@ type PlanTask = {
   why: string;                    // ≤200 chars, second person
   cadence: "daily" | "weekly" | "per_day";
   target: number;                 // completions a full period takes
-  exercises?: { id: string; sets?: number; reps?: number; minutes?: number }[];
+  // Every dose is time: sets of seconds, or minutes for one continuous block.
+  // `reps` survives only on plans stored before 2026-08-15, converted on read.
+  exercises?: { id: string; sets?: number; seconds?: number; minutes?: number; reps?: number }[];
 };
 ```
 
@@ -159,13 +161,17 @@ identity stored — `name`, `props` and video URLs are joined from the catalog a
 read time and are **not** in the row.
 
 Each entry carries the dose the model prescribed for that exercise *in that
-week*, in exactly one of three shapes:
+week*. **Every dose is time** — there are no repetitions anywhere in the plan —
+so there are only two shapes:
 
 | Exercise kind | Fields sent | Example |
 |---|---|---|
-| Repeated | `sets` + `reps` | `{"id":"L01","sets":3,"reps":12}` |
-| Held or carried | `sets` + `seconds` | `{"id":"C01","sets":3,"seconds":45}` |
+| A set of anything | `sets` + `seconds` | `{"id":"L01","sets":3,"seconds":40}` |
 | Cardio (`K*`) or a flow | `minutes` | `{"id":"K01","minutes":12}` |
+
+`reps` appears only on plans stored before 2026-08-15. Nothing writes it now;
+`hydrateDose()` converts it to seconds on the way out so those plans keep
+running.
 
 #### Who decides what
 
@@ -173,16 +179,21 @@ This is the line that matters, and it is not "the model writes the plan":
 
 | Fact | Owner | Why |
 |---|---|---|
-| Whether an id is repeated, held, carried or timed (`unit`) | **Catalog** | A fact about the exercise, identical for every woman and every week |
+| Whether an id is worked, held, carried or continuous (`unit`) | **Catalog** | A fact about the exercise, identical for every woman and every week |
 | Whether it is per side (`perSide`) | **Catalog** | Same |
 | Rest between sets (`restSeconds`) | **Catalog**, from unit + level | Safety-adjacent; the model gets no vote |
-| How many sets, reps, seconds, minutes — and how they grow | **LLM** | This *is* the plan. A constant cannot make week 8 harder than week 1 |
+| How many sets, seconds, minutes — and how they grow | **LLM** | This *is* the plan. A constant cannot make week 8 harder than week 1 |
 
 The generator used to give sets and reps to everything that was not cardio, so a
 wall sit came out as "3 × 10 reps" of a thing you hold and a step-up as "10 reps"
 when it meant 10 *per leg*. Putting `unit` in the catalog rather than the plan is
 what makes that unrepresentable: the model is never asked the question it kept
 getting wrong, and it cannot answer it even if it tries.
+
+Repetitions went the same way, and for the same reason. A rep count and a
+countdown are two instructions competing for one screen — the session showed her
+a draining ring while asking her to count to twelve. Now the seconds *are* the
+instruction, on every step, and `sets` carries the progression.
 
 #### `dose` — what the API actually returns
 
@@ -191,33 +202,29 @@ a single `dose` object, built by `hydrateDose()` in `lib/plan/catalog.ts`:
 
 ```ts
 dose: {
-  unit: "reps" | "hold" | "carry" | "duration";
-  perSide: boolean;          // "10 each leg"; a hold runs twice per set
+  unit: "timed" | "hold" | "carry" | "duration";
+  perSide: boolean;          // the set runs twice, and `seconds` is per side
   sets: number;              // always >= 1; `duration` is always 1
-  reps?: number;             // `reps` only
-  seconds?: number;          // per set for hold/carry, whole block for duration
+  seconds: number;           // per set (per side when perSide); whole block for duration
   restSeconds: number;       // between sets; 0 for duration
   estimatedSeconds: number;  // including rest, for the session time estimate
 }
 ```
 
 Everything the model wrote is **clamped into a safe band**, never trusted raw —
-holds to 10-90s, carries to 15-120s, sets to 1-6, reps to 1-50, cardio to the
-per-session cap. A 600-second wall sit prescribed to a woman new to loading is an
-injury, not an ambitious week. A value that is missing or nonsense falls back to
-the catalog's starting dose; a plan is never lost over a number.
+timed sets to 15-90s, holds to 10-90s, carries to 15-120s, sets to 1-6, cardio to
+the per-session cap. A 600-second wall sit prescribed to a woman new to loading is
+an injury, not an ambitious week. A value that is missing or nonsense falls back
+to the catalog's starting dose; a plan is never lost over a number.
 
-A dose field that does not belong to the exercise's unit is ignored rather than
-converted — `reps` on a hold means nothing, so it does not become seconds.
-
-`sets`, `reps`, `seconds` and `minutes` are still sent alongside `dose` for
-clients that predate it.
+The raw stored fields are still sent alongside `dose` for clients that predate
+it.
 
 #### Progression
 
-The prompt asks for a ladder — weeks 1-2 open at 2 sets / 8-10 reps / 20-30s
-holds, weeks 3-5 build, weeks 6-8 reach 3 sets / 12-15 reps / 45-60s — moving one
-number at a time and never shrinking a dose an exercise already had.
+The prompt asks for a ladder — weeks 1-2 open at 2 sets of 25-30s, weeks 3-5
+build to 30-45s, weeks 6-8 reach 3 sets of 45-60s — moving one number at a time
+and never shrinking a dose an exercise already had.
 
 `defaultDoseForWeek()` in the catalog mirrors that same ladder, and is used by
 the deterministic fallback plan and by the top-up that fills a session the model
@@ -276,9 +283,9 @@ trimmed:
           "cadence": "weekly",
           "target": 2,
           "exercises": [
-            { "id": "L01", "sets": 3, "reps": 10 },
-            { "id": "L02", "sets": 3, "reps": 10 },
-            { "id": "U01", "sets": 2, "reps": 12 },
+            { "id": "L01", "sets": 3, "seconds": 40 },
+            { "id": "L02", "sets": 3, "seconds": 40 },
+            { "id": "U01", "sets": 2, "seconds": 30 },
             { "id": "K03", "minutes": 15 }
           ]
         },

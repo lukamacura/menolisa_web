@@ -320,6 +320,52 @@ stored dose for a hold or a carry.
 - `restSeconds` is a prescription derived in code, not a suggestion the model
   wrote. Do not replace it with a constant.
 
+> Superseded in part by §11 — `unit` no longer has a `"reps"` case.
+
+---
+
+## 11. `GET /api/plan` — every dose is time now (**breaking**) — 2026-08-15
+
+Repetitions are gone from the movement plan. Every exercise is prescribed as
+**sets of seconds**, and `dose.unit === "reps"` is never sent again.
+
+```jsonc
+{
+  "id": "L01",
+  "name": "Box squat",
+  "props": "Sturdy chair",
+  "sets": 3, "seconds": 40,     // the raw stored dose — no `reps` on new plans
+  "dose": {
+    "unit": "timed",            // "timed" | "hold" | "carry" | "duration"
+    "perSide": false,           // true means the set runs twice, seconds per side
+    "sets": 3,
+    "seconds": 40,              // per set (per side when perSide); whole block for duration
+    "restSeconds": 60,
+    "estimatedSeconds": 240
+  }
+}
+```
+
+- `"reps"` is replaced by `"timed"`: sets of work for time, at her own tempo.
+  `hold`, `carry` and `duration` are unchanged.
+- `dose.reps` is gone, and `dose.seconds` is now present on **every** unit — so
+  a session timer has one rule: count `seconds` down, always.
+- `perSide` no longer depends on the unit. Any per-side exercise runs its
+  seconds once per side, with a switch between — including the step-ups and
+  bird-dogs that used to be "10 each leg" in a single work step.
+- Plans stored before today still carry `reps` in the raw fields. The server
+  converts them to seconds inside `dose` at request time, so those plans keep
+  running unchanged; nothing new is ever written with `reps`.
+- The LLM no longer has a `reps` field to fill in at all.
+
+**Why:** a rep count and a countdown are two different instructions competing for
+one screen. She was shown a draining ring while being asked to count to twelve,
+which is the one thing a woman mid-squat cannot do. Time is the instruction a
+session can actually give her, and `sets` still carries the progression.
+
+**What the app should do:** read `dose.seconds` for every unit, drop any
+rep-specific UI, and treat an unknown `unit` as timed.
+
 ---
 
 ## Quick checklist
@@ -335,5 +381,6 @@ stored dose for a hold or a carry.
 - [ ] Render nutrition rows from `target` / `count`, not as plain checkboxes
 - [ ] Drop any hardcoded nutrition labels, groups or the count of nine
 - [ ] Surface each nutrition row's `why` (tap-to-open, expander, info sheet)
-- [ ] Read `exercises[].dose` for reps/sets/holds; keep the flat fields as fallback
+- [ ] Read `exercises[].dose` for sets and seconds; keep the flat fields as fallback
 - [ ] Show "each side" wherever `dose.perSide` is true
+- [ ] Remove every rep count from the UI — `dose.unit` is never `"reps"` again
