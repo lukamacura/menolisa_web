@@ -3,7 +3,14 @@
 /** Browser-side `fbq` wrappers. Safe to call before the pixel script loads - the
  *  inline snippet installs a stub that queues calls until fbevents.js arrives. */
 
-import type { MetaFunnelStep } from "@/lib/metaPixel";
+import {
+  META_QUIZ_STEP_EVENT,
+  META_SCROLL_BUCKETS,
+  META_SCROLL_EVENT,
+  quizStepOnceKey,
+  scrollDepthOnceKey,
+  type MetaFunnelStep,
+} from "@/lib/metaPixel";
 
 export type FbTrackParams = Record<string, unknown>;
 export type FbTrackOptions = { eventID?: string };
@@ -56,4 +63,31 @@ export function trackFbOnce(
  */
 export function trackFunnelStep(step: MetaFunnelStep, params?: FbTrackParams): void {
   trackFbOnce(step.onceKey, step.name, params);
+}
+
+/**
+ * One `QuizStep` per question, carrying its index and id. Deduped per index, so
+ * walking back and forward again reports nothing new - the number Events
+ * Manager shows for index N is "women who ever reached question N", which is
+ * exactly the denominator a drop curve needs.
+ */
+export function trackQuizStep(index: number, stepId: string, total: number): void {
+  trackFbOnce(quizStepOnceKey(index), META_QUIZ_STEP_EVENT, {
+    step_index: index + 1,
+    step_id: stepId,
+    step_total: total,
+  });
+}
+
+/**
+ * Scroll depth on the plan screen, reported once per bucket crossed. Called from
+ * a scroll handler, so it must stay cheap: the buckets are a fixed four-element
+ * array and `trackFbOnce` short-circuits on a sessionStorage hit.
+ */
+export function trackPlanScrollDepth(percent: number): void {
+  for (const bucket of META_SCROLL_BUCKETS) {
+    if (percent >= bucket) {
+      trackFbOnce(scrollDepthOnceKey(bucket), META_SCROLL_EVENT, { depth: bucket });
+    }
+  }
 }

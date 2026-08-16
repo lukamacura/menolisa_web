@@ -231,13 +231,20 @@ function PlanFinishLine({
 
 // Scannable 2x2 grid, one promise per box. At the payment moment she scans
 // rather than reads, so every box is a 2-3 word headline with one support line.
+//
+// Box 1 used to read "One payment / $59 covers all 8 weeks", which sat about
+// 100px under the price card's "renews every 8 weeks" and flatly contradicted
+// it. This grid is the part of the page she *scans* rather than reads, so the
+// false half is the half that lands - and a subscriber who believed "one
+// payment" disputes the week-8 charge. The reassurance she actually needs here
+// is that the renewal is escapable, which is both true and stronger.
 const trustLabels = (price: string) => [
   {
     icon: CreditCard,
     bg: "bg-pink-100",
     fg: "text-pink-600",
-    title: "One payment",
-    sub: `${price} covers all ${PLAN_WEEKS} weeks`,
+    title: `Cancel before week ${PLAN_WEEKS}`,
+    sub: `and the ${price} is all you ever pay`,
   },
   {
     icon: Zap,
@@ -319,7 +326,7 @@ export function PaywallView({
             onClick={onBack}
             className="flex items-center gap-1 text-xs text-[#9A9A9A] hover:text-[#5A5A5A] mb-2 self-start transition-colors"
           >
-            <ArrowLeft className="w-3.5 h-3.5" /> Back to my overview
+            <ArrowLeft className="w-3.5 h-3.5" /> Back
           </button>
         )}
 

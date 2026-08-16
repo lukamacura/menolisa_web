@@ -341,10 +341,17 @@ export function getScoreBenchmark(ageBand: string): number {
 }
 
 // Higher score = better, so a score below the cohort benchmark means symptoms are hitting harder.
+//
+// These used to read "lower than average" / "higher than average", which is
+// only interpretable if you already know which direction the scale runs - and
+// the results card never said. "Lower" sounds bad, "higher" sounds good, and on
+// this scale that happens to be right, but she has to reason it out at the exact
+// moment we want her reading rather than decoding. Each verdict now states the
+// meaning instead of the direction, so it survives being read on its own.
 export function getScoreVerdict(score: number, benchmark: number): string {
-  if (score <= benchmark - 4) return "lower than average";
-  if (score >= benchmark + 4) return "higher than average";
-  return "about average";
+  if (score <= benchmark - 4) return "hitting you harder than most women your age";
+  if (score >= benchmark + 4) return "hitting you more gently than most women your age";
+  return "about as hard as it hits most women your age";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

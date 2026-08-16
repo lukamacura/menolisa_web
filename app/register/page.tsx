@@ -4,7 +4,15 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import {
+  motion,
+  AnimatePresence,
+  animate,
+  useMotionValue,
+  useReducedMotion,
+  useTransform,
+  type MotionValue,
+} from "framer-motion";
 import { supabase } from "@/lib/supabaseClient";
 import {
   getAccountState,
@@ -19,7 +27,6 @@ import {
   ArrowLeft,
   CheckCircle2,
   Goal,
-  AlertTriangle,
   UserCircle,
   Check,
   TrendingUp,
@@ -34,18 +41,16 @@ import {
   Lock,
   Salad,
   Beef,
-  Nut,
   Wheat,
-  Apple,
   Footprints,
-  Timer,
   Hourglass,
-  Ban,
   Droplets,
-  Pill,
   Sparkles,
 } from "lucide-react";
 import { PaywallView } from "@/components/PaywallView";
+// The identical component used to be defined a second time in this file, with a
+// narrower `variant` union that had already drifted from the shared one.
+import { HighlightSweep } from "@/components/HighlightSweep";
 import MetaPurchaseTracker from "@/components/MetaPurchaseTracker";
 import { SocialProofPolaroid } from "@/components/SocialProof";
 import { PlanStage } from "@/components/PlanStage";
@@ -57,11 +62,15 @@ import {
 } from "@/lib/pricing";
 import { getSymptomTransforms } from "@/lib/testimonials";
 import { GOAL_PROMISE, getOfferPromise } from "@/lib/planTimeline";
-import { trackFunnelStep } from "@/lib/metaPixelClient";
-import AnimatedCounter from "@/components/landing/AnimatedCounter";
+import {
+  trackFunnelStep,
+  trackPlanScrollDepth,
+  trackQuizStep,
+} from "@/lib/metaPixelClient";
 import {
   SYMPTOM_LABELS,
   AGE_BAND_LABELS,
+  SCORE_GOAL,
   TYPICAL_SYMPTOM_SEVERITY,
   getScoreBenchmark,
   getScoreVerdict,
@@ -354,11 +363,30 @@ const SAFETY_OPTIONS = [
 const TILE_FOOTER_BASE = "shrink-0 flex items-center px-2.5 py-1.5 min-h-[2.5rem]";
 const TILE_LABEL = "font-semibold text-[11px] leading-tight text-white min-w-0";
 
-// Loading messages shown on the calculating screen (hoisted: stable across renders).
+// ─── The calculating screen ─────────────────────────────────────────────────
+// This loader is not a spinner, it is the receipt for the price. She is about to
+// be asked $59 for a plan whose entire claim is that it was built from her 13
+// answers, and the only evidence she will ever get that any computation happened
+// is the time this screen takes and what it says while it runs.
+//
+// It used to run 3 seconds across 3 messages on a 1s interval, which meant the
+// one line that names the product - "Designing your plan..." - was on screen for
+// a single second before a hard cut to results. Three seconds does not read as
+// work; it reads as a transition. Now it runs 6.5s with a visible percentage, so
+// the wait is legible as progress rather than as lag.
+//
+// Not longer than that: past ~8s a loader stops buying credibility and starts
+// buying abandonment, and she has already spent two minutes on the quiz.
+const CALCULATING_MS = 6500;
+
+// Named steps, so the wait reads as a sequence of things being done to her
+// answers rather than one indeterminate pause. The last two name the product.
 const LOADING_MESSAGES = [
-  "Taking it all in...",
+  "Reading your answers...",
   "Comparing you to thousands of women like you...",
-  "Designing your plan...",
+  "Matching habits to your symptoms...",
+  "Building your 8 weeks...",
+  "Almost ready...",
 ];
 
 // Distinct color per loading state (smooth, on-brand).
@@ -366,7 +394,16 @@ const LOADING_MESSAGE_COLORS = [
   "#E91E8C", // vivid pink
   "#0EA5E9", // vivid sky blue
   "#7C3AED", // vivid purple
+  "#0EA5E9", // vivid sky blue
+  "#E91E8C", // vivid pink
 ];
+
+// The counter climbs to this and waits. It never shows 100: the screen advances
+// the instant the save lands, so a visible 100 would either be a lie about work
+// still in flight or a frame of dead air. Stalling at 99 is the honest version
+// of both, and on a slow network it is also the only thing telling her the page
+// has not frozen.
+const CALCULATING_MAX_PCT = 99;
 
 // Images shown on each step, so we can preload the *next* step while the user
 // answers the current one (next/image lazy-loads, so otherwise tiles flash blank
@@ -386,23 +423,34 @@ const STEP_IMAGES: Partial<Record<Step, string[]>> = {
   q8_name: [`/quiz/${QUIZ_ILLUSTRATION.q8_name}`],
 };
 
-// Screenshots of the plan itself - the daily task list and one shot per pillar.
-// These masters don't exist yet; flip PLAN_SHOTS_READY once they're in
-// assets/diagnosys/ and `npm run optimize-images` has run. Until then the plan
-// block renders complete without them rather than requesting broken images.
-const PLAN_SHOTS_READY = false;
+// Screenshots of the plan itself. `day` is the hero and is treated differently
+// from every other shot on the page: full width, no tilt, no crop, no fade. It
+// is the only image in the funnel that has to be *read* rather than glanced at -
+// it carries "Day 1 · Week 1", the phase name, and all four pillars with real
+// progress on them, which is the entire offer in one frame. The supporting three
+// are allowed to be decorative because they only have to prove the app is real.
 const PLAN_SHOTS = {
-  day: "/diagnosys/plan_day.webp",
-  movement: "/diagnosys/movement.webp",
-  nutrition: "/diagnosys/nutrition.webp",
-  relaxation: "/diagnosys/relaxation.webp",
+  day: "/screenshots/screen1.webp",
+  nutrition: "/screenshots/screen2.webp",
+  habits: "/screenshots/screen3.webp",
+  rewards: "/screenshots/screen4.webp",
 };
 
-// Real app screenshots used on the diagnosis step. Preloaded while she reads her
+// Intrinsic size of the /screenshots masters. Passed to next/image so the
+// reserved box matches the file's real aspect ratio - the older /diagnosys shots
+// are 1080x2192 and hardcoding those dimensions here would letterbox these.
+const SHOT_W = 1320;
+const SHOT_H = 2868;
+
+// Real app screenshots used on the plan step. Preloaded while she reads her
 // results so the phone shots are already cached and don't pop in one by one.
+// The hero is first: it is the one that must never be seen loading.
 const DIAGNOSIS_SHOTS = [
+  PLAN_SHOTS.day,
   "/diagnosys/8week.webp",
-  ...(PLAN_SHOTS_READY ? Object.values(PLAN_SHOTS) : []),
+  PLAN_SHOTS.nutrition,
+  PLAN_SHOTS.habits,
+  PLAN_SHOTS.rewards,
   "/diagnosys/symptoms1.webp",
   "/diagnosys/insights.webp",
   "/diagnosys/chat.webp",
@@ -429,20 +477,46 @@ function deriveSeverity(totalBurden: number): "mild" | "moderate" | "severe" {
 // the webhook then stamps it onto that same user id. See
 // `completeRegistration()` below and `resolveCheckoutAccount()` in the Stripe
 // webhook.
-type Phase = "start" | "quiz" | "calculating" | "results" | "diagnosis" | "relief" | "nutrition" | "paywall" | "download";
+// `nutrition` used to be its own phase between `relief` and `paywall`. It is now
+// the second half of `relief` - see the NUTRITION_ITEMS note above for why.
+type Phase =
+  | "start"
+  | "quiz"
+  | "calculating"
+  | "results"
+  | "diagnosis"
+  | "relief"
+  | "paywall"
+  | "download";
 
 
-const getScoreColor = (score: number): string => {
-  if (score < 40) return "text-red-500";
-  return "text-orange-500";
-};
+// The score's own colour is deliberately *not* a verdict any more.
+//
+// It used to be red under 40 and orange above - never green, at any value - on a
+// scale where higher is better. So the number always rendered in alarm paint
+// regardless of what it said, and a woman scoring well was shown a warning
+// colour for it. Between that, an ⚠ icon in the card header and a red-to-orange
+// progress fill, the card was three separate signals of "bad" attached to a
+// number whose direction she was never told.
+//
+// The number is now ink-coloured and the *gap* between her and the goal carries
+// the colour, because the gap is the thing the plan closes and therefore the
+// thing she is buying. See <ScoreGauge />.
+const SCORE_INK = "text-[#3D3D3D]";
 
 // Returns the sentence *after* the name, so the name can be rendered bold and
 // the rest regular weight (name carries the emphasis, not the whole line).
+//
+// The severe line used to read ", this can't continue." - a verdict on her life,
+// issued by a website she met four minutes ago. Delivered to a woman who has
+// spent years being told what she should and shouldn't put up with, it lands as
+// one more person telling her how to feel. Stating the finding instead lets her
+// draw the conclusion, which is both less presumptuous and more persuasive: she
+// arrives at "this can't continue" herself, and then it's hers.
 const getSeverityHeadline = (severity: string): string => {
   switch (severity) {
     case "severe":
-      return ", this can't continue.";
+      return ", this is worse than you've been told.";
     case "moderate":
       return ", I need to be honest.";
     case "mild":
@@ -508,15 +582,28 @@ const getSeverityPainText = (
 // Results-step sub: she's here to SEE her results, not to be sold. No price,
 // no "membership", no "guarantee" - any of those reads as a sales tell and
 // breaks trust. Keep it pure forward motion toward her own answers.
-const RESULTS_CTA_SUB = "See the why behind your symptoms, step by step with Lisa.";
+//
+// It used to promise understanding: "See the why behind your symptoms." That is
+// the wrong noun. She did not come here to understand hot flashes, she came to
+// stop having them, and the thing we sell is a plan rather than an explanation.
+// Naming the plan here also closes the loop the start screen opened ("answer 13
+// questions, get your personalized 8-week plan") - the promised object finally
+// exists and the next tap opens it.
+const RESULTS_CTA_SUB = "Built from your 13 answers. Nothing to pay to look.";
 
 // Doorstep to the paywall. This line used to lead with the price and the
 // adherence threshold, which sells before she has agreed to look - and the
 // paywall itself already states both, in full, one tap later. Her objection
 // here isn't "is it worth $59", it's "is this tap the one that costs me
 // something". So the line answers only that, and lets the paywall sell.
+//
+// "Free to look" was the wrong way to say it. One tap before a hard paywall,
+// "free" is the word she carries onto the next screen, and it primes a free
+// tier that does not exist - so the price reads as a bait rather than as the
+// offer. Naming what the next screen actually contains (the plan *and* the
+// price) sets her up to see exactly what she then sees.
 function getCtaCopy(): { sub: string } {
-  return { sub: "Free to look - nothing is charged unless you decide to start." };
+  return { sub: "See your plan and the price. No card needed to look." };
 }
 // First-person CTA label driven by her #1 goal (multi-select; first = primary).
 // Used on the results screen, where the next tap is still about what she wants.
@@ -638,89 +725,56 @@ function getDiagnosisForwardCopy(): { sub: React.ReactNode } {
   return { sub: "Not a pitch - 36 seconds of relief you can use tonight." };
 }
 
-// The relief screen ends on the toolkit at 1 of 4, with three still locked - so
-// the next tap is named as the thing that moves that bar, not as a preview of
-// something ("my day") the next screen never actually shows her.
+// The breathing reward ends on the toolkit at 1 of 4, with three still locked -
+// so the next tap is named as the thing that moves that bar. It no longer
+// changes phase: the checklist is the same screen's next stage, which is why the
+// count is small enough to promise honestly.
 function getReliefForwardCopy(): { sub: React.ReactNode } {
   return { sub: `${NUTRITION_TOTAL} quick taps about today - no wrong answers.` };
 }
 
-// ─── Nutrition checklist: the second app taste ──────────────────────────────
+// ─── Nutrition checklist: the second half of the relief screen ──────────────
 // She ticks what she already did today. The breathing exercise gave her a win;
 // this one shows her the standard, measures her against it, and then removes
 // the shame - the gap is structural, not personal. Ticking it is also the
 // fastest way to teach what a hormone-steady day looks like: a product demo
 // wearing a question. Nothing here is persisted - it's a taste, not intake.
 //
+// **It used to be ten rows in three collapsible groups on its own phase**, which
+// made it the highest-friction unpaid interaction in the funnel - and it sat
+// *after* she had tapped "I'm ready to feel better". Ten taps and a scroll, at
+// the point of maximum intent, to reach a screen whose CTA is a paywall.
+//
+// Five rows, no groups, no scroll, one screen. The count is now honestly framed
+// as five *of* the ten her plan actually runs (see the app's nutrition screen),
+// so the cut doubles as a teaser instead of misrepresenting the product.
+//
 // Array order is priority order (highest-leverage habit first), because the
 // reward screen reuses it to pick her "first 3 swaps" from what she left blank.
 // IDs are the contract with the mobile habit tracker - see docs/plan/pillars.md.
-//
-// The list mirrors the daily vitality log, minus every line of it that was a
-// blank to write in — she is never asked here what she ate or what time she
-// broke her fast, only whether she did the thing. `hint` carries what the paper
-// log gets from printing the same block three times: "every meal" and "6+
-// glasses". In the funnel each row is still one tap; the tracker in the app is
-// where those become three ticks and six glasses.
 type NutritionItem = {
   id: string;
   label: string;
-  /** Cadence, shown as a chip. Omitted for plain once-a-day rows. */
+  /** Cadence, shown inline after the label. Omitted for plain once-a-day rows. */
   hint?: string;
   icon: React.ComponentType<{ className?: string }>;
 };
-type NutritionGroup = {
-  title: string;
-  icon: React.ComponentType<{ className?: string }>;
-  items: NutritionItem[];
-};
 
-const NUTRITION_GROUPS: NutritionGroup[] = [
-  {
-    title: "Every meal",
-    icon: Salad,
-    items: [
-      { id: "protein_25_30g", label: "25-30g protein", hint: "every meal", icon: Beef },
-      { id: "healthy_fats", label: "Healthy fats", hint: "every meal", icon: Nut },
-      { id: "high_fiber", label: "High-fiber food", hint: "every meal", icon: Wheat },
-      { id: "low_gi_fruit", label: "Low-glycemic fruit only", icon: Apple },
-      { id: "post_meal_walk", label: "10-min walk after eating", hint: "every meal", icon: Footprints },
-    ],
-  },
-  {
-    title: "Timing & fasting",
-    icon: Timer,
-    items: [
-      { id: "fast_12h", label: "12-hour overnight fast", icon: Hourglass },
-      { id: "gap_5h", label: "5 hours between meals", icon: Timer },
-      { id: "no_snacking", label: "No snacking between meals", icon: Ban },
-    ],
-  },
-  {
-    title: "Hydration & supplements",
-    icon: Droplets,
-    items: [
-      { id: "water_6", label: "Glasses of water", hint: "6+", icon: Droplets },
-      { id: "supplements", label: "Daily supplements taken", icon: Pill },
-    ],
-  },
+const NUTRITION_ITEMS: NutritionItem[] = [
+  { id: "protein_25_30g", label: "25-30g protein", hint: "every meal", icon: Beef },
+  { id: "post_meal_walk", label: "10-min walk after eating", hint: "every meal", icon: Footprints },
+  { id: "fast_12h", label: "12-hour overnight fast", icon: Hourglass },
+  { id: "high_fiber", label: "High-fiber food", hint: "every meal", icon: Wheat },
+  { id: "water_6", label: "Glasses of water", hint: "6+", icon: Droplets },
 ];
 
-const NUTRITION_ITEMS: NutritionItem[] = NUTRITION_GROUPS.flatMap((g) => g.items);
-const NUTRITION_TOTAL = NUTRITION_ITEMS.length; // 10
-
-// Revealed under the supplements row once it's ticked. Deliberately excluded
-// from the score - they're here to name the three that matter, not to inflate
-// her count.
-const SUPPLEMENT_OPTIONS = [
-  { id: "omega3", label: "Omega-3" },
-  { id: "magnesium", label: "Magnesium" },
-  { id: "d3k2", label: "Vitamin D3 + K2" },
-];
+const NUTRITION_TOTAL = NUTRITION_ITEMS.length; // 5
+/** What the plan actually runs, and what the app's nutrition screen shows. */
+const NUTRITION_PLAN_TOTAL = 10;
 
 // Every tier has to land on "you need the plan" - but for opposite reasons, and
 // none of them may shame her. Low scores get easy wins; high scores get the
-// reframe that matters most, because a woman already doing 8 of 10 has concluded
+// reframe that matters most, because a woman already doing 4 of 5 has concluded
 // she's tried everything. Naming her own symptoms back to her turns her
 // diligence into the argument: effort was never the missing piece.
 function getNutritionVerdict(
@@ -736,29 +790,27 @@ function getNutritionVerdict(
       headline: `Clean slate${suffix}.`,
       body: (
         <>
-          Nothing on this list yet - which means all {NUTRITION_TOTAL} of these are easy wins still
-          sitting on the table. Most women start exactly here.
+          Nothing on this list yet - which means all {NUTRITION_TOTAL} are easy wins still sitting
+          on the table. Most women start exactly here.
         </>
       ),
     };
   }
-  if (count <= 3) {
+  if (count <= 2) {
     return {
       headline: `${count} of ${NUTRITION_TOTAL}${suffix}.`,
       body: (
         <>
-          You’re already doing {count} without anyone telling you to. The other {missing} are
-          the ones that move insulin, estrogen and sleep - and they’re what Lisa hands you, one
+          You&apos;re already doing {count} without anyone telling you to. The other {missing} are
+          the ones that move insulin, estrogen and sleep - and they&apos;re what Lisa hands you, one
           day at a time.
         </>
       ),
     };
   }
-  if (count <= 7) {
+  if (count <= 4) {
     return {
-      // "Over halfway" is only true above 5, and a claim she can check and find
-      // wrong costs more than the phrase is worth.
-      headline: `${count} of ${NUTRITION_TOTAL}${count > NUTRITION_TOTAL / 2 ? " - over halfway" : ""}.`,
+      headline: `${count} of ${NUTRITION_TOTAL}${suffix}.`,
       body: (
         <>
           You&apos;re not doing this wrong, and you&apos;re not lazy. You&apos;re missing{" "}
@@ -769,7 +821,7 @@ function getNutritionVerdict(
     };
   }
   return {
-    headline: `${count} of ${NUTRITION_TOTAL}. You're doing almost everything right.`,
+    headline: `All ${NUTRITION_TOTAL}. You're doing everything on this list right.`,
     body: (
       <>
         And you still have{" "}
@@ -797,7 +849,31 @@ function getNutritionVerdict(
 // anyone gets better - so on the diagnosis screen they aren't a list any more:
 // <PlanStage /> plays them inside the plan scroll.
 
-/** Two diverging trajectories over ~2 years: decline if untreated vs. climb with Lisa. */
+/**
+ * Two diverging trajectories: slow decline with no plan vs. the climb her plan
+ * is built to produce.
+ *
+ * The horizon used to contradict itself three ways. The sentence above the chart
+ * said symptoms persist **4-7 years**; the x-axis was labelled **Now / 4 weeks /
+ * 8 weeks**; and the code claimed **~2 years**. As rendered, the red line
+ * therefore asserted she would measurably deteriorate within eight weeks - which
+ * is not what the sentence above it says, is not defensible, and sat directly
+ * above the block where she most needs to believe us.
+ *
+ * The window is now two years, stated on the axis, with one compressed segment:
+ * the first third of the plot is her 8 weeks, the remaining two thirds are the
+ * rest of the two years. That is a broken axis, and it is the honest way to draw
+ * this - the alternative is her whole plan squeezed into 7% of the width, where
+ * the line that matters is invisible. The ticks say exactly where the break is.
+ *
+ * The two lines now make different claims on purpose:
+ *   - green climbs to the goal *by week 8* and then holds, which is precisely
+ *     what the offer promises and nothing more.
+ *   - red drifts down slowly across two years, which is the "persist 4-7 years
+ *     and often get worse before they settle" sentence, drawn.
+ */
+const TRAJ_PLAN_SPLIT = 1 / 3;
+
 function TrajectoryChart({ score }: { score: number }) {
   const W = 320;
   const H = 190;
@@ -812,24 +888,36 @@ function TrajectoryChart({ score }: { score: number }) {
   const easeOut = (t: number) => 1 - Math.pow(1 - t, 2);
 
   const N = 28;
-  const decline = Math.min(Math.max(score - 12, 8), 24);
-  const gain = Math.min(Math.max(82 - score, 16), 60);
+  // Two years of no plan: a drift, not a collapse. Capped well under the old
+  // 8-24 point drop because this now has to be believable over 24 months rather
+  // than dramatic over 8 weeks.
+  const decline = Math.min(Math.max(score - 12, 6), 16);
+  // The climb is the offer: reach the goal line by week 8, then hold it.
+  const target = Math.min(88, Math.max(SCORE_GOAL + 2, score + 18));
   const untreated: [number, number][] = [];
   const treated: [number, number][] = [];
   for (let i = 0; i <= N; i++) {
     const t = i / N;
     untreated.push([xAt(t), yAt(Math.max(10, score - decline * easeOut(t)))]);
-    treated.push([xAt(t), yAt(Math.min(90, score + gain * easeOut(t)))]);
+    // Everything after the split is a plateau - the plan ends at week 8 and we
+    // promise maintenance, not perpetual improvement.
+    const climb = Math.min(1, t / TRAJ_PLAN_SPLIT);
+    treated.push([xAt(t), yAt(score + (target - score) * easeOut(climb))]);
   }
   const toPath = (pts: [number, number][]) =>
     pts.map((p, i) => `${i === 0 ? "M" : "L"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
   const treatedArea = `${toPath(treated)} L${xAt(1)},${H - padBottom} L${padLeft},${H - padBottom} Z`;
   const endU = untreated[untreated.length - 1];
   const endT = treated[treated.length - 1];
-  const goalY = yAt(80);
+  const goalY = yAt(SCORE_GOAL);
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label="Projected menopause score over the next two years">
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="w-full h-auto"
+      role="img"
+      aria-label={`Projected wellbeing score over two years: with the plan, climbing from ${score} to the goal of ${SCORE_GOAL} by week 8 and holding; with no plan, drifting slowly downward.`}
+    >
       <defs>
         <linearGradient id="trajGreen" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#16A34A" stopOpacity="0.20" />
@@ -837,8 +925,21 @@ function TrajectoryChart({ score }: { score: number }) {
         </linearGradient>
       </defs>
 
-      {/* Goal line at 80 */}
+      {/* Goal line */}
       <line x1={padLeft} y1={goalY} x2={xAt(1)} y2={goalY} stroke="#16A34A" strokeWidth="1" strokeDasharray="3 4" opacity="0.45" />
+
+      {/* Where her 8 weeks end and the axis changes scale. Drawn, because a
+          broken axis that isn't marked is a misleading axis. */}
+      <line
+        x1={xAt(TRAJ_PLAN_SPLIT)}
+        y1={padTop - 6}
+        x2={xAt(TRAJ_PLAN_SPLIT)}
+        y2={H - padBottom}
+        stroke="#9A9A9A"
+        strokeWidth="1"
+        strokeDasharray="2 3"
+        opacity="0.5"
+      />
 
       {/* Treated area + lines */}
       <path d={treatedArea} fill="url(#trajGreen)" />
@@ -871,11 +972,136 @@ function TrajectoryChart({ score }: { score: number }) {
       <text x={endU[0] + 8} y={endU[1] + 1} fontSize="12" fill="#EF4444" fontWeight="800">No{" "}plan</text>
       <text x={endU[0] + 8} y={endU[1] + 14} fontSize="10" fill="#EF4444" fontWeight="600" opacity="0.85">worse</text>
 
-      {/* X axis labels */}
+      {/* X axis labels. The middle tick sits on the scale break, so it is
+          labelled with what it is - the end of her plan - rather than with a
+          midpoint the axis does not actually have. */}
       <text x={xAt(0)} y={H - 9} textAnchor="start" fontSize="11" fill="#9A9A9A" fontWeight="500">Now</text>
-      <text x={xAt(0.5)} y={H - 9} textAnchor="middle" fontSize="11" fill="#9A9A9A" fontWeight="500">4 weeks</text>
-      <text x={xAt(1)} y={H - 9} textAnchor="end" fontSize="11" fill="#9A9A9A" fontWeight="500">8 weeks</text>
+      <text x={xAt(TRAJ_PLAN_SPLIT)} y={H - 9} textAnchor="middle" fontSize="11" fill="#3D3D3D" fontWeight="700">Week {PLAN_WEEKS}</text>
+      <text x={xAt(1)} y={H - 9} textAnchor="end" fontSize="11" fill="#9A9A9A" fontWeight="500">2 years</text>
     </svg>
+  );
+}
+
+/**
+ * Her score, drawn so it can be read rather than decoded.
+ *
+ * The card this replaces asked her to work out four things for herself: what the
+ * number measured (the header said only "Your Results"), which direction the
+ * scale ran, which of three unlabelled ticks on an 8px bar was hers, and whether
+ * "lower than average" was good news. At the highest-attention moment in the
+ * funnel, on a screen she waited through a loader to see.
+ *
+ * Four rules here, each one undoing one of those:
+ *
+ *   1. **Name the metric.** "Menopause Wellbeing Score", with "higher is better"
+ *      as a permanent subtitle. One line, and the ambiguity is gone.
+ *   2. **Two markers, both labelled.** Her score above the bar on a pill, the
+ *      goal below it. The cohort benchmark tick is gone from the bar entirely -
+ *      it was a third unlabelled mark competing with the two that matter, and it
+ *      says everything it needs to in the sentence underneath instead.
+ *   3. **Colour the gap, not the score.** The stripe between where she is and
+ *      where the plan takes her is the only coloured thing on the bar, because
+ *      that gap is literally what she is being sold. Her own score is ink.
+ *   4. **Say the gap out loud, as points.** "18 points" is a size. "Lower than
+ *      average" is a mood.
+ */
+function ScoreGauge({
+  scoreMv,
+  score,
+  benchmark,
+  cohortLabel,
+}: {
+  scoreMv: MotionValue<number>;
+  score: number;
+  benchmark: number;
+  cohortLabel: string;
+}) {
+  const prefersReducedMotion = useReducedMotion();
+  const fillWidth = useTransform(scoreMv, (v) => `${v}%`);
+  // The number and the fill are two views of one motion value, so they can't
+  // drift: they used to be a 1.5s setInterval and a 1.2s framer tween racing
+  // each other on the same card, finishing 300ms apart.
+  const rounded = useTransform(scoreMv, (v) => Math.round(v));
+  const gap = Math.max(0, SCORE_GOAL - score);
+  const verdict = getScoreVerdict(score, benchmark);
+
+  return (
+    <div className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-4 shadow-md shadow-primary/5">
+      <div className="flex items-baseline justify-between gap-2 mb-3">
+        <div className="min-w-0">
+          <h2 className="text-sm font-bold text-[#3D3D3D] leading-tight">
+            Menopause Wellbeing Score
+          </h2>
+          <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[#9A9A9A] mt-0.5">
+            Higher is better
+          </p>
+        </div>
+        <p className="flex shrink-0 items-baseline gap-0.5 leading-none">
+          <motion.span className={cn("text-4xl font-black tracking-tight", SCORE_INK)}>
+            {rounded}
+          </motion.span>
+          <span className="text-sm font-semibold text-[#B0B0B0]">/100</span>
+        </p>
+      </div>
+
+      {/* Her marker, above the bar on a connector - the one place it can sit
+          without colliding with the goal label at any score in range. */}
+      <div className="relative h-5">
+        <div
+          className="absolute -translate-x-1/2 flex flex-col items-center"
+          style={{ left: `${score}%` }}
+        >
+          <span className="rounded-full bg-[#3D3D3D] px-1.5 py-0.5 text-[9px] font-bold leading-none text-white whitespace-nowrap">
+            You
+          </span>
+          <span className="h-1.5 w-px bg-[#3D3D3D]/40" />
+        </div>
+      </div>
+
+      <div className="relative h-2.5 rounded-full bg-foreground/10 overflow-hidden">
+        {/* The gap she is buying. Painted under the fill so the fill's leading
+            edge lands cleanly on it as it animates past. */}
+        <motion.div
+          className="absolute top-0 h-full bg-green-500/25"
+          style={{ left: `${score}%`, width: `${gap}%` }}
+          initial={prefersReducedMotion ? false : { opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.6, duration: 0.5 }}
+        />
+        <motion.div
+          className="absolute left-0 top-0 h-full rounded-full bg-[#3D3D3D]/75"
+          style={{ width: fillWidth }}
+        />
+        {/* Goal tick */}
+        <div className="absolute top-0 h-full w-1 rounded-full bg-green-600" style={{ left: `${SCORE_GOAL}%` }} />
+      </div>
+
+      <div className="relative h-4 mt-1">
+        <span
+          className="absolute -translate-x-1/2 text-[10px] font-bold text-green-700 whitespace-nowrap"
+          style={{ left: `${SCORE_GOAL}%` }}
+        >
+          Goal {SCORE_GOAL}
+        </span>
+      </div>
+
+      <p className="text-xs text-[#5A5A5A] leading-snug mt-1.5">
+        Menopause is <span className="font-bold text-[#3D3D3D]">{verdict}</span>.
+      </p>
+      {gap > 0 && (
+        <p className="mt-1.5 flex items-start gap-1.5 text-xs text-[#5A5A5A] leading-snug">
+          <Goal className="w-4 h-4 text-green-600 shrink-0 mt-px" />
+          <span>
+            <span className="font-bold text-[#3D3D3D]">{gap} points</span> is the gap your{" "}
+            {PLAN_WEEKS}-week plan is built to close.
+          </span>
+        </p>
+      )}
+      <p className="sr-only">
+        Your score is {score} out of 100, where higher is better. Typical for {cohortLabel} is
+        around {benchmark}. The goal is {SCORE_GOAL}.
+      </p>
+    </div>
   );
 }
 
@@ -919,55 +1145,6 @@ function CountUpNumber({
   );
 }
 
-// Marker-pen sweep behind a word - the same highlight the diagnosis headline
-// uses, reused wherever a line carries the offer. Pass `active` to drive it from
-// a timer; leave it off and it sweeps when the line scrolls into view.
-function HighlightSweep({
-  children,
-  active,
-  variant = "primary",
-}: {
-  children: React.ReactNode;
-  active?: boolean;
-  variant?: "primary" | "green";
-}) {
-  const prefersReducedMotion = useReducedMotion();
-  const controlled = active !== undefined;
-  const on = !prefersReducedMotion && (controlled ? active : true);
-  const sweep = {
-    className: cn(
-      "absolute inset-0 rounded-sm pointer-events-none px-0.5",
-      variant === "green" ? "bg-green-500/20" : "bg-primary/20"
-    ),
-  };
-
-  return (
-    <span className="relative inline-block">
-      <span className={cn("relative z-10", variant === "green" ? "text-green-700" : "text-primary")}>
-        {children}
-      </span>
-      {controlled ? (
-        <motion.span
-          {...sweep}
-          initial={{ scaleX: 0, transformOrigin: "left" }}
-          animate={on ? { scaleX: 1 } : { scaleX: 0 }}
-          transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
-          style={{ zIndex: 0, willChange: on ? "transform" : "auto" }}
-        />
-      ) : (
-        <motion.span
-          {...sweep}
-          initial={{ scaleX: 0, transformOrigin: "left" }}
-          whileInView={on ? { scaleX: 1 } : { scaleX: 0 }}
-          viewport={{ once: true, amount: 0.8 }}
-          transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1], delay: 0.15 }}
-          style={{ zIndex: 0 }}
-        />
-      )}
-    </span>
-  );
-}
-
 // Results reveal: her letter rises out of an envelope.
 //
 // The whole thing is CSS boxes, one clip-path and one inline SVG - no new
@@ -1007,7 +1184,7 @@ const FLAP_DURATION = 0.55;
 const FLAP_ZSWAP = FLAP_DELAY + FLAP_DURATION / 2; // 0.475s
 const LETTER_DELAY = 0.58;
 
-function EnvelopeReveal({ src }: { src: string }) {
+function EnvelopeReveal({ src, score }: { src: string; score: number }) {
   const prefersReducedMotion = useReducedMotion();
 
   // Reduced motion gets the finished picture: envelope open, letter out, no
@@ -1022,9 +1199,9 @@ function EnvelopeReveal({ src }: { src: string }) {
           "radial-gradient(58% 46% at 50% 60%, rgba(255,141,161,0.20), rgba(255,141,161,0) 72%)",
       }}
     >
-      {/* Decorative in full: the score card below carries the same "Your
-          results" heading and the number itself, so announcing this would only
-          make a screen reader read the payoff twice. */}
+      {/* Decorative in full: the score card below carries the same heading and
+          the same number, so announcing this would only make a screen reader
+          read the payoff twice. */}
       <motion.div
         aria-hidden
         initial={still ? false : { opacity: 0, scale: 0.94 }}
@@ -1050,23 +1227,40 @@ function EnvelopeReveal({ src }: { src: string }) {
           {/* Everything printed on the sheet lives in its top 56% - the band
               that clears the envelope's mouth once the letter is out. The rest
               of the sheet is inside the pocket forever, so ink down there is
-              ink she never sees. */}
-          <div className="absolute inset-x-0 top-0 flex h-[56%] flex-col items-center px-3 pt-2.5">
-            <div className="flex items-center gap-1.5">
-              <Sparkles className="w-3 h-3 text-primary shrink-0" />
-              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#9A9A9A]">
-                Your results
+              ink she never sees.
+
+              What is printed there is her score. It used to be a stock
+              illustration: she sat through a loader promising "your results",
+              watched a letter rise out of an envelope, and the letter contained
+              art. The animation is the most expensive moment of craft in the
+              funnel and it was delivering a non-answer - so the number moved
+              onto the page, and the illustration stayed on as the backdrop it
+              always was. */}
+          <div className="absolute inset-x-0 top-0 flex h-[56%] flex-col items-center justify-center px-3 pt-2">
+            {/* Illustration, demoted to a wash behind the number. */}
+            <Image
+              src={src}
+              alt=""
+              fill
+              sizes="(max-width: 640px) 62vw, 280px"
+              className="object-contain object-top opacity-15"
+              priority
+            />
+
+            <div className="relative flex flex-col items-center">
+              <div className="flex items-center gap-1.5">
+                <Sparkles className="w-3 h-3 text-primary shrink-0" />
+                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#9A9A9A]">
+                  Your score
+                </span>
+              </div>
+              <p className="mt-0.5 flex items-baseline gap-0.5 leading-none">
+                <span className="text-5xl font-black tracking-tight text-[#3D3D3D]">{score}</span>
+                <span className="text-base font-semibold text-[#B0B0B0]">/100</span>
+              </p>
+              <span className="mt-1 text-[9px] font-medium uppercase tracking-[0.14em] text-[#9A9A9A]">
+                Higher is better
               </span>
-            </div>
-            <div className="relative mt-1 w-full flex-1">
-              <Image
-                src={src}
-                alt=""
-                fill
-                sizes="(max-width: 640px) 62vw, 280px"
-                className="object-contain"
-                priority
-              />
             </div>
           </div>
         </motion.div>
@@ -1235,12 +1429,19 @@ function PhoneShot({
   rotate = 0,
   delay = 0,
   className,
+  width = 1080,
+  height = 2192,
 }: {
   src: string;
   alt: string;
   rotate?: number;
   delay?: number;
   className?: string;
+  /** Intrinsic size of the master. The /screenshots set is 1320x2868; the older
+   *  /diagnosys set is 1080x2192, and declaring one ratio for the other
+   *  letterboxes the image inside its reserved box. */
+  width?: number;
+  height?: number;
 }) {
   const prefersReducedMotion = useReducedMotion();
   return (
@@ -1261,12 +1462,89 @@ function PhoneShot({
       <Image
         src={src}
         alt={alt}
-        width={1080}
-        height={2192}
+        width={width}
+        height={height}
         sizes="(max-width: 480px) 55vw, 260px"
         className="w-full h-auto rounded-[1.25rem]"
       />
     </motion.div>
+  );
+}
+
+/**
+ * The hero screenshot: her actual Day 1, at a size where it can be read.
+ *
+ * Every other phone on this page is cropped by a <ShotStage />, tilted, and
+ * faded into the card - which is right for evidence that only has to prove the
+ * app exists. It is exactly wrong for this one. This shot carries "Day 1 · Week
+ * 1", the phase name, and all four pillars with real progress against them,
+ * which is the entire offer in a single frame; at 27% width behind a gradient
+ * fade it was decoration of the one thing that needed to be legible.
+ *
+ * So: full column width, no tilt, no crop, no fade, and a real device bezel so
+ * it reads as a photograph of a product rather than an export.
+ */
+function PlanHeroShot({ src, alt }: { src: string; alt: string }) {
+  const prefersReducedMotion = useReducedMotion();
+  return (
+    <motion.div
+      initial={prefersReducedMotion ? false : { opacity: 0, y: 30 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.2 }}
+      transition={{ duration: prefersReducedMotion ? 0 : 0.7, ease: [0.16, 1, 0.3, 1] }}
+      className="relative mx-auto w-full max-w-[268px] rounded-[2rem] bg-[#1d1d1f] p-1.5 shadow-[0_28px_60px_-18px_rgba(61,61,61,0.6)]"
+    >
+      <Image
+        src={src}
+        alt={alt}
+        width={SHOT_W}
+        height={SHOT_H}
+        sizes="(max-width: 480px) 72vw, 268px"
+        className="w-full h-auto rounded-[1.65rem]"
+        priority
+      />
+    </motion.div>
+  );
+}
+
+/**
+ * Position indicator for the horizontal snap carousels.
+ *
+ * Both of them (the before/after cards here, and the paywall's outcome cards)
+ * are 82%-wide snap scrollers with no affordance beyond an 18% sliver of the
+ * next card. A carousel nobody knows is a carousel gets one card read, so the
+ * second and third symptom she picked - the personalization we did all this work
+ * for - were mostly never seen.
+ */
+function useCarouselIndex(count: number) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [index, setIndex] = useState(0);
+
+  const onScroll = useCallback(() => {
+    const el = ref.current;
+    if (!el || count < 2) return;
+    const travel = el.scrollWidth - el.clientWidth;
+    if (travel <= 0) return;
+    const next = Math.round((el.scrollLeft / travel) * (count - 1));
+    setIndex((prev) => (prev === next ? prev : Math.min(count - 1, Math.max(0, next))));
+  }, [count]);
+
+  return { ref, index, onScroll };
+}
+
+function CarouselDots({ count, index }: { count: number; index: number }) {
+  if (count < 2) return null;
+  return (
+    <div className="flex justify-center gap-1.5 mt-2" aria-hidden>
+      {Array.from({ length: count }).map((_, i) => (
+        <motion.span
+          key={i}
+          animate={{ width: i === index ? 18 : 6, opacity: i === index ? 1 : 0.35 }}
+          transition={{ type: "spring", stiffness: 260, damping: 26 }}
+          className="h-1.5 rounded-full bg-primary"
+        />
+      ))}
+    </div>
   );
 }
 
@@ -1364,9 +1642,10 @@ function RegisterPageContent() {
   const [phase, setPhase] = useState<Phase>(() => {
     const phaseParam = searchParams.get("phase");
     if (phaseParam === "download" || phaseParam === "paywall") return phaseParam;
-    // Dev-only: preview the diagnosis / relief / nutrition steps directly without finishing the quiz.
+    // Dev-only: preview the results / plan / relief steps directly without
+    // finishing the quiz.
     if (
-      (phaseParam === "results" || phaseParam === "diagnosis" || phaseParam === "relief" || phaseParam === "nutrition") &&
+      (phaseParam === "results" || phaseParam === "diagnosis" || phaseParam === "relief") &&
       process.env.NODE_ENV === "development"
     ) {
       return phaseParam;
@@ -1387,9 +1666,38 @@ function RegisterPageContent() {
   const currentStep = STEPS[stepIndex];
   const autoAdvances = AUTO_ADVANCE_STEPS.includes(currentStep);
 
-  // Relief exercise (phase === "relief"). Stays "done" once finished, so coming
-  // back from the paywall doesn't make her breathe through it a second time.
-  const [reliefStage, setReliefStage] = useState<"intro" | "running" | "done">("intro");
+  // Per-question drop-off. Without it the 15 screens between QuizStart and
+  // QuizComplete are one number, so a question that loses a fifth of the room
+  // looks exactly like a question that loses nobody.
+  useEffect(() => {
+    if (phase !== "quiz") return;
+    trackQuizStep(stepIndex, currentStep, STEPS.length);
+  }, [phase, stepIndex, currentStep]);
+
+  // The screens after the quiz. `ViewContent` (paywall mount) used to be the
+  // next event after QuizComplete, which made results → plan → relief a single
+  // unmeasured stretch containing three separate chances to lose her.
+  useEffect(() => {
+    if (phase === "results") trackFunnelStep(META_FUNNEL_STEPS.resultsView);
+    if (phase === "diagnosis") trackFunnelStep(META_FUNNEL_STEPS.planView);
+  }, [phase]);
+
+  /**
+   * The relief phase, which is now the whole pre-paywall sequence:
+   *
+   *   intro → running → reward → checklist → done → (paywall)
+   *
+   * `reward` and `done` are the two toolkit-unlock screens (1 of 4, then 2 of
+   * 4); `checklist` is the five-row nutrition audit that used to be its own
+   * phase. Merging them removes a phase change and a CTA tap from the stretch
+   * of funnel immediately after she taps "I'm ready to feel better" - the point
+   * of maximum intent, and the worst possible place to send her somewhere else.
+   *
+   * It never rewinds past `reward` once reached, so coming back from the paywall
+   * doesn't make her breathe through the exercise a second time.
+   */
+  type ReliefStage = "intro" | "running" | "reward" | "checklist" | "done";
+  const [reliefStage, setReliefStage] = useState<ReliefStage>("intro");
   // Single source of truth: seconds elapsed since she tapped start. Round, step and
   // the countdown are all *derived* from it, so the interval's updater stays pure
   // (StrictMode double-invokes updaters in dev - anything stateful in there advances twice).
@@ -1427,9 +1735,17 @@ function RegisterPageContent() {
 
   useEffect(() => {
     if (reliefStage === "running" && reliefElapsed >= BREATH_TOTAL_SECONDS) {
-      setReliefStage("done");
+      setReliefStage("reward");
     }
   }, [reliefStage, reliefElapsed]);
+
+  // The two unlock screens, reported so the last stretch before the price stops
+  // being a black box. `trackFunnelStep` dedups per session, so re-entering a
+  // stage after backing out of the paywall reports nothing new.
+  useEffect(() => {
+    if (reliefStage === "reward") trackFunnelStep(META_FUNNEL_STEPS.reliefDone);
+    if (reliefStage === "done") trackFunnelStep(META_FUNNEL_STEPS.checklistDone);
+  }, [reliefStage]);
 
   const startRelief = useCallback(() => {
     setReliefElapsed(0);
@@ -1437,32 +1753,18 @@ function RegisterPageContent() {
   }, []);
 
   // Lets her bail out of the timer without losing the reward - jumps straight
-  // to the "done" state as if she'd finished, so the toolkit unlock still lands.
+  // to the reward as if she'd finished, so the toolkit unlock still lands.
   const skipRelief = useCallback(() => {
     setReliefElapsed(BREATH_TOTAL_SECONDS);
-    setReliefStage("done");
+    setReliefStage("reward");
   }, []);
 
-  // Nutrition checklist (phase === "nutrition"), the second app taste. Same rule
-  // as the relief stage: once she's seen the verdict, coming back from the
-  // paywall returns her to it rather than making her tick the list again.
-  const [nutritionStage, setNutritionStage] = useState<"checklist" | "done">("checklist");
+  // What she ticked on the five-row nutrition audit. Nothing here is persisted -
+  // it's a taste, not intake.
   const [nutritionDone, setNutritionDone] = useState<string[]>([]);
-  // Sub-selection under the supplements row. Never counted - see SUPPLEMENT_OPTIONS.
-  const [supplementsTaken, setSupplementsTaken] = useState<string[]>([]);
 
   const toggleNutritionItem = useCallback((id: string) => {
-    setNutritionDone((prev) => {
-      const on = prev.includes(id);
-      // Un-ticking supplements drops the chips with it, so hidden state can't
-      // linger behind a row she's since cleared.
-      if (on && id === "supplements") setSupplementsTaken([]);
-      return on ? prev.filter((x) => x !== id) : [...prev, id];
-    });
-  }, []);
-
-  const toggleSupplement = useCallback((id: string) => {
-    setSupplementsTaken((prev) =>
+    setNutritionDone((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   }, []);
@@ -1576,6 +1878,21 @@ function RegisterPageContent() {
     () => Object.values(scoredSeverity).reduce((a, b) => a + b, 0),
     [scoredSeverity]
   );
+
+  // Up to 3 of her symptoms, so the before/after proof covers what she actually
+  // picked rather than just her #1. Hoisted out of the JSX because the carousel
+  // that renders them needs a hook, and a hook can't live inside a conditional.
+  const diagnosisTransforms = useMemo(() => getSymptomTransforms(topProblems, 3), [topProblems]);
+  const transformCarousel = useCarouselIndex(diagnosisTransforms.length);
+
+  // Scroll depth on the plan screen, the longest scroll in the funnel. Without
+  // it, "reached the plan screen" and "reached its CTA" are the same number.
+  const onPlanScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const travel = el.scrollHeight - el.clientHeight;
+    if (travel <= 0) return;
+    trackPlanScrollDepth(Math.round((el.scrollTop / travel) * 100));
+  }, []);
   // Normalized body metrics (canonical cm/kg) derived from the per-unit inputs.
   const bodyMetrics = useMemo(() => {
     let height_cm: number | null = null;
@@ -1629,17 +1946,27 @@ function RegisterPageContent() {
   );
   const score = scoreBreakdown.score;
 
-  // Share of symptoms tied to estrogen shifts - 80-95%, scaled by burden so a
-  // worse profile reads higher. Deterministic, so it doesn't flicker on re-render.
-  const estrogenPct = useMemo(() => {
-    const maxBurden = topProblems.length * 3;
-    const frac = maxBurden > 0 ? totalBurden / maxBurden : 0.5;
-    return Math.min(95, 80 + Math.round(frac * 15));
-  }, [totalBurden, topProblems.length]);
+  // There used to be an `estrogenPct` here: `80 + (burden/maxBurden) * 15`,
+  // rendered at 5xl as "{n}% of your symptoms trace back to shifting estrogen".
+  //
+  // It was the highest-risk element on the page. A number computed from her quiz
+  // answers, presented in the visual language of a measurement, making a
+  // clinical claim about *her* - when nothing in the funnel measures anything of
+  // the kind. It is also the one claim on the results screen a regulator or a
+  // clinician would ask us to substantiate, and there is nothing to hand them.
+  //
+  // The card keeps its shape and its punch by counting the one thing we do
+  // legitimately know - how many symptoms she selected - and stating the
+  // estrogen link as what it is: a general fact about menopause, not a
+  // personalized statistic. See the "Why this is happening" block below.
 
   // Loading screen state (between quiz and results)
   const [messageIndex, setMessageIndex] = useState(0);
-  const [displayScore, setDisplayScore] = useState(0);
+  const [calcPct, setCalcPct] = useState(0);
+
+  // Her score, as one animated value. The results card renders both the number
+  // and the bar off this, so they cannot finish on different frames.
+  const scoreMv = useMotionValue(0);
 
   // Diagnosis headline highlight sweep: fire ~1s after the step appears.
   const [diagnosisHighlight, setDiagnosisHighlight] = useState(false);
@@ -1652,44 +1979,51 @@ function RegisterPageContent() {
     return () => clearTimeout(t);
   }, [phase]);
 
-  // Calculating screen: the message carousel. The work that used to sit behind
-  // this loader (account + save-quiz) is driven by the effect next to
-  // completeRegistration below, which is also what advances the phase.
+  // Calculating screen: the percentage and the message carousel, both derived
+  // from one rAF clock so they never disagree about how far along she is. The
+  // work that sits behind this loader (account + save-quiz) is driven by the
+  // effect next to completeRegistration below, which is also what advances the
+  // phase - the clock here is presentation only and deliberately outlasts the
+  // network call on a fast connection.
   useEffect(() => {
     if (phase !== "calculating") return;
     setMessageIndex(0);
-    setDisplayScore(0);
+    setCalcPct(0);
 
-    const messageInterval = setInterval(() => {
-      setMessageIndex((prev) => Math.min(prev + 1, LOADING_MESSAGES.length - 1));
-    }, 1000);
-
-    return () => clearInterval(messageInterval);
+    let raf = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / CALCULATING_MS);
+      setCalcPct(Math.round(t * CALCULATING_MAX_PCT));
+      setMessageIndex(
+        Math.min(LOADING_MESSAGES.length - 1, Math.floor(t * LOADING_MESSAGES.length))
+      );
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
   }, [phase]);
 
-  // Animate score counting up
+  // Count the score up once, the first time she reaches results. Guarded on a
+  // ref rather than the phase alone: backing out of the plan screen and
+  // returning used to replay the whole reveal from zero, which reads as the page
+  // recalculating her result rather than as going back to it.
+  const scoreAnimated = useRef(false);
   useEffect(() => {
-    if (phase === "results") {
-      const targetScore = score;
-
-      const duration = 1500; // 1.5 seconds
-      const steps = 30;
-      const increment = targetScore / steps;
-      let current = 0;
-
-      const timer = setInterval(() => {
-        current += increment;
-        if (current >= targetScore) {
-          setDisplayScore(targetScore);
-          clearInterval(timer);
-        } else {
-          setDisplayScore(Math.round(current));
-        }
-      }, duration / steps);
-
-      return () => clearInterval(timer);
+    if (phase !== "results") return;
+    if (scoreAnimated.current) {
+      scoreMv.set(score);
+      return;
     }
-  }, [phase, score]);
+    scoreAnimated.current = true;
+    scoreMv.set(0);
+    const controls = animate(scoreMv, score, {
+      duration: prefersReducedMotion ? 0 : 1.4,
+      delay: prefersReducedMotion ? 0 : 0.9,
+      ease: [0.16, 1, 0.3, 1],
+    });
+    return () => controls.stop();
+  }, [phase, score, scoreMv, prefersReducedMotion]);
 
   // (validation handled inside OtpForm)
 
@@ -1945,14 +2279,15 @@ function RegisterPageContent() {
     // cancel-on-unmount guard would leave the only in-flight run unable to
     // advance the phase, hanging the funnel on the loader in dev only.
     void (async () => {
-      // The loader is a real 3s beat in the funnel - she is watching her plan be
-      // built - so hold it for its full length even when the network is fast,
+      // The loader is a real beat in the funnel - she is watching her plan be
+      // built, and that perceived work is the only receipt she gets for the
+      // price - so hold it for its full length even when the network is fast,
       // and hold it longer when it isn't. Results only open once the save has
       // actually landed; otherwise she could reach the paywall with no profile
       // and no account to check out with.
       const [ok] = await Promise.all([
         completeRegistration(),
-        new Promise((resolve) => setTimeout(resolve, 3000)),
+        new Promise((resolve) => setTimeout(resolve, CALCULATING_MS)),
       ]);
       if (ok) setPhase("results");
       else registrationStarted.current = false; // let the retry button through
@@ -1976,13 +2311,25 @@ function RegisterPageContent() {
 
   // "None of the above" and "Prefer not to say" clear the clinical flags, and any
   // clinical flag clears them - see SAFETY_OPTIONS.
+  //
+  // Ticking an exclusive option also advances the step. It is a complete answer
+  // by definition - there is nothing to add to "none of the above" - so it was
+  // the only single-meaning tap left in the quiz that still demanded a second
+  // press on Next. The clinical rows keep the button, because there she may well
+  // have more than one to tick.
   const toggleSafetyFlag = (flagId: string) => {
     const exclusive = SAFETY_OPTIONS.find((o) => o.id === flagId)?.exclusive;
-    setSafetyFlags((prev) => {
-      if (prev.includes(flagId)) return prev.filter((id) => id !== flagId);
-      if (exclusive) return [flagId];
-      return [...prev.filter((id) => !SAFETY_OPTIONS.find((o) => o.id === id)?.exclusive), flagId];
-    });
+    const alreadyOn = safetyFlags.includes(flagId);
+
+    const apply = () =>
+      setSafetyFlags((prev) => {
+        if (prev.includes(flagId)) return prev.filter((id) => id !== flagId);
+        if (exclusive) return [flagId];
+        return [...prev.filter((id) => !SAFETY_OPTIONS.find((o) => o.id === id)?.exclusive), flagId];
+      });
+
+    if (exclusive && !alreadyOn) selectAndAdvance(apply);
+    else apply();
   };
 
   const toggleGoal = (goalId: string) => {
@@ -1996,6 +2343,58 @@ function RegisterPageContent() {
 
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [syncingPayment, setSyncingPayment] = useState(false);
+
+  /**
+   * The address Stripe collected, read back off her account for the success
+   * screen.
+   *
+   * It is the only thing standing between a paid customer and an account she
+   * cannot log into: she never set a password, so that address *is* her login,
+   * and until now nothing in the funnel ever told her so or showed it back to
+   * her to check. A typo at Stripe is currently a support ticket with no
+   * self-serve fix (see "She paid but can't log into the app" in CLAUDE.md).
+   *
+   * The address only exists on `auth.users` once fulfillment has bound it, which
+   * is a race with the webhook - so if it isn't there yet and we have a
+   * `session_id`, run the same `sync-session` fallback the "Manage my
+   * subscription" button used to run and read again. `claimFulfillment()` makes
+   * that idempotent against the webhook, so at worst this is a wasted call, and
+   * at best it repairs a purchase whose webhook never arrived while she is still
+   * on the page.
+   */
+  const [checkoutEmail, setCheckoutEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (phase !== "download") return;
+    let cancelled = false;
+
+    void (async () => {
+      const read = async () => (await supabase.auth.getUser()).data?.user?.email ?? null;
+
+      let email = await read();
+      if (!email) {
+        const sessionId = searchParams.get("session_id");
+        if (sessionId) {
+          try {
+            await fetch("/api/stripe/sync-session", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ session_id: sessionId }),
+            });
+            email = await read();
+          } catch {
+            // The screen reads fine without it - the copy falls back to "the
+            // email address you used at checkout".
+          }
+        }
+      }
+      if (!cancelled) setCheckoutEmail(email);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [phase, searchParams]);
 
   const handleStartCheckout = async () => {
     if (checkoutLoading) return;
@@ -2057,7 +2456,6 @@ function RegisterPageContent() {
       phase === "results" ||
       phase === "diagnosis" ||
       phase === "relief" ||
-      phase === "nutrition" ||
       phase === "paywall" ||
       phase === "download"
     ) {
@@ -2136,6 +2534,28 @@ function RegisterPageContent() {
 
   return (
     <main className="overflow-hidden relative mx-auto p-3 sm:p-4 h-dvh flex flex-col pt-2 max-w-3xl min-h-0">
+      {/* One cross-fade across every phase change.
+          Each step *inside* the quiz already animated, but the phase changes
+          themselves - results → plan → relief → paywall, the five biggest
+          moments in the funnel - were plain sibling conditionals that swapped
+          instantly. Eight hard cuts made it read as eight separate pages rather
+          than one product.
+
+          Opacity only, deliberately. A translate here would look better in
+          isolation and would break every screen: a transformed ancestor becomes
+          the containing block for `position: fixed`, so all five sticky CTA bars
+          would anchor to this box (inset by main's padding) instead of the
+          viewport, and float a few pixels off the bottom edge with gaps down
+          each side. The per-phase entrance animations supply the movement. */}
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={phase}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: prefersReducedMotion ? 0 : 0.22, ease: "easeOut" }}
+          className="flex-1 flex flex-col min-h-0"
+        >
 
       {/* Start Phase - the screen the ad lands on.
           One job: enter on her own sentence, take the blame off her, and hand her
@@ -2278,9 +2698,22 @@ function RegisterPageContent() {
               />
             </motion.div>
 
-            <h2 className="text-xl font-semibold text-[#3D3D3D] mb-3">
-              Getting to know you better...
-            </h2>
+            {/* The percentage carries the "something is being built" job that a
+                static header can't. There used to be a fixed h2 here reading
+                "Getting to know you better..." *above* the three rotating
+                messages - two headers on a three-second screen, one of which
+                never changed. */}
+            <p className="mb-1 text-4xl font-black tabular-nums text-[#3D3D3D]">
+              {calcPct}
+              <span className="text-xl font-bold text-[#B0B0B0]">%</span>
+            </p>
+            <div className="mb-4 h-1.5 w-40 overflow-hidden rounded-full bg-primary/15">
+              <motion.div
+                className="h-full rounded-full bg-primary"
+                animate={{ width: `${calcPct}%` }}
+                transition={{ ease: "linear", duration: 0.1 }}
+              />
+            </div>
 
             {/* Saving her answers happens behind this loader, so a failure has to
                 surface here - silently spinning forever would strand her one tap
@@ -2335,7 +2768,7 @@ function RegisterPageContent() {
                 rises out of it. The copy below is re-timed to cascade behind
                 the letter rather than land on top of it - see the delays. */}
             <div className="mb-3">
-              <EnvelopeReveal src="/results.webp" />
+              <EnvelopeReveal src="/results.webp" score={score} />
             </div>
 
             {/* Headline */}
@@ -2359,55 +2792,33 @@ function RegisterPageContent() {
               {getSeverityPainText(derivedSeverity, topProblems.length, firstName || "you")}
             </motion.p>
 
-            {/* Compact score card */}
-            {(() => {
-              const benchmark = getScoreBenchmark(ageBand);
-              const verdict = getScoreVerdict(score, benchmark);
-              const cohortLabel = AGE_BAND_LABELS[ageBand] ?? "women your age";
-              return (
-                <motion.div
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.95 }}
-                  className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-4 shadow-md shadow-primary/5"
-                >
-                  <div className="flex items-center justify-between mb-2.5">
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle className="w-5 h-5 text-orange-500" />
-                      <span className="text-sm font-bold text-gray-900!">Your Results</span>
-                    </div>
-                    <div className="flex items-baseline gap-1">
-                      <span className={`text-3xl font-bold ${getScoreColor(score)}`}>{displayScore}</span>
-                      <span className="text-sm text-gray-500">/100</span>
-                    </div>
-                  </div>
-                  <div className="relative h-2 bg-foreground/10 rounded-full mb-2 overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${score}%` }}
-                      transition={{ duration: 1.2, ease: "easeOut" }}
-                      className="absolute left-0 top-0 h-full bg-linear-to-r from-red-400 via-orange-400 to-orange-300 rounded-full"
-                    />
-                    <div className="absolute top-0 h-full w-0.5 bg-foreground/50" style={{ left: `${benchmark}%` }} />
-                    <div className="absolute top-0 h-full w-1 bg-green-500 rounded-full" style={{ left: "80%" }} />
-                  </div>
-                  <p className="text-xs text-[#5A5A5A] mb-1.5">
-                    That&apos;s <span className="font-bold">{verdict}</span> for {cohortLabel}.
-                  </p>
-                  <div className="flex items-center gap-1.5 text-xs text-[#5A5A5A]">
-                    <Goal className="w-4 h-4 text-green-600 shrink-0" />
-                    <span>Target: <span className="font-bold">80+</span> in 8 weeks</span>
-                  </div>
-                </motion.div>
-              );
-            })()}
+            {/* Her score. See <ScoreGauge /> for what changed and why. */}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.95 }}
+            >
+              <ScoreGauge
+                scoreMv={scoreMv}
+                score={score}
+                benchmark={getScoreBenchmark(ageBand)}
+                cohortLabel={AGE_BAND_LABELS[ageBand] ?? "women your age"}
+              />
+            </motion.div>
 
             {/* Why this is happening - root-cause insight comes right after her
-                score: the relief ("one cause, measurable, workable") before the fear. */}
+                score: the relief ("one cause, workable") before the fear.
+
+                The hero number is her own symptom count, which is a fact she
+                supplied, and the estrogen link is stated as the general fact
+                about menopause that it is. It used to be a per-user percentage
+                computed from her quiz answers - see the note where `estrogenPct`
+                used to live. */}
             {topProblems.length > 0 && (() => {
               const chips = topProblems
                 .filter((id) => SYMPTOM_IMAGE[id])
                 .slice(0, 5);
+              const one = topProblems.length === 1;
               return (
                 <motion.div
                   initial={{ opacity: 0, y: 16 }}
@@ -2415,20 +2826,25 @@ function RegisterPageContent() {
                   transition={{ delay: 1.02 }}
                   className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-4 shadow-md shadow-primary/5"
                 >
-                  {/* The headline stat - one number that frames everything below */}
-                  <p className="text-[11px] uppercase tracking-wide font-semibold text-gray text-center mb-1">
+                  <p className="text-[11px] uppercase tracking-wide font-semibold text-[#9A9A9A] text-center mb-1">
                     Why this is happening to you
                   </p>
                   <p className="text-center mb-4">
                     <span className="block text-5xl font-black text-primary leading-none">
-                      {estrogenPct}%
+                      {topProblems.length}
                     </span>
                     <span className="block text-sm font-medium text-[#3D3D3D] mt-1.5">
-                      of {chips.length === 1 ? "your symptom traces" : "your symptoms trace"} back to <br /> <span className="font-bold">shifting estrogen</span>
+                      {one ? "symptom" : "symptoms"}, and {one ? "it shares" : "they share"} one
+                      root cause:
+                      <br />
+                      <span className="font-bold">shifting estrogen</span>
                     </span>
                   </p>
 
-                  {/* Her symptoms as image chips */}
+                  {/* Her symptoms as image chips. This is the only place they are
+                      shown on this screen - there used to be a second, redundant
+                      row of red text pills immediately below this card, the same
+                      list twice in two visual languages about 40px apart. */}
                   <div className="flex flex-wrap justify-center gap-2 mb-1">
                     {chips.map((id) => (
                       <div key={id} className="flex flex-col items-center gap-1 w-16">
@@ -2450,36 +2866,27 @@ function RegisterPageContent() {
 
                   <p className="text-xs text-[#5A5A5A] leading-relaxed mt-3 text-center">
                     This isn&apos;t willpower or anything you did wrong - it&apos;s biology, and
-                    it&apos;s{" "}
-                    <span className="font-bold text-[#3D3D3D]">measurable</span>, which means
-                    it&apos;s workable.
+                    biology <span className="font-bold text-[#3D3D3D]">responds to what you do
+                    every day</span>. That&apos;s what your plan is for.
                   </p>
                 </motion.div>
               );
             })()}
 
-            {/* Symptom pills */}
-            {topProblems.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 1.08 }}
-                className="flex flex-wrap gap-1.5 justify-center mb-6"
-              >
-                {topProblems.map((s) => (
-                  <span key={s} className="px-2 py-1 bg-red-100 text-red-800 border border-red-300 font-medium text-xs rounded-full">
-                    {SYMPTOM_LABELS[s] || s}
-                  </span>
-                ))}
-              </motion.div>
-            )}
-
-            {/* You're not alone - top-3 symptom comparison vs typical cohort */}
+            {/* How hard it's hitting, vs typical.
+                This block used to be headed "You're not alone" over a chart
+                proving she is doing *worse* than typical - the headline and the
+                data arguing opposite cases on the same card. It also drew each
+                symptom as two anonymous bars with no numbers, in blue and green,
+                where green means "good" on every other block of this screen.
+                Now the headline states what the data actually shows, and each
+                row says it in words she can read at a glance. */}
             {topProblems.length > 0 && (() => {
               const cohortLabel = AGE_BAND_LABELS[ageBand] ?? "women your age";
               const top3 = [...topProblems]
                 .sort((a, b) => (scoredSeverity[b] ?? 0) - (scoredSeverity[a] ?? 0))
                 .slice(0, 3);
+              const band = (v: number) => (v >= 2.5 ? "Severe" : v >= 1.5 ? "Moderate" : "Mild");
               return (
                 <motion.div
                   initial={{ opacity: 0, y: 16 }}
@@ -2487,66 +2894,104 @@ function RegisterPageContent() {
                   transition={{ delay: 1.14 }}
                   className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-5 shadow-md shadow-primary/5"
                 >
-                  <h2 className="text-base font-bold text-[#3D3D3D] mb-0.5">You&apos;re not alone</h2>
+                  <h2 className="text-base font-bold text-[#3D3D3D] mb-0.5">
+                    Harder than it hits most
+                  </h2>
                   <p className="text-xs text-[#5A5A5A] mb-3">
-                    How your top symptoms compare to {cohortLabel}.
+                    Your top {top3.length === 1 ? "symptom" : `${top3.length} symptoms`}, against
+                    what&apos;s typical for {cohortLabel}.
                   </p>
-                  <div className="flex items-center gap-3 mb-2.5 text-[11px] text-[#5A5A5A]">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full bg-[#2563EB]" /> You
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full bg-[#16A34A]" /> Typical
-                    </span>
-                  </div>
-                  <div className="space-y-3">
-                    {top3.map((id) => {
-                      const you = Math.round(((scoredSeverity[id] ?? 0) / 3) * 100);
-                      const avg = Math.round(((TYPICAL_SYMPTOM_SEVERITY[id] ?? 1.5) / 3) * 100);
+
+                  <div className="space-y-2">
+                    {top3.map((id, i) => {
+                      const mine = scoredSeverity[id] ?? 0;
+                      const typical = TYPICAL_SYMPTOM_SEVERITY[id] ?? 1.5;
+                      const worse = mine > typical + 0.2;
                       return (
-                        <div key={id}>
-                          <div className="text-xs font-medium text-[#3D3D3D] mb-1">{SYMPTOM_LABELS[id] || id}</div>
-                          <div className="space-y-1">
-                            <div className="h-2.5 bg-foreground/10 rounded-full overflow-hidden">
-                              <motion.div
-                                initial={{ width: 0 }}
-                                animate={{ width: `${you}%` }}
-                                transition={{ duration: 1, ease: "easeOut" }}
-                                className="h-full bg-[#2563EB] rounded-full"
-                              />
-                            </div>
-                            <div className="h-2.5 bg-foreground/10 rounded-full overflow-hidden">
-                              <motion.div
-                                initial={{ width: 0 }}
-                                animate={{ width: `${avg}%` }}
-                                transition={{ duration: 1, ease: "easeOut" }}
-                                className="h-full bg-[#16A34A] rounded-full"
-                              />
-                            </div>
-                          </div>
-                        </div>
+                        <motion.div
+                          key={id}
+                          initial={{ opacity: 0, x: -8 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: 1.2 + i * 0.08, duration: 0.35 }}
+                          className="flex items-center justify-between gap-2 rounded-xl border border-foreground/10 bg-foreground/3 px-3 py-2"
+                        >
+                          <span className="text-xs font-semibold text-[#3D3D3D] min-w-0 truncate">
+                            {SYMPTOM_LABELS[id] || id}
+                          </span>
+                          <span className="flex items-center gap-1.5 shrink-0 text-[11px]">
+                            <span
+                              className={cn(
+                                "rounded-full px-2 py-0.5 font-bold",
+                                worse
+                                  ? "bg-[#DB4F45]/12 text-[#B23A31]"
+                                  : "bg-[#E0A32E]/12 text-[#A9741A]"
+                              )}
+                            >
+                              You: {band(mine)}
+                            </span>
+                            <span className="text-[#9A9A9A]">vs {band(typical)}</span>
+                          </span>
+                        </motion.div>
                       );
                     })}
                   </div>
+
                   <p className="text-[10px] text-[#9A9A9A] mt-3">
-                    Compared to typical symptom patterns for your age.
-                  </p>
-                  <p className="text-xs text-[#5A5A5A] mt-2 text-center">
-                    Join <AnimatedCounter target={12800} className="font-semibold text-[#3D3D3D]" /> women tracking with Lisa
+                    &ldquo;Typical&rdquo; is a modelled profile of common menopause symptom load,
+                    not a survey average.
                   </p>
                 </motion.div>
               );
             })()}
 
-            {/* Outcome stat */}
+            {/* The plan, existing.
+                The start screen promised "answer 13 questions, get your
+                personalized 8-week plan" and the loader said "Building your 8
+                weeks" - and then this screen used to deliver a score, a chart,
+                and a promise that she would *understand* her symptoms within two
+                weeks. The object she was promised did not appear anywhere on the
+                page she waited for, and the last line before the CTA sold
+                knowledge rather than relief.
+                This block closes that loop, so the next tap opens something that
+                already exists rather than starting another pitch. */}
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1.22 }}
-              className="flex items-center justify-center gap-2 text-xs text-[#5A5A5A] mb-5 px-2 text-left"
+              className="rounded-2xl border-2 border-primary/30 bg-primary/5 p-4 mb-5"
             >
-              <TrendingUp className="w-4 h-4 text-info shrink-0" />
-              <span>Most women understand the why behind their symptoms within <strong className="text-[#3D3D3D]">2 weeks</strong>.</span>
+              <div className="flex items-start gap-2.5">
+                <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15">
+                  <Check className="h-4 w-4 text-primary" strokeWidth={3} />
+                </span>
+                <div className="min-w-0">
+                  <h2 className="text-base font-bold text-[#3D3D3D] leading-tight">
+                    {firstName.trim() ? `${firstName.trim()}, your ` : "Your "}
+                    {PLAN_WEEKS}-week plan is ready
+                  </h2>
+                  <p className="text-xs text-[#5A5A5A] leading-snug mt-1">
+                    Built from your {QUESTION_STEPS.length} answers - {PLAN_PILLARS.length} small
+                    things a day, starting tomorrow.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 flex items-start justify-between gap-2">
+                {PLAN_PILLARS.map((pillar) => (
+                  <div key={pillar.key} className="flex flex-1 flex-col items-center gap-1">
+                    <span
+                      className={cn(
+                        "inline-flex h-8 w-8 items-center justify-center rounded-xl",
+                        pillar.chip
+                      )}
+                    >
+                      <pillar.icon className={cn("h-4 w-4", pillar.tint)} />
+                    </span>
+                    <span className="text-[10px] font-medium leading-tight text-[#5A5A5A] text-center">
+                      {pillar.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </motion.div>
 
           </motion.div>
@@ -2574,10 +3019,14 @@ function RegisterPageContent() {
         </div>
       )}
 
-      {/* Diagnosis Phase - emotional build between results and paywall:
-          trajectory (fear) -> women like you (proof) -> 8-week outcome -> offer. */}
+      {/* Plan Phase (`diagnosis` internally) - the offer, in the order she needs
+          it: the plan she gets -> what changes -> someone who finished it ->
+          the cost of doing nothing -> the app that runs it. */}
       {phase === "diagnosis" && (
-        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pb-[calc(132px+env(safe-area-inset-bottom))] [scrollbar-width:thin] [scrollbar-color:rgba(255,141,161,0.35)_transparent] [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-primary/30 hover:[&::-webkit-scrollbar-thumb]:bg-primary/50">
+        <div
+          onScroll={onPlanScroll}
+          className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pb-[calc(132px+env(safe-area-inset-bottom))] [scrollbar-width:thin] [scrollbar-color:rgba(255,141,161,0.35)_transparent] [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-primary/30 hover:[&::-webkit-scrollbar-thumb]:bg-primary/50"
+        >
           <motion.div
             key="diagnosis"
             initial={{ opacity: 0 }}
@@ -2608,58 +3057,150 @@ function RegisterPageContent() {
                 <HighlightSweep active={diagnosisHighlight}>8 weeks</HighlightSweep>.
               </h1>
               <p className="text-xs text-[#5A5A5A] mt-1.5">
-                Here&apos;s your plan to take
-                your score from{" "}
+                Here&apos;s your plan to take your score from{" "}
                 <span className="font-bold text-[#3D3D3D]">{score}</span> to{" "}
-                <span className="font-bold text-green-600">80+</span>.
+                <span className="font-bold text-green-600">{SCORE_GOAL}+</span>.
               </p>
             </motion.div>
 
-            {/* ── Block 1: Where this is heading (trajectory) ───────────────── */}
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.05 }}
-              className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-5 shadow-md shadow-primary/5"
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <TrendingDown className="w-5 h-5 text-red-500" />
-                <h2 className="text-base font-bold text-[#3D3D3D]">Where this is heading</h2>
-              </div>
-              <p className="text-xs text-[#5A5A5A] mb-3">
-              {firstName.trim() ? (
-                <>
-                  <span className="font-bold">{firstName.trim()}</span>, untreated
-                </>
-              ) : (
-                "Untreated"
-              )}{" "}
-              perimenopause symptoms persist 4–7 years on average - and often get worse
-              before they settle.
-            </p>
-              <TrajectoryChart score={score} />
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <div className="rounded-xl border border-red-200 bg-red-50 p-2.5">
-                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-red-700">
-                    Without a plan
-                  </div>
-                  <p className="text-[11px] text-red-700/80 mt-0.5 leading-snug">Symptoms compound and worsen.</p>
-                </div>
-                <div className="rounded-xl border border-green-200 bg-green-50 p-2.5">
-                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-green-700">
-                     With Lisa
-                  </div>
-                  <p className="text-[11px] text-green-700/80 mt-0.5 leading-snug">Climb toward your 80+ goal.</p>
-                </div>
-              </div>
-            </motion.div>
+            {/* ══ Block 1: THE PLAN ═══════════════════════════════════════════
+                This is the product, so it is now the first thing on the page and
+                the only block that keeps a 4xl headline.
 
-            {/* ── Block 2: Personalized before/after for her symptoms ─────────── */}
+                It used to sit fourth, behind a fear chart and a before/after
+                carousel, each of which shouted at exactly the same volume: three
+                consecutive 4xl bold headlines meant nothing was subordinate to
+                anything and therefore nothing read as the point. She scrolled,
+                hit the third giant headline, and left before reaching what she
+                was actually being sold.
+
+                The screenshots are also no longer decoration. `day` is her real
+                first day - "Day 1 · Week 1", the phase name, four pillars with
+                real progress - rendered full width and uncropped, because it is
+                the one image in the funnel that has to be read rather than
+                glanced at. The three supporting shots keep the tilted, cropped
+                treatment, since they only have to prove the app is real. ───── */}
             {(() => {
-              // Up to 3 of her symptoms, so the before/after proof covers what
-              // she actually picked rather than just her #1.
-              const transforms = getSymptomTransforms(topProblems, 3);
-              if (transforms.length === 0) return null;
+              const goalLabel = (GOAL_PROMISE[goal[0]] ?? "feel like yourself again").toLowerCase();
+              return (
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.05 }}
+                  className="mb-6"
+                >
+                  <div className="px-1 mb-3">
+                    <h2 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight">
+                      {firstName.trim() ? `${firstName.trim()}, here's your ` : "Here's your "}
+                      <HighlightSweep>{PLAN_WEEKS}-week plan</HighlightSweep>
+                    </h2>
+                    <p className="text-xs text-[#5A5A5A] mt-1.5">
+                      Built from your {QUESTION_STEPS.length} answers. About 15 minutes a day.
+                    </p>
+                  </div>
+
+                  <PlanHeroShot
+                    src={PLAN_SHOTS.day}
+                    alt={`Day 1 of your personalized ${PLAN_WEEKS}-week plan in the MenoLisa app, showing movement, nutrition, relaxation and habit tasks`}
+                  />
+                  <p className="mt-2.5 text-center text-[11px] text-[#9A9A9A] leading-snug">
+                    Day one, as it actually arrives. Nothing to set up.
+                  </p>
+
+                  {/* The four pillars as the real tasks they are. PLAN_PILLARS
+                      carries a genuine task string per pillar precisely so this
+                      reads as a to-do list rather than a benefits grid. */}
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    {PLAN_PILLARS.map((pillar, i) => (
+                      <motion.div
+                        key={pillar.key}
+                        initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true, amount: 0.4 }}
+                        transition={{ delay: i * 0.06, duration: 0.35 }}
+                        className="flex items-start gap-2 rounded-xl border border-foreground/10 bg-card px-2.5 py-2"
+                      >
+                        <span
+                          className={cn(
+                            "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
+                            pillar.chip
+                          )}
+                        >
+                          <pillar.icon className={cn("h-3.5 w-3.5", pillar.tint)} />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-[10px] font-semibold uppercase tracking-wide text-[#9A9A9A]">
+                            {pillar.label}
+                          </span>
+                          <span className="block text-[11px] font-bold leading-tight text-[#3D3D3D]">
+                            {pillar.task}
+                          </span>
+                        </span>
+                      </motion.div>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 rounded-2xl overflow-hidden border-2 border-[#E8DDD9] bg-card shadow-md shadow-primary/5">
+                    {/* The scroll, staged. Her name is written on it, then it
+                        plays a day on the plan and the eight weeks those days
+                        add up to. It loops on its own while it's on screen -
+                        nothing in it is tappable, so it never competes with the
+                        CTA for a thumb. */}
+                    <PlanStage
+                      firstName={firstName.trim() || undefined}
+                      goalLabel={goalLabel}
+                      className="pb-2"
+                    />
+
+                    {/* Supporting evidence: the pillar screens behind the day,
+                        plus the plan as it arrives in her inbox. */}
+                    <ShotStage className="h-44">
+                      <PhoneShot
+                        src={PLAN_SHOTS.nutrition}
+                        alt="The nutrition list for today in the MenoLisa app"
+                        rotate={-8}
+                        className="w-[30%] -mr-3 mt-3"
+                        width={SHOT_W}
+                        height={SHOT_H}
+                      />
+                      <PhoneShot
+                        src={PLAN_SHOTS.habits}
+                        alt="Your habits in the MenoLisa app"
+                        rotate={0}
+                        delay={0.1}
+                        className="w-[32%] z-10"
+                        width={SHOT_W}
+                        height={SHOT_H}
+                      />
+                      <PhoneShot
+                        src={PLAN_SHOTS.rewards}
+                        alt="Streaks and badges in the MenoLisa app"
+                        rotate={8}
+                        delay={0.18}
+                        className="w-[30%] -ml-3 mt-3"
+                        width={SHOT_W}
+                        height={SHOT_H}
+                      />
+                    </ShotStage>
+
+                    <ShotStage className="h-40" fadeFrom="from-card">
+                      <PhoneShot
+                        src="/diagnosys/8week.webp"
+                        alt={`The personalized ${PLAN_WEEKS}-week plan email from Lisa`}
+                        rotate={-3}
+                        className="w-[52%]"
+                      />
+                    </ShotStage>
+                  </div>
+                </motion.div>
+              );
+            })()}
+
+            {/* ── Block 2: Personalized before/after for her symptoms.
+                Demoted from 4xl to 2xl - it supports the plan above rather than
+                competing with it. ────────────────────────────────────────────── */}
+            {diagnosisTransforms.length > 0 && (() => {
+              const transforms = diagnosisTransforms;
               return (
                 <motion.div
                   initial={{ opacity: 0, y: 16 }}
@@ -2667,12 +3208,16 @@ function RegisterPageContent() {
                   transition={{ delay: 0.1 }}
                   className="mb-5"
                 >
-                  <h2 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight mb-3">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] leading-tight mb-3">
                     {firstName.trim() ? `${firstName.trim()}, what ` : "What "}
-                    <HighlightSweep>taking control</HighlightSweep> can look like
+                    <HighlightSweep>{PLAN_WEEKS} weeks</HighlightSweep> can look like
                   </h2>
 
-                  <div className="flex overflow-x-auto snap-x snap-mandatory gap-3 -mx-4 sm:-mx-6 px-4 sm:px-6 pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                  <div
+                    ref={transformCarousel.ref}
+                    onScroll={transformCarousel.onScroll}
+                    className="flex overflow-x-auto snap-x snap-mandatory gap-3 -mx-4 sm:-mx-6 px-4 sm:px-6 pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                  >
                     {transforms.map((t, i) => (
                       <motion.div
                         key={t.image}
@@ -2734,6 +3279,7 @@ function RegisterPageContent() {
                       </motion.div>
                     ))}
                   </div>
+                  <CarouselDots count={transforms.length} index={transformCarousel.index} />
                   <p className="text-[10px] text-[#9A9A9A] mt-2 px-1 leading-snug">
                     Illustrative. Individual experiences vary - MenoLisa helps you track and understand your symptoms with guidance, it&apos;s not a medical treatment.
                   </p>
@@ -2741,81 +3287,62 @@ function RegisterPageContent() {
               );
             })()}
 
-            
-
-            {/* ── Block 3: The plan. This is the product - an 8-week plan built
-                from her answers that hands her four things to do each day. The
-                app blocks below are how it reaches her, not what she's buying,
-                so the plan gets the page's biggest, most personal asset. ───── */}
-            {(() => {
-              const goalLabel = (GOAL_PROMISE[goal[0]] ?? "feel like yourself again").toLowerCase();
-              return (
-                <motion.div
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                  className="mb-5"
-                >
-                  <div className="px-1 mb-3">
-                    <h2 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight">
-                      {firstName.trim() ? `${firstName.trim()}, here's your ` : "Here's your "}
-                      <HighlightSweep>8-week plan</HighlightSweep>
-                    </h2>
-                    <p className="text-xs text-[#5A5A5A] mt-1.5">
-                      Built from your {QUESTION_STEPS.length} answers. About 15 minutes a day.
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl overflow-hidden border-2 border-[#E8DDD9] bg-card shadow-md shadow-primary/5">
-                    {/* The scroll, staged. Her name is written on it, then it
-                        plays the two things the arc and the pillar list used to
-                        say in static grids: a day on the plan (four tasks
-                        ticking themselves off) and the eight weeks those days
-                        add up to. It loops on its own while it's on screen -
-                        nothing in it is tappable, so it never competes with the
-                        CTA for a thumb. */}
-                    <PlanStage
-                      firstName={firstName.trim() || undefined}
-                      goalLabel={goalLabel}
-                      className="pb-2"
-                    />
-
-                    {/* Today's list front and centre, the three pillar screens
-                        fanned behind it - the four tasks above, as they actually
-                        look. Gated until the masters land in assets/diagnosys/. */}
-                    {PLAN_SHOTS_READY && (
-                      <ShotStage className="h-44">
-                        <PhoneShot src={PLAN_SHOTS.movement} alt="A movement task in the MenoLisa app" rotate={-9} className="w-[27%] -mr-4 mt-3" />
-                        <PhoneShot src={PLAN_SHOTS.day} alt="Today's plan tasks in the MenoLisa app" rotate={0} delay={0.1} className="w-[31%] z-10" />
-                        <PhoneShot src={PLAN_SHOTS.nutrition} alt="A nutrition task in the MenoLisa app" rotate={7} delay={0.18} className="w-[27%] -ml-4 mt-3" />
-                        <PhoneShot src={PLAN_SHOTS.relaxation} alt="A relaxation task in the MenoLisa app" rotate={13} delay={0.26} className="w-[27%] -ml-6 mt-6" />
-                      </ShotStage>
-                    )}
-
-                    {/* The plan as it actually arrives. An unretouched inbox shot is
-                        what turns the illustrated scroll above into a real thing. */}
-                    <ShotStage className="h-40" fadeFrom="from-card">
-                      <PhoneShot
-                        src="/diagnosys/8week.webp"
-                        alt="The personalized 8-week plan email from Lisa"
-                        rotate={-3}
-                        className="w-[52%]"
-                      />
-                    </ShotStage>
-                  </div>
-
-                </motion.div>
-              );
-            })()}
-
-            {/* ── Block 3b: Someone who already finished it. Placed between the
-                plan and the app because this is the moment the plan is at its most
-                abstract - she has just been shown eight weeks of tasks she hasn't
-                done yet, and the next honest question is "does anyone actually get
-                to the end of this". ─────────────────────────────────────────── */}
+            {/* ── Block 3: Someone who already finished it. Placed after the plan
+                because this is the moment the plan is at its most abstract - she
+                has just been shown eight weeks of tasks she hasn't done yet, and
+                the next honest question is "does anyone actually get to the end
+                of this". ────────────────────────────────────────────────────── */}
             <SocialProofPolaroid reduced={!!prefersReducedMotion} />
 
-            {/* ── Block 4: The app. Deliberately after the plan and deliberately
+            {/* ── Block 4: Where this is heading.
+                Moved down from the top of the page. Opening on fear spent
+                credibility before she had seen a single thing she was being
+                sold; the cost of doing nothing lands far better *after* she
+                knows there is a concrete alternative, because now it is a
+                comparison rather than a threat. ─────────────────────────────── */}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.18 }}
+              className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-5 shadow-md shadow-primary/5"
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <TrendingDown className="w-5 h-5 text-red-500" />
+                <h2 className="text-base font-bold text-[#3D3D3D]">And if you do nothing</h2>
+              </div>
+              <p className="text-xs text-[#5A5A5A] mb-3">
+                {firstName.trim() ? (
+                  <>
+                    <span className="font-bold">{firstName.trim()}</span>, untreated
+                  </>
+                ) : (
+                  "Untreated"
+                )}{" "}
+                perimenopause symptoms persist 4&ndash;7 years on average - and often get worse
+                before they settle.
+              </p>
+              <TrajectoryChart score={score} />
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className="rounded-xl border border-red-200 bg-red-50 p-2.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-red-700">
+                    Without a plan
+                  </div>
+                  <p className="text-[11px] text-red-700/80 mt-0.5 leading-snug">
+                    Symptoms drift on for years.
+                  </p>
+                </div>
+                <div className="rounded-xl border border-green-200 bg-green-50 p-2.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-green-700">
+                    With Lisa
+                  </div>
+                  <p className="text-[11px] text-green-700/80 mt-0.5 leading-snug">
+                    {SCORE_GOAL}+ by week {PLAN_WEEKS}, then hold it.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* ── Block 5: The app. Deliberately after the plan and deliberately
                 small - these are the tools she runs the plan with, not the offer.
                 Selling them first was selling a tracker to someone who came here
                 to stop feeling this way. ──────────────────────────────────────── */}
@@ -2928,23 +3455,42 @@ function RegisterPageContent() {
         </div>
       )}
 
-      {/* Relief Phase - one paced-breathing exercise she completes herself, so she
-          arrives at the paywall having already been given something that worked. */}
+      {/* Relief Phase - everything between the plan and the price, on one screen:
+          a paced-breathing exercise she completes herself, then a five-row audit
+          of her own day. She reaches the paywall having already been given
+          something that worked and having been told the gap is structural.
+
+          The audit used to be a separate `nutrition` phase with ten rows in
+          three scrolling groups. Ten taps and a phase change, immediately after
+          she tapped "I'm ready to feel better" - the point of maximum intent in
+          the whole funnel, and the worst possible place to send her elsewhere. */}
       {phase === "relief" && (
         <div
           className={cn(
             "flex-1 flex flex-col min-h-0 -mx-4 sm:-mx-6 px-4 sm:px-6 pt-2",
-            // The reward stack is taller than the exercise, so it gets to scroll
-            // on short screens; the exercise itself must never move under her.
-            reliefStage === "done" &&
-              "overflow-y-auto pb-[calc(132px+env(safe-area-inset-bottom))]"
+            // The reward stacks are taller than the exercise, so they get to
+            // scroll on short screens; the exercise itself must never move under
+            // her, and the five-row checklist is sized to need no scroll at all.
+            (reliefStage === "reward" || reliefStage === "done") &&
+              "overflow-y-auto pb-[calc(132px+env(safe-area-inset-bottom))]",
+            // The five rows are sized to fit without scrolling on anything down
+            // to a 360x640 device, but `overflow-y-auto` still costs nothing and
+            // is the difference between a cramped screen and a clipped one.
+            reliefStage === "checklist" &&
+              "overflow-y-auto pb-[calc(84px+env(safe-area-inset-bottom))]"
           )}
         >
           <div className="max-w-md mx-auto w-full flex-1 flex flex-col min-h-0">
-            {/* Back to diagnosis */}
+            {/* Back. From the checklist onward this steps back through the
+                sequence rather than leaving the phase, so she can never lose the
+                breathing win by tapping back once. */}
             <button
               type="button"
-              onClick={() => setPhase("diagnosis")}
+              onClick={() => {
+                if (reliefStage === "done") setReliefStage("checklist");
+                else if (reliefStage === "checklist") setReliefStage("reward");
+                else setPhase("diagnosis");
+              }}
               className="flex items-center gap-1 self-start shrink-0 text-xs text-[#9A9A9A] hover:text-[#5A5A5A] mb-2 transition-colors"
             >
               <ArrowLeft className="w-3.5 h-3.5" /> Back
@@ -2953,7 +3499,7 @@ function RegisterPageContent() {
             <AnimatePresence mode="wait">
               {/* ── Intro + running share one persistent circle, so starting the
                   exercise never re-mounts (and never re-animates) it. ───────── */}
-              {reliefStage !== "done" ? (
+              {reliefStage === "intro" || reliefStage === "running" ? (
                 <motion.div
                   key="relief-exercise"
                   initial={{ opacity: 0 }}
@@ -3139,11 +3685,11 @@ function RegisterPageContent() {
                     </button>
                   )}
                 </motion.div>
-              ) : (
-                /* ── Done: the reward. She keeps the tool she just used, and sees
-                    the three she doesn't have yet - felt first, read second. ── */
+              ) : reliefStage === "reward" ? (
+                /* ── Reward: she keeps the tool she just used, and sees the
+                    three she doesn't have yet - felt first, read second. ── */
                 <motion.div
-                  key="relief-done"
+                  key="relief-reward"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.35 }}
@@ -3214,80 +3760,23 @@ function RegisterPageContent() {
                   {/* Tool 1 of 4: what she keeps, then what she doesn't have yet. */}
                   <ToolkitStack unlockedCount={1} topProblems={topProblems} />
                 </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Fixed bottom CTA -> nutrition checklist. Only exists once she's
-              finished, so the next ask lands after the reward, never during the
-              exercise. */}
-          {reliefStage === "done" && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.9 }}
-              className="fixed bottom-0 inset-x-0 z-30 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 pb-[env(safe-area-inset-bottom)]"
-            >
-              <div className="mx-auto max-w-md w-full px-4 sm:px-6 py-3">
-                {(() => {
-                  const cta = getReliefForwardCopy();
-                  return (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setPhase("nutrition")}
-                        className="w-full min-h-12 py-3.5 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
-                        style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)", boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)" }}
-                      >
-                        Unlock my next tool
-                        <ArrowRight className="w-4 h-4" />
-                      </button>
-                      <p className="text-[11px] text-[#9A9A9A] text-center mt-1.5">{cta.sub}</p>
-                    </>
-                  );
-                })()}
-              </div>
-            </motion.div>
-          )}
-        </div>
-      )}
-
-      {/* Nutrition Phase - the second app taste. She audits her own day against
-          the ten habits, then gets told the gap is structural, not personal.
-          This is the paywall's doorstep, so it carries the price + guarantee. */}
-      {phase === "nutrition" && (
-        <div
-          className={cn(
-            "flex-1 flex flex-col min-h-0 -mx-4 sm:-mx-6 px-4 sm:px-6 pt-2",
-            // The reward stack is taller than the checklist (which scrolls its
-            // own list instead), so only the reward gets to scroll the page.
-            // Both reserve room for the fixed CTA - the reward's is taller
-            // because it carries the trial line under the button.
-            nutritionStage === "done"
-              ? "overflow-y-auto pb-[calc(132px+env(safe-area-inset-bottom))]"
-              : "pb-[calc(84px+env(safe-area-inset-bottom))]"
-          )}
-        >
-          <div className="max-w-md mx-auto w-full flex-1 flex flex-col min-h-0">
-            {/* Back to the relief reward - reliefStage stays "done", so she
-                never has to breathe through the exercise a second time. */}
-            <button
-              type="button"
-              onClick={() => setPhase("relief")}
-              className="flex items-center gap-1 self-start shrink-0 text-xs text-[#9A9A9A] hover:text-[#5A5A5A] mb-2 transition-colors"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" /> Back
-            </button>
-
-            <AnimatePresence mode="wait">
-              {nutritionStage === "checklist" ? (
+              ) : reliefStage === "checklist" ? (
+                /* ── The audit. Five rows, no groups, no scroll: she can see the
+                    whole list and the CTA at once, which is the entire reason it
+                    is five rows and not ten. ─────────────────────────────────── */
                 <motion.div
-                  key="nutrition-checklist"
+                  key="relief-checklist"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0, scale: 0.96 }}
                   transition={{ duration: 0.35 }}
-                  className="flex-1 flex flex-col min-h-0 gap-3"
+                  // No `min-h-0` here, on purpose. This sits inside a scrolling
+                  // parent, and `justify-center` on a flex item that is allowed
+                  // to shrink below its content clips the *top* of that content
+                  // with no way to scroll back up to it. Letting the item grow
+                  // past the viewport instead means it centres when there is
+                  // room and the parent scrolls when there isn't.
+                  className="flex-1 flex flex-col justify-center gap-3 py-1"
                 >
                   <div className="shrink-0 text-center space-y-1.5">
                     <h1 className="text-2xl sm:text-3xl font-normal text-[#3D3D3D] leading-tight">
@@ -3308,130 +3797,91 @@ function RegisterPageContent() {
                       <span className="font-semibold text-primary tabular-nums">
                         {nutritionDone.length} of {NUTRITION_TOTAL} selected
                       </span>{" "}
-                      · Tap everything that applies - be honest, nobody&apos;s grading you.
+                      &middot; be honest, nobody&apos;s grading you.
                     </p>
                   </div>
 
-                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 -mr-1 pb-1 [scrollbar-width:thin] space-y-3">
-                    {NUTRITION_GROUPS.map((group) => {
-                      const GroupIcon = group.icon;
+                  <div className="shrink-0 space-y-2">
+                    {NUTRITION_ITEMS.map((item, i) => {
+                      const ItemIcon = item.icon;
+                      const isOn = nutritionDone.includes(item.id);
                       return (
-                        <div key={group.title} className="space-y-2">
-                          <div className="flex items-center gap-1.5 px-1">
-                            <GroupIcon className="w-3.5 h-3.5 text-primary" />
-                            <span className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">
-                              {group.title}
-                            </span>
+                        <motion.button
+                          key={item.id}
+                          type="button"
+                          onClick={() => toggleNutritionItem(item.id)}
+                          aria-pressed={isOn}
+                          initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.06 + i * 0.05, duration: 0.3 }}
+                          // border-2 in BOTH states - going 1px -> 2px on
+                          // tap shifts the row by a pixel under her finger.
+                          className={cn(
+                            "w-full flex items-center gap-3 rounded-2xl border-2 px-3.5 py-3 text-left transition-colors duration-200",
+                            isOn
+                              ? "bg-primary/5 border-primary/30"
+                              : "border-foreground/10 bg-foreground/3 hover:bg-foreground/6"
+                          )}
+                        >
+                          <div
+                            className={cn(
+                              "w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors",
+                              isOn ? "bg-primary/15" : "bg-foreground/5"
+                            )}
+                          >
+                            <ItemIcon
+                              className={cn("w-4 h-4", isOn ? "text-primary" : "text-[#9A9A9A]")}
+                            />
                           </div>
-                          {group.items.map((item) => {
-                            const ItemIcon = item.icon;
-                            const isOn = nutritionDone.includes(item.id);
-                            return (
-                              <div key={item.id} className="space-y-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => toggleNutritionItem(item.id)}
-                                  aria-pressed={isOn}
-                                  // border-2 in BOTH states - going 1px -> 2px on
-                                  // tap shifts the row by a pixel under her finger.
-                                  className={cn(
-                                    "w-full flex items-center gap-3 rounded-2xl border-2 px-3.5 py-2.5 text-left transition-colors duration-200",
-                                    isOn
-                                      ? "bg-primary/5 border-primary/30"
-                                      : "border-foreground/10 bg-foreground/3 hover:bg-foreground/6"
-                                  )}
-                                >
-                                  <div
-                                    className={cn(
-                                      "w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors",
-                                      isOn ? "bg-primary/15" : "bg-foreground/5"
-                                    )}
-                                  >
-                                    <ItemIcon
-                                      className={cn(
-                                        "w-4 h-4",
-                                        isOn ? "text-primary" : "text-[#9A9A9A]"
-                                      )}
-                                    />
-                                  </div>
-                                  <span
-                                    className={cn(
-                                      "flex-1 min-w-0 text-sm leading-tight",
-                                      isOn
-                                        ? "font-bold text-[#3D3D3D]"
-                                        : "font-medium text-[#5A5A5A]"
-                                    )}
-                                  >
-                                    {item.label}
-                                    {/* The cadence rides inside the label rather
-                                        than in its own column, so a two-line
-                                        label doesn't push it off the row. */}
-                                    {item.hint && (
-                                      <span
-                                        className={cn(
-                                          "ml-1.5 text-[11px] font-medium whitespace-nowrap",
-                                          isOn ? "text-primary" : "text-[#9A9A9A]"
-                                        )}
-                                      >
-                                        {item.hint}
-                                      </span>
-                                    )}
-                                  </span>
-                                  <div
-                                    className={cn(
-                                      "w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-colors",
-                                      isOn ? "bg-primary" : "border border-foreground/15"
-                                    )}
-                                  >
-                                    {isOn && (
-                                      <Check
-                                        className="w-3 h-3 text-primary-foreground animate-in zoom-in duration-200"
-                                        strokeWidth={3}
-                                      />
-                                    )}
-                                  </div>
-                                </button>
-
-                                {/* Supplement chips: they name the three that
-                                    matter, so even skipping them teaches her
-                                    something. Never counted toward the score. */}
-                                {item.id === "supplements" && isOn && (
-                                  <div className="flex flex-wrap gap-1.5 pl-3 animate-in fade-in slide-in-from-top-1 duration-200">
-                                    {SUPPLEMENT_OPTIONS.map((s) => {
-                                      const chipOn = supplementsTaken.includes(s.id);
-                                      return (
-                                        <button
-                                          key={s.id}
-                                          type="button"
-                                          onClick={() => toggleSupplement(s.id)}
-                                          aria-pressed={chipOn}
-                                          className={cn(
-                                            "px-3 py-1.5 rounded-full text-[11px] font-semibold border-2 transition-colors",
-                                            chipOn
-                                              ? "bg-primary/10 border-primary/30 text-[#3D3D3D]"
-                                              : "border-foreground/10 bg-foreground/3 text-[#8A8A8A] hover:bg-foreground/6"
-                                          )}
-                                        >
-                                          {s.label}
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
+                          <span
+                            className={cn(
+                              "flex-1 min-w-0 text-sm leading-tight",
+                              isOn ? "font-bold text-[#3D3D3D]" : "font-medium text-[#5A5A5A]"
+                            )}
+                          >
+                            {item.label}
+                            {/* The cadence rides inside the label rather than in
+                                its own column, so a two-line label doesn't push
+                                it off the row. */}
+                            {item.hint && (
+                              <span
+                                className={cn(
+                                  "ml-1.5 text-[11px] font-medium whitespace-nowrap",
+                                  isOn ? "text-primary" : "text-[#9A9A9A]"
                                 )}
-                              </div>
-                            );
-                          })}
-                        </div>
+                              >
+                                {item.hint}
+                              </span>
+                            )}
+                          </span>
+                          <div
+                            className={cn(
+                              "w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-colors",
+                              isOn ? "bg-primary" : "border border-foreground/15"
+                            )}
+                          >
+                            {isOn && (
+                              <Check
+                                className="w-3 h-3 text-primary-foreground animate-in zoom-in duration-200"
+                                strokeWidth={3}
+                              />
+                            )}
+                          </div>
+                        </motion.button>
                       );
                     })}
                   </div>
+
+                  <p className="shrink-0 text-center text-[11px] text-[#9A9A9A]">
+                    {NUTRITION_TOTAL} of the {NUTRITION_PLAN_TOTAL} daily habits in your plan.
+                  </p>
                 </motion.div>
               ) : (
                 /* ── Done: her day, read back to her. Whatever she ticked, the
                     verdict lands on "the gap is structural" - then the swaps
                     give tomorrow a shape, and the toolkit moves to 2 of 4. ── */
                 <motion.div
-                  key="nutrition-done"
+                  key="relief-done"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.35 }}
@@ -3535,9 +3985,6 @@ function RegisterPageContent() {
                                       <SwapIcon className="w-4 h-4 text-primary shrink-0" />
                                       <span className="text-sm font-semibold text-[#3D3D3D] leading-tight">
                                         {s.label}
-                                        {/* Out of the checklist the row has no
-                                            group header above it, so "every
-                                            meal" has to travel with the label. */}
                                         {s.hint && (
                                           <span className="ml-1.5 text-[11px] font-medium text-primary">
                                             {s.hint}
@@ -3566,37 +4013,52 @@ function RegisterPageContent() {
             </AnimatePresence>
           </div>
 
-          {/* Fixed bottom CTA. During the checklist it's never disabled - zero
-              ticks is an honest answer and gets its own label. After the
-              verdict it becomes the paywall doorstep and carries the
-              no-charge reassurance instead of the price. */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: nutritionStage === "done" ? 0.9 : 0.2 }}
-            className="fixed bottom-0 inset-x-0 z-30 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 pb-[env(safe-area-inset-bottom)]"
-          >
-            <div className="mx-auto max-w-md w-full px-4 sm:px-6 py-3">
-              <button
-                type="button"
-                onClick={() =>
-                  nutritionStage === "checklist" ? setNutritionStage("done") : setPhase("paywall")
-                }
-                className="w-full min-h-12 py-3.5 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
-                style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)", boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)" }}
-              >
-                {nutritionStage === "checklist"
-                  ? nutritionDone.length > 0
-                    ? "See what this means"
-                    : "I'm starting from scratch"
-                  : `View my ${PLAN_WEEKS}-week plan`}
-                <ArrowRight className="w-4 h-4" />
-              </button>
-              {nutritionStage === "done" && (
-                <p className="text-[11px] text-[#9A9A9A] text-center mt-1.5">{getCtaCopy().sub}</p>
-              )}
-            </div>
-          </motion.div>
+          {/* Fixed bottom CTA. Absent during the exercise itself, so the next ask
+              always lands after a reward and never during a breath. On the
+              checklist it is never disabled - zero ticks is an honest answer and
+              gets its own label - and after the verdict it becomes the paywall
+              doorstep and carries the no-charge reassurance. */}
+          {reliefStage !== "intro" && reliefStage !== "running" && (
+            <motion.div
+              key={reliefStage}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: reliefStage === "checklist" ? 0.2 : 0.9 }}
+              className="fixed bottom-0 inset-x-0 z-30 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 pb-[env(safe-area-inset-bottom)]"
+            >
+              <div className="mx-auto max-w-md w-full px-4 sm:px-6 py-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (reliefStage === "reward") setReliefStage("checklist");
+                    else if (reliefStage === "checklist") setReliefStage("done");
+                    else setPhase("paywall");
+                  }}
+                  className="w-full min-h-12 py-3.5 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
+                  style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)", boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)" }}
+                >
+                  {reliefStage === "reward"
+                    ? "Unlock my next tool"
+                    : reliefStage === "checklist"
+                      ? nutritionDone.length > 0
+                        ? "See what this means"
+                        : "I'm starting from scratch"
+                      : `View my ${PLAN_WEEKS}-week plan`}
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+                {reliefStage === "reward" && (
+                  <p className="text-[11px] text-[#9A9A9A] text-center mt-1.5">
+                    {getReliefForwardCopy().sub}
+                  </p>
+                )}
+                {reliefStage === "done" && (
+                  <p className="text-[11px] text-[#9A9A9A] text-center mt-1.5">
+                    {getCtaCopy().sub}
+                  </p>
+                )}
+              </div>
+            </motion.div>
+          )}
         </div>
       )}
 
@@ -3606,7 +4068,7 @@ function RegisterPageContent() {
           onCheckout={handleStartCheckout}
           checkoutLoading={checkoutLoading}
           error={error}
-          onBack={() => setPhase("nutrition")}
+          onBack={() => setPhase("relief")}
           firstName={firstName}
           trackingSource="register"
           topProblems={topProblems}
@@ -3632,9 +4094,45 @@ function RegisterPageContent() {
             <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-3">
               {firstName.trim() ? `${firstName.trim()}, you're all set!` : "You're all set!"}
             </h2>
-            <p className="text-sm sm:text-base text-[#5A5A5A] mb-8 leading-relaxed">
-              Download the Menolisa app to start tracking your symptoms and chatting with Lisa - your 24/7 menopause companion.
+            <p className="text-sm sm:text-base text-[#5A5A5A] mb-5 leading-relaxed">
+              Your {PLAN_WEEKS}-week plan is being built right now. Download the app to start it.
             </p>
+
+            {/* How she gets in, stated before the store badges rather than left
+                for her to work out.
+                She never set a password: her login *is* the email she typed at
+                Stripe, and nothing in the funnel has ever told her that. She
+                also never confirmed that address anywhere she could check it,
+                and a typo there is an account she has paid for and cannot reach,
+                with no self-serve recovery. This screen is the last moment the
+                address is still on her mind, so it is the last chance to catch
+                it - and the two sentences that turn a purchase into an install. */}
+            <div className="mb-6 rounded-2xl border-2 border-[#E8DDD9] bg-card p-4 text-left">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[#9A9A9A]">
+                How to sign in
+              </p>
+              {checkoutEmail ? (
+                <p className="text-sm text-[#3D3D3D] leading-snug">
+                  Open the app and enter{" "}
+                  <span className="font-bold break-all">{checkoutEmail}</span> - the address you
+                  used at checkout. We&apos;ll text you a 6-digit code. No password to remember.
+                </p>
+              ) : (
+                <p className="text-sm text-[#3D3D3D] leading-snug">
+                  Open the app and enter{" "}
+                  <span className="font-bold">the email address you used at checkout</span>.
+                  We&apos;ll send you a 6-digit code. No password to remember.
+                </p>
+              )}
+              <p className="mt-2 text-xs text-[#7A7A7A] leading-snug">
+                Your plan is on its way to that inbox too. Wrong address, or the code never
+                arrives?{" "}
+                <a className="font-semibold text-primary underline" href="mailto:support@menolisa.com">
+                  support@menolisa.com
+                </a>{" "}
+                will fix it.
+              </p>
+            </div>
 
             <div className="flex flex-col items-center gap-3 mb-6">
               <a
@@ -4461,7 +4959,8 @@ function RegisterPageContent() {
           )}
         </div>
       )}
-
+        </motion.div>
+      </AnimatePresence>
     </main>
   );
 }

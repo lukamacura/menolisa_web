@@ -414,8 +414,22 @@ export const MOVEMENT_VOLUME: Record<string, { sessions: number; minutes: number
 
 /**
  * The ten daily nutrition habits, in priority order. These ids and labels are
- * the contract with the /register funnel (NUTRITION_GROUPS) — see
- * docs/plan/pillars.md. Do not reword them here alone.
+ * the contract with the /register funnel (`NUTRITION_ITEMS` in
+ * `app/register/page.tsx`) — see docs/plan/pillars.md. Do not reword them here
+ * alone.
+ *
+ * The funnel shows **five of these ten**, and says so ("5 of the 10 daily habits
+ * in your plan"). Ten rows on a sales page was the highest-friction unpaid
+ * interaction in the funnel and it sat one screen before the price; all ten
+ * still run in the app, which is why the copy says five *of* ten.
+ *
+ * That subset is chosen for leverage and carries its **own** order — see
+ * `NUTRITION_ITEMS` in `app/register/page.tsx`. It is deliberately not "the
+ * first five of this list": the funnel leads with protein, the post-meal walk
+ * and the overnight fast, which sit 1st, 5th and 6th here. Two independent
+ * orderings, and each is load-bearing where it lives (this one drives the app's
+ * daily list, that one drives which "first swaps" she is shown before she buys),
+ * so reordering either does not update the other.
  *
  * Unlike movement and relaxation, these are NOT selected by the LLM. All ten
  * appear every single day, in this order and grouping, for every user — she

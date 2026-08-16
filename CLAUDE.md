@@ -237,7 +237,7 @@ const supabaseAdmin = getSupabaseAdmin(); // lazy singleton
 - `lib/getAuthenticatedUser.ts` — **always use this** in API routes; it handles both cookie-based (web) and Bearer token (mobile) auth
 - Auth UI: shared `components/auth/OtpForm.tsx`, used by `app/login/page.tsx`. The `/register` funnel no longer has an email phase (see below), so login is its only caller.
 - Login flow: email → `signInWithOtp({ shouldCreateUser: false })` → 6-digit code → `verifyOtp` → session → honor `?redirectedFrom=` (validated, must start with `/` and not `//`)
-- Registration flow: quiz → **anonymous sign-in** behind the calculating loader → `POST /api/auth/save-quiz` (server reads `userId` from session, validates payload with zod, creates `user_trials` row in `pending_payment`) → results → diagnosis → relief → nutrition → paywall → Stripe checkout **collects the email** → webhook binds it to that same user id and flips `account_status` to `paid`
+- Registration flow: quiz → **anonymous sign-in** behind the calculating loader → `POST /api/auth/save-quiz` (server reads `userId` from session, validates payload with zod, creates `user_trials` row in `pending_payment`) → results → plan (the `diagnosis` phase) → relief → paywall → Stripe checkout **collects the email** → webhook binds it to that same user id and flips `account_status` to `paid`. `relief` runs breathing → reward → nutrition checklist → verdict as one phase; the separate `nutrition` phase was folded into it on 2026-08-16
 - Mobile bridge (`app/auth/mobile-bridge/page.tsx`) is a session handoff (mobile → web token via `#hash`), not a login — leave it alone
 - Email template: paste branded HTML into Supabase Dashboard → Auth → Email Templates → Magic Link, with `{{ .Token }}` for the 6-digit code
 - `proxy.ts` (Next 16 renamed `middleware.ts` → `proxy.ts`, and the exported function from `middleware` → `proxy`) protects `/dashboard/*`. It runs two gates: a session check on everything in `PROTECTED_PREFIXES`, then a payment check that skips `PAYMENT_EXEMPT_PREFIXES` (`/dashboard/account`, `/dashboard/settings`) so cancellation and account deletion stay reachable after access ends. Select the full `TRIAL_SELECT_COLS` when reading `user_trials` — a partial select makes missing columns read as "no dispute, not canceled" and grants access it shouldn't.
@@ -515,21 +515,39 @@ Ad tracking for the `/register` web2app funnel:
 |---|---|---|
 | `PageView` | `components/MetaPixel.tsx` (in `app/layout.tsx`); re-fires on App Router route changes | — |
 | `QuizStart` *(custom)* | `app/register/page.tsx` on the quiz phase | — |
+| `QuizStep` *(custom)* | `app/register/page.tsx` on every quiz step, with `step_index` / `step_id` | — |
 | `QuizComplete` *(custom)* | `app/register/page.tsx` last step of `goNext()` | — |
 | `Lead` | `app/register/page.tsx` `completeRegistration()`, after save-quiz succeeds | — |
+| `ResultsView` *(custom)* | `app/register/page.tsx` on the results phase | — |
+| `PlanView` *(custom)* | `app/register/page.tsx` on the plan phase (`diagnosis`) | — |
+| `PlanScrollDepth` *(custom)* | `app/register/page.tsx` plan-phase scroll, bucketed 25/50/75/100 | — |
+| `ReliefDone` *(custom)* | `app/register/page.tsx` when the breathing reward lands | — |
+| `ChecklistDone` *(custom)* | `app/register/page.tsx` when the nutrition verdict lands | — |
 | `ViewContent` | `components/PaywallView.tsx` on mount (once) | $59 |
 | `InitiateCheckout` | `components/PaywallView.tsx` CTA click | $59 |
 | `Purchase` | Browser: `components/MetaPurchaseTracker.tsx` on the success landing. Server: `sendMetaPurchase()` from the Stripe webhook | $59 |
 
 Step names and their sessionStorage dedup keys are paired in `META_FUNNEL_STEPS`
-(`lib/metaPixel.ts`) and fired through `trackFunnelStep()`.
-`QuizStart`/`QuizComplete` are custom events — each needs a **Custom Conversion**
-defined in Events Manager before it can be optimized for or used as an audience.
-`Lead` is standard and needs no setup, which is why it's the fallback
-optimization objective while Purchase volume is below learning-phase exit. Since
-the funnel stopped collecting an email, `Lead` carries no hashed address and
-matches on pixel signals alone — it fires one screen after `QuizComplete`, so
-treat it as "profile saved", not as a captured contact.
+(`lib/metaPixel.ts`) and fired through `trackFunnelStep()`. `QuizStep` and
+`PlanScrollDepth` are parameterized rather than one event per position, so each
+is a single Custom Conversion with a breakdown instead of 13 (or 4) of them —
+`trackQuizStep()` / `trackPlanScrollDepth()` in `lib/metaPixelClient.ts` carry
+the dedup keys.
+
+Every custom event needs a **Custom Conversion** defined in Events Manager
+before it can be optimized for or used as an audience. `Lead` is standard and
+needs no setup, which is why it's the fallback optimization objective while
+Purchase volume is below learning-phase exit. Since the funnel stopped
+collecting an email, `Lead` carries no hashed address and matches on pixel
+signals alone — it fires one screen after `QuizComplete`, so treat it as
+"profile saved", not as a captured contact.
+
+**The screens between `QuizComplete` and `ViewContent` were unmeasured until
+2026-08-16.** `ViewContent` (paywall mount) was the next event after the quiz
+ended, so results → plan → relief was one opaque stretch containing three
+separate places to lose her, and per-question drop-off inside the quiz didn't
+exist at all. Anything proposed about that part of the funnel was unfalsifiable.
+Keep every screen that can lose her reporting.
 
 `Purchase` is sent from **both** browser and server and deduplicated by a shared
 `event_id` (`purchaseEventId()` in `lib/metaPixel.ts`, derived from the Stripe
@@ -779,6 +797,36 @@ again also works — that calls `sync-session`.
 ## 7. CURRENT STATUS
 
 Recent work:
+- **Funnel audit fixes (2026-08-16)** — sixteen changes to `/register`, in three
+  groups.
+  **Measurement first**: six new Meta events plus parameterized `QuizStep` and
+  `PlanScrollDepth` (see §4). Nothing else here was rankable without them.
+  **The results screen**, which sold a score and withheld the product: the score
+  card is rebuilt as `<ScoreGauge />` (metric named, "higher is better" stated,
+  two labelled markers instead of three unlabelled ticks, the *gap* coloured
+  rather than the number — it used to render red or orange at every value on a
+  higher-is-better scale, under a ⚠ icon); the envelope now delivers her actual
+  score instead of a stock illustration; the duplicate red symptom pills are
+  gone; "You're not alone" was a fear chart under a comfort headline and now
+  says what its data shows; `estrogenPct` — a per-user percentage computed from
+  quiz answers and rendered as a clinical claim about her — is replaced by her
+  own symptom count plus a general statement about estrogen; and the screen now
+  ends on "your 8-week plan is ready", closing the promise the start screen and
+  the loader both made.
+  **Structure**: the plan is block 1 of the plan screen with the real
+  `/screenshots` masters (hero uncropped and full width via `<PlanHeroShot />`,
+  three supporting shots tilted) and the only 4xl headline left; the trajectory
+  chart moved below it and had its three contradictory time horizons (copy said
+  4–7 years, axis said 8 weeks, code said 2 years) resolved into one marked
+  broken axis; `relief` and `nutrition` merged into one phase with the checklist
+  cut from ten rows to five; the loader runs 6.5s with a percentage; the success
+  screen now shows her the address she typed at Stripe and tells her it is her
+  login; every phase change cross-fades through one `AnimatePresence`.
+  Also: the paywall's "One payment" trust box contradicted "renews every 8
+  weeks" 100px above it and is now "Cancel before week 8".
+  **Not changed, deliberately**: `PLAN_ADHERENCE_PCT` is still 90. A 90% bar
+  over 56 days reads as unclaimable to the skeptic the guarantee exists to
+  convert, but lowering it changes a refund promise, which is a business call.
 - **Web product surfaces deleted (2026-08-14)** — `app/chat/lisa/` (~2,700
   lines), `app/dashboard/notifications/`, `components/CoffeeLoading.tsx`, the
   three list-only notification components, `hooks/useUnreadCount.ts`,
