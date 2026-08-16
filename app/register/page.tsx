@@ -61,7 +61,7 @@ import {
   PLAN_WEEKS,
 } from "@/lib/pricing";
 import { getSymptomTransforms } from "@/lib/testimonials";
-import { GOAL_PROMISE, getOfferPromise } from "@/lib/planTimeline";
+import { getOfferPromise } from "@/lib/planTimeline";
 import {
   trackFunnelStep,
   trackPlanScrollDepth,
@@ -176,12 +176,51 @@ const GOAL_OPTIONS = [
 // How menopause began. Surgical and medical menopause arrive overnight rather
 // than over years, and both change what the plan may safely suggest - so this is
 // asked immediately after her stage, while she's still thinking about it.
+//
+// No tiles here, deliberately. "After cancer treatment" and "After surgery" have
+// no illustration that isn't either a stock smile that trivialises it or a
+// clinical photo that alarms her, and a picture buys nothing on a question whose
+// four answers are already unambiguous in words. A plain coloured list reads
+// faster and stays respectful.
 const MENOPAUSE_TYPE_OPTIONS = [
-  { id: "natural", label: "Naturally, over time", image: "/quiz/menopause-type/natural.webp" },
-  { id: "surgical", label: "After surgery", image: "/quiz/menopause-type/surgical.webp" },
-  { id: "medical", label: "After cancer treatment", image: "/quiz/menopause-type/medical.webp" },
-  { id: "not_sure", label: "I'm not sure", image: "/quiz/menopause-type/notsure.webp" },
+  { id: "natural", label: "Naturally, over time", hint: "Periods changed on their own" },
+  { id: "surgical", label: "After surgery", hint: "Ovaries or uterus removed" },
+  { id: "medical", label: "After cancer treatment", hint: "Chemo, radiation or hormone therapy" },
+  { id: "not_sure", label: "I'm not sure", hint: "That's completely fine — we'll work with it" },
 ];
+
+// One accent per option so the list reads as four distinct choices at a glance.
+// Full class strings, never interpolated - Tailwind only ships classes it can
+// find as literal text in the source.
+const MENOPAUSE_TYPE_TONE: Record<
+  string,
+  { idle: string; selected: string; dot: string; label: string }
+> = {
+  natural: {
+    idle: "border-[#2E9E6B]/30 hover:border-[#2E9E6B]/70 hover:bg-[#2E9E6B]/5",
+    selected: "border-[#2E9E6B] bg-[#2E9E6B]/10 shadow-md shadow-[#2E9E6B]/20",
+    dot: "bg-[#2E9E6B]",
+    label: "text-[#1F7A50]",
+  },
+  surgical: {
+    idle: "border-[#3E8FD0]/30 hover:border-[#3E8FD0]/70 hover:bg-[#3E8FD0]/5",
+    selected: "border-[#3E8FD0] bg-[#3E8FD0]/10 shadow-md shadow-[#3E8FD0]/20",
+    dot: "bg-[#3E8FD0]",
+    label: "text-[#2A6DA9]",
+  },
+  medical: {
+    idle: "border-[#8B6BC7]/30 hover:border-[#8B6BC7]/70 hover:bg-[#8B6BC7]/5",
+    selected: "border-[#8B6BC7] bg-[#8B6BC7]/10 shadow-md shadow-[#8B6BC7]/20",
+    dot: "bg-[#8B6BC7]",
+    label: "text-[#6A4BA3]",
+  },
+  not_sure: {
+    idle: "border-[#8A8A8A]/30 hover:border-[#8A8A8A]/70 hover:bg-[#8A8A8A]/5",
+    selected: "border-[#8A8A8A] bg-[#8A8A8A]/10 shadow-md shadow-[#8A8A8A]/20",
+    dot: "bg-[#8A8A8A]",
+    label: "text-[#5F5F5F]",
+  },
+};
 
 // Image-based symptom tiles (same style as Q1 age / Q2 status). 9 options, multi-select.
 // IDs reuse the existing downstream keys (SYMPTOM_LABELS, pillars, comparison) so results keep working.
@@ -202,39 +241,21 @@ const SYMPTOM_IMAGE: Record<string, string> = Object.fromEntries(
   PROBLEM_OPTIONS.map((o) => [o.id, o.image])
 );
 
-// Her symptom goes inside the impact question, so each one needs its own
-// grammar: four of the nine labels are plural. Dropping the raw label into the
-// sentence made it read "How much is hot flashes costing you" for nearly half
-// of them. `phrase` is also her word for it rather than the chart word - "the
-// broken sleep", not "sleep issues".
-const SYMPTOM_SUBJECT: Record<string, { phrase: string; plural: boolean }> = {
-  hot_flashes: { phrase: "hot flashes", plural: true },
-  sleep_issues: { phrase: "the broken sleep", plural: false },
-  brain_fog: { phrase: "the brain fog", plural: false },
-  mood_swings: { phrase: "the mood swings", plural: true },
-  weight_changes: { phrase: "the weight changes", plural: true },
-  low_energy: { phrase: "the exhaustion", plural: false },
-  anxiety: { phrase: "the anxiety", plural: false },
-  joint_pain: { phrase: "the joint pain", plural: false },
-  bloating: { phrase: "the bloating", plural: false },
-};
-
-const FALLBACK_SYMPTOM_SUBJECT = { phrase: "this", plural: false };
-
-// Its own step, straight after q4_symptoms: she rates the one symptom she picked
-// first, which is the one she came here for. Rating all nine is a chore nobody
-// finishes; rating the worst one is a single tap and gives the score a real
-// intensity to work with instead of a flat constant.
+// Its own step, straight after q4_symptoms: one overall rating of how hard her
+// symptoms are hitting, not a rating of any single one. Rating all nine is a
+// chore nobody finishes, and rating only her first pick made the whole score
+// hang on tile order - what she actually knows is how heavy the load is as a
+// whole, so that is what we ask for.
 //
 // The ids stay mild/moderate/severe - IMPACT_VALUE, the score and the results
 // copy all key off them - but she never sees those words. "Moderate" is what a
 // doctor writes on a chart after deciding her symptoms don't warrant much; the
 // label she taps should be a sentence she'd actually say, and the three of them
-// escalate by how much of her day the symptom has taken.
+// escalate by how much of her day the symptoms have taken.
 const SYMPTOM_IMPACT_OPTIONS = [
-  { id: "mild", label: "I work around it", hint: "It's there, but the day still goes to plan" },
-  { id: "moderate", label: "It gets in the way", hint: "Most days I'm pushing through it" },
-  { id: "severe", label: "It runs my life", hint: "I plan my days around it" },
+  { id: "mild", label: "I work around them", hint: "They're there, but the day still goes to plan" },
+  { id: "moderate", label: "They get in the way", hint: "Most days I'm pushing through" },
+  { id: "severe", label: "They run my life", hint: "I plan my days around them" },
 ];
 
 // Green/amber/red so the three levels read as a scale before she reads a word.
@@ -411,7 +432,6 @@ const CALCULATING_MAX_PCT = 99;
 const STEP_IMAGES: Partial<Record<Step, string[]>> = {
   q1_age: AGE_OPTIONS.map((o) => o.image),
   q2_here_for: HERE_FOR_OPTIONS.map((o) => o.image),
-  q_menopause_type: MENOPAUSE_TYPE_OPTIONS.map((o) => o.image),
   q4_symptoms: PROBLEM_OPTIONS.map((o) => o.image),
   q3_goals: GOAL_OPTIONS.map((o) => o.image),
   reward_symptoms: ["/quiz/rewards/reward1.webp"],
@@ -436,9 +456,10 @@ const PLAN_SHOTS = {
   rewards: "/screenshots/screen4.webp",
 };
 
-// Intrinsic size of the /screenshots masters. Passed to next/image so the
-// reserved box matches the file's real aspect ratio - the older /diagnosys shots
-// are 1080x2192 and hardcoding those dimensions here would letterbox these.
+// Intrinsic size of the /screenshots masters, and the default for <PhoneShot />.
+// Passed to next/image so the reserved box matches the file's real aspect ratio;
+// a shot from another set (the retired /diagnosys masters were 1080x2192) must
+// pass its own dimensions or it letterboxes inside the reserved box.
 const SHOT_W = 1320;
 const SHOT_H = 2868;
 
@@ -447,13 +468,9 @@ const SHOT_H = 2868;
 // The hero is first: it is the one that must never be seen loading.
 const DIAGNOSIS_SHOTS = [
   PLAN_SHOTS.day,
-  "/diagnosys/8week.webp",
   PLAN_SHOTS.nutrition,
   PLAN_SHOTS.habits,
   PLAN_SHOTS.rewards,
-  "/diagnosys/symptoms1.webp",
-  "/diagnosys/insights.webp",
-  "/diagnosys/chat.webp",
 ];
 
 // Build the same URL next/image requests, so the preload warms both the Vercel
@@ -1429,17 +1446,17 @@ function PhoneShot({
   rotate = 0,
   delay = 0,
   className,
-  width = 1080,
-  height = 2192,
+  width = SHOT_W,
+  height = SHOT_H,
 }: {
   src: string;
   alt: string;
   rotate?: number;
   delay?: number;
   className?: string;
-  /** Intrinsic size of the master. The /screenshots set is 1320x2868; the older
-   *  /diagnosys set is 1080x2192, and declaring one ratio for the other
-   *  letterboxes the image inside its reserved box. */
+  /** Intrinsic size of the master, defaulting to the /screenshots set. Declaring
+   *  one ratio for an image of another letterboxes it inside its reserved box,
+   *  so pass these whenever the source isn't 1320x2868. */
   width?: number;
   height?: number;
 }) {
@@ -1861,17 +1878,13 @@ function RegisterPageContent() {
     [symptomSeverity]
   );
 
-  // The intensities everything downstream reads. Her worst symptom carries the
-  // level she tapped; the rest sit half a step under it, because she rated the
-  // hardest one and by definition the others aren't worse. Before she taps,
-  // every symptom keeps the old flat weight so nothing renders empty.
+  // The intensities everything downstream reads. She rates her symptoms as a
+  // whole, so every one she picked carries that same level - no per-symptom
+  // ranking is implied by tile order any more. Before she taps, every symptom
+  // keeps the old flat weight so nothing renders empty.
   const scoredSeverity = useMemo(() => {
-    const level = IMPACT_VALUE[symptomImpact];
-    if (level === undefined) {
-      return Object.fromEntries(topProblems.map((id) => [id, SELECTED_SEVERITY]));
-    }
-    const rest = Math.max(1, level - 0.5);
-    return Object.fromEntries(topProblems.map((id, i) => [id, i === 0 ? level : rest]));
+    const level = IMPACT_VALUE[symptomImpact] ?? SELECTED_SEVERITY;
+    return Object.fromEntries(topProblems.map((id) => [id, level]));
   }, [topProblems, symptomImpact]);
 
   const totalBurden = useMemo(
@@ -2813,7 +2826,12 @@ function RegisterPageContent() {
                 supplied, and the estrogen link is stated as the general fact
                 about menopause that it is. It used to be a per-user percentage
                 computed from her quiz answers - see the note where `estrogenPct`
-                used to live. */}
+                used to live.
+
+                The cause is named in plain English - "estrogen rising and
+                falling", which is what actually happens in perimenopause -
+                rather than "shifting estrogen", which is clinical shorthand
+                that tells a 45-60 reader nothing she can picture. */}
             {topProblems.length > 0 && (() => {
               const chips = topProblems
                 .filter((id) => SYMPTOM_IMAGE[id])
@@ -2834,10 +2852,10 @@ function RegisterPageContent() {
                       {topProblems.length}
                     </span>
                     <span className="block text-sm font-medium text-[#3D3D3D] mt-1.5">
-                      {one ? "symptom" : "symptoms"}, and {one ? "it shares" : "they share"} one
-                      root cause:
+                      {one ? "symptom" : "symptoms"}, and {one ? "it traces" : "they all trace"} back
+                      to the same thing:
                       <br />
-                      <span className="font-bold">shifting estrogen</span>
+                      <span className="font-bold">estrogen rising and falling</span>
                     </span>
                   </p>
 
@@ -3042,27 +3060,6 @@ function RegisterPageContent() {
               <ArrowLeft className="w-3.5 h-3.5" /> Back to my score
             </button>
 
-          
-
-            {/* ── Offer promise: her goal + 8 weeks + the measurable proof.
-                Frames the whole page around her own finish line. ─────────────── */}
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.02 }}
-              className="text-left mb-5"
-            >
-              <h1 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight">
-                {getOfferPromise(goal)} in{" "}
-                <HighlightSweep active={diagnosisHighlight}>8 weeks</HighlightSweep>.
-              </h1>
-              <p className="text-xs text-[#5A5A5A] mt-1.5">
-                Here&apos;s your plan to take your score from{" "}
-                <span className="font-bold text-[#3D3D3D]">{score}</span> to{" "}
-                <span className="font-bold text-green-600">{SCORE_GOAL}+</span>.
-              </p>
-            </motion.div>
-
             {/* ══ Block 1: THE PLAN ═══════════════════════════════════════════
                 This is the product, so it is now the first thing on the page and
                 the only block that keeps a 4xl headline.
@@ -3074,6 +3071,14 @@ function RegisterPageContent() {
                 hit the third giant headline, and left before reaching what she
                 was actually being sold.
 
+                There is exactly one h1 on this screen, and this is it. A
+                separate "{goal} in 8 weeks" hero used to sit directly above it,
+                so the page opened on two 4xl headlines saying the same thing in
+                different words, roughly 60px apart - the reader had to pick
+                which one was the promise. They are now one sentence: her goal,
+                the timeframe and the deliverable together, with the score
+                movement demoted to the subline where a proof point belongs.
+
                 The screenshots are also no longer decoration. `day` is her real
                 first day - "Day 1 · Week 1", the phase name, four pillars with
                 real progress - rendered full width and uncropped, because it is
@@ -3081,7 +3086,7 @@ function RegisterPageContent() {
                 glanced at. The three supporting shots keep the tilted, cropped
                 treatment, since they only have to prove the app is real. ───── */}
             {(() => {
-              const goalLabel = (GOAL_PROMISE[goal[0]] ?? "feel like yourself again").toLowerCase();
+              const goalLabel = getOfferPromise(goal).toLowerCase();
               return (
                 <motion.div
                   initial={{ opacity: 0, y: 16 }}
@@ -3090,12 +3095,18 @@ function RegisterPageContent() {
                   className="mb-6"
                 >
                   <div className="px-1 mb-3">
-                    <h2 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight">
+                    <h1 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight">
                       {firstName.trim() ? `${firstName.trim()}, here's your ` : "Here's your "}
-                      <HighlightSweep>{PLAN_WEEKS}-week plan</HighlightSweep>
-                    </h2>
+                      <HighlightSweep active={diagnosisHighlight}>
+                        {PLAN_WEEKS}-week plan
+                      </HighlightSweep>{" "}
+                      to {goalLabel}.
+                    </h1>
                     <p className="text-xs text-[#5A5A5A] mt-1.5">
-                      Built from your {QUESTION_STEPS.length} answers. About 15 minutes a day.
+                      Built from your {QUESTION_STEPS.length} answers. About 15 minutes a day -
+                      enough to take your score from{" "}
+                      <span className="font-bold text-[#3D3D3D]">{score}</span> to{" "}
+                      <span className="font-bold text-green-600">{SCORE_GOAL}+</span>.
                     </p>
                   </div>
 
@@ -3152,9 +3163,22 @@ function RegisterPageContent() {
                       className="pb-2"
                     />
 
-                    {/* Supporting evidence: the pillar screens behind the day,
-                        plus the plan as it arrives in her inbox. */}
-                    <ShotStage className="h-44">
+                    {/* Supporting evidence: the pillar screens behind the day.
+                        This is the last thing in the card, so its bottom fade
+                        lands on the card edge - which is what the fade was
+                        drawn for.
+
+                        A second stage used to follow it holding one 52%-wide
+                        shot of the plan email. Half of that strip was bare
+                        gradient either side of the phone, and it butted
+                        straight onto the flat clip of the three shots above,
+                        so the two stages together read as an empty band under
+                        the screenshots. It was also the last `/diagnosys`
+                        asset in this card - an older generation of the app UI
+                        sitting directly beneath the current `/screenshots`
+                        masters, which is the one comparison this block cannot
+                        afford. */}
+                    <ShotStage className="h-52">
                       <PhoneShot
                         src={PLAN_SHOTS.nutrition}
                         alt="The nutrition list for today in the MenoLisa app"
@@ -3180,15 +3204,6 @@ function RegisterPageContent() {
                         className="w-[30%] -ml-3 mt-3"
                         width={SHOT_W}
                         height={SHOT_H}
-                      />
-                    </ShotStage>
-
-                    <ShotStage className="h-40" fadeFrom="from-card">
-                      <PhoneShot
-                        src="/diagnosys/8week.webp"
-                        alt={`The personalized ${PLAN_WEEKS}-week plan email from Lisa`}
-                        rotate={-3}
-                        className="w-[52%]"
                       />
                     </ShotStage>
                   </div>
@@ -3342,10 +3357,19 @@ function RegisterPageContent() {
               </div>
             </motion.div>
 
-            {/* ── Block 5: The app. Deliberately after the plan and deliberately
-                small - these are the tools she runs the plan with, not the offer.
-                Selling them first was selling a tracker to someone who came here
-                to stop feeling this way. ──────────────────────────────────────── */}
+            {/* ── Block 5: What she gets alongside the plan. Deliberately after
+                the plan and deliberately small - these are the tools she runs
+                the plan with, not the offer. Selling them first was selling a
+                tracker to someone who came here to stop feeling this way.
+
+                It carried three `/diagnosys` phone shots until 2026-08-16. They
+                were an older generation of the app UI, and they sat on the same
+                screen as the current `/screenshots` masters in block 1 - so the
+                page showed her two different apps and asked her to believe both.
+                A screenshot that no longer matches the product is worse than no
+                screenshot: block 1 has already proved the app is real, and this
+                block only has to say what it keeps doing after day one. So it is
+                now typographic, and small enough to stay subordinate. ───────── */}
             {(() => {
               const topSymptom = [...topProblems]
                 .sort((a, b) => (scoredSeverity[b] ?? 0) - (scoredSeverity[a] ?? 0))[0];
@@ -3354,6 +3378,29 @@ function RegisterPageContent() {
               const topLabel = topSymptom
                 ? (SYMPTOM_LABELS[topSymptom] || topSymptom).toLowerCase()
                 : "symptoms";
+              const rows = [
+                {
+                  icon: Activity,
+                  tint: "text-sky-500",
+                  chip: "bg-sky-50",
+                  title: "It knows what today asks of you",
+                  body: "Tap what you felt. Two minutes, and the plan has what it needs.",
+                },
+                {
+                  icon: TrendingUp,
+                  tint: "text-emerald-500",
+                  chip: "bg-emerald-50",
+                  title: "It changes as you do",
+                  body: `Lisa reads your logs and rewrites next week around your ${topLabel}.`,
+                },
+                {
+                  icon: MessageCircleHeart,
+                  tint: "text-violet-500",
+                  chip: "bg-violet-50",
+                  title: "It answers at 2am",
+                  body: "Ask Lisa anything, any hour. Straight answers, no waiting room.",
+                },
+              ];
               return (
                 <motion.div
                   initial={{ opacity: 0, y: 16 }}
@@ -3363,40 +3410,47 @@ function RegisterPageContent() {
                 >
                   <div className="px-1 mb-3">
                     <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] leading-tight">
-                      And the app that <HighlightSweep>runs it</HighlightSweep>
+                      The plan doesn&apos;t{" "}
+                      <HighlightSweep>run itself</HighlightSweep>. Lisa does.
                     </h2>
                     <p className="text-xs text-[#5A5A5A] mt-1.5">
-                      Your plan lives here, alongside everything that keeps it honest.
+                      Every day for {PLAN_WEEKS} weeks, she decides what you do next - so you
+                      never have to.
                     </p>
                   </div>
 
-                  <div className="rounded-2xl bg-card border-2 border-[#E8DDD9] overflow-hidden shadow-md shadow-primary/5">
-                    <div className="px-4 pt-3.5 pb-3 space-y-2.5">
-                      <div className="flex items-start gap-2.5">
-                        <Activity className="w-4 h-4 text-sky-500 shrink-0 mt-0.5" />
-                        <p className="text-xs text-[#5A5A5A] leading-snug">
-                          <span className="font-bold text-[#3D3D3D]">Track</span> - tap what you felt today. Two minutes, done.
-                        </p>
-                      </div>
-                      <div className="flex items-start gap-2.5">
-                        <TrendingUp className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                        <p className="text-xs text-[#5A5A5A] leading-snug">
-                          <span className="font-bold text-[#3D3D3D]">Understand</span> - Lisa reads your logs and adjusts what your plan asks of you next, around your {topLabel}.
-                        </p>
-                      </div>
-                      <div className="flex items-start gap-2.5">
-                        <MessageCircleHeart className="w-4 h-4 text-violet-500 shrink-0 mt-0.5" />
-                        <p className="text-xs text-[#5A5A5A] leading-snug">
-                          <span className="font-bold text-[#3D3D3D]">Ask Lisa anything</span> - wide awake at 2am? Straight answers, no waiting room.
-                        </p>
-                      </div>
-                    </div>
-
-                    <ShotStage className="h-44">
-                      <PhoneShot src="/diagnosys/symptoms1.webp" alt="Tracking symptoms in the MenoLisa app" rotate={-7} className="w-[34%] -mr-3 mt-2" />
-                      <PhoneShot src="/diagnosys/insights.webp" alt="A personalized insight from Lisa in the MenoLisa app" rotate={0} delay={0.1} className="w-[34%] z-10" />
-                      <PhoneShot src="/diagnosys/chat.webp" alt="Chatting with Lisa in the MenoLisa app" rotate={7} delay={0.2} className="w-[34%] -ml-3 mt-2" />
-                    </ShotStage>
+                  <div className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-3 shadow-md shadow-primary/5 divide-y divide-foreground/8">
+                    {rows.map((row, i) => (
+                      <motion.div
+                        key={row.title}
+                        initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true, amount: 0.5 }}
+                        transition={{ delay: i * 0.07, duration: 0.35 }}
+                        className={cn(
+                          "flex items-start gap-3 py-2.5",
+                          i === 0 && "pt-1",
+                          i === rows.length - 1 && "pb-1"
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl",
+                            row.chip
+                          )}
+                        >
+                          <row.icon className={cn("h-4 w-4", row.tint)} />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-xs font-bold text-[#3D3D3D] leading-tight">
+                            {row.title}
+                          </span>
+                          <span className="block text-[11px] text-[#5A5A5A] leading-snug mt-0.5">
+                            {row.body}
+                          </span>
+                        </span>
+                      </motion.div>
+                    ))}
                   </div>
                 </motion.div>
               );
@@ -4478,19 +4532,62 @@ function RegisterPageContent() {
                 </div>
               )}
 
-              {/* Q3: How menopause began - surgical/medical onset changes the plan */}
+              {/* Q3: How menopause began - surgical/medical onset changes the plan.
+                  Plain coloured list, no tiles: see MENOPAUSE_TYPE_OPTIONS. */}
               {currentStep === "q_menopause_type" && (
                 <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl font-bold mb-0.5">
                       How did menopause begin for you?
                     </h2>
+                    <p className="text-sm text-muted-foreground">
+                      It changes what your plan can safely suggest
+                    </p>
                   </div>
-                  <ImageChoiceGrid
-                    options={MENOPAUSE_TYPE_OPTIONS}
-                    selected={menopauseType}
-                    onSelect={(id) => selectAndAdvance(() => setMenopauseType(id))}
-                  />
+                  <div className="flex-1 flex flex-col justify-center gap-2.5 min-h-0 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
+                    {MENOPAUSE_TYPE_OPTIONS.map((option) => {
+                      const isSelected = menopauseType === option.id;
+                      const tone = MENOPAUSE_TYPE_TONE[option.id];
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => selectAndAdvance(() => setMenopauseType(option.id))}
+                          className={`w-full shrink-0 flex items-center justify-between gap-3 px-4 py-3.5 rounded-2xl border-2 text-left transition-all duration-200 cursor-pointer ${
+                            isSelected ? tone.selected : tone.idle
+                          }`}
+                        >
+                          <span className="flex items-center gap-3 min-w-0">
+                            <span
+                              aria-hidden
+                              className={`w-2.5 h-2.5 shrink-0 rounded-full ${tone.dot}`}
+                            />
+                            <span className="min-w-0">
+                              <span
+                                className={`block font-semibold text-sm sm:text-base ${
+                                  isSelected ? tone.label : "text-[#3D3D3D]"
+                                }`}
+                              >
+                                {option.label}
+                              </span>
+                              <span className="block text-xs text-[#8A8A8A] leading-tight mt-0.5">
+                                {option.hint}
+                              </span>
+                            </span>
+                          </span>
+                          {isSelected ? (
+                            <span
+                              className={`w-5 h-5 shrink-0 rounded-full flex items-center justify-center animate-in zoom-in duration-200 ${tone.dot}`}
+                            >
+                              <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                            </span>
+                          ) : (
+                            <span className="w-5 h-5 shrink-0 rounded-full border-2 border-foreground/20" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
@@ -4610,17 +4707,15 @@ function RegisterPageContent() {
                 </div>
               )}
 
-              {/* Severity - its own screen, straight after the tiles. One rating,
-                  on the symptom she reached for first; asking for nine is the
-                  version of this question nobody finishes. */}
-              {currentStep === "q_symptom_impact" && (() => {
-                const subject = SYMPTOM_SUBJECT[topProblems[0]] ?? FALLBACK_SYMPTOM_SUBJECT;
-                return (
+              {/* Severity - its own screen, straight after the tiles. One overall
+                  rating of the whole load; asking her to rate nine symptoms
+                  separately is the version of this question nobody finishes. */}
+              {currentStep === "q_symptom_impact" && (
                 <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl font-bold mb-0.5">
-                      How much {subject.plural ? "are" : "is"}{" "}
-                      <span className="text-primary">{subject.phrase}</span>{" "}
+                      Overall, how much are{" "}
+                      <span className="text-primary">your symptoms</span>{" "}
                       costing you?
                     </h2>
                     <p className="text-sm text-muted-foreground">
@@ -4672,8 +4767,7 @@ function RegisterPageContent() {
                     })}
                   </div>
                 </div>
-                );
-              })()}
+              )}
 
               {/* Reward 1: mirror her #1 symptom back as a prevalence stat ("you're not alone, and it's biology"). */}
               {currentStep === "reward_symptoms" && (() => {
