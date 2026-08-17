@@ -3,7 +3,7 @@
 
 import React, { useState, useCallback, useEffect, useMemo, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Image from "next/image";
+import Image, { getImageProps } from "next/image";
 import {
   motion,
   AnimatePresence,
@@ -50,11 +50,12 @@ import {
 import { PaywallView } from "@/components/PaywallView";
 // The identical component used to be defined a second time in this file, with a
 // narrower `variant` union that had already drifted from the shared one.
-import { EstrogenCurve } from "@/components/EstrogenCurve";
+import { HormoneShift } from "@/components/HormoneShift";
 import { HighlightSweep } from "@/components/HighlightSweep";
 import MetaPurchaseTracker from "@/components/MetaPurchaseTracker";
 import { SocialProofPolaroid } from "@/components/SocialProof";
 import { PlanStage } from "@/components/PlanStage";
+import { PhoneShot, ShotStage, SHOT_W, SHOT_H, PHONE_SHOT_SIZES } from "@/components/PhoneShots";
 import { PLAN_PILLARS } from "@/lib/planPillars";
 import { META_FUNNEL_STEPS } from "@/lib/metaPixel";
 import {
@@ -72,7 +73,6 @@ import {
   SYMPTOM_LABELS,
   AGE_BAND_LABELS,
   SCORE_GOAL,
-  TYPICAL_SYMPTOM_SEVERITY,
   getScoreBenchmark,
   getScoreVerdict,
   calculateWellbeingScore,
@@ -336,14 +336,30 @@ const HRT_OPTIONS = [
 
 // Asked right after height/weight so the whole body block sits together, and it
 // feeds the movement side of her plan (plus the "Lose weight" goal).
+//
+// Asked as *time available*, not as a self-rated fitness rank. A 50-year-old
+// grading herself "Beginner / Intermediate / Advanced" is being asked to file a
+// verdict on her own body at the point in the funnel where she is already being
+// told her symptoms are winning - and the answer she gives is a mood, not a
+// fact. Time is a fact she knows, and it is the thing that actually decides
+// whether she finishes eight weeks.
+//
+// The ids are unchanged and load-bearing (user_profiles, the mobile app,
+// `allowedExercises()` and `MOVEMENT_VOLUME` in `lib/plan/catalog.ts`), so plan
+// generation is untouched. The relabel is honest rather than cosmetic because
+// each label states that id's real `MOVEMENT_VOLUME` entry:
+//   movement_snacks 4x5min/day · beginner 2x18 · medium 3x28 · advanced 4x35.
+// Change a number here only if you change it there too.
+//
+// Ordered by ascending time, so the four read as one ladder. `movement_snacks`
+// leads because it is the smallest ask, and it is the honest home for the woman
+// who would otherwise pick "Beginner" and get twice the sessions she has room
+// for.
 const FITNESS_OPTIONS = [
-  { id: "beginner", label: "Beginner", image: "/quiz/fitness/beginner.webp" },
-  { id: "medium", label: "Intermediate", image: "/quiz/fitness/medium.webp" },
-  { id: "advanced", label: "Advanced", image: "/quiz/fitness/advanced.webp" },
-  // Ids are load-bearing (user_profiles + the mobile app read them), so this one
-  // keeps `movement_snacks` while the label drops the jargon: the other three are
-  // fitness ranks, and "Movement Snacks" was the only option not on that ladder.
-  { id: "movement_snacks", label: "Short bursts only", image: "/quiz/fitness/movement-snacks.webp" },
+  { id: "movement_snacks", label: "A few minutes, spread out", image: "/quiz/fitness/movement-snacks.webp" },
+  { id: "beginner", label: "About 20 min, 2 days a week", image: "/quiz/fitness/beginner.webp" },
+  { id: "medium", label: "About 30 min, 3 days a week", image: "/quiz/fitness/medium.webp" },
+  { id: "advanced", label: "35+ min, 4 days a week", image: "/quiz/fitness/advanced.webp" },
 ];
 
 // Where her eating actually starts, so the plan's nutrition focus opens at her
@@ -384,6 +400,10 @@ const LIMITATION_OPTIONS = [
   { id: "balance", label: "Balance problems or dizziness" },
   { id: "none", label: "Nothing holds me back", exclusive: true },
 ];
+
+// The exclusive row's id, named once because it is also the step's default
+// answer and its fallback when she un-ticks her last pain.
+const NO_LIMITATION_ID = "none";
 
 // Shared option-tile footer styles - every quiz label is the same size, aligned,
 // and readable. The fixed min-height keeps footer bars level across a row even
@@ -464,27 +484,68 @@ const PLAN_SHOTS = {
   rewards: "/screenshots/screen4.webp",
 };
 
-// Intrinsic size of the /screenshots masters, and the default for <PhoneShot />.
-// Passed to next/image so the reserved box matches the file's real aspect ratio;
-// a shot from another set (the retired /diagnosys masters were 1080x2192) must
-// pass its own dimensions or it letterboxes inside the reserved box.
-const SHOT_W = 1320;
-const SHOT_H = 2868;
+// SHOT_W / SHOT_H (the intrinsic size of the /screenshots masters) live in
+// components/PhoneShots.tsx alongside <PhoneShot /> and <ShotStage />, which the
+// paywall now shares.
+
+// The hero's `sizes`, hoisted out of <PlanHeroShot /> because the preloader below
+// has to pass the *identical* string; PHONE_SHOT_SIZES comes from the shared
+// component for the same reason. A preload that declares a different layout width
+// than the <img> resolves to a different candidate in the srcset, which is a
+// second full download of the same shot - and a cold one, at the moment she's
+// looking at it.
+const PLAN_HERO_SIZES = "(max-width: 480px) 56vw, 208px";
 
 // Real app screenshots used on the plan step. Preloaded while she reads her
 // results so the phone shots are already cached and don't pop in one by one.
 // The hero is first: it is the one that must never be seen loading.
-const DIAGNOSIS_SHOTS = [
-  PLAN_SHOTS.day,
-  PLAN_SHOTS.nutrition,
-  PLAN_SHOTS.habits,
-  PLAN_SHOTS.rewards,
+const DIAGNOSIS_SHOTS: ReadonlyArray<{ src: string; sizes: string }> = [
+  { src: PLAN_SHOTS.day, sizes: PLAN_HERO_SIZES },
+  { src: PLAN_SHOTS.nutrition, sizes: PHONE_SHOT_SIZES },
+  { src: PLAN_SHOTS.habits, sizes: PHONE_SHOT_SIZES },
+  { src: PLAN_SHOTS.rewards, sizes: PHONE_SHOT_SIZES },
 ];
 
 // Build the same URL next/image requests, so the preload warms both the Vercel
 // optimizer cache and the browser HTTP cache (640/828 cover phone + desktop).
 const optimizedImageUrl = (src: string, w: number) =>
   `/_next/image?url=${encodeURIComponent(src)}&w=${w}&q=75`;
+
+// Preload a responsive image the way the browser will actually request it.
+//
+// The old warm-up did `new Image(); img.src = optimizedImageUrl(src, 640)`, which
+// guesses one candidate out of the srcset - and the guess is wrong on any phone
+// dense enough to need another. The hero declares `56vw`, so next/image offers
+// 384/640/750/828/1080/1200/1920w; a 390px viewport at 3x DPR needs 655px and the
+// browser therefore picks 750w. The warm-up was fetching a URL nothing on the
+// page ever asks for, and the one shot that must never be seen loading loaded
+// cold every time.
+//
+// So don't guess. `getImageProps()` runs the same loader <Image> does, and
+// `imagesrcset`/`imagesizes` hand the whole candidate list back to the browser to
+// resolve - it makes the same choice twice by construction, and the URL stays
+// right if the device sizes, the quality default or the loader ever change.
+//
+// Deliberately never removed or cancelled: the old cleanup set `img.src = ""` on
+// phase change, and phase change is precisely when these stop being a preload and
+// become the screen, so the abort landed on the fetch it was warming.
+const preloadedResponsive = new Set<string>();
+
+function preloadResponsiveImage(src: string, sizes: string) {
+  if (typeof document === "undefined" || preloadedResponsive.has(src)) return;
+  preloadedResponsive.add(src);
+  // Both callers are /screenshots masters. width/height only steer the candidate
+  // list when `sizes` carries no vw unit - these all do - but pass the real
+  // intrinsic size anyway so this stays correct for a fixed-width caller.
+  const { props } = getImageProps({ src, alt: "", width: SHOT_W, height: SHOT_H, sizes });
+  if (!props.srcSet) return;
+  const link = document.createElement("link");
+  link.rel = "preload";
+  link.as = "image";
+  link.setAttribute("imagesrcset", props.srcSet);
+  link.setAttribute("imagesizes", props.sizes ?? sizes);
+  document.head.appendChild(link);
+}
 
 /** Fallback severity for the results copy, from total symptom burden alone.
  *  Only used when she skipped the impact tap - normally her own Mild/Moderate/
@@ -556,6 +617,16 @@ const PainEmphasis = ({ children }: { children: React.ReactNode }) => (
   <strong className="font-bold text-[#3D3D3D]">{children}</strong>
 );
 
+// One line, not four.
+//
+// This used to run to a short paragraph per severity - "you've probably tried
+// to explain it to people who don't get it", "affecting your work, your mood,
+// your relationships". All true, all well written, and all of it telling her
+// what her own life is like at the exact moment she is scrolling to find out
+// what we *found*. She lived it; she does not need it narrated back at
+// four lines. What she needs from this slot is the turn: it's real, it has a
+// cause, and it is fixable. Everything below the headline earns its place by
+// being new information, and empathy copy is not information.
 const getSeverityPainText = (
   severity: string,
   symptomCount: number,
@@ -563,8 +634,6 @@ const getSeverityPainText = (
 ): React.ReactNode => {
   const displayName = name || "you";
   const symptomWord = symptomCount === 1 ? "symptom" : "symptoms";
-  const theseThis = symptomCount === 1 ? "this" : "these";
-  const themIt = symptomCount === 1 ? "it" : "them";
   const theyIt = symptomCount === 1 ? "it" : "they";
   const count = (
     <PainEmphasis>
@@ -575,29 +644,24 @@ const getSeverityPainText = (
     case "severe":
       return (
         <>
-          {count} <PainEmphasis>controlling your life</PainEmphasis>. You&apos;ve probably tried to
-          explain it to people who don&apos;t get it. You&apos;ve probably wondered if this is just
-          your new normal. <PainEmphasis>It&apos;s not.</PainEmphasis> And {displayName}, you
-          don&apos;t have to keep living like this.
+          {count}, and {theyIt}&apos;re running your days. {displayName}, this isn&apos;t your new
+          normal - <PainEmphasis>it&apos;s treatable</PainEmphasis>.
         </>
       );
     case "moderate":
       return (
         <>
-          {count}. Affecting your <PainEmphasis>work</PainEmphasis>. Your{" "}
-          <PainEmphasis>mood</PainEmphasis>. Your <PainEmphasis>relationships</PainEmphasis>.{" "}
-          {displayName}, you&apos;re spending so much energy just trying to function normally -{" "}
-          <PainEmphasis>energy you shouldn&apos;t have to spend</PainEmphasis>.
+          {count}, costing you energy every single day. {displayName}, that&apos;s{" "}
+          <PainEmphasis>energy you can get back</PainEmphasis>.
         </>
       );
     case "mild":
     default:
       return (
         <>
-          {displayName}, {theseThis} {count} might feel manageable now. But without understanding
-          what’s causing {themIt}, {theyIt}{" "}
-          <PainEmphasis>often get{symptomCount === 1 ? "s" : ""} worse</PainEmphasis>. Let’s
-          figure this out <PainEmphasis>before {theyIt} {symptomCount === 1 ? "does" : "do"}</PainEmphasis>.
+          {count}, manageable today. Left alone {theyIt} usually{" "}
+          <PainEmphasis>get{symptomCount === 1 ? "s" : ""} worse</PainEmphasis> - {displayName},
+          this is the easiest it will ever be to turn around.
         </>
       );
   }
@@ -615,6 +679,22 @@ const getSeverityPainText = (
 // questions, get your personalized 8-week plan") - the promised object finally
 // exists and the next tap opens it.
 const RESULTS_CTA_SUB = "Built from your 13 answers. Nothing to pay to look.";
+
+// The funnel's one forward-tap look: gradient, dark ink, pink glow. It was
+// pasted inline at five call sites (start screen, results, plan, relief, and now
+// the quiz's Next bar) and drifting apart by a hex digit was only a matter of
+// time. Every button that moves her one screen closer to the plan wears this;
+// nothing else does.
+const CTA_GRADIENT_STYLE = {
+  background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)",
+  boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)",
+} as const;
+
+// The class half of the same button. Kept next to the style so the two can't be
+// updated apart. Callers add their own width/height where it differs (the start
+// screen's is min-h-13).
+const CTA_GRADIENT_CLASS =
+  "w-full min-h-12 py-3.5 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg";
 
 // Doorstep to the paywall. This line used to lead with the price and the
 // adherence threshold, which sells before she has agreed to look - and the
@@ -1052,31 +1132,48 @@ function ScoreGapCard({
   const verdict = getScoreVerdict(score, benchmark);
 
   return (
-    <div className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-4 shadow-md shadow-primary/5">
-      <div className="flex items-center gap-3.5">
-        <p className="shrink-0 text-center leading-none">
-          <span className="block text-4xl font-black tracking-tight text-green-600">{gap}</span>
-          <span className="mt-1.5 block text-[9px] font-semibold uppercase tracking-[0.12em] text-[#9A9A9A]">
-            points
-            <br />
-            to close
+    <div className="rounded-2xl bg-card border-2 border-[#E8DDD9] mb-4 shadow-md shadow-primary/5 overflow-hidden">
+      {/* Band 1 - the gap, and only the gap.
+          It used to be a 4xl number with a two-line 9px uppercase "points / to
+          close" wedged under it, then a 12px paragraph squeezed into whatever
+          column width was left. Three unrelated statements shared one row, the
+          label for the biggest number on the card was the smallest type on the
+          screen, and the line break fell mid-phrase. The number now gets a
+          full-width row and its label sits beside it at a size a 45-60 reader
+          can take in without leaning: one figure, one sentence naming it, one
+          sentence placing it. */}
+      <div className="flex items-center gap-3 px-4 pt-4">
+        <span className="shrink-0 text-[52px] font-black leading-none tracking-tight text-green-600">
+          {gap}
+        </span>
+        <span className="min-w-0">
+          <span className="block text-base font-bold leading-tight text-[#3D3D3D]">
+            points to your goal
           </span>
-        </p>
-        <div className="min-w-0">
-          <p className="text-xs text-[#5A5A5A] leading-snug">
-            Menopause is <span className="font-bold text-[#3D3D3D]">{verdict}</span>. Typical for{" "}
-            {cohortLabel} is around <span className="font-bold text-[#3D3D3D]">{benchmark}</span>.
-          </p>
-          <p className="mt-2 flex items-start gap-1.5 text-xs text-[#5A5A5A] leading-snug">
-            <Goal className="w-4 h-4 text-green-600 shrink-0 mt-px" />
-            <span>
-              That gap is what your{" "}
-              <span className="font-bold text-[#3D3D3D]">{PLAN_WEEKS}-week plan</span> is built to
-              close.
-            </span>
-          </p>
-        </div>
+          <span className="mt-0.5 block text-[13px] leading-snug text-[#7A7A7A]">
+            You&apos;re at {score}. The goal is {SCORE_GOAL}.
+          </span>
+        </span>
       </div>
+
+      {/* Band 2 - the benchmark, which is the only thing that makes a score out
+          of 100 mean anything. The cohort is named once, by the verdict, so it
+          is not repeated on the number. */}
+      <p className="mt-3.5 border-t border-[#EFE6E2] px-4 pt-3.5 text-[13px] leading-relaxed text-[#5A5A5A]">
+        Menopause is <span className="font-bold text-[#3D3D3D]">{verdict}</span>. Typical is around{" "}
+        <span className="font-bold text-[#3D3D3D]">{benchmark}</span> out of 100.
+      </p>
+
+      {/* Band 3 - the handover to the plan, on its own green ground so the
+          card ends on the thing that closes the gap rather than trailing off
+          in the same grey as the sentence above it. */}
+      <p className="mt-3.5 flex items-center gap-2 bg-green-50 px-4 py-3 text-[13px] font-medium leading-snug text-[#3D3D3D]">
+        <Goal className="w-4 h-4 text-green-600 shrink-0" />
+        <span>
+          That gap is what your {PLAN_WEEKS}-week plan is built to close.
+        </span>
+      </p>
+
       {/* The letter is decorative to a screen reader (it is an animation), so
           the numbers on it are announced here, once. */}
       <p className="sr-only">
@@ -1479,57 +1576,6 @@ function ToolkitStack({
   );
 }
 
-// A real app screenshot shown as physical evidence: phone-framed, tilted a few
-// degrees and cropped by its stage so it reads as a photo of the product rather
-// than a flat asset. Always paired with <ShotStage />, which does the clipping.
-function PhoneShot({
-  src,
-  alt,
-  rotate = 0,
-  delay = 0,
-  className,
-  width = SHOT_W,
-  height = SHOT_H,
-}: {
-  src: string;
-  alt: string;
-  rotate?: number;
-  delay?: number;
-  className?: string;
-  /** Intrinsic size of the master, defaulting to the /screenshots set. Declaring
-   *  one ratio for an image of another letterboxes it inside its reserved box,
-   *  so pass these whenever the source isn't 1320x2868. */
-  width?: number;
-  height?: number;
-}) {
-  const prefersReducedMotion = useReducedMotion();
-  return (
-    <motion.div
-      initial={
-        prefersReducedMotion
-          ? { opacity: 1, y: 0, rotate }
-          : { opacity: 0, y: 26, rotate: rotate * 0.25 }
-      }
-      whileInView={{ opacity: 1, y: 0, rotate }}
-      viewport={{ once: true, amount: 0.3 }}
-      transition={{ duration: prefersReducedMotion ? 0 : 0.6, delay, ease: [0.16, 1, 0.3, 1] }}
-      className={cn(
-        "shrink-0 rounded-[1.4rem] bg-white p-[3px] ring-1 ring-black/5 shadow-[0_16px_36px_-10px_rgba(61,61,61,0.45)]",
-        className
-      )}
-    >
-      <Image
-        src={src}
-        alt={alt}
-        width={width}
-        height={height}
-        sizes="(max-width: 480px) 55vw, 260px"
-        className="w-full h-auto rounded-[1.25rem]"
-      />
-    </motion.div>
-  );
-}
-
 /**
  * The hero screenshot: her actual Day 1, at a size where it can be read.
  *
@@ -1540,8 +1586,17 @@ function PhoneShot({
  * which is the entire offer in a single frame; at 27% width behind a gradient
  * fade it was decoration of the one thing that needed to be legible.
  *
- * So: full column width, no tilt, no crop, no fade, and a real device bezel so
- * it reads as a photograph of a product rather than an export.
+ * So: no tilt, no crop, no fade, and a real device bezel so it reads as a
+ * photograph of a product rather than an export.
+ *
+ * It is not full column width, though. The source is 1320x2868 - 2.17 times
+ * taller than it is wide - so every pixel of width costs two of height: at the
+ * 268px it used to run, the phone alone was ~580px, a whole viewport of scroll
+ * for one image, and the headline it belongs to had left the screen before the
+ * shot ended. At 208px it is ~450px and the block reads as one unit: promise,
+ * proof, caption, pillars. Legibility survives the trim because the thing that
+ * has to be read here is layout - "Day 1 · Week 1", four pillar rows, progress
+ * against them - not body copy.
  */
 function PlanHeroShot({ src, alt }: { src: string; alt: string }) {
   const prefersReducedMotion = useReducedMotion();
@@ -1551,15 +1606,15 @@ function PlanHeroShot({ src, alt }: { src: string; alt: string }) {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.2 }}
       transition={{ duration: prefersReducedMotion ? 0 : 0.7, ease: [0.16, 1, 0.3, 1] }}
-      className="relative mx-auto w-full max-w-[268px] rounded-[2rem] bg-[#1d1d1f] p-1.5 shadow-[0_28px_60px_-18px_rgba(61,61,61,0.6)]"
+      className="relative mx-auto w-full max-w-[208px] rounded-[1.75rem] bg-[#1d1d1f] p-1.5 shadow-[0_24px_50px_-18px_rgba(61,61,61,0.6)]"
     >
       <Image
         src={src}
         alt={alt}
         width={SHOT_W}
         height={SHOT_H}
-        sizes="(max-width: 480px) 72vw, 268px"
-        className="w-full h-auto rounded-[1.65rem]"
+        sizes={PLAN_HERO_SIZES}
+        className="w-full h-auto rounded-[1.45rem]"
         priority
       />
     </motion.div>
@@ -1603,32 +1658,6 @@ function CarouselDots({ count, index }: { count: number; index: number }) {
           className="h-1.5 rounded-full bg-primary"
         />
       ))}
-    </div>
-  );
-}
-
-/** Tinted stage that crops the phones at the bottom, so they peek in rather than
-    dominate the card. `fadeFrom` should match the surface underneath. */
-function ShotStage({
-  children,
-  className,
-  fadeFrom = "from-card",
-}: {
-  children: React.ReactNode;
-  className?: string;
-  fadeFrom?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "relative overflow-hidden bg-linear-to-br from-primary/12 via-[#ffeb76]/12 to-info/12",
-        className
-      )}
-    >
-      <div className="flex items-start justify-center gap-2 px-4 pt-5">{children}</div>
-      <div
-        className={cn("pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-linear-to-t to-transparent", fadeFrom)}
-      />
     </div>
   );
 }
@@ -1848,33 +1877,26 @@ function RegisterPageContent() {
       ...(stepIndex === 0 ? STEP_IMAGES.q1_age ?? [] : []),
       ...(STEP_IMAGES[STEPS[stepIndex + 1]] ?? []),
     ];
-    const imgs = srcs.flatMap((src) =>
-      [640, 828].map((w) => {
+    // No cleanup: it used to set `img.src = ""` on every step change, and a step
+    // change is when the next step's images stop being a preload and start being
+    // the screen - so the abort landed on exactly the fetch it was warming. The
+    // Image objects are dropped, but the responses they pull stay in the HTTP
+    // cache, which is the only thing the tiles need.
+    srcs.forEach((src) => {
+      for (const w of [640, 828]) {
         const img = new window.Image();
         img.src = optimizedImageUrl(src, w);
-        return img;
-      })
-    );
-    return () => {
-      imgs.forEach((img) => {
-        img.src = "";
-      });
-    };
+      }
+    });
   }, [stepIndex]);
 
-  // Warm the diagnosis screenshots while she's still on results.
+  // Warm the diagnosis screenshots while she's still on results. She spends tens
+  // of seconds on a four-card scroll here and the hero is 1320x2868, so there is
+  // ample time - as long as we ask for the URL she will actually request and then
+  // leave the request alone until she gets there. See preloadResponsiveImage().
   useEffect(() => {
-    if (typeof window === "undefined" || phase !== "results") return;
-    const imgs = DIAGNOSIS_SHOTS.map((src) => {
-      const img = new window.Image();
-      img.src = optimizedImageUrl(src, 640);
-      return img;
-    });
-    return () => {
-      imgs.forEach((img) => {
-        img.src = "";
-      });
-    };
+    if (phase !== "results") return;
+    DIAGNOSIS_SHOTS.forEach(({ src, sizes }) => preloadResponsiveImage(src, sizes));
   }, [phase]);
   // Question position for the progress label/dots (reward steps excluded; during a
   // reward step we keep the last answered question's dot lit).
@@ -1923,7 +1945,15 @@ function RegisterPageContent() {
   const [hrtStatus, setHrtStatus] = useState<string>("");
   const [nutritionStyle, setNutritionStyle] = useState<string>("");
   const [relaxationStyle, setRelaxationStyle] = useState<string>("");
-  const [physicalLimits, setPhysicalLimits] = useState<string[]>([]);
+  // Pre-answered with the exclusive "nothing" option, so q_limitations opens with
+  // a live Next button and costs nothing to pass. It is the only step in the quiz
+  // whose honest answer for most women is "none of these", and making them tap a
+  // row to say so was charging a click for silence. Ticking any pain clears it
+  // (see toggleLimitation), so the default can never ride along with a real
+  // limitation. `"none"` is inert downstream - LIMITATION_EXCLUDES and
+  // LIMITATION_LABEL have no entry for it, and save-quiz's zod enum accepts it -
+  // so this is identical to an empty array as far as the plan is concerned.
+  const [physicalLimits, setPhysicalLimits] = useState<string[]>([NO_LIMITATION_ID]);
   const [firstName, setFirstName] = useState<string>("");
 
   // Derived for funnel compatibility: save-quiz / user_profiles still consume top_problems[].
@@ -2409,22 +2439,31 @@ function RegisterPageContent() {
   // was the only single-meaning tap left in the quiz that still demanded a second
   // press on Next. The pain rows keep the button, because there she may well have
   // more than one to tick.
+  //
+  // The exclusive row never un-ticks. It starts selected (see physicalLimits), so
+  // a plain toggle would let her tap it and land on an empty answer with a dead
+  // Next button - a dead end she reached by tapping the row that was already
+  // right. Tapping it is always "yes, nothing holds me back", and always moves on.
   const toggleLimitation = (limitId: string) => {
     const exclusive = LIMITATION_OPTIONS.find((o) => o.id === limitId)?.exclusive;
-    const alreadyOn = physicalLimits.includes(limitId);
 
-    const apply = () =>
-      setPhysicalLimits((prev) => {
-        if (prev.includes(limitId)) return prev.filter((id) => id !== limitId);
-        if (exclusive) return [limitId];
-        return [
-          ...prev.filter((id) => !LIMITATION_OPTIONS.find((o) => o.id === id)?.exclusive),
-          limitId,
-        ];
-      });
+    if (exclusive) {
+      selectAndAdvance(() => setPhysicalLimits([limitId]));
+      return;
+    }
 
-    if (exclusive && !alreadyOn) selectAndAdvance(apply);
-    else apply();
+    setPhysicalLimits((prev) => {
+      if (prev.includes(limitId)) {
+        // Un-ticking her last pain means "actually, nothing" - so say that,
+        // rather than leaving the step blank and Next dead.
+        const rest = prev.filter((id) => id !== limitId);
+        return rest.length ? rest : [NO_LIMITATION_ID];
+      }
+      return [
+        ...prev.filter((id) => !LIMITATION_OPTIONS.find((o) => o.id === id)?.exclusive),
+        limitId,
+      ];
+    });
   };
 
   const toggleGoal = (goalId: string) => {
@@ -2680,8 +2719,14 @@ function RegisterPageContent() {
     };
   }, [router, phase, searchParams]);
 
+  // max-w-4xl, with the horizontal padding trimmed on phones, so the quiz card
+  // gets the extra width in both directions. The quiz is the only phase that
+  // spans this box - results / plan / relief / paywall / download all wrap
+  // themselves in max-w-md - so widening it here widens nothing else. The quiz's
+  // fixed Next bar carries the same max-w; keep the two equal or the button
+  // stops lining up with the card above it.
   return (
-    <main className="overflow-hidden relative mx-auto p-3 sm:p-4 h-dvh flex flex-col pt-2 max-w-3xl min-h-0">
+    <main className="overflow-hidden relative mx-auto px-2 pb-2 sm:px-4 sm:pb-4 h-dvh flex flex-col pt-2 max-w-4xl min-h-0">
       {/* One cross-fade across every phase change.
           Each step *inside* the quiz already animated, but the phase changes
           themselves - results → plan → relief → paywall, the five biggest
@@ -2797,11 +2842,8 @@ function RegisterPageContent() {
               <button
                 type="button"
                 onClick={() => setPhase("quiz")}
-                className="w-full min-h-13 py-3.5 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg cursor-pointer"
-                style={{
-                  background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)",
-                  boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)",
-                }}
+                className={cn(CTA_GRADIENT_CLASS, "min-h-13 cursor-pointer")}
+                style={CTA_GRADIENT_STYLE}
               >
                 Build my plan
                 <ArrowRight className="w-4 h-4" />
@@ -2876,10 +2918,7 @@ function RegisterPageContent() {
                     setRegistrationRetry((n) => n + 1);
                   }}
                   className="min-h-11 px-6 py-2.5 font-bold text-foreground rounded-xl transition-all hover:scale-[1.02]"
-                  style={{
-                    background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)",
-                    boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)",
-                  }}
+                  style={CTA_GRADIENT_STYLE}
                 >
                   Try again
                 </button>
@@ -3007,7 +3046,7 @@ function RegisterPageContent() {
                   transition={{ delay: 1.02 }}
                   className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-4 shadow-md shadow-primary/5"
                 >
-                  <p className="text-[11px] uppercase tracking-wide font-semibold text-[#9A9A9A] text-center mb-1">
+                  <p className="text-xs uppercase tracking-wide font-semibold text-[#9A9A9A] text-center mb-1">
                     Why this is happening to you
                   </p>
                   <p className="text-center mb-4">
@@ -3018,7 +3057,7 @@ function RegisterPageContent() {
                     <span className="block text-5xl font-black text-[#B23A31] leading-none">
                       {topProblems.length}
                     </span>
-                    <span className="block text-sm font-medium text-[#3D3D3D] mt-1.5">
+                    <span className="block text-[15px] font-medium text-[#3D3D3D] mt-1.5 leading-snug">
                       {one ? "symptom" : "symptoms"}, and {one ? "it traces" : "they all trace"} back
                       to the same thing:
                       <br />
@@ -3026,10 +3065,11 @@ function RegisterPageContent() {
                     </span>
                   </p>
 
-                  {/* The claim above, drawn. See <EstrogenCurve /> for why this
-                      is the one block on the screen that isn't her own answers
-                      read back to her. */}
-                  <EstrogenCurve className="mb-4" />
+                  {/* The claim above, in a picture. This was a two-line SVG
+                      chart until 2026-08-17 - see <HormoneShift /> for why a
+                      chart was the wrong instrument for this reader at this
+                      point in the funnel. */}
+                  <HormoneShift className="mb-4" />
 
                   {/* Her symptoms, at a size she can actually read.
                       These were 48px circles under 9px grey labels until
@@ -3085,86 +3125,19 @@ function RegisterPageContent() {
                     ))}
                   </div>
                   {overflow > 0 && (
-                    <p className="mt-2 text-center text-[11px] font-medium text-[#9A9A9A]">
+                    <p className="mt-2 text-center text-xs font-medium text-[#9A9A9A]">
                       + {overflow} more you told us about
                     </p>
                   )}
 
-                  <p className="text-xs text-[#5A5A5A] leading-relaxed mt-3 text-center">
-                    This isn&apos;t willpower or anything you did wrong - it&apos;s biology, and
-                    biology <span className="font-bold text-[#3D3D3D]">responds to what you do
-                    every day</span>. That&apos;s what your plan is for.
-                  </p>
-                </motion.div>
-              );
-            })()}
-
-            {/* How hard it's hitting, vs typical.
-                This block used to be headed "You're not alone" over a chart
-                proving she is doing *worse* than typical - the headline and the
-                data arguing opposite cases on the same card. It also drew each
-                symptom as two anonymous bars with no numbers, in blue and green,
-                where green means "good" on every other block of this screen.
-                Now the headline states what the data actually shows, and each
-                row says it in words she can read at a glance. */}
-            {topProblems.length > 0 && (() => {
-              const cohortLabel = AGE_BAND_LABELS[ageBand] ?? "women your age";
-              const top3 = [...topProblems]
-                .sort((a, b) => (scoredSeverity[b] ?? 0) - (scoredSeverity[a] ?? 0))
-                .slice(0, 3);
-              const band = (v: number) => (v >= 2.5 ? "Severe" : v >= 1.5 ? "Moderate" : "Mild");
-              return (
-                <motion.div
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 1.14 }}
-                  className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-5 shadow-md shadow-primary/5"
-                >
-                  <h2 className="text-base font-bold text-[#3D3D3D] mb-0.5">
-                    Harder than it hits most
-                  </h2>
-                  <p className="text-xs text-[#5A5A5A] mb-3">
-                    Your top {top3.length === 1 ? "symptom" : `${top3.length} symptoms`}, against
-                    what&apos;s typical for {cohortLabel}.
-                  </p>
-
-                  <div className="space-y-2">
-                    {top3.map((id, i) => {
-                      const mine = scoredSeverity[id] ?? 0;
-                      const typical = TYPICAL_SYMPTOM_SEVERITY[id] ?? 1.5;
-                      const worse = mine > typical + 0.2;
-                      return (
-                        <motion.div
-                          key={id}
-                          initial={{ opacity: 0, x: -8 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: 1.2 + i * 0.08, duration: 0.35 }}
-                          className="flex items-center justify-between gap-2 rounded-xl border border-foreground/10 bg-foreground/3 px-3 py-2"
-                        >
-                          <span className="text-xs font-semibold text-[#3D3D3D] min-w-0 truncate">
-                            {SYMPTOM_LABELS[id] || id}
-                          </span>
-                          <span className="flex items-center gap-1.5 shrink-0 text-[11px]">
-                            <span
-                              className={cn(
-                                "rounded-full px-2 py-0.5 font-bold",
-                                worse
-                                  ? "bg-[#DB4F45]/12 text-[#B23A31]"
-                                  : "bg-[#E0A32E]/12 text-[#A9741A]"
-                              )}
-                            >
-                              You: {band(mine)}
-                            </span>
-                            <span className="text-[#9A9A9A]">vs {band(typical)}</span>
-                          </span>
-                        </motion.div>
-                      );
-                    })}
-                  </div>
-
-                  <p className="text-[10px] text-[#9A9A9A] mt-3">
-                    &ldquo;Typical&rdquo; is a modelled profile of common menopause symptom load,
-                    not a survey average.
+                  {/* One line, because it is the only thing left to say here:
+                      it is not her fault, and it moves. The paragraph this
+                      replaces spent three lines saying that and then handed off
+                      to the plan - a handoff the plan-ready card 200px lower
+                      makes properly, with the plan in it. */}
+                  <p className="text-[13px] text-[#5A5A5A] leading-relaxed mt-3.5 text-center">
+                    Not willpower. <span className="font-bold text-[#3D3D3D]">Biology - and
+                    biology responds.</span>
                   </p>
                 </motion.div>
               );
@@ -3192,7 +3165,7 @@ function RegisterPageContent() {
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 1.22 }}
+              transition={{ delay: 1.16 }}
               className="rounded-2xl border-2 border-green-600/30 bg-green-50 p-4 mb-5"
             >
               <div className="flex items-start gap-2.5">
@@ -3204,7 +3177,7 @@ function RegisterPageContent() {
                     {firstName.trim() ? `${firstName.trim()}, your ` : "Your "}
                     {PLAN_WEEKS}-week plan is ready
                   </h2>
-                  <p className="text-xs text-[#5A5A5A] leading-snug mt-1">
+                  <p className="text-[13px] text-[#5A5A5A] leading-snug mt-1">
                     Built from your {QUESTION_STEPS.length} answers - {PLAN_PILLARS.length} small
                     things a day, starting tomorrow.
                   </p>
@@ -3221,7 +3194,7 @@ function RegisterPageContent() {
                     >
                       <pillar.icon className={cn("h-4 w-4", pillar.tint)} />
                     </span>
-                    <span className="text-[10px] font-medium leading-tight text-[#5A5A5A] text-center">
+                    <span className="text-[11px] font-medium leading-tight text-[#5A5A5A] text-center">
                       {pillar.label}
                     </span>
                   </div>
@@ -3242,13 +3215,13 @@ function RegisterPageContent() {
               <button
                 type="button"
                 onClick={() => setPhase("diagnosis")}
-                className="w-full min-h-12 py-3.5 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
-                style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)", boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)" }}
+                className={CTA_GRADIENT_CLASS}
+                style={CTA_GRADIENT_STYLE}
               >
                 {getGoalCtaLabel(goal)}
                 <ArrowRight className="w-4 h-4" />
               </button>
-              <p className="text-[11px] text-[#9A9A9A] text-center mt-1.5">{RESULTS_CTA_SUB}</p>
+              <p className="text-xs text-[#9A9A9A] text-center mt-1.5">{RESULTS_CTA_SUB}</p>
             </div>
           </motion.div>
         </div>
@@ -3298,10 +3271,12 @@ function RegisterPageContent() {
 
                 The screenshots are also no longer decoration. `day` is her real
                 first day - "Day 1 · Week 1", the phase name, four pillars with
-                real progress - rendered full width and uncropped, because it is
+                real progress - rendered uncropped and untilted, because it is
                 the one image in the funnel that has to be read rather than
-                glanced at. The three supporting shots keep the tilted, cropped
-                treatment, since they only have to prove the app is real. ───── */}
+                glanced at. It is *not* full width: see <PlanHeroShot /> for why
+                a 2.17:1-tall shot eats a viewport at column width. The three
+                supporting shots keep the tilted, cropped treatment, since they
+                only have to prove the app is real. ───────────────────────── */}
             {(() => {
               const goalLabel = getOfferPromise(goal).toLowerCase();
               return (
@@ -3711,8 +3686,8 @@ function RegisterPageContent() {
                     <button
                       type="button"
                       onClick={() => setPhase("relief")}
-                      className="w-full min-h-12 py-3.5 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
-                      style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)", boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)" }}
+                      className={CTA_GRADIENT_CLASS}
+                      style={CTA_GRADIENT_STYLE}
                     >
                       {DIAGNOSIS_CTA_LABEL}
                       <ArrowRight className="w-4 h-4" />
@@ -4305,8 +4280,8 @@ function RegisterPageContent() {
                     else if (reliefStage === "checklist") setReliefStage("done");
                     else setPhase("paywall");
                   }}
-                  className="w-full min-h-12 py-3.5 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg"
-                  style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)", boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)" }}
+                  className={CTA_GRADIENT_CLASS}
+                  style={CTA_GRADIENT_STYLE}
                 >
                   {reliefStage === "reward"
                     ? "Unlock my next tool"
@@ -4471,10 +4446,13 @@ function RegisterPageContent() {
         <div
           className={cn(
             "flex-1 flex flex-col min-h-0 overflow-hidden",
-            // Room for the fixed Next bar - only reserved on the steps that have one.
+            // Room for the fixed Next bar - only reserved on the steps that have
+            // one. 76px = the CTA's own 52px (py-3.5 around a 24px line, which
+            // clears min-h-12) plus the bar's py-3. Keep it in step with
+            // CTA_GRADIENT_CLASS or the card runs under the button.
             autoAdvances
               ? "pb-[env(safe-area-inset-bottom)]"
-              : "pb-[calc(72px+env(safe-area-inset-bottom))]"
+              : "pb-[calc(76px+env(safe-area-inset-bottom))]"
           )}
         >
           {/* Back - on question 1 this returns to the start screen (see goBack).
@@ -4487,9 +4465,12 @@ function RegisterPageContent() {
           >
             <ArrowLeft className="w-3.5 h-3.5" /> Back
           </button>
-          {/* Progress: explicit "Question X of 9" above dots so users always see how much is left */}
-          <div className="mb-2 sm:mb-3 shrink-0 pt-2 sm:pt-3 px-2">
-            <p className="text-center text-base sm:text-lg font-semibold text-[#3D3D3D] mb-2 min-h-6" role="status" aria-live="polite">
+          {/* Progress: explicit "Question X of 9" above dots so users always see
+              how much is left. The chrome above the card - back link, counter,
+              dots - is kept tight on purpose: every pixel it takes is a pixel
+              off the card, which is the only part of this screen doing work. */}
+          <div className="mb-1.5 sm:mb-2 shrink-0 pt-1 sm:pt-2 px-2">
+            <p className="text-center text-base sm:text-lg font-semibold text-[#3D3D3D] mb-1.5 min-h-6" role="status" aria-live="polite">
               {REWARD_STEPS.includes(currentStep)
                 ? "Quick win"
                 : activeQuestionIndex >= QUESTION_STEPS.length - 2
@@ -4522,7 +4503,7 @@ function RegisterPageContent() {
 
           {/* Question Content - Scrollable area */}
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden mb-1">
-            <div className="rounded-xl sm:rounded-2xl border border-foreground/10 bg-card backdrop-blur-sm p-2.5 mx-2 my-2 sm:p-3 space-y-1.5 sm:space-y-2 flex-1 min-h-0 shadow-lg shadow-primary/5 overflow-hidden flex flex-col">
+            <div className="rounded-xl sm:rounded-2xl border border-foreground/10 bg-card backdrop-blur-sm p-2.5 mx-0 my-1 sm:p-3 sm:mx-1 space-y-1.5 sm:space-y-2 flex-1 min-h-0 shadow-lg shadow-primary/5 overflow-hidden flex flex-col">
               {/* Quiz step illustration (from public/quiz/, same as mobile assets/quiz/) */}
               {QUIZ_ILLUSTRATION[currentStep] && (
                 <div className={`shrink-0 flex justify-center ${currentStep === "q8_name" ? "mb-1" : "mb-2 sm:mb-3"}`}>
@@ -4679,15 +4660,19 @@ function RegisterPageContent() {
                 </div>
               )}
 
-              {/* Fitness level (image grid, same style as Q5 HRT) */}
+              {/* Movement time (image grid, same style as Q5 HRT). Asked as time
+                  available rather than as a self-rated fitness rank - see
+                  FITNESS_OPTIONS. The subline sells the answer she is most
+                  likely to be embarrassed by: the smallest one is a real plan
+                  here, not a lesser version of the plan. */}
               {currentStep === "q_fitness" && (
                 <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl font-bold mb-0.5">
-                      How would you describe your fitness level?
+                      How much time do you have for exercise?
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                      There&apos;s no wrong answer - it just sets your starting point
+                      Pick what you can keep up for 8 weeks - your plan is built around it
                     </p>
                   </div>
                   <ImageChoiceGrid
@@ -5215,7 +5200,7 @@ function RegisterPageContent() {
                   </div>
                   <p className="shrink-0 flex items-center justify-center gap-1.5 text-[11px] text-[#9A9A9A]">
                     <ShieldCheck className="w-3.5 h-3.5" />
-                    Tick everything that applies. Your plan works around all of them.
+                    Tick everything that applies - or just continue.
                   </p>
                 </div>
               )}
@@ -5256,15 +5241,23 @@ function RegisterPageContent() {
               Absent on single-choice steps, which advance themselves. */}
           {!autoAdvances && (
             <div className="fixed bottom-0 inset-x-0 z-30 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 pb-[env(safe-area-inset-bottom)]">
-              <div className="mx-auto max-w-3xl px-4 sm:px-6 py-3">
+              <div className="mx-auto max-w-4xl px-4 sm:px-6 py-3">
                 <button
                   type="button"
                   onClick={goNext}
                   disabled={!stepIsAnswered(currentStep)}
-                  className="min-h-12 w-full flex items-center justify-center gap-1.5 px-5 sm:px-6 py-3 rounded-lg bg-primary text-primary-foreground hover:brightness-110 hover:shadow-lg hover:shadow-primary/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100 disabled:hover:shadow-none font-semibold text-sm sm:text-base"
+                  className={cn(
+                    CTA_GRADIENT_CLASS,
+                    // The gradient is an inline background, so there is no bg
+                    // utility to dim - opacity carries the disabled state, and
+                    // the hover lift has to be cancelled explicitly or a dead
+                    // button still grows under the cursor.
+                    "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none"
+                  )}
+                  style={CTA_GRADIENT_STYLE}
                 >
                   {REWARD_STEPS.includes(currentStep) || stepIndex === STEPS.length - 1 ? "Continue" : "Next"}
-                  <ArrowRight className="w-3.5 h-3.5" />
+                  <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             </div>

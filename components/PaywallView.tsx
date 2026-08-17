@@ -1,17 +1,10 @@
 "use client";
 
-import {
-  ReactNode,
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { ReactNode, useEffect, useRef } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
-  ArrowRight,
   Check,
   Loader2,
   Lock,
@@ -36,15 +29,10 @@ import {
   RENEWAL_NOTICE_DAYS,
   formatPrice,
 } from "@/lib/pricing";
-import {
-  PLAN_DAYS,
-  formatPlanDate,
-  getOfferPromise,
-  planFinishDate,
-} from "@/lib/planTimeline";
-import { getSymptomTransforms } from "@/lib/testimonials";
 import { trackFb } from "@/lib/metaPixelClient";
 import { HighlightSweep } from "@/components/HighlightSweep";
+import { PlanFinishBoard } from "@/components/PlanFinishBoard";
+import { PhoneShot, ShotStage, SHOT_W, SHOT_H } from "@/components/PhoneShots";
 
 export interface PaywallViewProps {
   onCheckout: () => void | Promise<void>;
@@ -101,133 +89,12 @@ const ANCHOR_PER_DAY = `$${PLAN_ANCHOR_PRICE_PER_DAY.toFixed(2)}`;
  * and it is the number on the button, held while she finishes. Nothing on this
  * screen now claims anything Stripe wouldn't do.
  */
-const subscribeToNothing = () => () => {};
 
 /**
- * `false` on the server and through hydration, `true` after. `/register` can
- * server-render the paywall (Stripe's cancel URL returns to `?phase=paywall`),
- * and by then sessionStorage may hold a half-spent deadline the server knew
- * nothing about - so the countdown has to sit out hydration rather than
- * disagree with the HTML. useSyncExternalStore is the one hook that flips after
- * hydration without a mismatch warning.
+ * The finish line moved into <PlanFinishBoard /> (components/PlanFinishBoard.tsx)
+ * when it stopped being two dates and an arrow and became a chart with a needle
+ * on it. The reasoning for both the block and its position lives there.
  */
-function useHydrated() {
-  return useSyncExternalStore(
-    subscribeToNothing,
-    () => true,
-    () => false
-  );
-}
-
-/**
- * Her finish line, as a date.
- *
- * The one block on this page that belongs to her: today on the left in the words
- * she used for her worst symptom, the day her plan ends on the right in the goal
- * she picked. Everything else here - trust boxes, card wordmarks, guarantee - is
- * identical for every visitor.
- *
- * It earns its place directly above the price by supplying the denominator. The
- * card underneath quotes a per-day figure with nothing to divide by; "Aug 9 →
- * Oct 4, 56 days" is what turns $1.05/day back into the $59 she is about to pay,
- * and turns "8 weeks" from a duration into an appointment she can picture.
- *
- * No projected number appears here on purpose. See lib/planTimeline.ts.
- */
-function PlanFinishLine({
-  firstName,
-  topProblems,
-  goal,
-}: {
-  firstName?: string;
-  topProblems?: string[];
-  goal?: string[];
-}) {
-  // Resolved once per mount rather than per render, so a re-render at midnight
-  // can't move her finish line by a day mid-session.
-  const [start] = useState(() => new Date());
-  const finish = planFinishDate(start);
-
-  // The dates are timezone-dependent, so the server (UTC) and a visitor west of
-  // it can disagree about today's date. The labels around them are stable, so
-  // only the two date strings sit out hydration.
-  const hydrated = useHydrated();
-  const startLabel = formatPlanDate(start);
-  const finishLabel = formatPlanDate(finish, true);
-
-  const name = firstName?.trim();
-  // Her own words on both ends: the "before" line for her #1 symptom, and the
-  // promise attached to the goal she chose. If either is missing (the dashboard
-  // paywall has no quiz behind it) the dates still stand on their own - a
-  // generic finish line is fine, a stranger's symptom in her place is not.
-  const before = getSymptomTransforms(topProblems ?? [], 1)[0]?.before;
-  const after = goal && goal.length > 0 ? getOfferPromise(goal) : undefined;
-  const personalized = Boolean(before && after);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.26 }}
-      className="rounded-2xl border bg-white p-3.5 mb-3 shadow-sm"
-      style={{ borderColor: "#E8DDD9" }}
-    >
-      <p className="text-[10px] font-bold tracking-wide uppercase text-[#9A9A9A] mb-2.5">
-        {name ? `${name}'s finish line` : "Your finish line"}
-      </p>
-
-      {/* The two ends, with the arrow doing the work of the word "becomes" */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-[#9A9A9A]">
-            Today
-          </p>
-          {/* Non-breaking space holds the row's height through hydration. */}
-          <p className="text-base font-bold text-[#7A7A7A] leading-tight tabular-nums">
-            {hydrated ? startLabel : " "}
-          </p>
-        </div>
-
-        <ArrowRight className="w-4 h-4 shrink-0 text-[#ff74b1]" aria-hidden />
-
-        <div className="text-right">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-[#ff74b1]">
-            Week {PLAN_WEEKS}
-          </p>
-          <p
-            className="text-base font-extrabold leading-tight tabular-nums bg-clip-text text-transparent"
-            style={{ backgroundImage: "linear-gradient(135deg, #ff74b1 0%, #65dbff 100%)" }}
-          >
-            {hydrated ? finishLabel : " "}
-          </p>
-        </div>
-      </div>
-
-      {personalized && (
-        <>
-          <div className="h-px my-3" style={{ background: "#E8DDD9" }} />
-          <div className="grid grid-cols-2 gap-3">
-            <p className="text-[11px] text-[#7A7A7A] leading-snug">{before}</p>
-            <p className="text-[11px] font-semibold text-[#3D3D3D] leading-snug text-right">
-              {after}
-            </p>
-          </div>
-        </>
-      )}
-
-      <p className="text-[10px] text-[#9A9A9A] leading-snug mt-2.5">
-        {hydrated ? (
-          <>
-            Your {PLAN_WEEKS} weeks run {startLabel} &ndash; {formatPlanDate(finish)}.
-          </>
-        ) : (
-          <>Your plan runs {PLAN_WEEKS} weeks.</>
-        )}{" "}
-        {PLAN_DAYS} days, {PER_DAY} a day.
-      </p>
-    </motion.div>
-  );
-}
 
 // Scannable 2x2 grid, one promise per box. At the payment moment she scans
 // rather than reads, so every box is a 2-3 word headline with one support line.
@@ -337,7 +204,7 @@ export function PaywallView({
           initial={{ opacity: 0, scale: 0.92 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.1, duration: 0.5 }}
-          className="relative flex justify-center mb-3 sm:mb-4"
+          className="relative flex justify-center mb-2 sm:mb-3"
         >
           <div
             aria-hidden
@@ -352,7 +219,7 @@ export function PaywallView({
             alt=""
             width={280}
             height={280}
-            className="relative object-contain w-full max-h-[130px] sm:max-h-40"
+            className="relative object-contain w-full max-h-[96px] sm:max-h-[128px]"
           />
         </motion.div>
 
@@ -361,7 +228,7 @@ export function PaywallView({
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="flex items-center justify-center gap-2 mb-3"
+          className="flex items-center justify-center gap-2 mb-2"
         >
           <div className="flex">
             {[0, 1, 2, 3, 4].map((i) => (
@@ -382,38 +249,41 @@ export function PaywallView({
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25 }}
-          className="text-center mb-4 sm:mb-5"
+          className="text-center mb-2.5"
         >
-          <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-1.5 leading-tight">
+          {/* One headline carrying both halves of the offer: the price cut and
+              the refund. It used to be a headline plus a subheadline saying the
+              same two things one line lower, which cost ~60px of the only real
+              estate that matters here - the price card has to be on screen when
+              she lands, or the first thing she scrolls past is the argument for
+              a number she hasn't seen. */}
+          <h2 className="text-xl sm:text-2xl font-bold text-[#3D3D3D] leading-tight text-balance">
             Start your {PLAN_WEEKS} week plan{" "}
             <span
               className="bg-clip-text text-transparent"
               style={{ backgroundImage: "linear-gradient(135deg, #ff74b1, #65dbff)" }}
             >
               TODAY
-            </span>
+            </span>{" "}
+            &mdash; {PLAN_DISCOUNT_PCT}% off, or a full refund if it doesn’t work
           </h2>
-          <p className="text-sm sm:text-base text-[#5A5A5A]">
-            <strong className="text-[#3D3D3D]">{PLAN_DISCOUNT_PCT}% off</strong> our regular
-            price. Do the {PLAN_WEEKS} weeks and still don’t feel better? Full refund.
-          </p>
         </motion.div>
 
-        {/* Her finish line, sitting above the countdown rather than between it
-            and the price card: the countdown and the price are a matched pair
-            (same pink border, same urgency), and splitting them to insert this
-            broke that read. Outcome, then urgency, then number. */}
-        <PlanFinishLine firstName={firstName} topProblems={topProblems} goal={goal} />
+        {/* Her finish line, sitting above the price hold rather than between it
+            and the price card: the hold and the price are a matched pair (same
+            pink border, same urgency), and splitting them to insert this broke
+            that read. Outcome, then hold, then number. */}
+        <PlanFinishBoard firstName={firstName} topProblems={topProblems} goal={goal} />
 
         {/* The price hold. Same pink pairing with the card below that the
             countdown had, minus the clock: it says the number is hers and will
             not move, which is the only claim about the price that is actually
-            true. See the note above `subscribeToNothing`. */}
+            true. See the note about the retired countdown above. */}
         <motion.div
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.28 }}
-          className="flex items-center justify-center gap-2 rounded-xl border px-3 py-2 mb-3"
+          className="flex items-center justify-center gap-2 rounded-xl border px-3 py-1.5 mb-2.5"
           style={{
             borderColor: "#ff74b1",
             background:
@@ -518,6 +388,49 @@ export function PaywallView({
               </li>
             ))}
           </ul>
+
+          {/* The list above is three promises; this is the three promises as
+              screens that exist. Same treatment as the /register plan card
+              (components/PhoneShots.tsx) on purpose — a woman who walked the
+              funnel should recognise these as the same product she was just
+              shown, and one who landed here cold (the dashboard paywall) gets
+              her only look at it before the card.
+
+              The stage crops them and fades to the card's own yellow rather
+              than to `--card`, since that is the surface underneath here. */}
+          <div className="mt-3.5 -mx-1 overflow-hidden rounded-xl ring-1 ring-yellow-300/50">
+            <ShotStage className="h-40" fadeFrom="from-[#FEFAEC]">
+              <PhoneShot
+                src="/screenshots/screen1.webp"
+                alt="Day 1 of your plan in the MenoLisa app"
+                rotate={-8}
+                className="w-[30%] -mr-3 mt-3"
+                width={SHOT_W}
+                height={SHOT_H}
+              />
+              <PhoneShot
+                src="/screenshots/screen3.webp"
+                alt="Your habits in the MenoLisa app"
+                rotate={0}
+                delay={0.1}
+                className="w-[32%] z-10"
+                width={SHOT_W}
+                height={SHOT_H}
+              />
+              <PhoneShot
+                src="/screenshots/screen4.webp"
+                alt="Streaks and badges in the MenoLisa app"
+                rotate={8}
+                delay={0.18}
+                className="w-[30%] -ml-3 mt-3"
+                width={SHOT_W}
+                height={SHOT_H}
+              />
+            </ShotStage>
+          </div>
+          <p className="mt-2 text-center text-[11px] text-[#8A7F6B] leading-snug">
+            Real screens from the app &mdash; yours the moment you join.
+          </p>
         </div>
 
         {/* Trust boxes */}

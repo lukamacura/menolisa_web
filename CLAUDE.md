@@ -804,6 +804,27 @@ again also works — that calls `sync-session`.
 ## 7. CURRENT STATUS
 
 Recent work:
+- **Paywall: the finish line became an instrument (2026-08-17)** —
+  `PlanFinishLine` (two dates and an arrow, inline in `PaywallView`) is now
+  `<PlanFinishBoard />` (`components/PlanFinishBoard.tsx`): a taped-down paper
+  chart with a needle that travels the eight weeks, colouring the track rose →
+  amber → green behind it, lighting three pins (wk 2 / 4 / 8) as it passes and
+  swapping the caption to whatever it is standing on. It sits directly above the
+  price, and a price is only compared against something you can picture — the
+  old block was accurate and made her do all of the picturing herself.
+  Horizontal rather than a dial for two reasons: it says the same thing in about
+  half the height (the price card still has to be on screen when she lands), and
+  a horizontal scale reads as a timeline where a dial reads as a score. Both ends
+  stay her own words, the header keeps the {PLAN_DAYS} days / per-day
+  denominator, and no projected score appears on it (see `lib/planTimeline.ts`).
+  The loop runs only while the board is in view.
+  Also: "Everything included" now carries the three app shots, and `<PhoneShot />`
+  / `<ShotStage />` / `SHOT_W` / `SHOT_H` moved out of `app/register/page.tsx`
+  into `components/PhoneShots.tsx` so the two screens can't drift into looking
+  like two different products. `PhoneShot`'s `initial` no longer branches on
+  `useReducedMotion` — that hook reads false through hydration, so it was a
+  hydration mismatch on every reduced-motion visitor; reduced motion collapses
+  the transition to zero instead. Same trap, same fix, in the board.
 - **The letter delivers the score card (2026-08-17)** — `<EnvelopeReveal />`'s
   sheet used to print a bare `46/100`, which is not a result: it is a number she
   has to scroll to have explained, and the explanation was `<ScoreGauge />`

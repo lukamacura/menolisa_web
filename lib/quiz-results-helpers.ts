@@ -309,20 +309,6 @@ export const AGE_BAND_LABELS: Record<string, string> = {
   prefer_not: "women your age",
 };
 
-// Typical symptom intensity (0–3 scale) for the "you're not alone" comparison.
-// A defensible model profile of common menopause symptom load — NOT a claimed survey average.
-export const TYPICAL_SYMPTOM_SEVERITY: Record<string, number> = {
-  hot_flashes: 1.7,
-  sleep_issues: 1.9,
-  brain_fog: 1.5,
-  mood_swings: 1.6,
-  weight_changes: 1.7,
-  low_energy: 1.9,
-  anxiety: 1.5,
-  joint_pain: 1.4,
-  bloating: 1.5,
-};
-
 // Typical wellbeing score per age band (higher = better), calibrated to the
 // calculateWellbeingScore distribution (12–68 range). A defensible model profile of
 // the typical menopause quiz-taker per band — NOT a claimed survey average.
