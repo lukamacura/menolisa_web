@@ -281,7 +281,7 @@ export function PaywallView({
             and the price card: the hold and the price are a matched pair (same
             pink border, same urgency), and splitting them to insert this broke
             that read. Outcome, then hold, then number. */}
-        <PlanFinishBoard topProblems={topProblems} goal={goal} />
+        <PlanFinishBoard topProblems={topProblems} goal={goal} className="mb-2.5" />
 
         {/* The price hold. Same pink pairing with the card below that the
             countdown had, minus the clock: it says the number is hers and will

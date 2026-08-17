@@ -259,7 +259,11 @@ export function PlanFinishBoard({
         // pt-5 rather than pt-3: with the header line gone the week pins would
         // otherwise start directly under the tape strips, which overhang 10px
         // into the card.
-        "relative rounded-2xl border px-3.5 pt-5 pb-3 mb-2.5 shadow-sm",
+        // No margin of its own: `cn` is plain clsx with no tailwind-merge, so a
+        // built-in `mb-*` here cannot be overridden by a caller passing its own
+        // — both classes survive and which one wins is stylesheet order. The
+        // two callers space it themselves.
+        "relative rounded-2xl border px-3.5 pt-5 pb-3 shadow-sm",
         className
       )}
       style={{
@@ -384,7 +388,7 @@ export function PlanFinishBoard({
             </p>
           </div>
           <div className="text-right">
-            <p className="text-[9px] font-bold uppercase tracking-wide text-green-600">Finish</p>
+            <p className="text-[9px] font-bold uppercase tracking-wide text-green-600">8 weeks</p>
             <p className="text-sm font-extrabold text-green-700 leading-tight tabular-nums">
               {hydrated ? finishLabel : " "}
             </p>

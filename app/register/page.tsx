@@ -2665,17 +2665,49 @@ function RegisterPageContent() {
               initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ type: "spring", stiffness: 220, damping: 22 }}
-              className="w-full shrink-0 rounded-2xl overflow-hidden ring-1 ring-black/5 shadow-[0_16px_36px_-10px_rgba(61,61,61,0.35)]"
+              className="relative w-full shrink-0 rounded-2xl overflow-hidden ring-1 ring-black/5 shadow-[0_16px_36px_-10px_rgba(61,61,61,0.35)]"
             >
               <Image
                 src="/start/start.webp"
-                alt="Before: scrolling alone, unsure what's happening to her. After: her personalized plan in hand, and a smile back."
+                alt="The same woman twice: alone with her phone, then holding her plan and smiling."
                 width={900}
                 height={504}
                 priority
                 sizes="(max-width: 480px) 92vw, 420px"
                 className="w-full h-auto max-h-[30vh] sm:max-h-[34vh] object-cover"
               />
+
+              {/* The photo is a diptych and nothing on it said so, which left the
+                  two halves reading as two photos of the same woman rather than
+                  one transformation - the whole reason it is here. The seam is
+                  drawn, the halves are named, and the arrow states the direction,
+                  so the before/after is on the screen instead of in the alt text.
+                  The right-hand label is the CTA's "takes 2 minutes" promise
+                  attached to the picture of the payoff, 200px above where she
+                  reads the words. Rose = the load she carries now, green = what
+                  closes it, per the funnel's colour rule. */}
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-white/70"
+              />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/65 via-black/25 to-transparent px-2 pt-8 pb-2">
+                <div className="grid grid-cols-2 items-center">
+                  <span className="flex items-center justify-center gap-1.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wide text-white">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#FB7185]" />
+                    Now
+                  </span>
+                  <span className="flex items-center justify-center gap-1.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wide text-white">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#4ADE80]" />
+                    In 2 minutes
+                  </span>
+                </div>
+                <span
+                  aria-hidden
+                  className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-[0_2px_8px_rgba(0,0,0,0.35)]"
+                >
+                  <ArrowRight className="w-3 h-3 text-[#16A34A]" />
+                </span>
+              </div>
             </motion.div>
 
             <motion.h1
@@ -2914,11 +2946,6 @@ function RegisterPageContent() {
                 rather than "shifting estrogen", which is clinical shorthand
                 that tells a 45-60 reader nothing she can picture. */}
             {topProblems.length > 0 && (() => {
-              const withImage = topProblems.filter((id) => SYMPTOM_IMAGE[id]);
-              // Six fills two clean rows of three. Five left an orphan tile on
-              // its own row, and nine turned the card into a wall.
-              const tiles = withImage.slice(0, 6);
-              const overflow = withImage.length - tiles.length;
               const one = topProblems.length === 1;
               return (
                 <motion.div
@@ -2930,7 +2957,7 @@ function RegisterPageContent() {
                   <p className="text-xs uppercase tracking-wide font-semibold text-[#9A9A9A] text-center mb-1">
                     Why this is happening to you
                   </p>
-                  <p className="text-center mb-4">
+                  <p className="text-center">
                     {/* The count is the load she is carrying, so it takes the
                         load colour. It used to render in brand pink - the same
                         ink as the CTA gradient and the plan card, which made
@@ -2946,84 +2973,25 @@ function RegisterPageContent() {
                     </span>
                   </p>
 
-                  {/* What happens to those symptoms over the eight weeks.
-                      This slot held a two-line SVG estrogen chart, then an
-                      illustration of the hormonal swings (<HormoneShift />) -
-                      both of which redrew the sentence directly above them
-                      instead of adding to it. The card has already named the
-                      cause in words she can picture; a second rendering of the
-                      same claim is the funnel's most common failure, and it
-                      cost her the one thing this card never said: what comes
-                      next.
+                  {/* Nothing is drawn under this sentence, deliberately.
+                      The slot held a two-line SVG estrogen chart, then an
+                      illustration of the hormonal swings (<HormoneShift />),
+                      then <PlanFinishBoard /> - and it also carried a 3-col
+                      grid of her own symptom tiles under that. All of it went
+                      by 2026-08-17.
 
-                      The board answers that, and it is her own words at both
-                      ends - her #1 symptom today, the goal she picked at week
-                      8 - so it reads as a continuation of her answers rather
-                      than as stock art. See <PlanFinishBoard />. */}
-                  <PlanFinishBoard
-                    topProblems={topProblems}
-                    goal={goal}
-                    className="mb-4"
-                  />
+                      The chart and the illustration redrew the sentence
+                      directly above them instead of adding to it. The tiles
+                      were the same list a third time on one card: the count is
+                      already the hero number two lines up, and she tapped those
+                      exact tiles at ~224px ninety seconds earlier - handing
+                      them back at a third of the size is recognition she has
+                      already had, paid for with half a screen of scroll on the
+                      way to the plan.
 
-                  {/* Her symptoms, at a size she can actually read.
-                      These were 48px circles under 9px grey labels until
-                      2026-08-17 - the most personal element on the screen
-                      rendered as its smallest, in a type size a presbyopic
-                      45-60 reader cannot resolve at arm's length. She tapped
-                      these same tiles at ~224px ninety seconds earlier, so
-                      shrinking them to a fifth of that reads as a decorative
-                      afterthought rather than as her own answers coming back.
-
-                      This is also the only place they appear on this screen -
-                      there used to be a second, redundant row of red text pills
-                      immediately below this card, the same list twice in two
-                      visual languages about 40px apart. */}
-                  <div className="grid grid-cols-3 gap-2">
-                    {tiles.map((id, i) => (
-                      <motion.div
-                        key={id}
-                        initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.92 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: 1.1 + i * 0.06, duration: 0.3 }}
-                        className="flex flex-col overflow-hidden rounded-2xl shadow-sm"
-                      >
-                        {/* Deliberately the *same* chrome as the quiz tile she
-                            tapped: square crop, object-cover, dark footer bar,
-                            white 11px label - see PROBLEM_OPTIONS' grid. The
-                            point of this block is recognition, and a symptom
-                            redrawn in a different visual language is just a
-                            picture of a symptom rather than her own answer
-                            handed back.
-
-                            Square also matters on its own: the sources are
-                            460x460 with the subject centred, so a landscape
-                            crop would cut a quarter off the top and bottom.
-
-                            The footer is the quiz's *unselected* dark rather
-                            than its selected pink. Every tile here is by
-                            definition selected, so pink would be redundant -
-                            and pink is the CTA's colour on this screen. */}
-                        <div className="relative aspect-square">
-                          <Image
-                            src={SYMPTOM_IMAGE[id]}
-                            alt=""
-                            fill
-                            sizes="(max-width: 480px) 30vw, 140px"
-                            className="object-cover"
-                          />
-                        </div>
-                        <div className={cn(TILE_FOOTER_BASE, "bg-[#2a2a2a]")}>
-                          <span className={TILE_LABEL}>{SYMPTOM_LABELS[id] || id}</span>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                  {overflow > 0 && (
-                    <p className="mt-2 text-center text-xs font-medium text-[#9A9A9A]">
-                      + {overflow} more you told us about
-                    </p>
-                  )}
+                      The board moved to the plan-ready card below, which is
+                      where "what happens next" belongs. This card answers "why",
+                      in one number and one cause, and then stops. */}
 
                   {/* One line, because it is the only thing left to say here:
                       it is not her fault, and it moves. The paragraph this
@@ -3095,6 +3063,24 @@ function RegisterPageContent() {
                   </div>
                 ))}
               </div>
+
+              {/* What the plan actually does with those eight weeks, as an
+                  instrument rather than a claim. It sat inside the "why this is
+                  happening" card until 2026-08-17, where it was answering a
+                  question that card does not ask: the card explains the cause,
+                  and a finish line is about the cure.
+
+                  Here it is the evidence for the sentence directly above it -
+                  "your {PLAN_WEEKS}-week plan is ready" is an assertion until
+                  something shows what the eight weeks contain. Both ends are
+                  her own words (her #1 symptom today, the goal she picked at
+                  week 8), so the card reads as her plan rather than a product
+                  description. See <PlanFinishBoard />. */}
+              <PlanFinishBoard
+                topProblems={topProblems}
+                goal={goal}
+                className="mt-3.5"
+              />
             </motion.div>
 
           </motion.div>
