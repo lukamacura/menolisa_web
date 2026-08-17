@@ -3879,11 +3879,6 @@ function RegisterPageContent() {
             className="max-w-md mx-auto w-full flex-1 flex flex-col justify-center min-h-0 text-center"
           >
 
-            {/* The app itself, not the Lisa portrait from the paywall - this is
-                the "go install it" screen, so the image has to be the product. */}
-            <div className="flex justify-center mb-4">
-              <Image src="/mockup.webp" alt="" width={240} height={240} priority />
-            </div>
             <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] mb-3">
               {firstName.trim() ? `${firstName.trim()}, you're all set!` : "You're all set!"}
             </h2>

@@ -37,6 +37,7 @@ import { trackFb } from "@/lib/metaPixelClient";
 import { HighlightSweep } from "@/components/HighlightSweep";
 import { PlanFinishBoard } from "@/components/PlanFinishBoard";
 import { PhoneShot, ShotStage, SHOT_W, SHOT_H } from "@/components/PhoneShots";
+import { getOfferPromise } from "@/lib/planTimeline";
 
 export interface PaywallViewProps {
   /**
@@ -161,6 +162,9 @@ export function PaywallView({
   goal,
 }: PaywallViewProps) {
   const name = firstName?.trim() ?? "";
+  // Same promise as the finish board's far end (lib/planTimeline.ts) - the
+  // headline and the chart should name the same outcome.
+  const promise = getOfferPromise(goal ?? []);
 
   // ViewContent fires once when the paywall appears.
   const viewTracked = useRef(false);
@@ -251,37 +255,26 @@ export function PaywallView({
           transition={{ delay: 0.25 }}
           className="text-center mb-2.5"
         >
-          {/* One headline carrying both halves of the offer: the price cut and
-              the refund. It used to be a headline plus a subheadline saying the
-              same two things one line lower, which cost ~60px of the only real
-              estate that matters here - the price card has to be on screen when
-              she lands, or the first thing she scrolls past is the argument for
-              a number she hasn't seen.
-
-              Two sentences rather than one hinged on an em dash: the dash made
-              a single 14-word line she had to parse to the end before either
-              half paid off, and at this size it wrapped into the middle of a
-              clause as often as not. The full stop lets "start today" land on
-              its own, and the discount and the refund read as the terms that
-              follow it.
-
-              The sweep is on the outcome she is actually being asked to risk -
-              green, per the funnel's colour rule (green = the gap and what
-              closes it), which is also the guarantee card's colour further down
-              and the CTA's. The pink gradient stays on TODAY so the two
-              emphases are not competing for the same meaning. */}
+          {/* Leads with the outcome she picked, not the mechanics of the offer -
+              the same promise as the finish board's far end (lib/planTimeline.ts,
+              getOfferPromise), so the headline and the chart name the same thing.
+              Price cut and refund move to a subline underneath: still on screen
+              with the price card, still the terms of the deal, just not what she
+              reads first. */}
           <h2 className="text-xl sm:text-2xl font-bold text-[#3D3D3D] leading-tight text-balance">
-            Start your {PLAN_WEEKS} week plan{" "}
+            <HighlightSweep variant="green">{promise}</HighlightSweep> in{" "}
+            {PLAN_WEEKS} weeks
+          </h2>
+          <p className="text-sm text-[#5A5A5A] mt-1">
+            Start today,{" "}
             <span
-              className="bg-clip-text text-transparent"
+              className="font-bold bg-clip-text text-transparent"
               style={{ backgroundImage: "linear-gradient(135deg, #ff74b1, #65dbff)" }}
             >
-              TODAY
-            </span>
-            . {PLAN_DISCOUNT_PCT}% off, or{" "}
-            <HighlightSweep variant="green">a full refund</HighlightSweep> if it
-            doesn’t work
-          </h2>
+              {PLAN_DISCOUNT_PCT}% off
+            </span>{" "}
+            &mdash; or a full refund if it doesn’t work
+          </p>
         </motion.div>
 
         {/* Her finish line, sitting above the price hold rather than between it

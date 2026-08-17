@@ -11,7 +11,11 @@ type ConditionalNavbarProps = {
 
 export default function ConditionalNavbar({ isAuthenticated: initialIsAuthenticated }: ConditionalNavbarProps) {
   const pathname = usePathname();
+  // Paywall content starts right at the top of the viewport (no navbar-sized
+  // top offset reserved for it) - the fixed navbar sat over the back
+  // button/social-proof/headline instead of above them.
   const isRegisterPage = pathname?.startsWith("/register");
+  const isPaywallPage = pathname?.startsWith("/paywall");
   // Start with server-side value - it's usually correct after redirect
   const [isAuthenticated, setIsAuthenticated] = useState(initialIsAuthenticated);
 
@@ -79,7 +83,7 @@ export default function ConditionalNavbar({ isAuthenticated: initialIsAuthentica
     };
   }, [initialIsAuthenticated]);
 
-  if (isRegisterPage) {
+  if (isRegisterPage || isPaywallPage) {
     return null;
   }
 
