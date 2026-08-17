@@ -47,6 +47,30 @@ export const PLAN_DISCOUNT_PCT = Math.round(
 );
 
 /**
+ * How long the paywall shows the discounted price before the card reverts to
+ * {@link PLAN_ANCHOR_PRICE}.
+ *
+ * **Display only, in one direction.** Stripe has exactly one price
+ * (`STRIPE_PRICE_8WEEK`, {@link PLAN_PRICE}) and charges it whenever a checkout
+ * session is created. Expiry changes every figure the paywall *shows* — the CTA
+ * included — and nothing about what she is billed: she pays {@link PLAN_PRICE}
+ * whether the clock ran out or not.
+ *
+ * The single rule that makes that safe: **the page may understate what she pays
+ * and must never overstate it.** Every displayed figure is >= the charge, so the
+ * worst case is a woman who expected $118 being charged $59. Reverse that — a
+ * second Stripe Price billed when the client-side timer says expired — and a
+ * user's own system clock decides whether she pays double for the same product.
+ * If expiry should ever really change the price, the deadline moves server-side
+ * and the charge is derived there.
+ *
+ * The full reasoning, and what must not be "fixed", is at the bottom of
+ * `components/PaywallView.tsx`.
+ */
+export const PLAN_DISCOUNT_WINDOW_MINUTES = 10;
+export const PLAN_DISCOUNT_WINDOW_MS = PLAN_DISCOUNT_WINDOW_MINUTES * 60 * 1000;
+
+/**
  * How many days before a renewal we email her — and, because the paywall says so
  * at the price, a promise made before she pays.
  *

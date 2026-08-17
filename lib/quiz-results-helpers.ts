@@ -365,19 +365,18 @@ export function getScoreBenchmark(ageBand: string): number {
   return TYPICAL_SCORE_BY_AGE[ageBand] ?? TYPICAL_SCORE_BY_AGE.prefer_not;
 }
 
-// Higher score = better, so a score below the cohort benchmark means symptoms are hitting harder.
+// `getScoreVerdict()` lived here until 2026-08-17. It ranked her against the
+// cohort in words - "hitting you harder than most women your age" - and opened
+// the benchmark band of <ScoreCauseCard />.
 //
-// These used to read "lower than average" / "higher than average", which is
-// only interpretable if you already know which direction the scale runs - and
-// the results card never said. "Lower" sounds bad, "higher" sounds good, and on
-// this scale that happens to be right, but she has to reason it out at the exact
-// moment we want her reading rather than decoding. Each verdict now states the
-// meaning instead of the direction, so it survives being read on its own.
-export function getScoreVerdict(score: number, benchmark: number): string {
-  if (score <= benchmark - 4) return "hitting you harder than most women your age";
-  if (score >= benchmark + 4) return "hitting you more gently than most women your age";
-  return "about as hard as it hits most women your age";
-}
+// It was removed rather than left unused because the ranking is the weakest
+// claim the results screen makes: TYPICAL_SCORE_BY_AGE below is a defensible
+// modelled profile, not a survey average, so a comparative verdict built on it
+// asks her to believe a baseline we invented, on the one screen where belief is
+// being formed. The benchmark number still ships (it is the only thing that
+// makes a score out of 100 mean anything) - it is now stated as a reference
+// point rather than a placing. Bring the verdict back only alongside real
+// cohort data.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // NEW SCORING MODEL (draft) — Menopause Wellbeing Score

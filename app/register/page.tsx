@@ -26,7 +26,6 @@ import {
   ArrowRight,
   ArrowLeft,
   CheckCircle2,
-  Goal,
   UserCircle,
   Check,
   TrendingDown,
@@ -61,7 +60,6 @@ import {
   AGE_BAND_LABELS,
   SCORE_GOAL,
   getScoreBenchmark,
-  getScoreVerdict,
   getTopBurdenSymptoms,
   calculateWellbeingScore,
 } from "@/lib/quiz-results-helpers";
@@ -1023,25 +1021,37 @@ function TrajectoryChart({ score }: { score: number }) {
  *   1. **What is pulling her score down** - her heaviest symptoms
  *      (getTopBurdenSymptoms, off the same weights the score is built from),
  *      each with its mechanism. Recognition first, explanation second.
- *   2. **The convergence** - all N of them, one cause. The count is here rather
- *      than in a card of its own, and it is read as evidence for the cause
- *      rather than as a finding in its own right.
- *   3. **The benchmark, in words.** A score out of 100 means nothing without a
- *      reference point. It is stated rather than drawn as a third marker, which
- *      is what the 2026-08-16 rebuild removed for crowding the track.
- *      Deliberately the quiet band: "typical" here is a modelled profile rather
- *      than a survey average, so it supports the finding and is never asked to
- *      be the finding.
- *   4. **The handover to the plan**, which is the whole reason any of this is
- *      on the page.
+ *   2. **The convergence** - the node the rail runs into: one cause, named.
+ *   3. **The benchmark.** A score out of 100 means nothing without a reference
+ *      point. It is stated rather than drawn as a third marker, which is what
+ *      the 2026-08-16 rebuild removed for crowding the track. Deliberately the
+ *      quiet band: "typical" here is a modelled profile rather than a survey
+ *      average, so it supports the finding and is never asked to be the finding.
  *
- * ── Two things that are deliberately not here ────────────────────────────────
+ * ── Five things that are deliberately not here ───────────────────────────────
+ *
+ * Mostly the same fault found repeatedly: the card is the *third* telling on a
+ * screen that has already shown her a letter and a paragraph, so anything it
+ * repeats is pure length. It ran ~100 words on 2026-08-17 and runs ~80 now,
+ * with every one of the mechanism lines - the only new information in the whole
+ * funnel - untouched. The remaining fat is in those lines (they are written at
+ * 12-16 words and say the same thing at 9-11), and tightening them is a copy
+ * pass on SYMPTOM_MECHANISM rather than a change here.
  *
  * **The gap as a number.** This card led on it until 2026-08-17: a 52px "34"
  * over "points to your goal". A point is not a unit of anything she has ever
  * felt - it is an internal quantity on a scale that exists nowhere outside this
  * funnel - and the letter one screen-height above already *draws* the gap. It
- * survives in the handover line and the screen-reader summary.
+ * survives in the screen-reader summary.
+ *
+ * **Her symptom count**, which the node carried as a 40px numeral until later
+ * the same day. The pain paragraph directly above the card opens on the same
+ * bold figure - see the node.
+ *
+ * **A verdict placing her against the cohort** ("hitting you harder than most
+ * women your age"). See band 3 and the note where getScoreVerdict used to live.
+ *
+ * **A handover line to the plan.** See band 4's headstone below.
  *
  * **Her score, painted as a verdict.** It used to render red under 40 and
  * orange above - never green, at any value - on a scale where higher is better,
@@ -1070,7 +1080,6 @@ function ScoreCauseCard({
   // is why there is no at-goal branch here. It is no longer printed as a
   // figure; it survives for the screen-reader summary and the handover line.
   const gap = Math.max(0, SCORE_GOAL - score);
-  const verdict = getScoreVerdict(score, benchmark);
   const rows = drivers
     .map((id) => ({
       id,
@@ -1081,7 +1090,6 @@ function ScoreCauseCard({
     }))
     .filter((r) => r.label);
   const hidden = Math.max(0, symptomCount - rows.length);
-  const one = symptomCount === 1;
 
   return (
     <div className="rounded-2xl bg-card border-2 border-[#E8DDD9] mb-4 shadow-md shadow-primary/5 overflow-hidden">
@@ -1146,23 +1154,28 @@ function ScoreCauseCard({
             )}
 
             {/* The node. Everything above arrives here.
-                The count sits in it rather than over it: it is the evidence for
-                the cause, not a finding of its own. */}
+
+                The count used to sit in it, as a 40px numeral: "{n} symptoms,
+                one cause". It was cut on 2026-08-17 because the pain paragraph
+                ~100px above this card already opens on a bold "{n} symptoms"
+                (getSeverityPainText), so the badge was the same figure told
+                twice within one screen - the exact fault the card's own header
+                note claims the merge fixed. The merge only removed the 5xl
+                version; this was the survivor. The convergence never needed the
+                number anyway: it is carried by the rail and by the word
+                arriving at the end of every mechanism line. */}
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1.05 + (rows.length + (hidden > 0 ? 1 : 0)) * 0.12, duration: 0.4 }}
-              className="relative mt-3 flex items-center gap-3 rounded-xl bg-[#FBF1EE] border border-[#B23A31]/20 px-3 py-2.5"
+              className="relative mt-3 rounded-xl bg-[#FBF1EE] border border-[#B23A31]/20 px-3.5 py-2.5"
             >
               <span
                 aria-hidden
                 className="absolute -left-[19px] top-1/2 h-px w-[13px] -translate-y-1/2 bg-[#B23A31]"
               />
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#B23A31] text-[18px] font-black leading-none text-white">
-                {symptomCount}
-              </span>
-              <p className="text-[13px] leading-snug text-[#5A5A5A]">
-                {one ? "symptom" : "symptoms"}, one cause:{" "}
+              <p className="text-[13.5px] leading-snug text-[#5A5A5A]">
+                One cause:{" "}
                 <span className="font-bold text-[#3D3D3D]">estrogen rising and falling</span>
               </p>
             </motion.div>
@@ -1178,33 +1191,42 @@ function ScoreCauseCard({
       )}
 
       {/* Band 3 - the benchmark, which is the only thing that makes a score out
-          of 100 mean anything. The cohort is named once, by the verdict, so it
-          is not repeated on the number. */}
+          of 100 mean anything.
+
+          It used to open with getScoreVerdict(): "Menopause is hitting you
+          harder than most women your age." That sentence was the one comparative
+          claim on the screen where belief is formed, and its own basis is a
+          modelled profile rather than a survey average (see TYPICAL_SCORE_BY_AGE)
+          - the known-open item in §7 of CLAUDE.md. Cut on 2026-08-17: the number
+          is the useful half and it can be handed over without being ranked
+          against her. The cohort is named on the number instead, which is where
+          it belongs now that no verdict names it. */}
       <p
         className={cn(
-          "px-4 text-[13px] leading-relaxed text-[#5A5A5A]",
+          "px-4 pb-4 text-[13px] leading-relaxed text-[#5A5A5A]",
           rows.length > 0 ? "mt-3.5 border-t border-[#EFE6E2] pt-3.5" : "pt-4"
         )}
       >
-        Menopause is <span className="font-bold text-[#3D3D3D]">{verdict}</span>. Typical is around{" "}
+        Typical for {cohortLabel}:{" "}
         <span className="font-bold text-[#3D3D3D]">{benchmark}</span> out of 100.
       </p>
 
-      {/* Band 4 - the handover to the plan, on its own green ground so the
-          card ends on the thing that closes the gap rather than trailing off
-          in the same grey as the sentence above it. */}
-      <p className="mt-3.5 flex items-center gap-2 bg-green-50 px-4 py-3 text-[13px] font-medium leading-snug text-[#3D3D3D]">
-        <Goal className="w-4 h-4 text-green-600 shrink-0" />
-        <span>
-          Closing that gap is what your {PLAN_WEEKS}-week plan is built to do.
-        </span>
-      </p>
+      {/* Band 4 - the handover to the plan - was here until 2026-08-17:
+          "Closing that gap is what your {PLAN_WEEKS}-week plan is built to do.",
+          on green ground under a Goal icon. It was a duplicate at ~20px range.
+          The green card immediately below this one (see the results phase) says
+          "your {PLAN_WEEKS}-week plan is ready", names what it was built from,
+          and then *draws* the eight weeks with <PlanFinishBoard />. Two handovers
+          to the same object back to back, and the second one carries evidence.
+          Removing it also stops this card from ending in the same green the card
+          below opens in, which read as one long green block on a small screen. */}
 
       {/* The letter is decorative to a screen reader (it is an animation), so
-          the numbers on it are announced here, once. */}
+          the numbers on it are announced here, once. The benchmark is *not*
+          repeated here - band 3 above is real text and reads on its own. */}
       <p className="sr-only">
-        Your Menopause Wellbeing Score is {score} out of 100, where higher is better. Typical for{" "}
-        {cohortLabel} is around {benchmark}. The goal is {SCORE_GOAL}, which is {gap} points away.
+        Your Menopause Wellbeing Score is {score} out of 100, where higher is better. The goal is{" "}
+        {SCORE_GOAL}, which is {gap} points away.
       </p>
     </div>
   );

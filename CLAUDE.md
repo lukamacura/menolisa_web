@@ -831,6 +831,41 @@ again also works — that calls `sync-session`.
 ## 7. CURRENT STATUS
 
 Recent work:
+- **The price hold got its clock back (2026-08-17)** — the static "your $59 rate
+  is held while you finish" band is a live `PLAN_DISCOUNT_WINDOW_MINUTES` (10)
+  countdown again, and at zero the paywall reverts to the anchor: grey border,
+  "REGULAR PRICE" badge, `$2.11 / day`, "Billed $118 today", the trust box and
+  **the CTA label** all following `livePrice` / `livePricePerDay`, and the
+  headline's "50% off" dropped so the screen doesn't shout a discount next to a
+  REGULAR PRICE badge.
+  **Only the display moves.** There is one Stripe price, so `handleCheckoutClick`
+  and `onCheckout` are byte-identical either side of zero: she is charged `$59`
+  whether the clock ran out or not, and the intended experience is that a Stripe
+  page reading $59 after a paywall reading $118 feels to her like the discount
+  slipped through.
+  Two properties make that arrangement defensible, and any change here has to
+  keep both — the long-form version is the block comment at the bottom of
+  `components/PaywallView.tsx`:
+  - **The error is always in her favour.** Displayed >= charged, always. The
+    page may understate what she pays and must never overstate it, and the
+    `renews every 8 weeks` + `RENEWAL_NOTICE_DAYS` disclosure sits on both
+    branches. Nobody is out of pocket by a cent; this is what separates it from
+    the FTC's false-urgency cases, which are all overcharges.
+  - **Nothing about the money is client-controlled.** The deadline is in
+    `sessionStorage` and the clock is hers, so `expired` is trivially forgeable —
+    fine precisely because it buys nothing. **Do not** "fix" the mismatch with a
+    second Stripe Price selected on `expired`: that inverts the first property
+    and lets a user's system clock decide whether she pays double. Real expiry
+    pricing needs a server-side deadline.
+  What did *not* come back is the reclaim button. The 2026-08-12 removal was
+  about a timer that visibly resets on one tap, which is the tell that a page is
+  theatre — and doubt on this screen lands on the refund guarantee. The deadline
+  lives under `menolisa:paywall-discount-deadline`, so a reload does not hand her
+  a fresh 10 minutes, and a stored value further out than the full window is
+  discarded as tampered. Per-tab rather than `localStorage`: someone returning
+  tomorrow gets a new window instead of a paywall that expired days ago.
+  `useHydrated()` (a `useSyncExternalStore` flip) keeps the half-spent deadline
+  out of hydration, and only the expiry is `aria-live`, never the per-second tick.
 - **Pixel cut to five standard events for launch (2026-08-17)** — the seven
   custom funnel events (`QuizStart`, `QuizStep`, `QuizComplete`, `ResultsView`,
   `PlanView`, `PlanScrollDepth`, `ReliefDone`) and their machinery
@@ -1112,7 +1147,9 @@ Recent work:
   Also: the paywall's 10-minute countdown and its one-tap "get my discount back"
   are gone — a timer that visibly resets teaches a 45-60 audience that the page
   is staged, and the element on that screen that cannot afford doubt is the
-  refund guarantee. Replaced with a static price hold. And the renewal notice
+  refund guarantee. Replaced with a static price hold. (The countdown itself came
+  back on 2026-08-17 — see the entry at the top of this list — but the reset
+  button did not, and that was the half that did the damage.) And the renewal notice
   moved from 1 day to `RENEWAL_NOTICE_DAYS` (3), stated on the paywall at the
   price rather than in small print; the week-8 charge is the most disputable
   moment in the product. Migration
