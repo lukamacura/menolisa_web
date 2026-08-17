@@ -53,9 +53,12 @@ export interface PaywallViewProps {
   /** Optional back link (e.g. return to the diagnosis page). */
   onBack?: () => void;
   /**
-   * Her first name, when we have it. Only used to address the countdown to her
-   * plan ("reserved for Linda's plan") - a generic timer reads as site-wide
-   * theatre, the same one reads as held for something that is already hers.
+   * Her first name, when we have it. Used in exactly one place - the price hold
+   * ("Linda, your $59 rate is held while you finish"). A generic hold reads as
+   * site-wide theatre; the same sentence with her name in it reads as held for
+   * something that is already hers. It is deliberately the only place: the
+   * finish board above it carried her name too until 2026-08-17, and two
+   * mail-merges inside one screen height undo what one of them buys.
    */
   firstName?: string;
   /**
@@ -253,7 +256,20 @@ export function PaywallView({
               same two things one line lower, which cost ~60px of the only real
               estate that matters here - the price card has to be on screen when
               she lands, or the first thing she scrolls past is the argument for
-              a number she hasn't seen. */}
+              a number she hasn't seen.
+
+              Two sentences rather than one hinged on an em dash: the dash made
+              a single 14-word line she had to parse to the end before either
+              half paid off, and at this size it wrapped into the middle of a
+              clause as often as not. The full stop lets "start today" land on
+              its own, and the discount and the refund read as the terms that
+              follow it.
+
+              The sweep is on the outcome she is actually being asked to risk -
+              green, per the funnel's colour rule (green = the gap and what
+              closes it), which is also the guarantee card's colour further down
+              and the CTA's. The pink gradient stays on TODAY so the two
+              emphases are not competing for the same meaning. */}
           <h2 className="text-xl sm:text-2xl font-bold text-[#3D3D3D] leading-tight text-balance">
             Start your {PLAN_WEEKS} week plan{" "}
             <span
@@ -261,8 +277,10 @@ export function PaywallView({
               style={{ backgroundImage: "linear-gradient(135deg, #ff74b1, #65dbff)" }}
             >
               TODAY
-            </span>{" "}
-            &mdash; {PLAN_DISCOUNT_PCT}% off, or a full refund if it doesn’t work
+            </span>
+            . {PLAN_DISCOUNT_PCT}% off, or{" "}
+            <HighlightSweep variant="green">a full refund</HighlightSweep> if it
+            doesn’t work
           </h2>
         </motion.div>
 
@@ -270,7 +288,7 @@ export function PaywallView({
             and the price card: the hold and the price are a matched pair (same
             pink border, same urgency), and splitting them to insert this broke
             that read. Outcome, then hold, then number. */}
-        <PlanFinishBoard firstName={firstName} topProblems={topProblems} goal={goal} />
+        <PlanFinishBoard topProblems={topProblems} goal={goal} />
 
         {/* The price hold. Same pink pairing with the card below that the
             countdown had, minus the clock: it says the number is hers and will

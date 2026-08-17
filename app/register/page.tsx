@@ -69,7 +69,6 @@ import {
 /** Quiz step/phase -> illustration filename (from public/quiz/, same as mobile app assets/quiz/). */
 const QUIZ_ILLUSTRATION: Record<string, string> = {
   q8_name: "illustration_q8_name.webp",
-  loading: "illustration_loading.webp",
 };
 
 
@@ -2727,26 +2726,6 @@ function RegisterPageContent() {
             transition={{ duration: 0.4, ease: [0.42, 0, 0.58, 1] }}
             className="flex-1 flex flex-col items-center justify-center px-4"
           >
-            <motion.div
-              className="relative mb-8"
-              animate={{
-                rotate: 360,
-                scale: [0.9, 1, 0.9],
-              }}
-              transition={{
-                rotate: { duration: 2.4, repeat: Infinity, ease: "linear" },
-                scale: { duration: 2.4, repeat: Infinity, ease: [0.42, 0, 0.58, 1] },
-              }}
-            >
-              <Image
-                src={`/quiz/${QUIZ_ILLUSTRATION.loading}`}
-                alt=""
-                width={200}
-                height={120}
-                className="w-32 h-20 sm:w-40 sm:h-24 object-contain"
-              />
-            </motion.div>
-
             {/* The percentage carries the "something is being built" job that a
                 static header can't. There used to be a fixed h2 here reading
                 "Getting to know you better..." *above* the three rotating
@@ -2936,13 +2915,10 @@ function RegisterPageContent() {
                       The board answers that, and it is her own words at both
                       ends - her #1 symptom today, the goal she picked at week
                       8 - so it reads as a continuation of her answers rather
-                      than as stock art. Its header is off here: there is no
-                      price anywhere on the results screen yet, and the header
-                      carries the per-day figure. See <PlanFinishBoard />. */}
+                      than as stock art. See <PlanFinishBoard />. */}
                   <PlanFinishBoard
                     topProblems={topProblems}
                     goal={goal}
-                    showHeader={false}
                     className="mb-4"
                   />
 

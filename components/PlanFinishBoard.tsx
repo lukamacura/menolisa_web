@@ -12,7 +12,7 @@ import {
   useTransform,
 } from "framer-motion";
 import { Flame, Heart, Moon, Sun } from "lucide-react";
-import { PLAN_PRICE_PER_DAY, PLAN_WEEKS } from "@/lib/pricing";
+import { PLAN_WEEKS } from "@/lib/pricing";
 import {
   PLAN_DAYS,
   formatPlanDate,
@@ -49,14 +49,15 @@ import { cn } from "@/lib/utils";
  *   dial reads as a score.
  *
  * The ends stay her own words — her worst symptom on the left, the goal she
- * picked on the right — and the header keeps the denominator ({PLAN_DAYS} days,
- * ${PLAN_PRICE_PER_DAY}/day) that turns the per-day figure under it back into
- * the number she is about to be charged.
+ * picked on the right — and nothing else is written on it. It carried a header
+ * until 2026-08-17 ("Linda's finish line" on the left, "{PLAN_DAYS} days ·
+ * $1.05 a day" on the right); both are gone. The board is the outcome, and the
+ * price card 100px below it already states the per-day figure, the total and
+ * the renewal — restating the denominator here started the money conversation
+ * on top of the one element that was purely about how she will feel.
  *
  * No projected score appears anywhere on it. See lib/planTimeline.ts for why.
  */
-
-const PER_DAY = `$${PLAN_PRICE_PER_DAY.toFixed(2)}`;
 
 const subscribeToNothing = () => () => {};
 
@@ -150,25 +151,12 @@ function stageAt(stages: Stage[], t: number) {
 }
 
 export function PlanFinishBoard({
-  firstName,
   topProblems,
   goal,
-  showHeader = true,
   className,
 }: {
-  firstName?: string;
   topProblems?: string[];
   goal?: string[];
-  /**
-   * The title row ("Linda's finish line" / "{PLAN_DAYS} days · $1.05 a day").
-   *
-   * On the paywall it is load-bearing: it is the denominator that turns the
-   * per-day figure in the price card underneath back into the number she is
-   * about to be charged. On the results screen there is no price on the page
-   * yet, so naming one there answers a question she hasn't been asked - the
-   * chart is showing her the shape of the eight weeks, not selling them.
-   */
-  showHeader?: boolean;
   className?: string;
 }) {
   const prefersReducedMotion = useReducedMotion();
@@ -181,8 +169,6 @@ export function PlanFinishBoard({
   const hydrated = useHydrated();
   const startLabel = formatPlanDate(start);
   const finishLabel = formatPlanDate(finish, true);
-
-  const name = firstName?.trim();
 
   const boardRef = useRef<HTMLDivElement | null>(null);
   const inView = useInView(boardRef, { amount: 0.4 });
@@ -270,7 +256,10 @@ export function PlanFinishBoard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.26 }}
       className={cn(
-        "relative rounded-2xl border px-3.5 pt-3 pb-3 mb-2.5 shadow-sm",
+        // pt-5 rather than pt-3: with the header line gone the week pins would
+        // otherwise start directly under the tape strips, which overhang 10px
+        // into the card.
+        "relative rounded-2xl border px-3.5 pt-5 pb-3 mb-2.5 shadow-sm",
         className
       )}
       style={{
@@ -295,17 +284,6 @@ export function PlanFinishBoard({
         className="pointer-events-none absolute -top-1.5 right-5 h-4 w-11 rotate-6 rounded-[2px]"
         style={{ background: "rgba(255,235,118,0.55)", boxShadow: "0 1px 2px rgba(61,61,61,0.12)" }}
       />
-
-      {showHeader && (
-        <div className="flex items-baseline justify-between gap-2 mb-1">
-          <p className="text-[10px] font-bold tracking-wide uppercase text-[#9A9A9A]">
-            {name ? `${name}'s finish line` : "Your finish line"}
-          </p>
-          <p className="text-[10px] text-[#9A9A9A] tabular-nums shrink-0">
-            {PLAN_DAYS} days &middot; {PER_DAY} a day
-          </p>
-        </div>
-      )}
 
       {/* ── The chart. Aria-hidden in full: it is an animation, and a caption
              that swaps every two seconds is noise to a screen reader. The same
