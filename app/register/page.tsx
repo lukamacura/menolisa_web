@@ -29,13 +29,10 @@ import {
   Goal,
   UserCircle,
   Check,
-  TrendingUp,
   TrendingDown,
   Ruler,
   Weight,
   ShieldCheck,
-  MessageCircleHeart,
-  Activity,
   Wind,
   PartyPopper,
   Lock,
@@ -49,6 +46,7 @@ import { HighlightSweep } from "@/components/HighlightSweep";
 import MetaPurchaseTracker from "@/components/MetaPurchaseTracker";
 import { SocialProofPolaroid } from "@/components/SocialProof";
 import { PlanStage } from "@/components/PlanStage";
+import { HowLisaRuns } from "@/components/HowLisaRuns";
 import { PhoneShot, ShotStage, SHOT_W, SHOT_H, PHONE_SHOT_SIZES } from "@/components/PhoneShots";
 import { PLAN_PILLARS } from "@/lib/planPillars";
 import {
@@ -63,6 +61,7 @@ import {
   SCORE_GOAL,
   getScoreBenchmark,
   getScoreVerdict,
+  getTopBurdenSymptoms,
   calculateWellbeingScore,
 } from "@/lib/quiz-results-helpers";
 
@@ -995,19 +994,37 @@ function TrajectoryChart({ score }: { score: number }) {
  * reveal rather than adding to it, which is the same duplication the 2026-08-17
  * pass removed between the two count-ups.
  *
- * The division of labour now: **the letter says where she is, this says what is
- * missing and who closes it.** So the card keeps exactly the three things the
- * scale cannot draw:
+ * The division of labour now: **the letter says where she is, this says why -
+ * and who closes it.**
  *
- *   1. **The gap, out loud, as points.** "34 points" is a size; "lower than
- *      average" is a mood. It is the only figure on the screen she is actually
- *      being asked to buy, and the one figure here allowed to carry colour -
- *      green, the colour this screen uses for the gap and what closes it.
+ * This card led on the gap as a number until 2026-08-17: a 52px "34" over the
+ * words "points to your goal". It was the biggest figure on the screen and it
+ * said nothing, because a point is not a unit of anything she has ever felt. It
+ * is an internal quantity on a scale that exists nowhere outside this funnel,
+ * so "34 of them" is arithmetic she cannot check about a metric she has no
+ * reason to trust, presented in the type size reserved for the screen's most
+ * important fact. Worse, the letter one screen-height above already *draws* the
+ * gap - her fill, the green band, the goal pin - so the number was a third
+ * telling of a thing already shown twice.
+ *
+ * What replaces it is the question the gap was standing in for: **why is my
+ * score what it is?** The answer is her own symptoms, ranked by how much each
+ * one costs a normal day (getTopBurdenSymptoms, off the same weights the score
+ * is built from). That is recognition rather than a grade - she reads three
+ * words and knows we got it right - and it hands over to the plan naturally,
+ * because those are the symptoms the plan is built around.
+ *
+ * The three bands, in order:
+ *
+ *   1. **What is pulling her score down**, in her own words back to her.
  *   2. **The benchmark, in words.** A score out of 100 means nothing without a
  *      reference point. It is stated rather than drawn as a third marker,
  *      which is what the 2026-08-16 rebuild removed for crowding the track.
- *   3. **The handover to the plan**, which is the whole reason the gap is on
- *      the page.
+ *      Deliberately still the quiet band: "typical" here is a modelled profile
+ *      rather than a survey average, so it supports the finding and is never
+ *      asked to be the finding.
+ *   3. **The handover to the plan**, which is the whole reason any of this is
+ *      on the page.
  *
  * Her score is never painted as a verdict anywhere. It used to render red under
  * 40 and orange above - never green, at any value - on a scale where higher is
@@ -1018,46 +1035,61 @@ function ScoreGapCard({
   score,
   benchmark,
   cohortLabel,
+  drivers,
 }: {
   score: number;
   benchmark: number;
   cohortLabel: string;
+  /** Her symptoms, heaviest first - see getTopBurdenSymptoms. */
+  drivers: string[];
 }) {
   // `gap` is always 12..68: calculateWellbeingScore compresses to a
   // SCORE_CEILING of 68 precisely so there is never a zero gap to render, which
-  // is why there is no at-goal branch here.
+  // is why there is no at-goal branch here. It is no longer printed as a
+  // figure; it survives for the screen-reader summary and the handover line.
   const gap = Math.max(0, SCORE_GOAL - score);
   const verdict = getScoreVerdict(score, benchmark);
+  const labels = drivers.map((id) => SYMPTOM_LABELS[id] || id);
 
   return (
     <div className="rounded-2xl bg-card border-2 border-[#E8DDD9] mb-4 shadow-md shadow-primary/5 overflow-hidden">
-      {/* Band 1 - the gap, and only the gap.
-          It used to be a 4xl number with a two-line 9px uppercase "points / to
-          close" wedged under it, then a 12px paragraph squeezed into whatever
-          column width was left. Three unrelated statements shared one row, the
-          label for the biggest number on the card was the smallest type on the
-          screen, and the line break fell mid-phrase. The number now gets a
-          full-width row and its label sits beside it at a size a 45-60 reader
-          can take in without leaning: one figure, one sentence naming it, one
-          sentence placing it. */}
-      <div className="flex items-center gap-3 px-4 pt-4">
-        <span className="shrink-0 text-[52px] font-black leading-none tracking-tight text-green-600">
-          {gap}
-        </span>
-        <span className="min-w-0">
-          <span className="block text-base font-bold leading-tight text-[#3D3D3D]">
-            points to your goal
-          </span>
-          <span className="mt-0.5 block text-[13px] leading-snug text-[#7A7A7A]">
-            You&apos;re at {score}. The goal is {SCORE_GOAL}.
-          </span>
-        </span>
-      </div>
+      {/* Band 1 - what the score is made of.
+          The heading is small and grey and the symptoms are the ink, because
+          the symptoms are the payload: she should be able to take this band in
+          without reading a full sentence. Rose is this screen's colour for the
+          load she is carrying (the CTA owns pink, green owns the gap and the
+          fix), so the names take it.
+
+          Skipped entirely if she somehow reached results with no symptoms
+          selected - an empty band is worse than no band, and the benchmark
+          below stands on its own. */}
+      {labels.length > 0 && (
+        <div className="px-4 pt-4">
+          <p className="text-[11px] uppercase tracking-wide font-semibold text-[#9A9A9A]">
+            What&apos;s pulling your score down
+          </p>
+          <p className="mt-1.5 text-[22px] font-black leading-tight text-[#B23A31]">
+            {labels.length > 1
+              ? `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}`
+              : labels[0]}
+          </p>
+          <p className="mt-1.5 text-[13px] leading-snug text-[#7A7A7A]">
+            {labels.length > 1
+              ? "These take the most out of an ordinary day - which is where your plan starts."
+              : "This takes the most out of an ordinary day - which is where your plan starts."}
+          </p>
+        </div>
+      )}
 
       {/* Band 2 - the benchmark, which is the only thing that makes a score out
           of 100 mean anything. The cohort is named once, by the verdict, so it
           is not repeated on the number. */}
-      <p className="mt-3.5 border-t border-[#EFE6E2] px-4 pt-3.5 text-[13px] leading-relaxed text-[#5A5A5A]">
+      <p
+        className={cn(
+          "px-4 text-[13px] leading-relaxed text-[#5A5A5A]",
+          labels.length > 0 ? "mt-3.5 border-t border-[#EFE6E2] pt-3.5" : "pt-4"
+        )}
+      >
         Menopause is <span className="font-bold text-[#3D3D3D]">{verdict}</span>. Typical is around{" "}
         <span className="font-bold text-[#3D3D3D]">{benchmark}</span> out of 100.
       </p>
@@ -1068,7 +1100,7 @@ function ScoreGapCard({
       <p className="mt-3.5 flex items-center gap-2 bg-green-50 px-4 py-3 text-[13px] font-medium leading-snug text-[#3D3D3D]">
         <Goal className="w-4 h-4 text-green-600 shrink-0" />
         <span>
-          That gap is what your {PLAN_WEEKS}-week plan is built to close.
+          Closing that gap is what your {PLAN_WEEKS}-week plan is built to do.
         </span>
       </p>
 
@@ -1911,6 +1943,10 @@ function RegisterPageContent() {
     [scoredSeverity, hereFor, hrtStatus, ageBand, bodyMetrics]
   );
   const score = scoreBreakdown.score;
+
+  // The symptoms behind that score, heaviest first. This is what the results
+  // card leads on instead of the size of the gap - see <ScoreGapCard />.
+  const scoreDrivers = useMemo(() => getTopBurdenSymptoms(scoredSeverity, 3), [scoredSeverity]);
 
   // There used to be an `estrogenPct` here: `80 + (burden/maxBurden) * 15`,
   // rendered at 5xl as "{n}% of your symptoms trace back to shifting estrogen".
@@ -2829,24 +2865,28 @@ function RegisterPageContent() {
               );
             })()}
 
-            {/* Pain paragraph. Left-aligned and a step larger than it was: this
-                is the emotional core of the screen, it runs to four or five
-                lines, and centred 14px mid-grey is the hardest possible way to
-                read that on a 45-60 audience. Centred is right for one-line
-                headings and wrong for body copy - the ragged left edge costs a
-                re-fixation on every line. */}
+            {/* Pain paragraph - the subheadline under the finding.
+                Left-aligned, because centred is right for one-line headings and
+                wrong for body copy: the ragged left edge costs a re-fixation on
+                every line, and this runs to two or three.
+                Sized down to 14px on 2026-08-17. It had been pushed to 15px
+                while it was still a four-line paragraph; it is one sentence now,
+                and at 15px directly under a 3xl/4xl headline it sat close
+                enough in weight to read as a second headline rather than as the
+                line that supports it. 14px keeps it comfortably readable at
+                45-60 while restoring the step down the hierarchy needs. */}
             <motion.p
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.85 }}
-              className="text-[15px] text-[#5A5A5A] leading-relaxed mb-4 px-0.5"
+              className="text-sm text-[#5A5A5A] leading-relaxed mb-4 px-0.5"
             >
               {getSeverityPainText(derivedSeverity, topProblems.length, firstName || "you")}
             </motion.p>
 
-            {/* The gap her score leaves, and the plan that closes it. The score
-                itself was delivered by the letter above - see <ScoreGapCard />
-                for the split. */}
+            {/* What is behind her score, and the plan that closes the gap. The
+                score itself was delivered by the letter above - see
+                <ScoreGapCard /> for the split. */}
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
@@ -2856,6 +2896,7 @@ function RegisterPageContent() {
                 score={score}
                 benchmark={getScoreBenchmark(ageBand)}
                 cohortLabel={AGE_BAND_LABELS[ageBand] ?? "women your age"}
+                drivers={scoreDrivers}
               />
             </motion.div>
 
@@ -3164,7 +3205,7 @@ function RegisterPageContent() {
                     alt={`Day 1 of your personalized ${PLAN_WEEKS}-week plan in the MenoLisa app, showing movement, nutrition, relaxation and habit tasks`}
                   />
                   <p className="mt-2.5 text-center text-[11px] text-[#9A9A9A] leading-snug">
-                    Day one, as it actually arrives. Nothing to set up.
+                    You get this automatically in your mobile app.
                   </p>
 
                   <div className="mt-4 rounded-2xl overflow-hidden border-2 border-[#E8DDD9] bg-card shadow-md shadow-primary/5">
@@ -3312,7 +3353,7 @@ function RegisterPageContent() {
                   </div>
                   <CarouselDots count={transforms.length} index={transformCarousel.index} />
                   <p className="text-[10px] text-[#9A9A9A] mt-2 px-1 leading-snug">
-                    Illustrative. Individual experiences vary - MenoLisa helps you track and understand your symptoms with guidance, it&apos;s not a medical treatment.
+                    Illustrative. MenoLisa is not a medical treatment.
                   </p>
                 </motion.div>
               );
@@ -3358,7 +3399,7 @@ function RegisterPageContent() {
                   <div className="flex items-center gap-1.5 text-[11px] font-bold text-red-700">
                     Without a plan
                   </div>
-                  <p className="text-[11px] text-red-700/80 mt-0.5 leading-snug">
+                  <p className="text-xs text-red-700/80 mt-0.5 leading-snug">
                     Symptoms drift on for years.
                   </p>
                 </div>
@@ -3366,7 +3407,7 @@ function RegisterPageContent() {
                   <div className="flex items-center gap-1.5 text-[11px] font-bold text-green-700">
                     With Lisa
                   </div>
-                  <p className="text-[11px] text-green-700/80 mt-0.5 leading-snug">
+                  <p className="text-xs text-green-700/80 mt-0.5 leading-snug">
                     {SCORE_GOAL}+ by week {PLAN_WEEKS}, then hold it.
                   </p>
                 </div>
@@ -3385,7 +3426,12 @@ function RegisterPageContent() {
                 A screenshot that no longer matches the product is worse than no
                 screenshot: block 1 has already proved the app is real, and this
                 block only has to say what it keeps doing after day one. So it is
-                now typographic, and small enough to stay subordinate. ───────── */}
+                now typographic, and small enough to stay subordinate.
+
+                It was a three-row icon list until 2026-08-17 - a feature list,
+                answering "what do you get" on a screen that has already shown
+                her the product. What it has to answer is *how the days work*,
+                which is a sequence, so `<HowLisaRuns />` plays it as one. ───── */}
             {(() => {
               const topSymptom = [...topProblems]
                 .sort((a, b) => (scoredSeverity[b] ?? 0) - (scoredSeverity[a] ?? 0))[0];
@@ -3394,29 +3440,6 @@ function RegisterPageContent() {
               const topLabel = topSymptom
                 ? (SYMPTOM_LABELS[topSymptom] || topSymptom).toLowerCase()
                 : "symptoms";
-              const rows = [
-                {
-                  icon: Activity,
-                  tint: "text-sky-500",
-                  chip: "bg-sky-50",
-                  title: "It knows what today asks of you",
-                  body: "Tap what you felt. Two minutes, and the plan has what it needs.",
-                },
-                {
-                  icon: TrendingUp,
-                  tint: "text-emerald-500",
-                  chip: "bg-emerald-50",
-                  title: "It changes as you do",
-                  body: `Lisa reads your logs and rewrites next week around your ${topLabel}.`,
-                },
-                {
-                  icon: MessageCircleHeart,
-                  tint: "text-violet-500",
-                  chip: "bg-violet-50",
-                  title: "It answers at 2am",
-                  body: "Ask Lisa anything, any hour. Straight answers, no waiting room.",
-                },
-              ];
               return (
                 <motion.div
                   initial={{ opacity: 0, y: 16 }}
@@ -3435,39 +3458,7 @@ function RegisterPageContent() {
                     </p>
                   </div>
 
-                  <div className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-3 shadow-md shadow-primary/5 divide-y divide-foreground/8">
-                    {rows.map((row, i) => (
-                      <motion.div
-                        key={row.title}
-                        initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ once: true, amount: 0.5 }}
-                        transition={{ delay: i * 0.07, duration: 0.35 }}
-                        className={cn(
-                          "flex items-start gap-3 py-2.5",
-                          i === 0 && "pt-1",
-                          i === rows.length - 1 && "pb-1"
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl",
-                            row.chip
-                          )}
-                        >
-                          <row.icon className={cn("h-4 w-4", row.tint)} />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block text-xs font-bold text-[#3D3D3D] leading-tight">
-                            {row.title}
-                          </span>
-                          <span className="block text-[11px] text-[#5A5A5A] leading-snug mt-0.5">
-                            {row.body}
-                          </span>
-                        </span>
-                      </motion.div>
-                    ))}
-                  </div>
+                  <HowLisaRuns topLabel={topLabel} />
                 </motion.div>
               );
             })()}

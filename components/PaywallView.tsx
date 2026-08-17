@@ -124,7 +124,7 @@ const trustLabels = (price: string) => [
     icon: CreditCard,
     bg: "bg-pink-100",
     fg: "text-pink-600",
-    title: `Cancel before week ${PLAN_WEEKS}`,
+    title: `Cancel before renewal`,
     sub: `and the ${price} is all you ever pay`,
   },
   {
@@ -273,7 +273,7 @@ export function PaywallView({
             >
               {PLAN_DISCOUNT_PCT}% off
             </span>{" "}
-            &mdash; or a full refund if it doesn’t work
+   or a full refund if it doesn’t work
           </p>
         </motion.div>
 

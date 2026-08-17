@@ -381,6 +381,34 @@ const SYMPTOM_IMPACT: Record<string, number> = {
   bloating: 0.8,
 };
 
+/**
+ * Her selected symptoms, ordered by how much each one costs a normal day —
+ * i.e. by the same SYMPTOM_IMPACT weights the score itself is built from.
+ *
+ * This exists so the results card can say *why* her score is what it is using
+ * her own answers, instead of leading with the size of the gap to the goal. The
+ * gap is a count of points on a scale that exists nowhere outside this funnel;
+ * "sleep, energy and anxiety" is a sentence she recognises before she finishes
+ * reading it.
+ *
+ * The quiz rates her worst symptom and scales the rest from it, so intensities
+ * are currently uniform across her picks and this ordering resolves to the
+ * weights. It still multiplies by intensity: the day the quiz rates each
+ * symptom separately, this ranking becomes hers without a second edit here.
+ * Ties keep selection order, which is her own priority.
+ */
+export function getTopBurdenSymptoms(
+  symptomSeverity: Record<string, number>,
+  limit = 3
+): string[] {
+  return Object.entries(symptomSeverity)
+    .filter(([, sev]) => sev > 0)
+    .map(([id, sev], order) => ({ id, weight: (SYMPTOM_IMPACT[id] ?? 1.0) * sev, order }))
+    .sort((a, b) => b.weight - a.weight || a.order - b.order)
+    .slice(0, limit)
+    .map((s) => s.id);
+}
+
 export function computeBmi(heightCm: number | null, weightKg: number | null): number | null {
   if (!heightCm || !weightKg || heightCm <= 0) return null;
   const m = heightCm / 100;

@@ -163,7 +163,7 @@ export function PlanStage({
       role="img"
       aria-label={
         `${firstName ? `${firstName}'s` : "Your"} personalized ${PLAN_WEEKS} week plan: ` +
-        `four small things to do each day — ${PLAN_PILLARS.map((p) => p.label.toLowerCase()).join(", ")} — ` +
+        `four small things to do each day - ${PLAN_PILLARS.map((p) => p.label.toLowerCase()).join(", ")} - ` +
         `across ${PLAN_WEEKS} weeks in three phases, designed to help you ${goalLabel}.`
       }
     >
@@ -229,7 +229,7 @@ export function PlanStage({
 
       {/* Progress. A read-out, not a control - it tells her the scroll is
           playing and roughly how long the act has left. */}
-      <div aria-hidden className="mt-2.5 flex items-center justify-center gap-2.5">
+      <div aria-hidden className="mt-4 flex items-center justify-center gap-2.5">
         {ACTS.map((a, i) => (
           <span key={a.id} className="block h-1 w-8 overflow-hidden rounded-full bg-[#E8DDD9] sm:w-10">
             {i === index ? (
