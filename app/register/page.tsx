@@ -57,6 +57,7 @@ import { getSymptomTransforms } from "@/lib/testimonials";
 import { getOfferPromise } from "@/lib/planTimeline";
 import {
   SYMPTOM_LABELS,
+  SYMPTOM_MECHANISM,
   AGE_BAND_LABELS,
   SCORE_GOAL,
   getScoreBenchmark,
@@ -985,63 +986,84 @@ function TrajectoryChart({ score }: { score: number }) {
 }
 
 /**
- * What is left of the score card once the letter delivers the score itself.
+ * Her symptoms, why each one happens, and the single cause underneath all of
+ * them - as one card.
  *
- * The card this replaces was a full gauge: metric name, "higher is better",
- * her number on a marker, the track, the goal. Every one of those things is
- * now printed on the sheet that rises out of the envelope (see
- * <EnvelopeReveal />), a screen-height above - so the card was restating the
- * reveal rather than adding to it, which is the same duplication the 2026-08-17
- * pass removed between the two count-ups.
+ * ── Why this is one card and not two (2026-08-17) ────────────────────────────
  *
- * The division of labour now: **the letter says where she is, this says why -
- * and who closes it.**
+ * Results used to run two cards back to back that were halves of one sentence.
+ * `<ScoreGapCard />` named the symptoms dragging her score ("Sleep issues,
+ * fatigue and anxiety") and stopped. The card under it, "Why this is happening
+ * to you", printed her symptom *count* at 5xl and said they "all trace back to
+ * the same thing: estrogen rising and falling" - a claim about a list it did
+ * not show, sitting 200px below the list it was about.
  *
- * This card led on the gap as a number until 2026-08-17: a 52px "34" over the
- * words "points to your goal". It was the biggest figure on the screen and it
- * said nothing, because a point is not a unit of anything she has ever felt. It
- * is an internal quantity on a scale that exists nowhere outside this funnel,
- * so "34 of them" is arithmetic she cannot check about a metric she has no
- * reason to trust, presented in the type size reserved for the screen's most
- * important fact. Worse, the letter one screen-height above already *draws* the
- * gap - her fill, the green band, the goal pin - so the number was a third
- * telling of a thing already shown twice.
+ * So the screen said "here are your symptoms" and then, in a separate box,
+ * "those symptoms have one cause", and the reader had to hold the first card in
+ * her head to receive the second. Worse, the count was the third telling of the
+ * same fact: she tapped the tiles, the letter reported the score they produced,
+ * and then a number restated how many she had tapped. Three renderings of her
+ * own input and, in all of it, **nothing she did not already know**.
  *
- * What replaces it is the question the gap was standing in for: **why is my
- * score what it is?** The answer is her own symptoms, ranked by how much each
- * one costs a normal day (getTopBurdenSymptoms, off the same weights the score
- * is built from). That is recognition rather than a grade - she reads three
- * words and knows we got it right - and it hands over to the plan naturally,
- * because those are the symptoms the plan is built around.
+ * The merge fixes both by putting the mechanism *on the rows*: each symptom
+ * carries the one line of physiology that explains it (SYMPTOM_MECHANISM), and
+ * every one of those lines ends at estrogen. The convergence is then something
+ * she watches happen rather than something we assert - three separate
+ * complaints, three separate explanations, one word arriving in all of them -
+ * and the estrogen node at the bottom of the rail is the conclusion of an
+ * argument the card just made instead of a headline over a number.
  *
- * The three bands, in order:
+ * That is also the one honest way to make this screen *informative*. Everything
+ * else on results is her own answers re-presented; these nine lines are the
+ * only place the funnel teaches her something, and "why do I have all of these
+ * at once" is the question she actually arrived with.
  *
- *   1. **What is pulling her score down**, in her own words back to her.
- *   2. **The benchmark, in words.** A score out of 100 means nothing without a
- *      reference point. It is stated rather than drawn as a third marker,
- *      which is what the 2026-08-16 rebuild removed for crowding the track.
- *      Deliberately still the quiet band: "typical" here is a modelled profile
- *      rather than a survey average, so it supports the finding and is never
- *      asked to be the finding.
- *   3. **The handover to the plan**, which is the whole reason any of this is
+ * ── What each band is for ────────────────────────────────────────────────────
+ *
+ *   1. **What is pulling her score down** - her heaviest symptoms
+ *      (getTopBurdenSymptoms, off the same weights the score is built from),
+ *      each with its mechanism. Recognition first, explanation second.
+ *   2. **The convergence** - all N of them, one cause. The count is here rather
+ *      than in a card of its own, and it is read as evidence for the cause
+ *      rather than as a finding in its own right.
+ *   3. **The benchmark, in words.** A score out of 100 means nothing without a
+ *      reference point. It is stated rather than drawn as a third marker, which
+ *      is what the 2026-08-16 rebuild removed for crowding the track.
+ *      Deliberately the quiet band: "typical" here is a modelled profile rather
+ *      than a survey average, so it supports the finding and is never asked to
+ *      be the finding.
+ *   4. **The handover to the plan**, which is the whole reason any of this is
  *      on the page.
  *
- * Her score is never painted as a verdict anywhere. It used to render red under
- * 40 and orange above - never green, at any value - on a scale where higher is
- * better, so the number always appeared in alarm paint regardless of what it
- * said.
+ * ── Two things that are deliberately not here ────────────────────────────────
+ *
+ * **The gap as a number.** This card led on it until 2026-08-17: a 52px "34"
+ * over "points to your goal". A point is not a unit of anything she has ever
+ * felt - it is an internal quantity on a scale that exists nowhere outside this
+ * funnel - and the letter one screen-height above already *draws* the gap. It
+ * survives in the handover line and the screen-reader summary.
+ *
+ * **Her score, painted as a verdict.** It used to render red under 40 and
+ * orange above - never green, at any value - on a scale where higher is better,
+ * so the number always appeared in alarm paint regardless of what it said.
+ *
+ * Colour follows the results-screen rule: rose = the load she carries now,
+ * green = the gap and what closes it, pink = the CTA and nothing else.
  */
-function ScoreGapCard({
+function ScoreCauseCard({
   score,
   benchmark,
   cohortLabel,
   drivers,
+  symptomCount,
 }: {
   score: number;
   benchmark: number;
   cohortLabel: string;
-  /** Her symptoms, heaviest first - see getTopBurdenSymptoms. */
+  /** Her heaviest symptoms, worst first - see getTopBurdenSymptoms. */
   drivers: string[];
+  /** Every symptom she picked, not just the ones explained above. */
+  symptomCount: number;
 }) {
   // `gap` is always 12..68: calculateWellbeingScore compresses to a
   // SCORE_CEILING of 68 precisely so there is never a zero gap to render, which
@@ -1049,52 +1071,126 @@ function ScoreGapCard({
   // figure; it survives for the screen-reader summary and the handover line.
   const gap = Math.max(0, SCORE_GOAL - score);
   const verdict = getScoreVerdict(score, benchmark);
-  const labels = drivers.map((id) => SYMPTOM_LABELS[id] || id);
+  const rows = drivers
+    .map((id) => ({
+      id,
+      label: SYMPTOM_LABELS[id] || id,
+      // A symptom with no mechanism line still renders - it just arrives at the
+      // estrogen node without explaining itself, which is the old behaviour.
+      why: SYMPTOM_MECHANISM[id],
+    }))
+    .filter((r) => r.label);
+  const hidden = Math.max(0, symptomCount - rows.length);
+  const one = symptomCount === 1;
 
   return (
     <div className="rounded-2xl bg-card border-2 border-[#E8DDD9] mb-4 shadow-md shadow-primary/5 overflow-hidden">
-      {/* Band 1 - what the score is made of.
-          The heading is small and grey and the symptoms are the ink, because
-          the symptoms are the payload: she should be able to take this band in
-          without reading a full sentence. Rose is this screen's colour for the
-          load she is carrying (the CTA owns pink, green owns the gap and the
-          fix), so the names take it.
+      {/* Bands 1+2 - the rail. One vertical line runs from the first symptom
+          down into the estrogen node, so the convergence is drawn rather than
+          claimed: her complaints are tributaries and the node is where they
+          meet. It fades rose -> deeper rose downward so the eye travels the
+          direction the argument does.
 
           Skipped entirely if she somehow reached results with no symptoms
-          selected - an empty band is worse than no band, and the benchmark
+          selected - an empty rail is worse than no rail, and the benchmark
           below stands on its own. */}
-      {labels.length > 0 && (
+      {rows.length > 0 && (
         <div className="px-4 pt-4">
           <p className="text-[11px] uppercase tracking-wide font-semibold text-[#9A9A9A]">
             What&apos;s pulling your score down
           </p>
-          <p className="mt-1.5 text-[22px] font-black leading-tight text-[#B23A31]">
-            {labels.length > 1
-              ? `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}`
-              : labels[0]}
-          </p>
-          <p className="mt-1.5 text-[13px] leading-snug text-[#7A7A7A]">
-            {labels.length > 1
-              ? "These take the most out of an ordinary day - which is where your plan starts."
-              : "This takes the most out of an ordinary day - which is where your plan starts."}
+
+          <div className="relative mt-3 pl-6">
+            {/* The rail itself. Top-anchored on the first dot, bottom-anchored
+                just inside the node, so it never pokes out of either end. */}
+            <span
+              aria-hidden
+              className="absolute left-[6px] top-2 bottom-4 w-px bg-gradient-to-b from-[#B23A31]/25 via-[#B23A31]/45 to-[#B23A31]"
+            />
+
+            {rows.map((row, i) => (
+              <motion.div
+                key={row.id}
+                initial={{ opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 1.05 + i * 0.12, duration: 0.35 }}
+                className={cn("relative", i > 0 && "mt-3")}
+              >
+                <span
+                  aria-hidden
+                  className="absolute -left-6 top-[5px] h-[11px] w-[11px] rounded-full border-2 border-card bg-[#B23A31] ring-1 ring-[#B23A31]/30"
+                />
+                <p className="text-[15px] font-bold leading-tight text-[#B23A31]">{row.label}</p>
+                {row.why && (
+                  <p className="mt-0.5 text-[12.5px] leading-snug text-[#6A6A6A]">{row.why}</p>
+                )}
+              </motion.div>
+            ))}
+
+            {/* Honest about what the rail is not showing. Three rows is as many
+                mechanisms as anyone reads on a phone; the count in the node
+                covers all of them either way. */}
+            {hidden > 0 && (
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 1.05 + rows.length * 0.12 }}
+                className="relative mt-3 text-[12px] font-medium text-[#9A9A9A]"
+              >
+                <span
+                  aria-hidden
+                  className="absolute -left-6 top-[5px] h-[11px] w-[11px] rounded-full border-2 border-card bg-[#D8C3BE]"
+                />
+                + {hidden} more, same story
+              </motion.p>
+            )}
+
+            {/* The node. Everything above arrives here.
+                The count sits in it rather than over it: it is the evidence for
+                the cause, not a finding of its own. */}
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1.05 + (rows.length + (hidden > 0 ? 1 : 0)) * 0.12, duration: 0.4 }}
+              className="relative mt-3 flex items-center gap-3 rounded-xl bg-[#FBF1EE] border border-[#B23A31]/20 px-3 py-2.5"
+            >
+              <span
+                aria-hidden
+                className="absolute -left-[19px] top-1/2 h-px w-[13px] -translate-y-1/2 bg-[#B23A31]"
+              />
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#B23A31] text-[18px] font-black leading-none text-white">
+                {symptomCount}
+              </span>
+              <p className="text-[13px] leading-snug text-[#5A5A5A]">
+                {one ? "symptom" : "symptoms"}, one cause:{" "}
+                <span className="font-bold text-[#3D3D3D]">estrogen rising and falling</span>
+              </p>
+            </motion.div>
+          </div>
+
+          {/* The line that turns the cause into permission. It is not her
+              fault, and - the half that matters commercially - it moves. */}
+          <p className="mt-3 text-[13px] leading-relaxed text-[#5A5A5A]">
+            Not willpower. <span className="font-bold text-[#3D3D3D]">Biology - and biology
+            responds.</span>
           </p>
         </div>
       )}
 
-      {/* Band 2 - the benchmark, which is the only thing that makes a score out
+      {/* Band 3 - the benchmark, which is the only thing that makes a score out
           of 100 mean anything. The cohort is named once, by the verdict, so it
           is not repeated on the number. */}
       <p
         className={cn(
           "px-4 text-[13px] leading-relaxed text-[#5A5A5A]",
-          labels.length > 0 ? "mt-3.5 border-t border-[#EFE6E2] pt-3.5" : "pt-4"
+          rows.length > 0 ? "mt-3.5 border-t border-[#EFE6E2] pt-3.5" : "pt-4"
         )}
       >
         Menopause is <span className="font-bold text-[#3D3D3D]">{verdict}</span>. Typical is around{" "}
         <span className="font-bold text-[#3D3D3D]">{benchmark}</span> out of 100.
       </p>
 
-      {/* Band 3 - the handover to the plan, on its own green ground so the
+      {/* Band 4 - the handover to the plan, on its own green ground so the
           card ends on the thing that closes the gap rather than trailing off
           in the same grey as the sentence above it. */}
       <p className="mt-3.5 flex items-center gap-2 bg-green-50 px-4 py-3 text-[13px] font-medium leading-snug text-[#3D3D3D]">
@@ -2916,95 +3012,40 @@ function RegisterPageContent() {
               {getSeverityPainText(derivedSeverity, topProblems.length, firstName || "you")}
             </motion.p>
 
-            {/* What is behind her score, and the plan that closes the gap. The
-                score itself was delivered by the letter above - see
-                <ScoreGapCard /> for the split. */}
+            {/* What is behind her score, why each part of it happens, and the
+                one cause underneath all of it. The score itself was delivered
+                by the letter above; the "Why this is happening to you" card
+                that used to sit under this one was folded in on 2026-08-17 -
+                see <ScoreCauseCard /> for both splits. */}
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.95 }}
             >
-              <ScoreGapCard
+              <ScoreCauseCard
                 score={score}
                 benchmark={getScoreBenchmark(ageBand)}
                 cohortLabel={AGE_BAND_LABELS[ageBand] ?? "women your age"}
                 drivers={scoreDrivers}
+                symptomCount={topProblems.length}
               />
             </motion.div>
 
-            {/* Why this is happening - root-cause insight comes right after her
-                score: the relief ("one cause, workable") before the fear.
+            {/* The "Why this is happening to you" card used to sit here: her
+                symptom count at 5xl over "they all trace back to the same
+                thing: estrogen rising and falling", plus the "not willpower"
+                line. All three moved *into* the card above on 2026-08-17,
+                because the two cards were halves of one sentence with 200px of
+                scroll between them - the list of symptoms was in the first and
+                the claim about that list was in the second. Nothing was cut;
+                the count is the node the rail runs into, and the mechanism
+                lines it now carries are what turned the claim into an argument.
 
-                The hero number is her own symptom count, which is a fact she
-                supplied, and the estrogen link is stated as the general fact
-                about menopause that it is. It used to be a per-user percentage
-                computed from her quiz answers - see the note where `estrogenPct`
-                used to live.
-
-                The cause is named in plain English - "estrogen rising and
-                falling", which is what actually happens in perimenopause -
-                rather than "shifting estrogen", which is clinical shorthand
-                that tells a 45-60 reader nothing she can picture. */}
-            {topProblems.length > 0 && (() => {
-              const one = topProblems.length === 1;
-              return (
-                <motion.div
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 1.02 }}
-                  className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-4 shadow-md shadow-primary/5"
-                >
-                  <p className="text-xs uppercase tracking-wide font-semibold text-[#9A9A9A] text-center mb-1">
-                    Why this is happening to you
-                  </p>
-                  <p className="text-center">
-                    {/* The count is the load she is carrying, so it takes the
-                        load colour. It used to render in brand pink - the same
-                        ink as the CTA gradient and the plan card, which made
-                        the one bad number on the screen look like an offer. */}
-                    <span className="block text-5xl font-black text-[#B23A31] leading-none">
-                      {topProblems.length}
-                    </span>
-                    <span className="block text-[15px] font-medium text-[#3D3D3D] mt-1.5 leading-snug">
-                      {one ? "symptom" : "symptoms"}, and {one ? "it traces" : "they all trace"} back
-                      to the same thing:
-                      <br />
-                      <span className="font-bold">estrogen rising and falling</span>
-                    </span>
-                  </p>
-
-                  {/* Nothing is drawn under this sentence, deliberately.
-                      The slot held a two-line SVG estrogen chart, then an
-                      illustration of the hormonal swings (<HormoneShift />),
-                      then <PlanFinishBoard /> - and it also carried a 3-col
-                      grid of her own symptom tiles under that. All of it went
-                      by 2026-08-17.
-
-                      The chart and the illustration redrew the sentence
-                      directly above them instead of adding to it. The tiles
-                      were the same list a third time on one card: the count is
-                      already the hero number two lines up, and she tapped those
-                      exact tiles at ~224px ninety seconds earlier - handing
-                      them back at a third of the size is recognition she has
-                      already had, paid for with half a screen of scroll on the
-                      way to the plan.
-
-                      The board moved to the plan-ready card below, which is
-                      where "what happens next" belongs. This card answers "why",
-                      in one number and one cause, and then stops. */}
-
-                  {/* One line, because it is the only thing left to say here:
-                      it is not her fault, and it moves. The paragraph this
-                      replaces spent three lines saying that and then handed off
-                      to the plan - a handoff the plan-ready card 200px lower
-                      makes properly, with the plan in it. */}
-                  <p className="text-[13px] text-[#5A5A5A] leading-relaxed mt-3.5 text-center">
-                    Not willpower. <span className="font-bold text-[#3D3D3D]">Biology - and
-                    biology responds.</span>
-                  </p>
-                </motion.div>
-              );
-            })()}
+                Earlier occupants of this slot, for the record: a two-line SVG
+                estrogen chart, an illustration of the hormonal swings
+                (<HormoneShift />), <PlanFinishBoard /> (moved to the plan-ready
+                card below, where "what happens next" belongs) and a 3-col grid
+                of her own symptom tiles. */}
 
             {/* The plan, existing.
                 The start screen promised "answer 13 questions, get your
@@ -3456,16 +3497,13 @@ function RegisterPageContent() {
               transition={{ delay: 0.25 }}
               className="mb-4"
             >
-              <p className="text-center text-xs font-semibold text-[#3D3D3D] mb-2">
-                Every plan step is built with menopause clinicians and grounded in
-                published research - and Lisa always shows you why she suggested it.
-              </p>
+             
               {/* Pricing reassurance ("no charge today", "cancel anytime") lives on
                   the paywall, not here - this page's job is belief, and naming the
                   charge two screens early just raises her guard. */}
               <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[11px] text-[#9A9A9A]">
                 <span className="flex items-center gap-1"><Check className="w-3.5 h-3.5 text-green-600" /> Built around your {QUESTION_STEPS.length} answers</span>
-                <span className="flex items-center gap-1"><Check className="w-3.5 h-3.5 text-green-600" /> Works alongside HRT</span>
+                <span className="flex items-center gap-1"><Check className="w-3.5 h-3.5 text-green-600" /> Menopause researched</span>
                 <span className="flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5 text-green-600" /> Your data stays private</span>
               </div>
             </motion.div>

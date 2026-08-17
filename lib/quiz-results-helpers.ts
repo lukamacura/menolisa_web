@@ -300,6 +300,45 @@ export const SYMPTOM_LABELS: Record<string, string> = {
   bloating: "Bloating",
 };
 
+// Symptom ID -> the one-line reason it happens, each ending at the same place:
+// estrogen. This is the payload of the results card - the only block in the
+// funnel that tells her something she did not already know, rather than reading
+// her own answers back to her.
+//
+// Two rules these lines have to keep:
+//
+//   1. **General physiology, never a claim about her.** "Estrogen helps hold
+//      deep sleep" is a fact about menopause; "your estrogen has fallen 23%" is
+//      a measurement we never took. The funnel deleted a per-user `estrogenPct`
+//      for exactly this reason - see the note where it used to live in
+//      app/register/page.tsx.
+//   2. **Every line names estrogen.** The card's whole argument is that a list
+//      of unrelated-feeling complaints has one cause, and the convergence is
+//      only legible if she can see the same word arriving from each row.
+//
+// Kept to roughly 12-16 words: this is read on a phone, three at a time, by
+// someone who has been answering questions for two minutes.
+export const SYMPTOM_MECHANISM: Record<string, string> = {
+  hot_flashes:
+    "Estrogen steadies the brain's thermostat. As it drops, a normal room reads as too hot.",
+  sleep_issues:
+    "Estrogen helps hold deep sleep and keeps night temperature level. Both wobble as it falls.",
+  brain_fog:
+    "Memory centres run on estrogen-driven blood flow, so word-finding is the first thing to slow.",
+  mood_swings:
+    "Estrogen sets your serotonin level. When estrogen swings through the day, mood swings with it.",
+  weight_changes:
+    "Less estrogen moves fat storage to your middle and lets muscle - your calorie burner - slip away.",
+  low_energy:
+    "Broken sleep plus an estrogen-shifted stress rhythm means the tank starts each morning part-empty.",
+  anxiety:
+    "Estrogen buffers your stress response. With less of it, adrenaline hits harder and clears slower.",
+  joint_pain:
+    "Estrogen is anti-inflammatory and keeps cartilage cushioned, which is why mornings stiffen first.",
+  bloating:
+    "Shifting estrogen and progesterone slow the gut down and make the body hold on to water.",
+};
+
 // Age band -> human label for cohort comparison copy.
 export const AGE_BAND_LABELS: Record<string, string> = {
   under_40: "women under 40",
