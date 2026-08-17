@@ -8,7 +8,7 @@ export default function PrivacyPage() {
           <br />
           Macura Solutions LLC
           <br />
-          Last Updated: June 6, 2026
+          Last Updated: August 17, 2026
         </p>
 
         <section className="mb-8">
@@ -42,7 +42,9 @@ export default function PrivacyPage() {
             <li><strong>Period and reproductive health data</strong> — to the extent you log it as a symptom or in notes</li>
             <li><strong>Sleep-related data</strong> — if you log sleep issues, insomnia, or related symptoms</li>
             <li><strong>Hydration data</strong> — water intake you choose to log</li>
-            <li><strong>Onboarding/quiz data</strong> — main concerns (e.g., hot flashes, sleep issues, brain fog, mood swings, weight changes, low energy, anxiety, joint pain), severity, how long you&apos;ve had symptoms, what you&apos;ve tried, goals (e.g., sleep through the night, think clearly, feel like myself, understand patterns, data for doctor), height, weight, and similar information you provide during setup</li>
+            <li><strong>Onboarding/quiz data</strong> — main concerns (e.g., hot flashes, sleep issues, brain fog, mood swings, weight changes, low energy, anxiety, joint pain), severity, how long you&apos;ve had symptoms, what you&apos;ve tried, goals (e.g., sleep through the night, think clearly, feel like myself, understand patterns, data for doctor), physical limitations that affect movement (e.g., back, knee, hip, shoulder, pelvic floor, balance), height, weight, and similar information you provide during setup</li>
+            <li><strong>Personalized plan data</strong> — the movement exercises, relaxation sessions, and nutrition/habit tasks in your 8-week plan, and your daily completion of them (e.g., which exercises, relaxation sessions, meals, water, and other habits you mark done)</li>
+            <li><strong>Rewards and achievement data</strong> — XP, streaks, levels, and badges we calculate from your logged plan and symptom activity</li>
             <li><strong>Menopause Score</strong> — a non-clinical wellness indicator (0–100) we calculate from your quiz answers, symptom logs, and related tracked data to help you see change over time. It is derived from data you provide; it is not a medical measurement or diagnosis</li>
           </ul>
 
@@ -85,6 +87,8 @@ export default function PrivacyPage() {
           <ul>
             <li><strong>Provide and operate the Service</strong> — run the symptom tracker, hydration tracking, and account management</li>
             <li><strong>Generate AI (Lisa) responses</strong> — use your messages and relevant context (e.g., profile and symptom summaries) to personalize answers and suggestions</li>
+            <li><strong>Generate and adjust your personalized plan</strong> — build your 8-week movement, relaxation, and nutrition/habit plan from your quiz answers and physical limitations, and progress it as you complete tasks</li>
+            <li><strong>Calculate rewards and achievements</strong> — derive XP, streaks, levels, and badges from your logged plan and symptom activity</li>
             <li><strong>Generate doctor reports (&quot;What Lisa Noticed&quot;)</strong> — create summaries of your tracked data for you to share with healthcare providers</li>
             <li><strong>Calculate your Menopause Score</strong> — combine your quiz answers and tracked data into a single non-clinical wellness indicator so you can see progress over time</li>
             <li><strong>Send communications</strong> — magic link emails, optional daily reminders, weekly insight summaries, trial and subscription notices, and important service announcements</li>
@@ -99,16 +103,16 @@ export default function PrivacyPage() {
 
           <h3 className="text-xl font-semibold mb-3 mt-6">5.1 Third-Party AI Service — OpenAI (Special Notice)</h3>
           <p>
-            To generate personalised AI responses and health summaries through the Lisa chatbot, we send the following data to <strong>OpenAI, L.L.C.</strong> (188 Spear Street, Suite 1700, San Francisco, CA 94105, United States):
+            To generate personalised AI responses, your 8-week plan, and health summaries, we send the following data to <strong>OpenAI, L.L.C.</strong> (188 Spear Street, Suite 1700, San Francisco, CA 94105, United States):
           </p>
           <ul>
             <li><strong>Your chat messages</strong> — the messages you send to Lisa and recent conversation history</li>
             <li><strong>Your symptom logs</strong> — recent symptom entries, severity, triggers, and timestamps</li>
-            <li><strong>Your basic health profile</strong> — age range, menopause stage, main concerns, and health goals</li>
+            <li><strong>Your basic health profile</strong> — age range, menopause stage, main concerns, physical limitations, and health goals</li>
           </ul>
-          <p><strong>How OpenAI uses this data:</strong> OpenAI processes this data solely to generate your responses. It is not sold to third parties. OpenAI&apos;s data handling is governed by our API agreement with OpenAI and meets equivalent privacy protection standards. You can review OpenAI&apos;s Privacy Policy at <a href="https://openai.com/policies/privacy-policy" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">https://openai.com/policies/privacy-policy</a>.</p>
+          <p><strong>How OpenAI uses this data:</strong> OpenAI processes this data solely to generate your responses and your personalized plan. It is not sold to third parties. OpenAI&apos;s data handling is governed by our API agreement with OpenAI and meets equivalent privacy protection standards. You can review OpenAI&apos;s Privacy Policy at <a href="https://openai.com/policies/privacy-policy" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">https://openai.com/policies/privacy-policy</a>.</p>
           <p>
-            <strong>Consent:</strong> By using MenoLisa’s AI chat features (Lisa), you consent to your chat messages, symptom logs, and basic health profile being sent to OpenAI for AI processing as described above. You may stop using the AI chat feature at any time to prevent further data sharing with OpenAI.
+            <strong>Consent:</strong> By using MenoLisa’s AI features (Lisa chat and your personalized plan), you consent to your chat messages, symptom logs, and basic health profile being sent to OpenAI for AI processing as described above. You may stop using the AI chat feature at any time to prevent further data sharing with OpenAI; your plan is generated as a core part of your paid subscription.
           </p>
 
           <h3 className="text-xl font-semibold mb-3 mt-6">5.2 Other Service Providers</h3>

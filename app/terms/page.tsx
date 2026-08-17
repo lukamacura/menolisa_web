@@ -8,7 +8,7 @@ export default function TermsPage() {
           <br />
           Macura Solutions LLC
           <br />
-          Last Updated: June 6, 2026
+          Last Updated: August 17, 2026
         </p>
 
         <section className="mb-8">
@@ -27,6 +27,8 @@ export default function TermsPage() {
           <ul>
             <li><strong>Symptom tracker</strong> — Log and track menopause/perimenopause-related symptoms (e.g., hot flashes, night sweats, fatigue, brain fog, mood swings, anxiety, headaches, joint pain, bloating, insomnia, weight gain, low libido, period), including severity, timing, triggers, and notes</li>
             <li><strong>Hydration tracking</strong> — Optional water intake</li>
+            <li><strong>Personalized 8-week plan</strong> — An AI-generated plan of movement exercises, relaxation sessions, and daily nutrition/habit tasks (e.g., meals, hydration, supplements), built from your quiz answers and any physical limitations you tell us about, and adjusted week to week as you complete it</li>
+            <li><strong>Rewards and achievements</strong> — XP, streaks, levels, and badges calculated automatically from the plan tasks and symptoms you log, to help you track consistency</li>
             <li><strong>Lisa (AI assistant)</strong> — An AI-powered chatbot that provides educational information and personalized insights based on your tracked data</li>
             <li><strong>Weekly insights and pattern analysis</strong> — Summaries of your data to help you spot patterns</li>
             <li><strong>Menopause Score</strong> — A non-clinical wellness indicator (0–100) calculated from the information you provide and track, to help you see change over time. It is not a medical measurement, diagnosis, or score</li>
