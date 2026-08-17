@@ -2612,8 +2612,11 @@ function RegisterPageContent() {
           One job: enter on her own sentence, take the blame off her, and hand her
           a single tap. The quiz used to start here, which meant the first thing
           she was asked for was her age - an admin field, at the moment she is
-          least committed. Everything that belongs further up the funnel (price,
-          the app, credentials, social proof walls) stays off this screen. */}
+          least committed. Price, credentials and a testimonial wall still stay
+          off this screen. The one exception is the hero photo (2026-08-17): a
+          real before/after - scrolling alone, then holding her plan, smiling -
+          so the promise in the headline below is something she sees happen to
+          someone else before she's asked to believe it for herself. */}
       {phase === "start" && (
         <div className="flex-1 flex flex-col min-h-0 overflow-y-auto items-center justify-center px-2 text-center">
           <motion.div
@@ -2623,19 +2626,19 @@ function RegisterPageContent() {
             className="w-full max-w-md mx-auto flex flex-col items-center py-2"
           >
             <motion.div
-              initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.94 }}
+              initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ type: "spring", stiffness: 220, damping: 22 }}
-              className="shrink-0"
+              className="w-full shrink-0 rounded-2xl overflow-hidden ring-1 ring-black/5 shadow-[0_16px_36px_-10px_rgba(61,61,61,0.35)]"
             >
               <Image
-                src="/quiz/start.webp"
-                alt=""
-                width={640}
-                height={640}
+                src="/start/start.webp"
+                alt="Before: scrolling alone, unsure what's happening to her. After: her personalized plan in hand, and a smile back."
+                width={900}
+                height={504}
                 priority
-                sizes="(max-width: 480px) 70vw, 300px"
-                className="w-auto max-h-[30vh] sm:max-h-[34vh] object-contain"
+                sizes="(max-width: 480px) 92vw, 420px"
+                className="w-full h-auto max-h-[30vh] sm:max-h-[34vh] object-cover"
               />
             </motion.div>
 
@@ -3163,39 +3166,6 @@ function RegisterPageContent() {
                   <p className="mt-2.5 text-center text-[11px] text-[#9A9A9A] leading-snug">
                     Day one, as it actually arrives. Nothing to set up.
                   </p>
-
-                  {/* The four pillars as the real tasks they are. PLAN_PILLARS
-                      carries a genuine task string per pillar precisely so this
-                      reads as a to-do list rather than a benefits grid. */}
-                  <div className="mt-4 grid grid-cols-2 gap-2">
-                    {PLAN_PILLARS.map((pillar, i) => (
-                      <motion.div
-                        key={pillar.key}
-                        initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ once: true, amount: 0.4 }}
-                        transition={{ delay: i * 0.06, duration: 0.35 }}
-                        className="flex items-start gap-2 rounded-xl border border-foreground/10 bg-card px-2.5 py-2"
-                      >
-                        <span
-                          className={cn(
-                            "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
-                            pillar.chip
-                          )}
-                        >
-                          <pillar.icon className={cn("h-3.5 w-3.5", pillar.tint)} />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block text-[10px] font-semibold uppercase tracking-wide text-[#9A9A9A]">
-                            {pillar.label}
-                          </span>
-                          <span className="block text-[11px] font-bold leading-tight text-[#3D3D3D]">
-                            {pillar.task}
-                          </span>
-                        </span>
-                      </motion.div>
-                    ))}
-                  </div>
 
                   <div className="mt-4 rounded-2xl overflow-hidden border-2 border-[#E8DDD9] bg-card shadow-md shadow-primary/5">
                     {/* The scroll, staged. Her name is written on it, then it
