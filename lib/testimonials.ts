@@ -32,8 +32,8 @@ export const SOCIAL_PROOF_PHOTOS = [
 
 export const SOCIAL_PROOF = {
   name: "Zoe",
-  age: 53,
-  quote: "I stopped planning my whole day around a hot flush.",
+  age: 48,
+  quote: "I can finally fall asleep easily and wake up actually feeling rested.",
 };
 
 // ─── Before/after transformations, keyed by symptom ─────────────────────────

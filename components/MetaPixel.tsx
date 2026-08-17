@@ -33,11 +33,11 @@ export default function MetaPixel() {
         corrupting the funnel's step-to-step rates.
 
         Turning it off means every event in Events Manager is one we fired on
-        purpose: PageView, QuizStart, QuizComplete, Lead, ViewContent,
-        InitiateCheckout, Purchase. It also
-        disables Automatic Advanced Matching (form-field email/phone scraping),
-        which we don't rely on - the Conversions API sends hashed match data from
-        the Stripe webhook instead.
+        purpose, and there are exactly five: PageView, Lead, ViewContent,
+        InitiateCheckout, Purchase. It also disables Automatic Advanced Matching
+        (form-field email/phone scraping), which we don't rely on - the
+        Conversions API sends hashed match data instead, with the Supabase user
+        id as external_id since the funnel collects no email before Stripe.
 
         If we ever want a real Subscribe, fire it explicitly from the webhook's
         subscription-confirmation branch, not from the browser.

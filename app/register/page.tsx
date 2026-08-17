@@ -39,36 +39,24 @@ import {
   Wind,
   PartyPopper,
   Lock,
-  Salad,
-  Beef,
-  Wheat,
-  Footprints,
-  Hourglass,
-  Droplets,
   Sparkles,
 } from "lucide-react";
 import { PaywallView } from "@/components/PaywallView";
 // The identical component used to be defined a second time in this file, with a
 // narrower `variant` union that had already drifted from the shared one.
-import { HormoneShift } from "@/components/HormoneShift";
+import { PlanFinishBoard } from "@/components/PlanFinishBoard";
 import { HighlightSweep } from "@/components/HighlightSweep";
 import MetaPurchaseTracker from "@/components/MetaPurchaseTracker";
 import { SocialProofPolaroid } from "@/components/SocialProof";
 import { PlanStage } from "@/components/PlanStage";
 import { PhoneShot, ShotStage, SHOT_W, SHOT_H, PHONE_SHOT_SIZES } from "@/components/PhoneShots";
 import { PLAN_PILLARS } from "@/lib/planPillars";
-import { META_FUNNEL_STEPS } from "@/lib/metaPixel";
 import {
   PLAN_ID,
   PLAN_WEEKS,
 } from "@/lib/pricing";
 import { getSymptomTransforms } from "@/lib/testimonials";
 import { getOfferPromise } from "@/lib/planTimeline";
-import {
-  trackFunnelStep,
-  trackQuizStep,
-  trackScrollDepth,
-} from "@/lib/metaPixelClient";
 import {
   SYMPTOM_LABELS,
   AGE_BAND_LABELS,
@@ -539,12 +527,28 @@ function preloadResponsiveImage(src: string, sizes: string) {
   // intrinsic size anyway so this stays correct for a fixed-width caller.
   const { props } = getImageProps({ src, alt: "", width: SHOT_W, height: SHOT_H, sizes });
   if (!props.srcSet) return;
+  const resolvedSizes = props.sizes ?? sizes;
   const link = document.createElement("link");
   link.rel = "preload";
   link.as = "image";
   link.setAttribute("imagesrcset", props.srcSet);
-  link.setAttribute("imagesizes", props.sizes ?? sizes);
+  link.setAttribute("imagesizes", resolvedSizes);
   document.head.appendChild(link);
+
+  // Fetching is only half of the work. These masters are 1320x2868, and a cache
+  // hit that still has to be *decoded* paints a frame or two after the element
+  // mounts - which on the hero is precisely the pop the preload exists to
+  // prevent. So resolve the same candidate again into a detached <img> (sizes
+  // before srcset, so the browser picks with the layout width already known) and
+  // decode it now, while she is still on results with nothing else to do.
+  //
+  // The promise keeps the element alive until the decode lands; nothing cancels
+  // it, for the same reason nothing cancels the link above.
+  const img = new window.Image();
+  img.sizes = resolvedSizes;
+  img.srcset = props.srcSet;
+  if (props.src) img.src = props.src;
+  void img.decode().catch(() => {});
 }
 
 /** Fallback severity for the results copy, from total symptom burden alone.
@@ -563,8 +567,9 @@ function deriveSeverity(totalBurden: number): "mild" | "moderate" | "severe" {
 // the webhook then stamps it onto that same user id. See
 // `completeRegistration()` below and `resolveCheckoutAccount()` in the Stripe
 // webhook.
-// `nutrition` used to be its own phase between `relief` and `paywall`. It is now
-// the second half of `relief` - see the NUTRITION_ITEMS note above for why.
+// There is no `nutrition` phase. It was its own phase between `relief` and
+// `paywall`, then the second half of `relief`, and was removed outright on
+// 2026-08-17 - see the ReliefStage note below.
 type Phase =
   | "start"
   | "quiz"
@@ -712,9 +717,9 @@ function getCtaCopy(): { sub: string } {
 }
 // First-person CTA label driven by her #1 goal (multi-select; first = primary).
 // Used on the results screen, where the next tap is still about what she wants.
-// Inside the trial sequence the sticky button stays progress-phrased instead
-// ("Unlock my next tool" -> "View my 8-week plan"), so those three screens read
-// as one ladder rather than three different voices.
+// Inside the relief sequence the sticky button stays progress-phrased instead
+// ("View my 8-week plan"), so those screens read as one ladder rather than as
+// several different voices.
 const GOAL_CTA_LABEL: Record<string, string> = {
   sleep_through_night: "I want to sleep again",
   think_clearly: "I want to think clearly again",
@@ -754,9 +759,11 @@ const BREATH_CYCLE_SECONDS = BREATH_SEQUENCE.reduce((sum, b) => sum + b.seconds,
 const BREATH_TOTAL_SECONDS = BREATH_CYCLE_SECONDS * BREATH_ROUNDS; // 36
 
 // ─── The toolkit: one ordered list, unlocked one entry at a time ────────────
-// Both app-taste steps render this same stack - breathing unlocks #1, the
-// nutrition checklist unlocks #2 - so she watches the bar move 25% -> 50% and
-// arrives at the paywall halfway through a set she started herself.
+// The breathing reward renders this stack with #1 unlocked, so she arrives at
+// the paywall already holding one of a set she started herself. A second
+// unlock step (the nutrition checklist) used to move the bar 25% -> 50%; it was
+// removed on 2026-08-17 for being a second unpaid interaction at the point of
+// maximum intent. The stack is unchanged - #2 is simply still locked.
 //
 // Entries 1-3 are the three daily pillars of the habit tracker (relaxation,
 // nutrition, movement); #4 is the layer around them. Every entry has to exist
@@ -818,124 +825,16 @@ function getSymptomPhrase(topProblems: string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
-// Neither diagnosis nor relief is the doorstep to the paywall any more - the
-// nutrition checklist is. Both of these steps get pure forward motion, and
-// getCtaCopy()'s no-charge reassurance lives on the nutrition CTA, where the
-// commitment actually happens. Each promises the next step is short, because
-// the only thing standing between her and the plan now is two small screens.
-// She's read a long page and her guard is up: the next tap feels like the one
-// that costs her something. So the line names what the next screen is NOT
-// (a pitch, a form, a charge) before it names what it is.
+// Diagnosis is one screen short of the paywall: relief is the only thing left
+// between them, and it costs nothing. So this step gets pure forward motion and
+// getCtaCopy()'s no-charge reassurance lives on the relief CTA, where the
+// commitment actually happens. It promises the next step is short, because the
+// only thing standing between her and the plan now is one small screen. She's
+// read a long page and her guard is up: the next tap feels like the one that
+// costs her something. So the line names what the next screen is NOT (a pitch,
+// a form, a charge) before it names what it is.
 function getDiagnosisForwardCopy(): { sub: React.ReactNode } {
   return { sub: "Not a pitch - 36 seconds of relief you can use tonight." };
-}
-
-// The breathing reward ends on the toolkit at 1 of 4, with three still locked -
-// so the next tap is named as the thing that moves that bar. It no longer
-// changes phase: the checklist is the same screen's next stage, which is why the
-// count is small enough to promise honestly.
-function getReliefForwardCopy(): { sub: React.ReactNode } {
-  return { sub: `${NUTRITION_TOTAL} quick taps about today - no wrong answers.` };
-}
-
-// ─── Nutrition checklist: the second half of the relief screen ──────────────
-// She ticks what she already did today. The breathing exercise gave her a win;
-// this one shows her the standard, measures her against it, and then removes
-// the shame - the gap is structural, not personal. Ticking it is also the
-// fastest way to teach what a hormone-steady day looks like: a product demo
-// wearing a question. Nothing here is persisted - it's a taste, not intake.
-//
-// **It used to be ten rows in three collapsible groups on its own phase**, which
-// made it the highest-friction unpaid interaction in the funnel - and it sat
-// *after* she had tapped "I'm ready to feel better". Ten taps and a scroll, at
-// the point of maximum intent, to reach a screen whose CTA is a paywall.
-//
-// Five rows, no groups, no scroll, one screen. The count is now honestly framed
-// as five *of* the ten her plan actually runs (see the app's nutrition screen),
-// so the cut doubles as a teaser instead of misrepresenting the product.
-//
-// Array order is priority order (highest-leverage habit first), because the
-// reward screen reuses it to pick her "first 3 swaps" from what she left blank.
-// IDs are the contract with the mobile habit tracker - see docs/plan/pillars.md.
-type NutritionItem = {
-  id: string;
-  label: string;
-  /** Cadence, shown inline after the label. Omitted for plain once-a-day rows. */
-  hint?: string;
-  icon: React.ComponentType<{ className?: string }>;
-};
-
-const NUTRITION_ITEMS: NutritionItem[] = [
-  { id: "protein_25_30g", label: "25-30g protein", hint: "every meal", icon: Beef },
-  { id: "post_meal_walk", label: "10-min walk after eating", hint: "every meal", icon: Footprints },
-  { id: "fast_12h", label: "12-hour overnight fast", icon: Hourglass },
-  { id: "high_fiber", label: "High-fiber food", hint: "every meal", icon: Wheat },
-  { id: "water_6", label: "Glasses of water", hint: "6+", icon: Droplets },
-];
-
-const NUTRITION_TOTAL = NUTRITION_ITEMS.length; // 5
-/** What the plan actually runs, and what the app's nutrition screen shows. */
-const NUTRITION_PLAN_TOTAL = 10;
-
-// Every tier has to land on "you need the plan" - but for opposite reasons, and
-// none of them may shame her. Low scores get easy wins; high scores get the
-// reframe that matters most, because a woman already doing 4 of 5 has concluded
-// she's tried everything. Naming her own symptoms back to her turns her
-// diligence into the argument: effort was never the missing piece.
-function getNutritionVerdict(
-  count: number,
-  name: string,
-  topProblems: string[]
-): { headline: string; body: React.ReactNode } {
-  const suffix = name ? `, ${name}` : "";
-  const missing = NUTRITION_TOTAL - count;
-
-  if (count === 0) {
-    return {
-      headline: `Clean slate${suffix}.`,
-      body: (
-        <>
-          Nothing on this list yet - which means all {NUTRITION_TOTAL} are easy wins still sitting
-          on the table. Most women start exactly here.
-        </>
-      ),
-    };
-  }
-  if (count <= 2) {
-    return {
-      headline: `${count} of ${NUTRITION_TOTAL}${suffix}.`,
-      body: (
-        <>
-          You&apos;re already doing {count} without anyone telling you to. The other {missing} are
-          the ones that move insulin, estrogen and sleep - and they&apos;re what Lisa hands you, one
-          day at a time.
-        </>
-      ),
-    };
-  }
-  if (count <= 4) {
-    return {
-      headline: `${count} of ${NUTRITION_TOTAL}${suffix}.`,
-      body: (
-        <>
-          You&apos;re not doing this wrong, and you&apos;re not lazy. You&apos;re missing{" "}
-          <span className="font-bold text-[#3D3D3D]">structure, not effort</span>. That&apos;s the
-          part we build for you.
-        </>
-      ),
-    };
-  }
-  return {
-    headline: `All ${NUTRITION_TOTAL}. You're doing everything on this list right.`,
-    body: (
-      <>
-        And you still have{" "}
-        <span className="font-bold text-[#3D3D3D]">{getSymptomPhrase(topProblems)}</span>. That&apos;s
-        the proof this was never about willpower - your hormones changed the rules, so your plan has
-        to change with them.
-      </>
-    ),
-  };
 }
 
 
@@ -1479,10 +1378,11 @@ function EnvelopeReveal({
   );
 }
 
-// The reward stack both app-taste steps end on: what she keeps, then what she
+// The reward stack the breathing step ends on: what she keeps, then what she
 // doesn't have yet, then how far through the set she is. Felt first, read
-// second. The bar animates *from* the previous state rather than from zero, so
-// on the second step she sees it physically move 25% -> 50%.
+// second. `unlockedCount` stayed a prop after the second unlock step was cut -
+// the stack is the only place the toolkit is drawn, and hardcoding 1 into it
+// would bury the assumption in the component instead of at the call site.
 function ToolkitStack({
   unlockedCount,
   topProblems,
@@ -1589,6 +1489,17 @@ function ToolkitStack({
  * So: no tilt, no crop, no fade, and a real device bezel so it reads as a
  * photograph of a product rather than an export.
  *
+ * And no entrance of its own. It used to run `whileInView` at opacity 0 / y 30
+ * over 0.7s, which stacked on top of two fades it was already inside - the
+ * phase cross-fade (0.22s, and `mode="wait"` means this only mounts once that
+ * exit finishes) and the block wrapper's own opacity tween. Roughly 1.2s from
+ * tapping through to a legible hero, on the one image on the screen that is the
+ * offer. Worse, `whileInView` is gated on an IntersectionObserver that framer
+ * attaches in an effect *after* mount, so the fade could not even begin on the
+ * frame the screen arrived. The block wrapper carries the entrance now; this
+ * paints with it. The images are fetched and decoded from the calculating
+ * loader onwards (see preloadResponsiveImage) so there is a bitmap ready.
+ *
  * It is not full column width, though. The source is 1320x2868 - 2.17 times
  * taller than it is wide - so every pixel of width costs two of height: at the
  * 268px it used to run, the phone alone was ~580px, a whole viewport of scroll
@@ -1599,15 +1510,8 @@ function ToolkitStack({
  * against them - not body copy.
  */
 function PlanHeroShot({ src, alt }: { src: string; alt: string }) {
-  const prefersReducedMotion = useReducedMotion();
   return (
-    <motion.div
-      initial={prefersReducedMotion ? false : { opacity: 0, y: 30 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.2 }}
-      transition={{ duration: prefersReducedMotion ? 0 : 0.7, ease: [0.16, 1, 0.3, 1] }}
-      className="relative mx-auto w-full max-w-[208px] rounded-[1.75rem] bg-[#1d1d1f] p-1.5 shadow-[0_24px_50px_-18px_rgba(61,61,61,0.6)]"
-    >
+    <div className="relative mx-auto w-full max-w-[208px] rounded-[1.75rem] bg-[#1d1d1f] p-1.5 shadow-[0_24px_50px_-18px_rgba(61,61,61,0.6)]">
       <Image
         src={src}
         alt={alt}
@@ -1616,8 +1520,15 @@ function PlanHeroShot({ src, alt }: { src: string; alt: string }) {
         sizes={PLAN_HERO_SIZES}
         className="w-full h-auto rounded-[1.45rem]"
         priority
+        // Synchronous decode: the bitmap is already warm (preloaded and decoded
+        // back on the calculating loader), so blocking the paint on it costs
+        // nothing here and removes the one-frame gap where the bezel renders
+        // empty. `async` would let that frame through on exactly the image that
+        // cannot be seen arriving.
+        decoding="sync"
+        fetchPriority="high"
       />
-    </motion.div>
+    </div>
   );
 }
 
@@ -1752,51 +1663,33 @@ function RegisterPageContent() {
     }
     return "start";
   });
-  // Ad-funnel step 1: she took the first step herself. Fires on entering the quiz
-  // phase, i.e. on the start screen's CTA - not on landing - so the count is women
-  // who chose to begin, and PageView stays the denominator for that rate.
-  // Guarded on the quiz phase so Stripe's ?phase=paywall|download returns and
-  // middleware bounces don't register as starts.
-  useEffect(() => {
-    if (phase !== "quiz") return;
-    trackFunnelStep(META_FUNNEL_STEPS.quizStart);
-  }, [phase]);
+  // No pixel events fire anywhere in the quiz or the post-quiz screens. The
+  // seven custom ones that used to (`QuizStart`, `QuizStep`, `QuizComplete`,
+  // `ResultsView`, `PlanView`, `PlanScrollDepth`, `ReliefDone`) were removed on
+  // 2026-08-17 for the first campaign - see the event table in
+  // `lib/metaPixel.ts`. `Lead` still marks the end of the quiz, sent server-side
+  // from `/api/auth/save-quiz` on profile insert.
 
   const [stepIndex, setStepIndex] = useState(0);
   const currentStep = STEPS[stepIndex];
   const autoAdvances = AUTO_ADVANCE_STEPS.includes(currentStep);
 
-  // Per-question drop-off. Without it the 15 screens between QuizStart and
-  // QuizComplete are one number, so a question that loses a fifth of the room
-  // looks exactly like a question that loses nobody.
-  useEffect(() => {
-    if (phase !== "quiz") return;
-    trackQuizStep(stepIndex, currentStep, STEPS.length);
-  }, [phase, stepIndex, currentStep]);
-
-  // The screens after the quiz. `ViewContent` (paywall mount) used to be the
-  // next event after QuizComplete, which made results → plan → relief a single
-  // unmeasured stretch containing three separate chances to lose her.
-  useEffect(() => {
-    if (phase === "results") trackFunnelStep(META_FUNNEL_STEPS.resultsView);
-    if (phase === "diagnosis") trackFunnelStep(META_FUNNEL_STEPS.planView);
-  }, [phase]);
-
   /**
-   * The relief phase, which is now the whole pre-paywall sequence:
+   * The relief phase, the whole pre-paywall sequence:
    *
-   *   intro → running → reward → checklist → done → (paywall)
+   *   intro → running → reward → (paywall)
    *
-   * `reward` and `done` are the two toolkit-unlock screens (1 of 4, then 2 of
-   * 4); `checklist` is the five-row nutrition audit that used to be its own
-   * phase. Merging them removes a phase change and a CTA tap from the stretch
-   * of funnel immediately after she taps "I'm ready to feel better" - the point
-   * of maximum intent, and the worst possible place to send her somewhere else.
+   * `reward` is the toolkit-unlock screen (1 of 4). Two further stages -
+   * `checklist` (a five-row nutrition audit) and `done` (its verdict, unlocking
+   * 2 of 4) - were removed on 2026-08-17: they were a second unpaid interaction
+   * and two more taps in the stretch immediately after she taps "I'm ready to
+   * feel better", which is the point of maximum intent and the worst place in
+   * the funnel to ask her for anything else.
    *
    * It never rewinds past `reward` once reached, so coming back from the paywall
    * doesn't make her breathe through the exercise a second time.
    */
-  type ReliefStage = "intro" | "running" | "reward" | "checklist" | "done";
+  type ReliefStage = "intro" | "running" | "reward";
   const [reliefStage, setReliefStage] = useState<ReliefStage>("intro");
   // Single source of truth: seconds elapsed since she tapped start. Round, step and
   // the countdown are all *derived* from it, so the interval's updater stays pure
@@ -1839,14 +1732,6 @@ function RegisterPageContent() {
     }
   }, [reliefStage, reliefElapsed]);
 
-  // The two unlock screens, reported so the last stretch before the price stops
-  // being a black box. `trackFunnelStep` dedups per session, so re-entering a
-  // stage after backing out of the paywall reports nothing new.
-  useEffect(() => {
-    if (reliefStage === "reward") trackFunnelStep(META_FUNNEL_STEPS.reliefDone);
-    if (reliefStage === "done") trackFunnelStep(META_FUNNEL_STEPS.checklistDone);
-  }, [reliefStage]);
-
   const startRelief = useCallback(() => {
     setReliefElapsed(0);
     setReliefStage("running");
@@ -1857,16 +1742,6 @@ function RegisterPageContent() {
   const skipRelief = useCallback(() => {
     setReliefElapsed(BREATH_TOTAL_SECONDS);
     setReliefStage("reward");
-  }, []);
-
-  // What she ticked on the five-row nutrition audit. Nothing here is persisted -
-  // it's a taste, not intake.
-  const [nutritionDone, setNutritionDone] = useState<string[]>([]);
-
-  const toggleNutritionItem = useCallback((id: string) => {
-    setNutritionDone((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
   }, []);
 
   // Preload the next step's images (and prewarm the very first step on mount) so
@@ -1890,12 +1765,15 @@ function RegisterPageContent() {
     });
   }, [stepIndex]);
 
-  // Warm the diagnosis screenshots while she's still on results. She spends tens
-  // of seconds on a four-card scroll here and the hero is 1320x2868, so there is
-  // ample time - as long as we ask for the URL she will actually request and then
-  // leave the request alone until she gets there. See preloadResponsiveImage().
+  // Warm the diagnosis screenshots from the calculating loader onwards. That
+  // loader is 6.5s with no images of its own, and results is a four-card scroll
+  // after it, so the hero has the whole run to arrive and decode - as long as we
+  // ask for the URL she will actually request and then leave the request alone
+  // until she gets there. Starting at `results` left the hero racing anyone who
+  // scrolls fast. Guarded by its own Set, so re-running here is a no-op.
+  // See preloadResponsiveImage().
   useEffect(() => {
-    if (phase !== "results") return;
+    if (phase !== "calculating" && phase !== "results") return;
     DIAGNOSIS_SHOTS.forEach(({ src, sizes }) => preloadResponsiveImage(src, sizes));
   }, [phase]);
   // Question position for the progress label/dots (reward steps excluded; during a
@@ -1982,25 +1860,6 @@ function RegisterPageContent() {
   const diagnosisTransforms = useMemo(() => getSymptomTransforms(topProblems, 3), [topProblems]);
   const transformCarousel = useCarouselIndex(diagnosisTransforms.length);
 
-  // Scroll depth on the funnel's two long scrolls. Without it, "reached the
-  // screen" and "reached its CTA" are the same number on both of them.
-  //
-  // Results was unmeasured below the fold until 2026-08-17: `ResultsView` fired
-  // on mount and nothing else did, so there was no way to tell whether anyone
-  // reached "your 8-week plan is ready" - the block whose entire job is closing
-  // the promise the start screen opened.
-  const onResultsScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    const el = e.currentTarget;
-    const travel = el.scrollHeight - el.clientHeight;
-    if (travel <= 0) return;
-    trackScrollDepth("results", Math.round((el.scrollTop / travel) * 100));
-  }, []);
-  const onPlanScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    const el = e.currentTarget;
-    const travel = el.scrollHeight - el.clientHeight;
-    if (travel <= 0) return;
-    trackScrollDepth("plan", Math.round((el.scrollTop / travel) * 100));
-  }, []);
   // Normalized body metrics (canonical cm/kg) derived from the per-unit inputs.
   const bodyMetrics = useMemo(() => {
     let height_cm: number | null = null;
@@ -2261,16 +2120,14 @@ function RegisterPageContent() {
     if (stepIndex < STEPS.length - 1) {
       setStepIndex(stepIndex + 1);
     } else {
-      // Ad-funnel step 2, and the one that ranks angles: cheap clicks that never
-      // reach here mean the ad pulled the wrong woman. Her symptom count and
-      // primary goal ride along so a segment can be read off the event itself.
-      trackFunnelStep(META_FUNNEL_STEPS.quizComplete, {
-        symptom_count: topProblems.length,
-        goal: goal[0] ?? null,
-      });
+      // `QuizComplete` used to fire here, carrying symptom_count and goal. It
+      // was a duplicate: `Lead` is sent one screen later from save-quiz with the
+      // same two params, off the profile insert rather than sessionStorage, so
+      // it counts women instead of tabs. One of the two had to go and it was the
+      // weaker one.
       setPhase("calculating");
     }
-  }, [currentStep, stepIndex, stepIsAnswered, topProblems, goal]);
+  }, [currentStep, stepIndex, stepIsAnswered]);
 
   // Auto-advance for single-choice steps. The short delay is the point: she has
   // to see her own tile light up before the screen moves, or the quiz feels like
@@ -2559,7 +2416,7 @@ function RegisterPageContent() {
     setPhase("quiz");
   }, []);
 
-  const handleStartCheckout = async () => {
+  const handleStartCheckout = async (metaEventId: string) => {
     if (checkoutLoading) return;
     setError(null);
     setCheckoutLoading(true);
@@ -2591,6 +2448,8 @@ function RegisterPageContent() {
           plan: PLAN_ID,
           from_registration: true,
           return_origin: origin || undefined,
+          // Dedup key for the server-side InitiateCheckout the route fires.
+          meta_event_id: metaEventId,
         }),
         credentials: "include",
       });
@@ -2945,7 +2804,6 @@ function RegisterPageContent() {
       {/* Results Phase */}
       {phase === "results" && (
         <div
-          onScroll={onResultsScroll}
           className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pb-[calc(120px+env(safe-area-inset-bottom))] [scrollbar-width:thin] [scrollbar-color:rgba(255,141,161,0.35)_transparent] [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-primary/30 hover:[&::-webkit-scrollbar-thumb]:bg-primary/50"
         >
           <motion.div
@@ -3065,11 +2923,28 @@ function RegisterPageContent() {
                     </span>
                   </p>
 
-                  {/* The claim above, in a picture. This was a two-line SVG
-                      chart until 2026-08-17 - see <HormoneShift /> for why a
-                      chart was the wrong instrument for this reader at this
-                      point in the funnel. */}
-                  <HormoneShift className="mb-4" />
+                  {/* What happens to those symptoms over the eight weeks.
+                      This slot held a two-line SVG estrogen chart, then an
+                      illustration of the hormonal swings (<HormoneShift />) -
+                      both of which redrew the sentence directly above them
+                      instead of adding to it. The card has already named the
+                      cause in words she can picture; a second rendering of the
+                      same claim is the funnel's most common failure, and it
+                      cost her the one thing this card never said: what comes
+                      next.
+
+                      The board answers that, and it is her own words at both
+                      ends - her #1 symptom today, the goal she picked at week
+                      8 - so it reads as a continuation of her answers rather
+                      than as stock art. Its header is off here: there is no
+                      price anywhere on the results screen yet, and the header
+                      carries the per-day figure. See <PlanFinishBoard />. */}
+                  <PlanFinishBoard
+                    topProblems={topProblems}
+                    goal={goal}
+                    showHeader={false}
+                    className="mb-4"
+                  />
 
                   {/* Her symptoms, at a size she can actually read.
                       These were 48px circles under 9px grey labels until
@@ -3232,7 +3107,6 @@ function RegisterPageContent() {
           the cost of doing nothing -> the app that runs it. */}
       {phase === "diagnosis" && (
         <div
-          onScroll={onPlanScroll}
           className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pb-[calc(132px+env(safe-area-inset-bottom))] [scrollbar-width:thin] [scrollbar-color:rgba(255,141,161,0.35)_transparent] [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-primary/30 hover:[&::-webkit-scrollbar-thumb]:bg-primary/50"
         >
           <motion.div
@@ -3281,9 +3155,13 @@ function RegisterPageContent() {
               const goalLabel = getOfferPromise(goal).toLowerCase();
               return (
                 <motion.div
+                  // No delay: this block contains the hero, and the phase
+                  // cross-fade in front of it (mode="wait") has already spent
+                  // 0.22s before this even mounts. Anything added here is dead
+                  // air on the screen that has to land fastest.
                   initial={{ opacity: 0, y: 16 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.05 }}
+                  transition={{ duration: prefersReducedMotion ? 0 : 0.28, ease: "easeOut" }}
                   className="mb-6"
                 >
                   <div className="px-1 mb-3">
@@ -3701,42 +3579,32 @@ function RegisterPageContent() {
         </div>
       )}
 
-      {/* Relief Phase - everything between the plan and the price, on one screen:
-          a paced-breathing exercise she completes herself, then a five-row audit
-          of her own day. She reaches the paywall having already been given
-          something that worked and having been told the gap is structural.
+      {/* Relief Phase - the one screen between the plan and the price: a
+          paced-breathing exercise she completes herself, and the tool she keeps
+          for having done it. She reaches the paywall having already been given
+          something that worked.
 
-          The audit used to be a separate `nutrition` phase with ten rows in
-          three scrolling groups. Ten taps and a phase change, immediately after
-          she tapped "I'm ready to feel better" - the point of maximum intent in
-          the whole funnel, and the worst possible place to send her elsewhere. */}
+          A five-row nutrition audit and its verdict used to sit between the
+          reward and the paywall (and before that, ten rows on their own phase).
+          Two more taps and two more screens immediately after she tapped "I'm
+          ready to feel better" - the point of maximum intent in the whole
+          funnel, and the worst possible place to ask her for anything. */}
       {phase === "relief" && (
         <div
           className={cn(
             "flex-1 flex flex-col min-h-0 -mx-4 sm:-mx-6 px-4 sm:px-6 pt-2",
-            // The reward stacks are taller than the exercise, so they get to
-            // scroll on short screens; the exercise itself must never move under
-            // her, and the five-row checklist is sized to need no scroll at all.
-            (reliefStage === "reward" || reliefStage === "done") &&
-              "overflow-y-auto pb-[calc(132px+env(safe-area-inset-bottom))]",
-            // The five rows are sized to fit without scrolling on anything down
-            // to a 360x640 device, but `overflow-y-auto` still costs nothing and
-            // is the difference between a cramped screen and a clipped one.
-            reliefStage === "checklist" &&
-              "overflow-y-auto pb-[calc(84px+env(safe-area-inset-bottom))]"
+            // The reward stack is taller than the exercise, so it gets to scroll
+            // on short screens; the exercise itself must never move under her.
+            reliefStage === "reward" &&
+              "overflow-y-auto pb-[calc(132px+env(safe-area-inset-bottom))]"
           )}
         >
           <div className="max-w-md mx-auto w-full flex-1 flex flex-col min-h-0">
-            {/* Back. From the checklist onward this steps back through the
-                sequence rather than leaving the phase, so she can never lose the
-                breathing win by tapping back once. */}
+            {/* Back leaves the phase from every stage - there is nothing left in
+                front of the reward to step back through. */}
             <button
               type="button"
-              onClick={() => {
-                if (reliefStage === "done") setReliefStage("checklist");
-                else if (reliefStage === "checklist") setReliefStage("reward");
-                else setPhase("diagnosis");
-              }}
+              onClick={() => setPhase("diagnosis")}
               className="flex items-center gap-1 self-start shrink-0 text-xs text-[#9A9A9A] hover:text-[#5A5A5A] mb-2 transition-colors"
             >
               <ArrowLeft className="w-3.5 h-3.5" /> Back
@@ -3931,7 +3799,7 @@ function RegisterPageContent() {
                     </button>
                   )}
                 </motion.div>
-              ) : reliefStage === "reward" ? (
+              ) : (
                 /* ── Reward: she keeps the tool she just used, and sees the
                     three she doesn't have yet - felt first, read second. ── */
                 <motion.div
@@ -4006,302 +3874,35 @@ function RegisterPageContent() {
                   {/* Tool 1 of 4: what she keeps, then what she doesn't have yet. */}
                   <ToolkitStack unlockedCount={1} topProblems={topProblems} />
                 </motion.div>
-              ) : reliefStage === "checklist" ? (
-                /* ── The audit. Five rows, no groups, no scroll: she can see the
-                    whole list and the CTA at once, which is the entire reason it
-                    is five rows and not ten. ─────────────────────────────────── */
-                <motion.div
-                  key="relief-checklist"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0, scale: 0.96 }}
-                  transition={{ duration: 0.35 }}
-                  // No `min-h-0` here, on purpose. This sits inside a scrolling
-                  // parent, and `justify-center` on a flex item that is allowed
-                  // to shrink below its content clips the *top* of that content
-                  // with no way to scroll back up to it. Letting the item grow
-                  // past the viewport instead means it centres when there is
-                  // room and the parent scrolls when there isn't.
-                  className="flex-1 flex flex-col justify-center gap-3 py-1"
-                >
-                  <div className="shrink-0 text-center space-y-1.5">
-                    <h1 className="text-2xl sm:text-3xl font-normal text-[#3D3D3D] leading-tight">
-                      {firstName.trim() ? (
-                        <>
-                          <span className="font-bold">{firstName.trim()}</span>, one last thing.
-                        </>
-                      ) : (
-                        <>One last thing.</>
-                      )}
-                    </h1>
-                    <p className="text-sm text-[#5A5A5A] leading-relaxed max-w-xs mx-auto">
-                      Which of these did you already do today?
-                    </p>
-                    {/* "Nobody's grading you" is load-bearing: it kills the urge
-                        to over-report, and the verdict only lands if she was honest. */}
-                    <p className="text-[11px] text-[#9A9A9A]">
-                      <span className="font-semibold text-primary tabular-nums">
-                        {nutritionDone.length} of {NUTRITION_TOTAL} selected
-                      </span>{" "}
-                      &middot; be honest, nobody&apos;s grading you.
-                    </p>
-                  </div>
-
-                  <div className="shrink-0 space-y-2">
-                    {NUTRITION_ITEMS.map((item, i) => {
-                      const ItemIcon = item.icon;
-                      const isOn = nutritionDone.includes(item.id);
-                      return (
-                        <motion.button
-                          key={item.id}
-                          type="button"
-                          onClick={() => toggleNutritionItem(item.id)}
-                          aria-pressed={isOn}
-                          initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: 0.06 + i * 0.05, duration: 0.3 }}
-                          // border-2 in BOTH states - going 1px -> 2px on
-                          // tap shifts the row by a pixel under her finger.
-                          className={cn(
-                            "w-full flex items-center gap-3 rounded-2xl border-2 px-3.5 py-3 text-left transition-colors duration-200",
-                            isOn
-                              ? "bg-primary/5 border-primary/30"
-                              : "border-foreground/10 bg-foreground/3 hover:bg-foreground/6"
-                          )}
-                        >
-                          <div
-                            className={cn(
-                              "w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors",
-                              isOn ? "bg-primary/15" : "bg-foreground/5"
-                            )}
-                          >
-                            <ItemIcon
-                              className={cn("w-4 h-4", isOn ? "text-primary" : "text-[#9A9A9A]")}
-                            />
-                          </div>
-                          <span
-                            className={cn(
-                              "flex-1 min-w-0 text-sm leading-tight",
-                              isOn ? "font-bold text-[#3D3D3D]" : "font-medium text-[#5A5A5A]"
-                            )}
-                          >
-                            {item.label}
-                            {/* The cadence rides inside the label rather than in
-                                its own column, so a two-line label doesn't push
-                                it off the row. */}
-                            {item.hint && (
-                              <span
-                                className={cn(
-                                  "ml-1.5 text-[11px] font-medium whitespace-nowrap",
-                                  isOn ? "text-primary" : "text-[#9A9A9A]"
-                                )}
-                              >
-                                {item.hint}
-                              </span>
-                            )}
-                          </span>
-                          <div
-                            className={cn(
-                              "w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-colors",
-                              isOn ? "bg-primary" : "border border-foreground/15"
-                            )}
-                          >
-                            {isOn && (
-                              <Check
-                                className="w-3 h-3 text-primary-foreground animate-in zoom-in duration-200"
-                                strokeWidth={3}
-                              />
-                            )}
-                          </div>
-                        </motion.button>
-                      );
-                    })}
-                  </div>
-
-                  <p className="shrink-0 text-center text-[11px] text-[#9A9A9A]">
-                    {NUTRITION_TOTAL} of the {NUTRITION_PLAN_TOTAL} daily habits in your plan.
-                  </p>
-                </motion.div>
-              ) : (
-                /* ── Done: her day, read back to her. Whatever she ticked, the
-                    verdict lands on "the gap is structural" - then the swaps
-                    give tomorrow a shape, and the toolkit moves to 2 of 4. ── */
-                <motion.div
-                  key="relief-done"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.35 }}
-                  className="flex-1 flex flex-col justify-center items-center text-center gap-4"
-                >
-                  {(() => {
-                    const verdict = getNutritionVerdict(
-                      nutritionDone.length,
-                      firstName.trim(),
-                      topProblems
-                    );
-                    const swaps = NUTRITION_ITEMS.filter(
-                      (i) => !nutritionDone.includes(i.id)
-                    ).slice(0, 3);
-                    return (
-                      <>
-                        <motion.div
-                          className="relative flex items-center justify-center"
-                          initial={{ scale: 0, rotate: -18, opacity: 0 }}
-                          animate={{ scale: 1, rotate: 0, opacity: 1 }}
-                          transition={
-                            prefersReducedMotion
-                              ? { duration: 0 }
-                              : { type: "spring", stiffness: 240, damping: 11, delay: 0.05 }
-                          }
-                        >
-                          {!prefersReducedMotion && (
-                            <>
-                              <motion.div
-                                aria-hidden
-                                className="absolute inset-0 rounded-full bg-primary/30 blur-2xl"
-                                animate={{ scale: [0.9, 1.2, 0.9], opacity: [0.4, 0.75, 0.4] }}
-                                transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-                              />
-                              {CONFETTI_BURST.map((c, i) => (
-                                <motion.span
-                                  key={i}
-                                  aria-hidden
-                                  className="absolute w-1.5 h-1.5 rounded-full"
-                                  style={{ background: c.color }}
-                                  initial={{ x: 0, y: 0, scale: 0, opacity: 1 }}
-                                  animate={{
-                                    x: c.x,
-                                    y: c.y,
-                                    scale: [0, 1, 0.6],
-                                    opacity: [1, 1, 0],
-                                  }}
-                                  transition={{ duration: 1.1, delay: 0.15, ease: "easeOut" }}
-                                />
-                              ))}
-                            </>
-                          )}
-                          {/* Salad, not the party popper - two different wins
-                              should not look like the same screen twice. */}
-                          <div
-                            className="relative w-20 h-20 rounded-full flex items-center justify-center"
-                            style={{
-                              background:
-                                "linear-gradient(135deg, rgba(255,116,177,0.25) 0%, rgba(255,235,118,0.25) 50%, rgba(101,219,255,0.25) 100%)",
-                              border: "2px solid rgba(255,116,177,0.4)",
-                            }}
-                          >
-                            <Salad className="w-9 h-9 text-primary" strokeWidth={2} />
-                          </div>
-                        </motion.div>
-
-                        <motion.div
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: 0.3, duration: 0.4 }}
-                          className="space-y-2"
-                        >
-                          <h1 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] leading-tight">
-                            {verdict.headline}
-                          </h1>
-                          <p className="text-sm sm:text-base text-[#5A5A5A] leading-snug max-w-xs mx-auto">
-                            {verdict.body}
-                          </p>
-                        </motion.div>
-
-                        {/* Tomorrow, made concrete. Derived from what she left
-                            blank, in priority order - the highest-leverage habit
-                            she isn't doing yet comes first. */}
-                        <motion.div
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: 0.45, duration: 0.35 }}
-                          className="w-full max-w-xs rounded-2xl bg-primary/5 border border-primary/20 px-4 py-3 text-left"
-                        >
-                          {swaps.length > 0 ? (
-                            <>
-                              <p className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground mb-2">
-                                Your first {swaps.length === 1 ? "swap" : `${swaps.length} swaps`} for
-                                tomorrow
-                              </p>
-                              <div className="space-y-1.5">
-                                {swaps.map((s) => {
-                                  const SwapIcon = s.icon;
-                                  return (
-                                    <div key={s.id} className="flex items-center gap-2.5">
-                                      <SwapIcon className="w-4 h-4 text-primary shrink-0" />
-                                      <span className="text-sm font-semibold text-[#3D3D3D] leading-tight">
-                                        {s.label}
-                                        {s.hint && (
-                                          <span className="ml-1.5 text-[11px] font-medium text-primary">
-                                            {s.hint}
-                                          </span>
-                                        )}
-                                      </span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </>
-                          ) : (
-                            <p className="text-sm font-semibold text-[#3D3D3D] leading-snug">
-                              You&apos;ve got the basics covered. Your plan starts where the basics
-                              stop.
-                            </p>
-                          )}
-                        </motion.div>
-
-                        <ToolkitStack unlockedCount={2} topProblems={topProblems} />
-                      </>
-                    );
-                  })()}
-                </motion.div>
               )}
             </AnimatePresence>
           </div>
 
-          {/* Fixed bottom CTA. Absent during the exercise itself, so the next ask
-              always lands after a reward and never during a breath. On the
-              checklist it is never disabled - zero ticks is an honest answer and
-              gets its own label - and after the verdict it becomes the paywall
-              doorstep and carries the no-charge reassurance. */}
-          {reliefStage !== "intro" && reliefStage !== "running" && (
+          {/* Fixed bottom CTA. Absent during the exercise itself, so the ask
+              always lands after the reward and never during a breath. It is the
+              paywall doorstep now that nothing sits between, so it carries the
+              no-charge reassurance. The 0.9s delay lets the confetti, the
+              headline and the toolkit land first. */}
+          {reliefStage === "reward" && (
             <motion.div
-              key={reliefStage}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: reliefStage === "checklist" ? 0.2 : 0.9 }}
+              transition={{ delay: 0.9 }}
               className="fixed bottom-0 inset-x-0 z-30 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 pb-[env(safe-area-inset-bottom)]"
             >
               <div className="mx-auto max-w-md w-full px-4 sm:px-6 py-3">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (reliefStage === "reward") setReliefStage("checklist");
-                    else if (reliefStage === "checklist") setReliefStage("done");
-                    else setPhase("paywall");
-                  }}
+                  onClick={() => setPhase("paywall")}
                   className={CTA_GRADIENT_CLASS}
                   style={CTA_GRADIENT_STYLE}
                 >
-                  {reliefStage === "reward"
-                    ? "Unlock my next tool"
-                    : reliefStage === "checklist"
-                      ? nutritionDone.length > 0
-                        ? "See what this means"
-                        : "I'm starting from scratch"
-                      : `View my ${PLAN_WEEKS}-week plan`}
+                  {`View my ${PLAN_WEEKS}-week plan`}
                   <ArrowRight className="w-4 h-4" />
                 </button>
-                {reliefStage === "reward" && (
-                  <p className="text-[11px] text-[#9A9A9A] text-center mt-1.5">
-                    {getReliefForwardCopy().sub}
-                  </p>
-                )}
-                {reliefStage === "done" && (
-                  <p className="text-[11px] text-[#9A9A9A] text-center mt-1.5">
-                    {getCtaCopy().sub}
-                  </p>
-                )}
+                <p className="text-[11px] text-[#9A9A9A] text-center mt-1.5">
+                  {getCtaCopy().sub}
+                </p>
               </div>
             </motion.div>
           )}

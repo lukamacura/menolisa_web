@@ -1,8 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import Stripe from "stripe";
 import { getAuthenticatedUser } from "@/lib/getAuthenticatedUser";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { PLAN_ID, isPlanId } from "@/lib/pricing";
+import { sendMetaInitiateCheckout } from "@/lib/metaCapi";
+import { META_CURRENCY, PLAN_VALUE, isValidMetaEventId } from "@/lib/metaPixel";
 
 export const runtime = "nodejs";
 
@@ -216,6 +218,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "Failed to create checkout session." },
         { status: 500 }
+      );
+    }
+
+    // Server-side InitiateCheckout, deduped against the browser copy the paywall
+    // fired a moment ago on the same event_id. Sent only once the checkout
+    // actually exists, so the event means "entered Stripe" rather than "tapped a
+    // button that then 500'd".
+    //
+    // `after()` so Meta never sits between her tap and the redirect - this route
+    // is on the critical path to the card form. A missing or malformed id skips
+    // the server copy rather than inventing one: an unpaired event_id would
+    // double-count her against the browser pixel.
+    const metaEventId = body?.meta_event_id;
+    if (isValidMetaEventId(metaEventId)) {
+      after(() =>
+        sendMetaInitiateCheckout({
+          eventId: metaEventId,
+          eventTimeSec: Math.floor(Date.now() / 1000),
+          value: PLAN_VALUE,
+          currency: META_CURRENCY,
+          userId: user.id,
+          email: user.email?.trim() ? user.email : null,
+          planType: plan,
+          fbp,
+          fbc,
+          clientIp,
+          clientUa,
+          eventSourceUrl: req.headers.get("referer"),
+        })
       );
     }
 

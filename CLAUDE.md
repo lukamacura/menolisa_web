@@ -237,7 +237,7 @@ const supabaseAdmin = getSupabaseAdmin(); // lazy singleton
 - `lib/getAuthenticatedUser.ts` — **always use this** in API routes; it handles both cookie-based (web) and Bearer token (mobile) auth
 - Auth UI: shared `components/auth/OtpForm.tsx`, used by `app/login/page.tsx`. The `/register` funnel no longer has an email phase (see below), so login is its only caller.
 - Login flow: email → `signInWithOtp({ shouldCreateUser: false })` → 6-digit code → `verifyOtp` → session → honor `?redirectedFrom=` (validated, must start with `/` and not `//`)
-- Registration flow: quiz → **anonymous sign-in** behind the calculating loader → `POST /api/auth/save-quiz` (server reads `userId` from session, validates payload with zod, creates `user_trials` row in `pending_payment`) → results → plan (the `diagnosis` phase) → relief → paywall → Stripe checkout **collects the email** → webhook binds it to that same user id and flips `account_status` to `paid`. `relief` runs breathing → reward → nutrition checklist → verdict as one phase; the separate `nutrition` phase was folded into it on 2026-08-16
+- Registration flow: quiz → **anonymous sign-in** behind the calculating loader → `POST /api/auth/save-quiz` (server reads `userId` from session, validates payload with zod, creates `user_trials` row in `pending_payment`) → results → plan (the `diagnosis` phase) → relief → paywall → Stripe checkout **collects the email** → webhook binds it to that same user id and flips `account_status` to `paid`. `relief` runs breathing → reward and nothing else; the nutrition checklist that followed it (its own `nutrition` phase until 2026-08-16, then the second half of `relief`) was removed on 2026-08-17
 - Mobile bridge (`app/auth/mobile-bridge/page.tsx`) is a session handoff (mobile → web token via `#hash`), not a login — leave it alone
 - Email template: paste branded HTML into Supabase Dashboard → Auth → Email Templates → Magic Link, with `{{ .Token }}` for the 6-digit code
 - `proxy.ts` (Next 16 renamed `middleware.ts` → `proxy.ts`, and the exported function from `middleware` → `proxy`) protects `/dashboard/*`. It runs two gates: a session check on everything in `PROTECTED_PREFIXES`, then a payment check that skips `PAYMENT_EXEMPT_PREFIXES` (`/dashboard/account`, `/dashboard/settings`) so cancellation and account deletion stay reachable after access ends. Select the full `TRIAL_SELECT_COLS` when reading `user_trials` — a partial select makes missing columns read as "no dispute, not canceled" and grants access it shouldn't.
@@ -511,56 +511,82 @@ a second copy is a second thing to forget to update.
 ### Meta Pixel / Conversions API
 Ad tracking for the `/register` web2app funnel:
 
-| Event | Fires from | Value |
-|---|---|---|
-| `PageView` | `components/MetaPixel.tsx` (in `app/layout.tsx`); re-fires on App Router route changes | — |
-| `QuizStart` *(custom)* | `app/register/page.tsx` on the quiz phase | — |
-| `QuizStep` *(custom)* | `app/register/page.tsx` on every quiz step, with `step_index` / `step_id` | — |
-| `QuizComplete` *(custom)* | `app/register/page.tsx` last step of `goNext()` | — |
-| `Lead` | `app/register/page.tsx` `completeRegistration()`, after save-quiz succeeds | — |
-| `ResultsView` *(custom)* | `app/register/page.tsx` on the results phase | — |
-| `PlanView` *(custom)* | `app/register/page.tsx` on the plan phase (`diagnosis`) | — |
-| `PlanScrollDepth` *(custom)* | `app/register/page.tsx` results- **and** plan-phase scroll, bucketed 25/50/75/100, with `screen: "results" \| "plan"` | — |
-| `ReliefDone` *(custom)* | `app/register/page.tsx` when the breathing reward lands | — |
-| `ChecklistDone` *(custom)* | `app/register/page.tsx` when the nutrition verdict lands | — |
-| `ViewContent` | `components/PaywallView.tsx` on mount (once) | $59 |
-| `InitiateCheckout` | `components/PaywallView.tsx` CTA click | $59 |
-| `Purchase` | Browser: `components/MetaPurchaseTracker.tsx` on the success landing. Server: `sendMetaPurchase()` from the Stripe webhook | $59 |
+**Five events, all standard. There are no custom events.** Adding one is a
+decision about the AEM budget, not a small change — read the whole section
+first.
 
-Step names and their sessionStorage dedup keys are paired in `META_FUNNEL_STEPS`
-(`lib/metaPixel.ts`) and fired through `trackFunnelStep()`. `QuizStep` and
-`PlanScrollDepth` are parameterized rather than one event per position, so each
-is a single Custom Conversion with a breakdown instead of 13 (or 4) of them —
-`trackQuizStep()` / `trackScrollDepth()` in `lib/metaPixelClient.ts` carry
-the dedup keys.
+| Event | Browser | CAPI | Fires from | Value |
+|---|---|---|---|---|
+| `PageView` | yes | — | `components/MetaPixel.tsx` (in `app/layout.tsx`); re-fires on App Router route changes | — |
+| `Lead` | — | yes | `sendMetaLead()` from `/api/auth/save-quiz`, **only on `user_profiles` insert** and only for cookie (web) callers | — |
+| `ViewContent` | yes | — | `components/PaywallView.tsx` on mount (once) | $59 |
+| `InitiateCheckout` | yes | yes | Browser: `PaywallView` CTA click. Server: `sendMetaInitiateCheckout()` from `/api/stripe/create-checkout` once the session exists | $59 |
+| `Purchase` | yes | yes | Browser: `components/MetaPurchaseTracker.tsx` on the success landing. Server: `sendMetaPurchase()` from the Stripe webhook | $59 |
 
-`PlanScrollDepth` covers **both** long scrolls in the funnel, separated by its
-`screen` param, so one Custom Conversion broken down `screen` × `depth` reports
-both. The name is legacy — it measured only the plan screen for a day — and is
-kept deliberately: renaming it would silently orphan the Custom Conversion
-already defined against it. The dedup key is per screen *and* bucket
-(`scrollDepthOnceKey`), so the two screens can't suppress each other.
+#### Why the funnel's custom events are gone (2026-08-17)
 
-Every custom event needs a **Custom Conversion** defined in Events Manager
-before it can be optimized for or used as an audience. `Lead` is standard and
-needs no setup, which is why it's the fallback optimization objective while
-Purchase volume is below learning-phase exit. Since the funnel stopped
-collecting an email, `Lead` carries no hashed address and matches on pixel
-signals alone — it fires one screen after `QuizComplete`, so treat it as
-"profile saved", not as a captured contact.
+`QuizStart`, `QuizStep`, `QuizComplete`, `ResultsView`, `PlanView`,
+`PlanScrollDepth` and `ReliefDone` were removed before the first campaign, along
+with `META_FUNNEL_STEPS`, `trackFunnelStep()`, `trackQuizStep()` and
+`trackScrollDepth()`. They were good product instrumentation and bad ad
+instrumentation:
 
-**The screens between `QuizComplete` and `ViewContent` were unmeasured until
-2026-08-16.** `ViewContent` (paywall mount) was the next event after the quiz
-ended, so results → plan → relief was one opaque stretch containing three
-separate places to lose her, and per-question drop-off inside the quiz didn't
-exist at all. Anything proposed about that part of the funnel was unfalsifiable.
-Keep every screen that can lose her reporting.
+- **Aggregated Event Measurement caps a domain at 8 prioritized events.** Twelve
+  meant iOS traffic reported only the top 8, and any custom event ranked above
+  `Purchase` cost real attributable conversions. Five leaves headroom and makes
+  the priority order obvious.
+- **A custom event is invisible until someone defines a Custom Conversion for
+  it**, and a Custom Conversion is a second-class optimization target next to a
+  standard event — delivery, Advantage+ and value rules are built around the
+  standard set.
+- **Only these five can be spent against.** "Which screen leaks" is a product
+  question; routing it through the ad pixel bought noise in Events Manager and
+  nothing in the auction.
 
-`Purchase` is sent from **both** browser and server and deduplicated by a shared
-`event_id` (`purchaseEventId()` in `lib/metaPixel.ts`, derived from the Stripe
-Checkout Session id). Shared constants live in `lib/metaPixel.ts`; the CAPI
-sender in `lib/metaCapi.ts` never throws, so a Meta outage can't fail the Stripe
-webhook and trigger retries.
+`QuizComplete` specifically was a duplicate — `Lead` fires one screen later with
+the same `symptom_count` / `goal`, off the database insert rather than
+sessionStorage, so it counts women rather than tabs.
+
+**Housekeeping in Events Manager:** archive the seven Custom Conversions (plus
+`ChecklistDone`, dark since the nutrition checklist was cut) and don't reuse the
+names — the historical data behind them means the old screens.
+
+**If the funnel screens need measuring again, they need a product-analytics
+tool, not this file.** The 2026-08-16 pass added them because results → plan →
+relief was an unfalsifiable black box, and that reasoning was right about the
+*need* and wrong about the *channel*. Do not re-add one without deciding which
+of the eight AEM slots it takes and from whom.
+
+#### Deduplication
+
+Both dual-reported events collapse on a shared `(event_name, event_id)`:
+
+- `Purchase` — `purchaseEventId()` in `lib/metaPixel.ts`, derived from the
+  Stripe Checkout Session id, so browser and webhook reach it independently.
+- `InitiateCheckout` — there is no shared identifier, so the browser **mints**
+  the id (`newInitiateCheckoutEventId()`), fires its copy with it, and passes it
+  to `create-checkout` as `meta_event_id`. The route validates it
+  (`isValidMetaEventId`) and skips the server copy on anything malformed —
+  an unpaired id double-counts her, which is worse than under-reporting. It
+  sends inside `after()`, so Meta never sits between her tap and the redirect.
+
+`Lead` is server-only and its id (`leadEventId()`, from the user id) exists just
+so a retried save-quiz collapses to one Lead. It is sent server-side rather than
+from the browser on purpose: the browser copy deduped in sessionStorage, i.e.
+"once per tab", and ads send the same woman back repeatedly — so repeat clickers
+inflated Lead, understated cost-per-lead, and taught delivery to buy more repeat
+clickers. Keyed off the profile insert, one human is one Lead forever.
+
+Since the funnel collects no email before Stripe, CAPI events match on
+`external_id` (SHA-256 of the Supabase user id) plus `_fbp`/`_fbc`/IP/UA. That
+is also why `Lead` should be read as "profile saved", not "contact captured".
+
+The CAPI sender in `lib/metaCapi.ts` **never throws** — a Meta outage must not
+fail the Stripe webhook (Stripe would retry and send duplicate welcome emails),
+nor show a woman "we couldn't save your results".
+
+`ViewContent` is browser-only: there is no server call at paywall mount to hang
+a CAPI copy on. It is the one kept event without server backup.
 
 There is one plan — $59 for an 8-week period, no free trial — so reported values
 are money actually collected at checkout and Events Manager should reconcile
@@ -579,7 +605,8 @@ coupon-discounted first invoice still reports the amount actually charged.
 
 `_fbp`/`_fbc` cookies plus the client IP and user-agent are captured in
 `app/api/stripe/create-checkout/route.ts` and stashed on the Checkout Session
-metadata, because the webhook is server-to-server and cannot see them.
+metadata, because the webhook is server-to-server and cannot see them. That same
+route now uses them directly for its own `InitiateCheckout`.
 
 ### Styling
 Tailwind CSS v4. Utility function for merging classes:
@@ -804,6 +831,49 @@ again also works — that calls `sync-session`.
 ## 7. CURRENT STATUS
 
 Recent work:
+- **Pixel cut to five standard events for launch (2026-08-17)** — the seven
+  custom funnel events (`QuizStart`, `QuizStep`, `QuizComplete`, `ResultsView`,
+  `PlanView`, `PlanScrollDepth`, `ReliefDone`) and their machinery
+  (`META_FUNNEL_STEPS`, `trackFunnelStep`, `trackQuizStep`, `trackScrollDepth`,
+  the two scroll handlers on `/register`) are deleted. What remains is
+  `PageView`, `Lead`, `ViewContent`, `InitiateCheckout`, `Purchase` — all
+  standard, three of them dual-reported. The binding reason is the **8-event AEM
+  cap**: at twelve events iOS reported only the top eight, so a custom event
+  ranked above `Purchase` was costing attributable conversions. See §4 for the
+  full argument and the Events Manager housekeeping (archive the eight dark
+  Custom Conversions, don't reuse the names).
+  `InitiateCheckout` gained a Conversions API copy
+  (`sendMetaInitiateCheckout()`, fired from `create-checkout` inside `after()`),
+  deduped against the browser on an id the paywall mints and passes as
+  `meta_event_id`. It is the closest-to-revenue signal delivery can optimize
+  against while `Purchase` volume is below learning-phase exit, and browser-only
+  reporting was losing a large slice of it to ITP and ad blockers.
+  `onCheckout` now takes that id, so both callers (`/register`, `/paywall`) pass
+  it through.
+  **Still open:** `ViewContent` has no server copy (no server call at paywall
+  mount), and the browser pixel sends no advanced-matching `external_id`, so
+  browser events match on cookies/IP/UA alone while the CAPI copies match on the
+  hashed Supabase user id.
+- **The nutrition checklist is gone (2026-08-17)** — the `relief` phase is now
+  breathing → reward → paywall. The five-row audit (`checklist`) and its verdict
+  screen (`done`) are deleted from `app/register/page.tsx`, along with
+  `NUTRITION_ITEMS` / `NUTRITION_TOTAL` / `NUTRITION_PLAN_TOTAL`,
+  `getNutritionVerdict()`, `getReliefForwardCopy()`, the `nutritionDone` state
+  and the `ChecklistDone` pixel step. It was two more screens and up to six more
+  taps at the point of maximum intent — immediately after she taps "I'm ready to
+  feel better" — and the funnel was long enough without them.
+  Knock-ons kept deliberately: the toolkit is still four entries with
+  **"Nutrition checklist" as locked tool #2** (it is a real feature of the app,
+  and the stack is a preview, not a feature list) — the reward screen just ends
+  at 1 of 4 instead of walking the bar to 2 of 4. `ToolkitStack` keeps its
+  `unlockedCount` prop rather than hardcoding 1. The reward CTA now reads
+  "View my {PLAN_WEEKS}-week plan" and carries `getCtaCopy()`'s no-charge
+  reassurance, which used to live on the verdict CTA. Back leaves the phase from
+  every stage now that nothing sits in front of the reward.
+  `META_FUNNEL_STEPS.checklistDone` was removed but its name is documented in
+  place in `lib/metaPixel.ts` — **archive the `ChecklistDone` Custom Conversion
+  in Events Manager and don't reuse the name**, the historical data behind it
+  means the old step. `ReliefDone` is now the last event before `ViewContent`.
 - **Paywall: the finish line became an instrument (2026-08-17)** —
   `PlanFinishLine` (two dates and an arrow, inline in `PaywallView`) is now
   `<PlanFinishBoard />` (`components/PlanFinishBoard.tsx`): a taped-down paper

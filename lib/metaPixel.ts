@@ -1,11 +1,54 @@
 /**
  * Meta Pixel / Conversions API constants shared by client and server.
  *
- * Purchase is reported twice - once from the browser pixel on the post-checkout
- * landing, once server-side from the Stripe webhook - so it survives Safari ITP,
- * ad blockers, and users who close the tab before the success redirect. Meta
- * collapses the pair on matching (event_name, event_id), which is why both sides
- * must derive the id the same way via `purchaseEventId`.
+ * ## The event set, and why it is this short
+ *
+ * Five events, all of them Meta *standard* events:
+ *
+ * | Event             | Browser | CAPI | Fires on                        |
+ * |-------------------|---------|------|---------------------------------|
+ * | `PageView`        | yes     | -    | every route                     |
+ * | `Lead`            | -       | yes  | `user_profiles` insert          |
+ * | `ViewContent`     | yes     | -    | paywall mount ($59)             |
+ * | `InitiateCheckout`| yes     | yes  | paywall CTA ($59)               |
+ * | `Purchase`        | yes     | yes  | checkout completed ($59)        |
+ *
+ * Seven custom funnel events - `QuizStart`, `QuizStep`, `QuizComplete`,
+ * `ResultsView`, `PlanView`, `PlanScrollDepth`, `ReliefDone` - were removed on
+ * 2026-08-17, before the first campaign went live. They were good product
+ * instrumentation and bad ad instrumentation, for three reasons:
+ *
+ * 1. **Aggregated Event Measurement caps a domain at 8 prioritized events.**
+ *    Twelve events meant iOS traffic silently reported only the top 8, and any
+ *    custom event ranked above `Purchase` cost real, attributable conversions.
+ *    Five leaves headroom and makes the ranking obvious.
+ * 2. **A custom event is invisible until someone defines a Custom Conversion
+ *    for it**, and a Custom Conversion cannot be an optimization target as
+ *    cheaply as a standard event can - standard events are what delivery,
+ *    Advantage+ and the conversion-value rules are built around.
+ * 3. **Only the five above can be spent against.** Per-question drop-off and
+ *    scroll depth answer "which screen leaks", which is a product question with
+ *    a product-analytics answer; routing it through the ad pixel bought noise in
+ *    Events Manager and nothing in the auction.
+ *
+ * Do not re-add a custom event without deciding, first, which of the eight AEM
+ * slots it takes and from whom. If the funnel screens need measuring again, they
+ * need an analytics tool, not this file.
+ *
+ * ## Naming
+ *
+ * Names live here rather than inline because a typo doesn't fail - it silently
+ * creates a new event in Events Manager and splits the funnel in half.
+ *
+ * ## Deduplication
+ *
+ * `InitiateCheckout` and `Purchase` are each reported twice - once from the
+ * browser, once server-side - so they survive Safari ITP, ad blockers, and users
+ * who close the tab before the redirect. Meta collapses the pair on matching
+ * (event_name, event_id), so both sides must carry the same id. `Purchase`
+ * derives it from the Stripe Checkout Session (`purchaseEventId`); the two
+ * `InitiateCheckout` copies are the same HTTP round trip, so the browser mints
+ * the id and hands it to `create-checkout` in the request body.
  */
 
 import { PLAN_PRICE } from "@/lib/pricing";
@@ -48,82 +91,27 @@ export function leadEventId(userId: string): string {
 }
 
 /**
- * Every step of the `/register` funnel, in the order she walks them.
- *
- * These are all custom events - each needs a Custom Conversion defined in
- * Events Manager before it can be optimized for or used to build an audience.
- *
- * **`Lead` is deliberately not in this list.** It is the one funnel event that
- * has to mean "a new woman", because it is the fallback optimization objective
- * while Purchase volume is below learning-phase exit - so it is sent
- * server-side from `/api/auth/save-quiz` on profile insert instead, where the
- * database already knows whether this account has finished the quiz before.
- * See `sendMetaLead`.
- *
- * `onceKey` is the sessionStorage key `trackFbOnce` dedups on, so a refresh or a
- * StrictMode double-effect can't inflate a step. Note what that dedup actually
- * buys: "once per tab", not once per person - a returning ad click in a fresh
- * tab reports these again, which is right for a visit-scoped event and was
- * wrong for Lead.
- *
- * Names live here rather than inline because a typo doesn't fail - it silently
- * creates a new event in Events Manager and splits the funnel in half.
- *
- * **The four screens between `QuizComplete` and the paywall used to be
- * unmeasured.** `ViewContent` fires on paywall mount and nothing fired before
- * it, so results / plan / relief were a black box: there was no way to tell
- * whether the post-quiz sequence leaked 20% or 70%, and therefore no way to
- * rank a fix against any other. Every screen that can lose her now reports.
+ * Longest event_id `create-checkout` will accept from a client. Meta's own limit
+ * is far higher; this exists so a malformed body can't push junk into the
+ * Conversions API payload.
  */
-export const META_FUNNEL_STEPS = {
-  quizStart: { name: "QuizStart", onceKey: "quiz_start" },
-  quizComplete: { name: "QuizComplete", onceKey: "quiz_complete" },
-  resultsView: { name: "ResultsView", onceKey: "results_view" },
-  planView: { name: "PlanView", onceKey: "plan_view" },
-  reliefDone: { name: "ReliefDone", onceKey: "relief_done" },
-  checklistDone: { name: "ChecklistDone", onceKey: "checklist_done" },
-} as const;
+export const META_EVENT_ID_MAX_LEN = 100;
 
-export type MetaFunnelStep = (typeof META_FUNNEL_STEPS)[keyof typeof META_FUNNEL_STEPS];
-
-/**
- * Per-question drop-off, as one event name with a `step_index` parameter.
- *
- * A separate event per question would be 13 Custom Conversions to define and a
- * chart nobody reads; one event broken down by parameter is a drop curve in a
- * single Events Manager view. The dedup key carries the index, so each question
- * reports once per session but moving forward through the quiz reports every
- * step - going *back* and forward again does not double-count.
- */
-export const META_QUIZ_STEP_EVENT = "QuizStep";
-
-export function quizStepOnceKey(index: number): string {
-  return `quiz_step_${index}`;
+/** Mints the id both InitiateCheckout copies dedup on. Browser-side. */
+export function newInitiateCheckoutEventId(): string {
+  const rand =
+    typeof globalThis.crypto?.randomUUID === "function"
+      ? globalThis.crypto.randomUUID()
+      : `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  return `ic_${rand}`;
 }
 
-/**
- * How deep she scrolled the plan screen, bucketed. The longest scroll in the
- * funnel: without this, "she saw the plan" and "she reached the CTA" are the
- * same number. Buckets rather than raw percentages so the breakdown has four
- * rows instead of a hundred.
- *
- * Both long scrolls in the funnel report through this one event, separated by a
- * `screen` parameter, so Events Manager needs one Custom Conversion broken down
- * two ways (`screen` × `depth`) rather than one per screen. The name is legacy
- * — it covered only the plan screen for a day — and is kept because renaming it
- * would silently orphan the Custom Conversion already defined against it.
- *
- * The results screen is the more important of the two: it is four stacked cards
- * ending on "your 8-week plan is ready", which is the block that closes the
- * promise the start screen made. Without a depth reading, "reached results" and
- * "saw the plan exists" were the same number.
- */
-export const META_SCROLL_EVENT = "PlanScrollDepth";
-export const META_SCROLL_BUCKETS = [25, 50, 75, 100] as const;
-
-/** Which long scroll reported. Sent as the `screen` param on every bucket. */
-export type MetaScrollScreen = "results" | "plan";
-
-export function scrollDepthOnceKey(screen: MetaScrollScreen, bucket: number): string {
-  return `${screen}_scroll_${bucket}`;
+/** Shape check for an event_id arriving over the wire. */
+export function isValidMetaEventId(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= META_EVENT_ID_MAX_LEN &&
+    /^[A-Za-z0-9._:-]+$/.test(value)
+  );
 }

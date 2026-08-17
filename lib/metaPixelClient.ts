@@ -1,17 +1,11 @@
 "use client";
 
 /** Browser-side `fbq` wrappers. Safe to call before the pixel script loads - the
- *  inline snippet installs a stub that queues calls until fbevents.js arrives. */
-
-import {
-  META_QUIZ_STEP_EVENT,
-  META_SCROLL_BUCKETS,
-  META_SCROLL_EVENT,
-  quizStepOnceKey,
-  scrollDepthOnceKey,
-  type MetaFunnelStep,
-  type MetaScrollScreen,
-} from "@/lib/metaPixel";
+ *  inline snippet installs a stub that queues calls until fbevents.js arrives.
+ *
+ *  Only five events are fired anywhere in the app; see the table in
+ *  `lib/metaPixel.ts` for what they are and why the funnel's custom events are
+ *  gone. */
 
 export type FbTrackParams = Record<string, unknown>;
 export type FbTrackOptions = { eventID?: string };
@@ -39,6 +33,10 @@ export function trackFb(
  * Fires at most once per browser session for a given key, so a page refresh or a
  * StrictMode double-effect can't duplicate the event. Meta's event_id dedup is
  * the real backstop; this just keeps the client honest.
+ *
+ * Note what that dedup buys: "once per tab", not once per person. That is right
+ * for a visit-scoped event like Purchase-on-landing, and was wrong for Lead -
+ * which is why Lead moved server-side, keyed off the profile insert.
  */
 export function trackFbOnce(
   key: string,
@@ -55,47 +53,4 @@ export function trackFbOnce(
     // Private mode / storage disabled - fall through and fire anyway.
   }
   trackFb(eventName, params, options);
-}
-
-/**
- * Fires one of the funnel steps, at most once per session. Keeping the event name
- * and its dedup key paired in `META_FUNNEL_STEPS` is what stops a call site from
- * reporting the right event under the wrong key.
- */
-export function trackFunnelStep(step: MetaFunnelStep, params?: FbTrackParams): void {
-  trackFbOnce(step.onceKey, step.name, params);
-}
-
-/**
- * One `QuizStep` per question, carrying its index and id. Deduped per index, so
- * walking back and forward again reports nothing new - the number Events
- * Manager shows for index N is "women who ever reached question N", which is
- * exactly the denominator a drop curve needs.
- */
-export function trackQuizStep(index: number, stepId: string, total: number): void {
-  trackFbOnce(quizStepOnceKey(index), META_QUIZ_STEP_EVENT, {
-    step_index: index + 1,
-    step_id: stepId,
-    step_total: total,
-  });
-}
-
-/**
- * Scroll depth on one of the funnel's two long scrolls, reported once per bucket
- * crossed. Called from a scroll handler, so it must stay cheap: the buckets are
- * a fixed four-element array and `trackFbOnce` short-circuits on a
- * sessionStorage hit.
- *
- * `screen` rides along as a parameter rather than forking the event name, so
- * results and plan land in one Custom Conversion with a breakdown.
- */
-export function trackScrollDepth(screen: MetaScrollScreen, percent: number): void {
-  for (const bucket of META_SCROLL_BUCKETS) {
-    if (percent >= bucket) {
-      trackFbOnce(scrollDepthOnceKey(screen, bucket), META_SCROLL_EVENT, {
-        screen,
-        depth: bucket,
-      });
-    }
-  }
 }

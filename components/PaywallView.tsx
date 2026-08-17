@@ -17,7 +17,11 @@ import {
 } from "lucide-react";
 import AnimatedCounter from "@/components/landing/AnimatedCounter";
 import { SocialProofPolaroid, SymptomOutcomeCards } from "@/components/SocialProof";
-import { META_CURRENCY, PLAN_VALUE } from "@/lib/metaPixel";
+import {
+  META_CURRENCY,
+  PLAN_VALUE,
+  newInitiateCheckoutEventId,
+} from "@/lib/metaPixel";
 import {
   PLAN_ADHERENCE_PCT,
   PLAN_ANCHOR_PRICE_PER_DAY,
@@ -35,7 +39,13 @@ import { PlanFinishBoard } from "@/components/PlanFinishBoard";
 import { PhoneShot, ShotStage, SHOT_W, SHOT_H } from "@/components/PhoneShots";
 
 export interface PaywallViewProps {
-  onCheckout: () => void | Promise<void>;
+  /**
+   * Starts the Stripe checkout. Receives the `event_id` this component just
+   * fired the browser InitiateCheckout with - pass it to `create-checkout` as
+   * `meta_event_id` so the server copy dedups against it instead of
+   * double-counting her.
+   */
+  onCheckout: (metaEventId: string) => void | Promise<void>;
   checkoutLoading: boolean;
   error?: string | null;
   /** Optional banner above the hero (e.g. "Account under review" for disputed). */
@@ -167,16 +177,27 @@ export function PaywallView({
 
   // InitiateCheckout fires on the CTA - the moment she actually enters Stripe -
   // rather than on paywall view, so it reflects intent rather than exposure.
+  //
+  // Reported twice, browser and server, on one id minted here: this is the last
+  // event before the money and the one delivery leans on while Purchase volume
+  // is below learning-phase exit, so losing a third of it to ITP and ad blockers
+  // is not affordable. `create-checkout` sends the server copy - see
+  // `sendMetaInitiateCheckout`.
   const handleCheckoutClick = () => {
-    trackFb("InitiateCheckout", {
-      content_name: PLAN_ID,
-      content_category: trackingSource,
-      content_type: "product",
-      value: PLAN_VALUE,
-      currency: META_CURRENCY,
-      num_items: 1,
-    });
-    return onCheckout();
+    const eventId = newInitiateCheckoutEventId();
+    trackFb(
+      "InitiateCheckout",
+      {
+        content_name: PLAN_ID,
+        content_category: trackingSource,
+        content_type: "product",
+        value: PLAN_VALUE,
+        currency: META_CURRENCY,
+        num_items: 1,
+      },
+      { eventID: eventId }
+    );
+    return onCheckout(eventId);
   };
 
   return (
@@ -198,30 +219,6 @@ export function PaywallView({
         )}
 
         {banner && <div className="mb-3">{banner}</div>}
-
-        {/* Hero image with colorful halo */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.92 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.1, duration: 0.5 }}
-          className="relative flex justify-center mb-2 sm:mb-3"
-        >
-          <div
-            aria-hidden
-            className="absolute inset-0 blur-2xl opacity-50"
-            style={{
-              background:
-                "radial-gradient(ellipse at center, rgba(255,116,177,0.5) 0%, rgba(255,235,118,0.3) 40%, transparent 70%)",
-            }}
-          />
-          <Image
-            src="/paywall/paywall.webp"
-            alt=""
-            width={280}
-            height={280}
-            className="relative object-contain w-full max-h-[96px] sm:max-h-[128px]"
-          />
-        </motion.div>
 
         {/* Social proof: stars + count */}
         <motion.div

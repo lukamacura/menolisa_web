@@ -138,6 +138,60 @@ export async function sendMetaPurchase(params: SendMetaPurchaseParams): Promise<
   );
 }
 
+export type SendMetaInitiateCheckoutParams = MetaMatchData & {
+  /** Must equal the browser event's eventID - minted by `newInitiateCheckoutEventId`. */
+  eventId: string;
+  eventTimeSec: number;
+  value: number;
+  currency?: string;
+  userId: string;
+  /** Usually absent on the funnel - she has no email until Stripe collects one. */
+  email?: string | null;
+  planType?: string | null;
+  eventSourceUrl?: string | null;
+};
+
+/**
+ * Sends an InitiateCheckout to the Conversions API - from
+ * `/api/stripe/create-checkout`, the request the browser makes at the moment she
+ * taps the CTA.
+ *
+ * This is the last event before the money, and browser-only reporting loses a
+ * large slice of it to ITP and ad blockers. It matters more than the usual
+ * mid-funnel event does here: `Purchase` volume on a first campaign is too thin
+ * to exit the learning phase, so `InitiateCheckout` is the closest-to-revenue
+ * signal delivery can actually be optimized against, and an undercounted one
+ * teaches the auction the wrong thing.
+ *
+ * The browser fires its copy with the same `event_id` in the same interaction,
+ * so Meta keeps exactly one. See `postEvent` - never throws.
+ */
+export async function sendMetaInitiateCheckout(
+  params: SendMetaInitiateCheckoutParams
+): Promise<void> {
+  const { eventId, eventTimeSec, value, currency = META_CURRENCY, planType, eventSourceUrl } =
+    params;
+
+  await postEvent(
+    {
+      event_name: "InitiateCheckout",
+      event_time: eventTimeSec,
+      event_id: eventId,
+      action_source: "website",
+      ...(eventSourceUrl ? { event_source_url: eventSourceUrl } : {}),
+      user_data: buildUserData(params),
+      custom_data: {
+        currency,
+        value,
+        content_type: "product",
+        num_items: 1,
+        ...(planType ? { content_name: planType } : {}),
+      },
+    },
+    `InitiateCheckout ${eventId} (${currency} ${value})`
+  );
+}
+
 export type SendMetaLeadParams = MetaMatchData & {
   /** See `leadEventId()` - derived from the user id, so retries collapse. */
   eventId: string;

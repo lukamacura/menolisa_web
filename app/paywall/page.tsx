@@ -56,7 +56,7 @@ export default function PaywallPage() {
     };
   }, [router]);
 
-  const handleCheckout = async () => {
+  const handleCheckout = async (metaEventId: string) => {
     if (checkoutLoading) return;
     setError(null);
     setCheckoutLoading(true);
@@ -75,6 +75,8 @@ export default function PaywallPage() {
           plan: PLAN_ID,
           from_registration: true,
           return_origin: origin || undefined,
+          // Dedup key for the server-side InitiateCheckout the route fires.
+          meta_event_id: metaEventId,
         }),
       });
       const data = await res.json().catch(() => ({}));

@@ -153,10 +153,23 @@ export function PlanFinishBoard({
   firstName,
   topProblems,
   goal,
+  showHeader = true,
+  className,
 }: {
   firstName?: string;
   topProblems?: string[];
   goal?: string[];
+  /**
+   * The title row ("Linda's finish line" / "{PLAN_DAYS} days · $1.05 a day").
+   *
+   * On the paywall it is load-bearing: it is the denominator that turns the
+   * per-day figure in the price card underneath back into the number she is
+   * about to be charged. On the results screen there is no price on the page
+   * yet, so naming one there answers a question she hasn't been asked - the
+   * chart is showing her the shape of the eight weeks, not selling them.
+   */
+  showHeader?: boolean;
+  className?: string;
 }) {
   const prefersReducedMotion = useReducedMotion();
   const [stages] = useState(() => buildStages(topProblems, goal));
@@ -256,7 +269,10 @@ export function PlanFinishBoard({
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.26 }}
-      className="relative rounded-2xl border px-3.5 pt-3 pb-3 mb-2.5 shadow-sm"
+      className={cn(
+        "relative rounded-2xl border px-3.5 pt-3 pb-3 mb-2.5 shadow-sm",
+        className
+      )}
       style={{
         borderColor: "#E8DDD9",
         // Paper: warm white, faintly ruled. The rules are what make it read as a
@@ -280,14 +296,16 @@ export function PlanFinishBoard({
         style={{ background: "rgba(255,235,118,0.55)", boxShadow: "0 1px 2px rgba(61,61,61,0.12)" }}
       />
 
-      <div className="flex items-baseline justify-between gap-2 mb-1">
-        <p className="text-[10px] font-bold tracking-wide uppercase text-[#9A9A9A]">
-          {name ? `${name}'s finish line` : "Your finish line"}
-        </p>
-        <p className="text-[10px] text-[#9A9A9A] tabular-nums shrink-0">
-          {PLAN_DAYS} days &middot; {PER_DAY} a day
-        </p>
-      </div>
+      {showHeader && (
+        <div className="flex items-baseline justify-between gap-2 mb-1">
+          <p className="text-[10px] font-bold tracking-wide uppercase text-[#9A9A9A]">
+            {name ? `${name}'s finish line` : "Your finish line"}
+          </p>
+          <p className="text-[10px] text-[#9A9A9A] tabular-nums shrink-0">
+            {PLAN_DAYS} days &middot; {PER_DAY} a day
+          </p>
+        </div>
+      )}
 
       {/* ── The chart. Aria-hidden in full: it is an animation, and a caption
              that swaps every two seconds is noise to a screen reader. The same
@@ -394,28 +412,41 @@ export function PlanFinishBoard({
             </p>
           </div>
         </div>
+      </div>
 
-        {/* The caption the needle is standing on. Fixed height, so a longer
-            sentence can't shift the price card underneath it mid-animation. */}
-        <div className="mt-2 min-h-[38px]">
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={index}
-              initial={prefersReducedMotion ? false : { opacity: 0, y: 5 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={prefersReducedMotion ? undefined : { opacity: 0, y: -5 }}
-              transition={{ duration: 0.25 }}
-              className={cn(
-                "flex items-center gap-2 rounded-xl px-2.5 py-2",
-                index === 0 ? "" : "font-semibold"
-              )}
-              style={{ background: active.soft }}
-            >
-              <active.icon className="h-4 w-4 shrink-0" style={{ color: active.color }} strokeWidth={2.5} />
-              <span className="text-[12px] leading-snug text-[#3D3D3D]">{active.text}</span>
-            </motion.div>
-          </AnimatePresence>
-        </div>
+      {/* The caption the needle is standing on.
+          Fixed height, so a longer sentence can't shift the price card
+          underneath it mid-animation.
+
+          It sits *outside* the chart's `px-5` inset and is held to a single
+          line, because a caption that wraps to two lines on one stage and one
+          on the next makes the whole board jump every couple of seconds - and
+          it changes four times per loop. The chart's inset exists so the
+          needle's badge has room to hang off either end; the caption has no
+          such constraint, so it gets the full card width. `nowrap` guarantees
+          the rule, and the clamped size is what makes the guarantee free: the
+          longest string here is ~41 characters, which fits at 10px on a 320px
+          screen and grows to 12px once the card has the room. */}
+      <div aria-hidden className="mt-2 min-h-[34px]">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={index}
+            initial={prefersReducedMotion ? false : { opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={prefersReducedMotion ? undefined : { opacity: 0, y: -5 }}
+            transition={{ duration: 0.25 }}
+            className={cn(
+              "flex items-center gap-1.5 rounded-xl px-2 py-2",
+              index === 0 ? "" : "font-semibold"
+            )}
+            style={{ background: active.soft }}
+          >
+            <active.icon className="h-3.5 w-3.5 shrink-0" style={{ color: active.color }} strokeWidth={2.5} />
+            <span className="text-[clamp(10px,2.9vw,12px)] leading-snug text-[#3D3D3D] whitespace-nowrap">
+              {active.text}
+            </span>
+          </motion.div>
+        </AnimatePresence>
       </div>
 
       {/* Announced once, in order, instead of the chart. */}
