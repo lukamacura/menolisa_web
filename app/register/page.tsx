@@ -3906,8 +3906,8 @@ function RegisterPageContent() {
               <p className="mt-2 text-xs text-[#7A7A7A] leading-snug">
                 Your plan is on its way to that inbox too. Wrong address, or the code never
                 arrives?{" "}
-                <a className="font-semibold text-primary underline" href="mailto:support@menolisa.com">
-                  support@menolisa.com
+                <a className="font-semibold text-primary underline" href="mailto:menolisahelp@gmail.com">
+                  menolisahelp@gmail.com
                 </a>{" "}
                 will fix it.
               </p>
