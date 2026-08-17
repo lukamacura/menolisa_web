@@ -77,6 +77,7 @@ export default function TermsPage() {
 
           <h3 className="text-xl font-semibold mb-3">7.1 Paid Subscription and Billing</h3>
           <p>Access to the service requires a paid subscription. There is no free trial: your payment method is charged in full at checkout, and the price and billing frequency are shown before you pay. By subscribing, you authorize us to charge your chosen payment method at the start of each billing period. Subscriptions automatically renew unless you cancel before the renewal date.</p>
+          <p>All subscriptions are purchased and billed through our website (via Stripe), not through the Apple App Store or Google Play. If you use the MenoLisa mobile app, it is a free download: the app itself is not sold through in-app purchase, and no payment is processed by Apple or Google. You subscribe on menolisa.com and then sign in to the app with the same account to access your plan.</p>
 
           <h3 className="text-xl font-semibold mb-3 mt-6">7.2 Cancellation</h3>
           <p>You may cancel your subscription at any time via your account settings or by contacting us at <a href="mailto:support@macurasolutions.us" className="text-primary hover:underline">support@macurasolutions.us</a>. Cancellation takes effect at the end of the current billing period. You will retain access until then and will not be charged for subsequent periods.</p>
@@ -84,16 +85,16 @@ export default function TermsPage() {
           <h3 className="text-xl font-semibold mb-3 mt-6">7.3 Refund Policy</h3>
           <p>We offer a 7-day refund from the date of your initial subscription purchase. To request a refund, contact us at <a href="mailto:support@macurasolutions.us" className="text-primary hover:underline">support@macurasolutions.us</a> within 7 days with the email on your account and purchase date. Refunds are only for the initial purchase, not renewals; we process approved refunds within 5–10 business days to the original payment method. Users who have already received a refund are not eligible for another. After a refund, your subscription is canceled and premium access ends.</p>
 
-          <h3 className="text-xl font-semibold mb-3 mt-6">7.4 Platform-Specific Billing (Apple / Google)</h3>
-          <p>If you subscribe through the Apple App Store or Google Play, payment is processed by Apple or Google under their respective terms. Cancellation and refunds for those purchases may be managed through your Apple or Google account settings and are subject to Apple&apos;s and Google&apos;s policies. For subscriptions made through our website (e.g., Stripe), the cancellation and refund terms in this section apply.</p>
+          <h3 className="text-xl font-semibold mb-3 mt-6">7.4 No In-App Purchases</h3>
+          <p>MenoLisa does not sell subscriptions, or anything else, through Apple App Store or Google Play in-app purchase. Every subscription is purchased on our website and billed by Stripe, regardless of whether you register on the website or through the mobile app. The cancellation and refund terms in this section apply to every subscription — there is no separate Apple or Google billing relationship to manage.</p>
 
-          <h3 className="text-xl font-semibold mb-3 mt-6">7.5 The 8-Week Guarantee (Website / Stripe subscriptions)</h3>
+          <h3 className="text-xl font-semibold mb-3 mt-6">7.5 The 8-Week Guarantee</h3>
           <p>For eligible subscriptions purchased through our website, we offer an optional &quot;8-Week Guarantee.&quot; If you complete at least <strong>90% of your plan</strong> across eight (8) continuous weeks of paid subscription and you do not feel better, you may request a full refund of the amount you paid for that period.</p>
           <p><strong>How the 90% is measured.</strong> Your plan schedules a set of daily tasks for each of the eight weeks. Completion means those tasks were marked as done in the app. We calculate your figure as the number of scheduled tasks you marked complete during the eight-week period, divided by the number of tasks your plan scheduled for that same period. You do not need to submit evidence, screenshots, or a diary — the calculation uses the completion records already stored in your account. You may ask us for your figure at any time and we will provide it, along with how it was calculated.</p>
           <p><strong>What the condition is for.</strong> The guarantee covers the case where you followed the plan and it did not help you. It is not a general satisfaction refund; if you did not use the plan, the 90% threshold will not be met and this guarantee will not apply. The 7-day refund in Section 7.3 is separate and has no completion condition.</p>
           <p>The eight-week period must be completed while your subscription is paid and active. If you cancel or your subscription lapses before the eight weeks end, the period is incomplete and this guarantee does not apply, though Section 7.3 may still.</p>
           <p>MenoLisa is a <strong>wellness product, not a medical treatment.</strong> The Menopause Score and any insights in the app are non-clinical wellness indicators, not medical measurements, diagnoses, or guarantees of any health outcome. This guarantee is a refund promise only and does not promise any medical or clinical result. Whether you feel better is your own assessment and we will not ask you to justify it.</p>
-          <p>To request, email <a href="mailto:support@macurasolutions.us" className="text-primary hover:underline">support@macurasolutions.us</a> within fourteen (14) days after your eight-week period ends, using the email on your account. This guarantee may be used once per user and applies to website (Stripe) purchases only — Apple App Store and Google Play purchases are subject to Apple&apos;s and Google&apos;s refund policies. This guarantee is in addition to the 7-day refund in Section 7.3; a user who has received any refund is not eligible for another. After a refund, your subscription is canceled and premium access ends.</p>
+          <p>To request, email <a href="mailto:support@macurasolutions.us" className="text-primary hover:underline">support@macurasolutions.us</a> within fourteen (14) days after your eight-week period ends, using the email on your account. This guarantee may be used once per user. It is in addition to the 7-day refund in Section 7.3; a user who has received any refund is not eligible for another. After a refund, your subscription is canceled and premium access ends.</p>
           <p>Nothing in this section limits any refund or cancellation right you have under the consumer law of your country or state, where such rights cannot be waived.</p>
         </section>
 
@@ -128,7 +129,23 @@ export default function TermsPage() {
         </section>
 
         <section className="mb-8">
-          <h2 className="text-2xl font-semibold mb-4">14. Contact Information</h2>
+          <h2 className="text-2xl font-semibold mb-4">14. Apple App Store Additional Terms</h2>
+          <p>If you downloaded the app from the Apple App Store, the following additional terms apply and take precedence over any conflicting provision above with respect to Apple:</p>
+          <ul>
+            <li>This Agreement is between you and Macura Solutions LLC only, not with Apple Inc. (&quot;Apple&quot;), and Apple is not responsible for the Service or its content.</li>
+            <li>The license granted to you is limited to a non-transferable license to use the app on any Apple-branded product that you own or control, as permitted by the Usage Rules in Apple&apos;s App Store Terms of Service.</li>
+            <li>Apple has no obligation whatsoever to furnish any maintenance or support services with respect to the app. As between us and Apple, any such obligation, to the extent required under applicable law, is ours alone.</li>
+            <li>Apple is not responsible for any product warranties, whether express or implied by law. In the event of any failure of the app to conform to any applicable warranty, you may notify Apple, and Apple will refund the purchase price for the app to you, if any; to the maximum extent permitted by applicable law, Apple has no other warranty obligation whatsoever with respect to the app, and any other claims, losses, liabilities, damages, costs, or expenses attributable to a failure to conform to a warranty are our sole responsibility.</li>
+            <li>We, not Apple, are responsible for addressing any claims by you or any third party relating to the app or your possession and/or use of the app, including: (i) product liability claims; (ii) any claim that the app fails to conform to any applicable legal or regulatory requirement; and (iii) claims arising under consumer protection or similar legislation.</li>
+            <li>In the event of any third-party claim that the app, or your possession and use of it, infringes that third party&apos;s intellectual property rights, we, not Apple, will be solely responsible for the investigation, defense, settlement, and discharge of any such claim.</li>
+            <li>You represent and warrant that you are not located in a country subject to a U.S. Government embargo, or that has been designated by the U.S. Government as a &quot;terrorist supporting&quot; country, and that you are not listed on any U.S. Government list of prohibited or restricted parties.</li>
+            <li>You must comply with any applicable third-party terms (e.g., your wireless data service agreement) when using the app.</li>
+            <li>Apple and Apple&apos;s subsidiaries are third-party beneficiaries of this Agreement, and upon your acceptance of these Terms, Apple will have the right (and will be deemed to have accepted the right) to enforce this Agreement against you as a third-party beneficiary of it.</li>
+          </ul>
+        </section>
+
+        <section className="mb-8">
+          <h2 className="text-2xl font-semibold mb-4">15. Contact Information</h2>
           <p>For questions about these Terms:</p>
           <p>
             <strong>Macura Solutions LLC</strong>

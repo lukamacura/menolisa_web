@@ -151,7 +151,7 @@ export default function PrivacyPage() {
           <h2 className="text-2xl font-semibold mb-4">7. Data Retention and Deletion</h2>
           <ul>
             <li><strong>Active accounts</strong> — We retain your data for as long as your account is active and you use the Service.</li>
-            <li><strong>Account deletion</strong> — You may request deletion of your account at any time (e.g., via app settings or by contacting us). When you delete your account, we delete your personal and health data from our systems (including symptom logs, conversations, profile, preferences, push tokens, etc.) and remove your auth account. Deletion is typically completed promptly; some data may remain in backups for a limited period before being overwritten, or as required by law.</li>
+            <li><strong>Account deletion</strong> — You may request deletion of your account at any time via Settings in the app or on the website, or by visiting <a href="https://menolisa.com/delete-account" className="text-primary hover:underline">menolisa.com/delete-account</a> — which works whether or not you have the app installed — or by contacting us. When you delete your account, we delete your personal and health data from our systems (including symptom logs, conversations, profile, preferences, push tokens, etc.) and remove your auth account. Deletion is typically completed promptly; some data may remain in backups for a limited period before being overwritten, or as required by law.</li>
             <li><strong>Legal retention</strong> — We may retain certain data longer when required by law, regulation, or legal process.</li>
             <li><strong>Anonymized data</strong> — We may retain anonymized, aggregated data that cannot identify you.</li>
           </ul>
@@ -163,7 +163,7 @@ export default function PrivacyPage() {
           <ul>
             <li><strong>Access</strong> — Request a copy of the personal data we hold about you</li>
             <li><strong>Correction</strong> — Correct inaccurate or incomplete data (you can edit many items in the app, e.g., symptom entries)</li>
-            <li><strong>Deletion</strong> — Request deletion of your data; deleting your account accomplishes this</li>
+            <li><strong>Deletion</strong> — Request deletion of your data; deleting your account accomplishes this (see <a href="https://menolisa.com/delete-account" className="text-primary hover:underline">menolisa.com/delete-account</a> for step-by-step instructions)</li>
             <li><strong>Data portability</strong> — Receive your data in a portable format (e.g., you can use the health summary / doctor report feature to export a summary of your tracked data)</li>
             <li><strong>Withdraw consent</strong> — Where we rely on consent, you may withdraw it at any time (e.g., disable notifications, delete account)</li>
           </ul>
