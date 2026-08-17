@@ -536,13 +536,17 @@ type SeverityHeadline = { pre: string; sweep: string; post: string };
 
 const getSeverityHeadline = (severity: string): SeverityHeadline => {
   switch (severity) {
+    // The terminal full stop rides *inside* the sweep. The sweep is an
+    // inline-block, so a phrase that wraps fills the line and anything after it
+    // starts a new one - which left the period alone on a line of its own,
+    // centred, reading as a stray bullet under the headline.
     case "severe":
-      return { pre: ", this is ", sweep: "worse than you've been told", post: "." };
+      return { pre: ", this is ", sweep: "worse than you've been told.", post: "" };
     case "moderate":
       return { pre: ", ", sweep: "I need to be honest", post: " with you." };
     case "mild":
     default:
-      return { pre: ", let's talk about ", sweep: "what's really going on", post: "." };
+      return { pre: ", let's talk about ", sweep: "what's really going on.", post: "" };
   }
 };
 
@@ -1004,145 +1008,80 @@ function TrajectoryChart({ score }: { score: number }) {
 }
 
 /**
- * Her score, drawn so it can be read rather than decoded.
+ * What is left of the score card once the letter delivers the score itself.
  *
- * The card this replaces asked her to work out four things for herself: what the
- * number measured (the header said only "Your Results"), which direction the
- * scale ran, which of three unlabelled ticks on an 8px bar was hers, and whether
- * "lower than average" was good news. At the highest-attention moment in the
- * funnel, on a screen she waited through a loader to see.
+ * The card this replaces was a full gauge: metric name, "higher is better",
+ * her number on a marker, the track, the goal. Every one of those things is
+ * now printed on the sheet that rises out of the envelope (see
+ * <EnvelopeReveal />), a screen-height above - so the card was restating the
+ * reveal rather than adding to it, which is the same duplication the 2026-08-17
+ * pass removed between the two count-ups.
  *
- * Four rules here, each one undoing one of those:
+ * The division of labour now: **the letter says where she is, this says what is
+ * missing and who closes it.** So the card keeps exactly the three things the
+ * scale cannot draw:
  *
- *   1. **Name the metric.** "Menopause Wellbeing Score", with "higher is better"
- *      as a permanent subtitle. One line, and the ambiguity is gone.
- *   2. **Two markers, both labelled.** Her score above the bar on a pill, the
- *      goal below it. The cohort benchmark tick is gone from the bar entirely -
- *      it was a third unlabelled mark competing with the two that matter, and it
- *      says everything it needs to in the sentence underneath instead.
- *   3. **Colour the gap, not the score.** The stripe between where she is and
- *      where the plan takes her is the only coloured thing on the bar, because
- *      that gap is literally what she is being sold. Her own score is ink.
- *   4. **Say the gap out loud, as points.** "18 points" is a size. "Lower than
- *      average" is a mood.
+ *   1. **The gap, out loud, as points.** "34 points" is a size; "lower than
+ *      average" is a mood. It is the only figure on the screen she is actually
+ *      being asked to buy, and the one figure here allowed to carry colour -
+ *      green, the colour this screen uses for the gap and what closes it.
+ *   2. **The benchmark, in words.** A score out of 100 means nothing without a
+ *      reference point. It is stated rather than drawn as a third marker,
+ *      which is what the 2026-08-16 rebuild removed for crowding the track.
+ *   3. **The handover to the plan**, which is the whole reason the gap is on
+ *      the page.
+ *
+ * Her score is never painted as a verdict anywhere. It used to render red under
+ * 40 and orange above - never green, at any value - on a scale where higher is
+ * better, so the number always appeared in alarm paint regardless of what it
+ * said.
  */
-function ScoreGauge({
-  scoreMv,
+function ScoreGapCard({
   score,
   benchmark,
   cohortLabel,
 }: {
-  scoreMv: MotionValue<number>;
   score: number;
   benchmark: number;
   cohortLabel: string;
 }) {
-  const prefersReducedMotion = useReducedMotion();
-  const fillWidth = useTransform(scoreMv, (v) => `${v}%`);
+  // `gap` is always 12..68: calculateWellbeingScore compresses to a
+  // SCORE_CEILING of 68 precisely so there is never a zero gap to render, which
+  // is why there is no at-goal branch here.
   const gap = Math.max(0, SCORE_GOAL - score);
   const verdict = getScoreVerdict(score, benchmark);
 
   return (
     <div className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-4 shadow-md shadow-primary/5">
-      {/* The header used to repeat the letter's payoff verbatim - the same
-          number over the same "Higher is better", a screen-height below it. The
-          number now belongs to <EnvelopeReveal /> and this card leads with the
-          gap instead, which is the only figure on the screen she is actually
-          being asked to buy. Her score still reads off the bar, on her marker.
-
-          The gap is the one figure here allowed to carry colour, and it is
-          green. The score itself is never painted as a verdict: it used to
-          render red under 40 and orange above - never green, at any value - on
-          a scale where higher is better, so the number always appeared in alarm
-          paint regardless of what it said, and a woman scoring well was shown a
-          warning colour for it. Colour belongs on the gap because the gap is
-          what the plan closes, and therefore what she is buying. */}
-      <div className="flex items-baseline justify-between gap-3 mb-3">
-        <div className="min-w-0">
-          <h2 className="text-sm font-bold text-[#3D3D3D] leading-tight">
-            Menopause Wellbeing Score
-          </h2>
-          <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[#9A9A9A] mt-0.5">
-            Higher is better
-          </p>
-        </div>
-        {/* `gap` is always 12..68: calculateWellbeingScore compresses to a
-            SCORE_CEILING of 68 precisely so there is never a zero gap to
-            render, which is why there is no at-goal branch here. */}
-        <p className="shrink-0 text-right leading-none">
+      <div className="flex items-center gap-3.5">
+        <p className="shrink-0 text-center leading-none">
           <span className="block text-4xl font-black tracking-tight text-green-600">{gap}</span>
-          <span className="mt-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9A9A]">
-            points to close
+          <span className="mt-1.5 block text-[9px] font-semibold uppercase tracking-[0.12em] text-[#9A9A9A]">
+            points
+            <br />
+            to close
           </span>
         </p>
-      </div>
-
-      {/* Her marker, above the bar on a connector - the one place it can sit
-          without colliding with the goal label at any score in range. It carries
-          the number now that the header doesn't, so the score is attached to its
-          own position on the scale rather than floating above it. */}
-      <div className="relative h-5">
-        <div
-          className="absolute -translate-x-1/2 flex flex-col items-center"
-          style={{ left: `${score}%` }}
-        >
-          {/* Safe at any width: score is clamped to 12..68, so the label never
-              travels near either edge of the track. */}
-          <span className="rounded-full bg-[#3D3D3D] px-1.5 py-0.5 text-[9px] font-bold leading-none text-white whitespace-nowrap">
-            You {score}
-          </span>
-          <span className="h-1.5 w-px bg-[#3D3D3D]/40" />
+        <div className="min-w-0">
+          <p className="text-xs text-[#5A5A5A] leading-snug">
+            Menopause is <span className="font-bold text-[#3D3D3D]">{verdict}</span>. Typical for{" "}
+            {cohortLabel} is around <span className="font-bold text-[#3D3D3D]">{benchmark}</span>.
+          </p>
+          <p className="mt-2 flex items-start gap-1.5 text-xs text-[#5A5A5A] leading-snug">
+            <Goal className="w-4 h-4 text-green-600 shrink-0 mt-px" />
+            <span>
+              That gap is what your{" "}
+              <span className="font-bold text-[#3D3D3D]">{PLAN_WEEKS}-week plan</span> is built to
+              close.
+            </span>
+          </p>
         </div>
       </div>
-
-      <div className="relative h-2.5 rounded-full bg-foreground/10 overflow-hidden">
-        {/* The gap she is buying. Painted under the fill so the fill's leading
-            edge lands cleanly on it as it animates past. */}
-        <motion.div
-          className="absolute top-0 h-full bg-green-500/25"
-          style={{ left: `${score}%`, width: `${gap}%` }}
-          initial={prefersReducedMotion ? false : { opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1.6, duration: 0.5 }}
-        />
-        <motion.div
-          className="absolute left-0 top-0 h-full rounded-full bg-[#3D3D3D]/75"
-          style={{ width: fillWidth }}
-        />
-        {/* Goal tick */}
-        <div className="absolute top-0 h-full w-1 rounded-full bg-green-600" style={{ left: `${SCORE_GOAL}%` }} />
-      </div>
-
-      <div className="relative h-4 mt-1">
-        <span
-          className="absolute -translate-x-1/2 text-[10px] font-bold text-green-700 whitespace-nowrap"
-          style={{ left: `${SCORE_GOAL}%` }}
-        >
-          Goal {SCORE_GOAL}
-        </span>
-      </div>
-
-      {/* The cohort benchmark was computed, passed in as a prop, used to pick
-          the verdict word - and then shown to nobody but a screen reader. A
-          score out of 100 means nothing without a reference point, and this is
-          the reference point we already had. It is stated in words rather than
-          drawn as a third marker on the track, which is what the 2026-08-16
-          rebuild removed for crowding the scale. */}
-      <p className="text-xs text-[#5A5A5A] leading-snug mt-1.5">
-        Menopause is <span className="font-bold text-[#3D3D3D]">{verdict}</span>. Typical for{" "}
-        {cohortLabel} is around <span className="font-bold text-[#3D3D3D]">{benchmark}</span>.
-      </p>
-      <p className="mt-1.5 flex items-start gap-1.5 text-xs text-[#5A5A5A] leading-snug">
-        <Goal className="w-4 h-4 text-green-600 shrink-0 mt-px" />
-        <span>
-          That gap is what your{" "}
-          <span className="font-bold text-[#3D3D3D]">{PLAN_WEEKS}-week plan</span> is built to
-          close.
-        </span>
-      </p>
+      {/* The letter is decorative to a screen reader (it is an animation), so
+          the numbers on it are announced here, once. */}
       <p className="sr-only">
-        Your score is {score} out of 100, where higher is better. Typical for {cohortLabel} is
-        around {benchmark}. The goal is {SCORE_GOAL}.
+        Your Menopause Wellbeing Score is {score} out of 100, where higher is better. Typical for{" "}
+        {cohortLabel} is around {benchmark}. The goal is {SCORE_GOAL}, which is {gap} points away.
       </p>
     </div>
   );
@@ -1230,15 +1169,19 @@ const LETTER_DELAY = 0.58;
 function EnvelopeReveal({
   src,
   scoreMv,
+  score,
   name,
 }: {
   src: string;
   scoreMv: MotionValue<number>;
+  score: number;
   name?: string;
 }) {
   const prefersReducedMotion = useReducedMotion();
   // The count-up lives on the letter now - see the note on the sheet's face.
   const rounded = useTransform(scoreMv, (v) => Math.round(v));
+  const fillWidth = useTransform(scoreMv, (v) => `${v}%`);
+  const gap = Math.max(0, SCORE_GOAL - score);
 
   // Reduced motion gets the finished picture: envelope open, letter out, no
   // travel. `initial={false}` on each mover skips the animation entirely.
@@ -1293,16 +1236,26 @@ function EnvelopeReveal({
               The number *counts up here*, rather than sitting finished while a
               separate card below counts up to it. Until 2026-08-17 both
               happened: the sheet printed the final score at about 1s, and then
-              <ScoreGauge /> spent until 2.3s climbing to a number she had
+              the gauge below spent until 2.3s climbing to a number she had
               already read, under a second copy of the same "Your score … /100 …
               Higher is better" stack roughly 250px lower. The most expensive
-              reveal in the funnel was paying off a duplicate. One number, one
-              moment: the letter is the payoff, the gauge is the analysis.
+              reveal in the funnel was paying off a duplicate.
 
-              Her name is on the paper because that is the one thing a letter
-              can say that a progress bar cannot, and it is not duplicated
-              anywhere else on the screen. */}
-          <div className="absolute inset-x-0 top-0 flex h-[56%] flex-col items-center justify-center px-3 pt-2">
+              As of 2026-08-17 the sheet carries the *whole* result, not just
+              the digits: the metric is named, the direction of the scale is
+              stated, and the score sits on its own track against the goal. A
+              bare "46/100" is not a result - it is a number she has to scroll
+              to have explained, and the explanation was a second card
+              restating the reveal. One number, one moment, one place it is
+              read: the letter is the verdict, and the card below it is the
+              *gap* and what closes it.
+
+              Everything printed here has to survive at ~240px wide and ~155px
+              tall, which is why the metric line is one 9px sentence and the
+              track carries a single label. Her name is on the paper because
+              that is the one thing a letter can say that a progress bar
+              cannot. */}
+          <div className="absolute inset-x-0 top-0 flex h-[56%] flex-col items-center justify-center px-[8%] pt-[3%]">
             {/* Illustration, demoted to a wash behind the number. */}
             <Image
               src={src}
@@ -1313,19 +1266,60 @@ function EnvelopeReveal({
               priority
             />
 
-            <div className="relative flex flex-col items-center">
-              <div className="flex items-center gap-1.5">
+            <div className="relative flex w-full flex-col items-center">
+              <div className="flex w-full items-center justify-center gap-1.5">
                 <Sparkles className="w-3 h-3 text-primary shrink-0" />
-                <span className="max-w-[13ch] truncate text-[10px] font-semibold uppercase tracking-[0.18em] text-[#9A9A9A]">
+                <span className="min-w-0 truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9A9A9A]">
                   {name ? `${name}'s results` : "Your results"}
                 </span>
               </div>
+
               <p className="mt-0.5 flex items-baseline gap-0.5 leading-none">
                 <motion.span className="text-5xl font-black tracking-tight tabular-nums text-[#3D3D3D]">
                   {rounded}
                 </motion.span>
                 <span className="text-base font-semibold text-[#B0B0B0]">/100</span>
               </p>
+
+              {/* The metric, named, with the direction of the scale on the same
+                  line. Two lines here would cost the track its room, and the
+                  direction is worthless without the name next to it. */}
+              <p className="mt-1 text-center text-[9px] font-semibold leading-tight text-[#8A8A8A]">
+                Menopause Wellbeing Score · higher is better
+              </p>
+
+              {/* The scale. Her fill is ink and grows with the count-up, so the
+                  number and the bar land together; the gap to the goal is the
+                  only coloured thing on it, because that gap is what the plan
+                  sells. No "you" marker - the fill's own edge is her score and
+                  it sits directly under the number, so a second label would
+                  print the same figure twice within 40px. */}
+              <div className="mt-2.5 w-full">
+                <div className="relative h-1.5 overflow-hidden rounded-full bg-[#EDE3DF]">
+                  <div
+                    className="absolute top-0 h-full bg-green-500/30"
+                    style={{ left: `${score}%`, width: `${gap}%` }}
+                  />
+                  <motion.div
+                    className="absolute left-0 top-0 h-full rounded-full bg-[#3D3D3D]"
+                    style={{ width: fillWidth }}
+                  />
+                  <div
+                    className="absolute top-0 h-full w-[3px] rounded-full bg-green-600"
+                    style={{ left: `${SCORE_GOAL}%` }}
+                  />
+                </div>
+                {/* Safe at any score: it is clamped to 12..68 and the goal is
+                    80, so this label never travels and never collides. */}
+                <div className="relative mt-1 h-3">
+                  <span
+                    className="absolute -translate-x-1/2 whitespace-nowrap text-[9px] font-bold text-green-700"
+                    style={{ left: `${SCORE_GOAL}%` }}
+                  >
+                    Goal {SCORE_GOAL}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </motion.div>
@@ -2922,12 +2916,15 @@ function RegisterPageContent() {
             className="max-w-md mx-auto w-full pt-2"
           >
             {/* Results image, delivered: the envelope opens and her letter
-                rises out of it. The copy below is re-timed to cascade behind
-                the letter rather than land on top of it - see the delays. */}
+                rises out of it, and the letter is the score card - metric,
+                number, scale, goal. The copy below is re-timed to cascade
+                behind the letter rather than land on top of it - see the
+                delays. */}
             <div className="mb-3">
               <EnvelopeReveal
                 src="/results.webp"
                 scoreMv={scoreMv}
+                score={score}
                 name={firstName.trim() || undefined}
               />
             </div>
@@ -2968,14 +2965,15 @@ function RegisterPageContent() {
               {getSeverityPainText(derivedSeverity, topProblems.length, firstName || "you")}
             </motion.p>
 
-            {/* Her score. See <ScoreGauge /> for what changed and why. */}
+            {/* The gap her score leaves, and the plan that closes it. The score
+                itself was delivered by the letter above - see <ScoreGapCard />
+                for the split. */}
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.95 }}
             >
-              <ScoreGauge
-                scoreMv={scoreMv}
+              <ScoreGapCard
                 score={score}
                 benchmark={getScoreBenchmark(ageBand)}
                 cohortLabel={AGE_BAND_LABELS[ageBand] ?? "women your age"}

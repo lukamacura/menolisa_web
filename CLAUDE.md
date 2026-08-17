@@ -804,6 +804,40 @@ again also works — that calls `sync-session`.
 ## 7. CURRENT STATUS
 
 Recent work:
+- **The letter delivers the score card (2026-08-17)** — `<EnvelopeReveal />`'s
+  sheet used to print a bare `46/100`, which is not a result: it is a number she
+  has to scroll to have explained, and the explanation was `<ScoreGauge />`
+  restating the same metric name, the same "higher is better" and the same
+  number ~250px lower. The most expensive moment of craft in the funnel was
+  paying off a duplicate — the same fault the count-up fix had just removed, one
+  level up. The sheet now carries the whole verdict: metric named, direction
+  stated, her score on its own track with the goal marked and the gap to it in
+  green. `<ScoreGauge />` → `<ScoreGapCard />`, which keeps only what a scale
+  can't draw — **the gap as a number, the cohort benchmark in words, and the
+  handover to the plan**. The letter says where she is; the card says what is
+  missing and who closes it. Everything on the sheet has to survive at ~240×155
+  and the letter is `aria-hidden` (it is an animation), so the numbers are
+  announced once, from the card's `sr-only`.
+  Also: the severity headline's terminal full stop moved *inside* the sweep.
+  `HighlightSweep` is an `inline-block`, so a phrase that wraps fills the line
+  and the period landed alone on the next one, centred, reading as a stray
+  bullet under the headline.
+- **Estrogen chart: the hole under it (2026-08-17)** — `<EstrogenCurve />` drew
+  its baseline at y=119 in a 120-tall viewBox while the lines ran 16..104, so a
+  detached rule sat under the chart with a band of nothing above it. The box is
+  now sized to the ink in it (viewBox 110, floor at 106) and the "Now" line is
+  filled to that floor, so the troughs read as drops instead of a squiggle
+  hanging in space. The "Before" line is dashed again: it was declaring
+  `strokeDasharray` *and* animating `pathLength`, and framer-motion owns
+  `strokeDasharray` when it draws a path — the dash was overwritten and the
+  reference line had been rendering as a second solid series, which is the
+  comparison the block exists to make. It fades in now instead of drawing.
+- **`<PlanStage />` retimed and its captions cut (2026-08-17)** — the loop ran
+  just under 15s on a sales page; holds are ~20% shorter (3.4/4.2/4.4s) with the
+  tick and day-fill beat sheets moved to match, so every act still settles with
+  room before it hands over. The captions under it were a sentence of copy each,
+  under a picture already making the point — now one short line, 10px, on one
+  line of reserved height.
 - **Results screen: colour, evidence, measurement (2026-08-17)** — the `results`
   phase was the one screen in the funnel carrying its whole argument in
   typography over her own self-report. Three groups of change.

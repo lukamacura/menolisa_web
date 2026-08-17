@@ -62,24 +62,34 @@ import { PLAN_WEEKS } from "@/lib/pricing";
 
 type ActId = "plan" | "today" | "weeks";
 
+/* Holds are ~20% shorter than they were (4200/5200/5400): the whole loop ran
+   just under 15s, which is a long time to hold a reader who is mid-scroll on a
+   sales page, and every act had settled well before its hold ran out. The beat
+   sheets below moved with them so nothing lands in a dead act - see
+   TICK_START_MS and FILL_SPAN_MS.
+
+   The captions are one short line each. They used to run to a full sentence of
+   copy apiece, which is a second thing to read under a picture that is already
+   saying it, and the block under the scroll had to reserve two lines of height
+   for them. The picture makes the point; the caption only has to name it. */
 const ACTS: { id: ActId; label: string; hold: number; caption: string }[] = [
   {
     id: "plan",
     label: "Your plan, sealed",
-    hold: 4200,
-    caption: "Your symptoms, your goal, your name on it — before you start.",
+    hold: 3400,
+    caption: "Your name on it, before you start.",
   },
   {
     id: "today",
     label: "A day on the plan",
-    hold: 5200,
-    caption: "Then four small things a day. Nothing that needs a gym or a free hour.",
+    hold: 4200,
+    caption: "Four small things a day.",
   },
   {
     id: "weeks",
     label: "The 8-week arc",
-    hold: 5400,
-    caption: "Eight weeks, three phases: steady the basics, build on what works, lock it in.",
+    hold: 4400,
+    caption: "Eight weeks, three phases.",
   },
 ];
 
@@ -93,16 +103,18 @@ const INK = "#5c4327";
 const SCROLL_SIZES = "(max-width: 400px) 92vw, 340px";
 
 /* Act 2's beat sheet, in ms from the act's start. The rows land by ~0.75s, so
-   the first tick waits until she has had a moment to read them. */
-const TICK_START_MS = 1250;
-const TICK_EVERY_MS = 720;
+   the first tick waits until she has had a moment to read them. The four ticks
+   have to finish with room to spare inside the act's 4200ms hold, or "that's
+   day one, done" flashes up as the act is already leaving. */
+const TICK_START_MS = 1000;
+const TICK_EVERY_MS = 620;
 
 /* Act 3's beat sheet. Must stay in step with the per-dot delays below - the
    week counter reads off the same arithmetic the CSS delays are built from,
    and FILL_DOT_MS must match the `.plan-day` animation duration in
    globals.css. */
-const FILL_START_MS = 380;
-const FILL_SPAN_MS = 2100;
+const FILL_START_MS = 340;
+const FILL_SPAN_MS = 1850;
 const FILL_DOT_MS = 220;
 /** Gap between one day lighting up and the next. */
 const FILL_STEP_MS = (FILL_SPAN_MS - FILL_DOT_MS) / (PLAN_DAYS - 1);
@@ -237,7 +249,8 @@ export function PlanStage({
         ))}
       </div>
 
-      <div aria-hidden className="relative min-h-[34px] px-2">
+      {/* One line, so the reserved height is one line. */}
+      <div aria-hidden className="relative min-h-[20px] px-2">
         <AnimatePresence initial={false}>
           <motion.p
             key={act.id}
@@ -245,7 +258,7 @@ export function PlanStage({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: reduced ? 0 : 0.26, ease: [0.16, 1, 0.3, 1] }}
-            className="absolute inset-x-0 text-center text-[11px] leading-snug text-[#5A5A5A]"
+            className="absolute inset-x-0 text-center text-[10px] leading-snug text-[#9A9A9A]"
           >
             {act.caption}
           </motion.p>
