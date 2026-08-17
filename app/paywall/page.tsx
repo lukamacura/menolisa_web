@@ -66,7 +66,16 @@ export default function PaywallPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ plan: PLAN_ID, return_origin: origin || undefined }),
+        // `from_registration` is about where checkout *returns*, not where it
+        // started: success lands on `/register?phase=download` (get the app,
+        // here is the address you log in with) and cancel comes back here. The
+        // alternative, `/checkout/success`, still tells her to open Lisa on the
+        // web dashboard — a product that was deleted in 2026-08-14.
+        body: JSON.stringify({
+          plan: PLAN_ID,
+          from_registration: true,
+          return_origin: origin || undefined,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {

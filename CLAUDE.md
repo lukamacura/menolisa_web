@@ -520,7 +520,7 @@ Ad tracking for the `/register` web2app funnel:
 | `Lead` | `app/register/page.tsx` `completeRegistration()`, after save-quiz succeeds | — |
 | `ResultsView` *(custom)* | `app/register/page.tsx` on the results phase | — |
 | `PlanView` *(custom)* | `app/register/page.tsx` on the plan phase (`diagnosis`) | — |
-| `PlanScrollDepth` *(custom)* | `app/register/page.tsx` plan-phase scroll, bucketed 25/50/75/100 | — |
+| `PlanScrollDepth` *(custom)* | `app/register/page.tsx` results- **and** plan-phase scroll, bucketed 25/50/75/100, with `screen: "results" \| "plan"` | — |
 | `ReliefDone` *(custom)* | `app/register/page.tsx` when the breathing reward lands | — |
 | `ChecklistDone` *(custom)* | `app/register/page.tsx` when the nutrition verdict lands | — |
 | `ViewContent` | `components/PaywallView.tsx` on mount (once) | $59 |
@@ -531,8 +531,15 @@ Step names and their sessionStorage dedup keys are paired in `META_FUNNEL_STEPS`
 (`lib/metaPixel.ts`) and fired through `trackFunnelStep()`. `QuizStep` and
 `PlanScrollDepth` are parameterized rather than one event per position, so each
 is a single Custom Conversion with a breakdown instead of 13 (or 4) of them —
-`trackQuizStep()` / `trackPlanScrollDepth()` in `lib/metaPixelClient.ts` carry
+`trackQuizStep()` / `trackScrollDepth()` in `lib/metaPixelClient.ts` carry
 the dedup keys.
+
+`PlanScrollDepth` covers **both** long scrolls in the funnel, separated by its
+`screen` param, so one Custom Conversion broken down `screen` × `depth` reports
+both. The name is legacy — it measured only the plan screen for a day — and is
+kept deliberately: renaming it would silently orphan the Custom Conversion
+already defined against it. The dedup key is per screen *and* bucket
+(`scrollDepthOnceKey`), so the two screens can't suppress each other.
 
 Every custom event needs a **Custom Conversion** defined in Events Manager
 before it can be optimized for or used as an audience. `Lead` is standard and
@@ -797,6 +804,91 @@ again also works — that calls `sync-session`.
 ## 7. CURRENT STATUS
 
 Recent work:
+- **Results screen: colour, evidence, measurement (2026-08-17)** — the `results`
+  phase was the one screen in the funnel carrying its whole argument in
+  typography over her own self-report. Three groups of change.
+  **Measurement first, again**: results is a four-card scroll and `ResultsView`
+  (on mount) was the only thing it reported, so "reached results" and "saw that
+  the plan exists" were the same number and nothing below the fold was
+  falsifiable. `trackPlanScrollDepth()` → `trackScrollDepth(screen, percent)`,
+  and both long scrolls now report through the one event with a `screen` param
+  (see §4). Ship this and read it before judging anything below.
+  **Colour, given one job**: the screen had brand pink on the CTA, on the
+  plan-ready card *and* on her symptom count — the single worst number on the
+  page painted in the same ink as the button — while three of its four cards
+  shared a byte-identical cream shell, so nothing read as subordinate to
+  anything. The rule now: ink = fact, rose = the load she carries now, green =
+  the gap and what closes it, **pink = the CTA and nothing else**. So the
+  symptom count is rose, the plan-ready card is green (it answers the gauge's
+  gap, and it no longer reads as a second button 60px above the real one), and
+  `HighlightSweep` gained a `rose` variant for the results headline — which
+  until now was the only headline in the funnel with *no* sweep on it, while
+  the three on the plan screen one tap later all had one. `getSeverityHeadline`
+  returns `{pre, sweep, post}` for that reason.
+  **Evidence**: her symptom tiles were 48px circles under 9px grey labels — the
+  most personal element on the screen rendered as its smallest, in a size a
+  presbyopic 45-60 reader cannot resolve, 90 seconds after she tapped the same
+  tiles at ~224px. Now a 3-col grid of square tiles (square because the sources
+  are 460×460 and a landscape crop would cut 25% off centred illustrations),
+  capped at 6 with a "+N more". And `<EstrogenCurve />` draws the claim the card
+  stakes everything on — it is the only block on the screen that isn't her own
+  answers read back to her, and it is captioned as illustrative of the pattern
+  rather than as her levels.
+  **One number, one moment**: the envelope printed her final score at ~1s and
+  `<ScoreGauge />` then spent until 2.3s counting up to a number she had already
+  read, under a second copy of the same "score /100 / Higher is better" stack.
+  The count-up moved onto the letter (retimed to the sheet's rise), the letter
+  gained her name, and the gauge dropped its hero number to lead with the
+  **gap** — the only figure on the screen she is actually being asked to buy.
+  Her score still reads off her marker on the track. The gauge also now *shows*
+  the cohort benchmark, which was computed, passed as a prop, used to pick the
+  verdict word, and then rendered to nobody but a screen reader.
+  Also: the pain paragraph is left-aligned and a step larger — centred 14px
+  mid-grey was the hardest possible way to read the emotional core of the page.
+  **Not changed, deliberately**: no product screenshot, before/after or polaroid
+  moved onto results. Results has to make her believe the *diagnosis*; the plan
+  screen has to make her believe the *product*. Moving that proof forward spends
+  the offer screen's ammunition early, which is the mistake the 2026-08-16 pass
+  had just finished undoing.
+  **Known open item**: the "Harder than it hits most" card makes a comparative
+  claim and then discloses, in its own footnote, that "typical" is a modelled
+  profile rather than a survey average. That is honest, and it is the one thread
+  a sceptic can pull on the screen where belief is formed — a comparison that
+  admits its own baseline is invented. It was left alone because the fix is
+  either real benchmark data or dropping the vs-typical framing, and both are
+  calls about what the product is willing to claim, not layout. `results.webp`
+  is a second one: it is a full portrait illustration rendered at `opacity-15`
+  as a wash behind the score, so 83KB (over the 50KB guideline in §5) buys
+  something 85% invisible.
+- **The funnel has one entrance (2026-08-17)** — `/register` now always starts at
+  question 1, and `?phase=paywall` is gone.
+  The quiz answers live in React state and nothing persists them, so any URL
+  landing her *past* the quiz lands her in a funnel with no answers in it. On the
+  paywall that was a money bug rather than a cosmetic one:
+  `handleStartCheckout` signed her in anonymously *unconditionally* to get the
+  session `create-checkout` needs, so a woman arriving cold on
+  `/register?phase=paywall` — from her history, a bookmark, or `proxy.ts` — could
+  buy on a blank account, and `generatePlan()` would read no profile
+  (`buildPlan({})`) and build the generic plan. She paid $59 for personalisation
+  and got the default, with nothing to tell her before the charge.
+  Rather than detect that state, the entrance was removed. **Two URLs, one job
+  each**: `/register` is the funnel and only accepts `?phase=download` (Stripe's
+  success URL — she has already paid, there is nothing left to lose);
+  `/paywall` is the price screen for anyone who *already has an account*, which
+  is the same `<PaywallView />` with nothing to re-collect. Stripe's cancel URL
+  and `proxy.ts`'s payment gate both point at `/paywall` now (the dashboard
+  layout already did), and `proxy.ts`'s `no-onboarding` case points at plain
+  `/register`. The residual guard in `handleStartCheckout` is a `getUser()`
+  check that restarts the quiz instead of minting a blank account.
+  `/paywall` also passes `from_registration: true` now, so a purchase there ends
+  on the funnel's download screen instead of `/checkout/success`, which still
+  invites her to open Lisa on the web dashboard deleted in 2026-08-14.
+  **Server-side data was never being lost** — every `user_trials` row has its
+  `user_profiles` row; only the browser's copy goes, and re-walking the funnel
+  UPDATEs the profile on the same account.
+  One gap is deliberate and unchanged: `adoptQuizProfile()` keeps the *older*
+  profile on an email collision, so a returning customer's re-take is discarded
+  in favour of what that account already had.
 - **`q_safety` → `q_limitations` (2026-08-16)** — the `/register` screen that
   read "Do any of these apply to you?" and collected clinical contraindications
   now asks "Does anything hurt or hold you back when you move?" and collects

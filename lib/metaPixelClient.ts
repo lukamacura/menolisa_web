@@ -10,6 +10,7 @@ import {
   quizStepOnceKey,
   scrollDepthOnceKey,
   type MetaFunnelStep,
+  type MetaScrollScreen,
 } from "@/lib/metaPixel";
 
 export type FbTrackParams = Record<string, unknown>;
@@ -80,14 +81,21 @@ export function trackQuizStep(index: number, stepId: string, total: number): voi
 }
 
 /**
- * Scroll depth on the plan screen, reported once per bucket crossed. Called from
- * a scroll handler, so it must stay cheap: the buckets are a fixed four-element
- * array and `trackFbOnce` short-circuits on a sessionStorage hit.
+ * Scroll depth on one of the funnel's two long scrolls, reported once per bucket
+ * crossed. Called from a scroll handler, so it must stay cheap: the buckets are
+ * a fixed four-element array and `trackFbOnce` short-circuits on a
+ * sessionStorage hit.
+ *
+ * `screen` rides along as a parameter rather than forking the event name, so
+ * results and plan land in one Custom Conversion with a breakdown.
  */
-export function trackPlanScrollDepth(percent: number): void {
+export function trackScrollDepth(screen: MetaScrollScreen, percent: number): void {
   for (const bucket of META_SCROLL_BUCKETS) {
     if (percent >= bucket) {
-      trackFbOnce(scrollDepthOnceKey(bucket), META_SCROLL_EVENT, { depth: bucket });
+      trackFbOnce(scrollDepthOnceKey(screen, bucket), META_SCROLL_EVENT, {
+        screen,
+        depth: bucket,
+      });
     }
   }
 }

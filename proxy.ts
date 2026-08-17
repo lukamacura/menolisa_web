@@ -110,10 +110,18 @@ export async function proxy(req: NextRequest) {
     const decision = evaluateTrialStatus((trialRow as TrialRow | null) ?? null);
 
     if (decision !== "allow") {
+      // Two destinations, and the split is "does she already have an account
+      // with her answers on it". `paywall` means she does (the row only exists
+      // because save-quiz wrote it), so `/paywall` shows her the price with
+      // nothing to re-collect — the same page the dashboard layout redirects to.
+      // `no-onboarding` means she has no row at all, so she goes to the funnel,
+      // which always starts at question 1. Neither carries a `?phase=`: the
+      // funnel's quiz answers live in React state only, so any link that lands
+      // her past the quiz lands her there without them (see the phase comment in
+      // app/register/page.tsx).
       const url = req.nextUrl.clone();
-      url.pathname = "/register";
+      url.pathname = decision === "no-onboarding" ? "/register" : "/paywall";
       url.search = "";
-      url.searchParams.set("phase", decision === "no-onboarding" ? "quiz" : "paywall");
       return NextResponse.redirect(url);
     }
   }

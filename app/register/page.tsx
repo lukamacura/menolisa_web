@@ -50,6 +50,7 @@ import {
 import { PaywallView } from "@/components/PaywallView";
 // The identical component used to be defined a second time in this file, with a
 // narrower `variant` union that had already drifted from the shared one.
+import { EstrogenCurve } from "@/components/EstrogenCurve";
 import { HighlightSweep } from "@/components/HighlightSweep";
 import MetaPurchaseTracker from "@/components/MetaPurchaseTracker";
 import { SocialProofPolaroid } from "@/components/SocialProof";
@@ -64,8 +65,8 @@ import { getSymptomTransforms } from "@/lib/testimonials";
 import { getOfferPromise } from "@/lib/planTimeline";
 import {
   trackFunnelStep,
-  trackPlanScrollDepth,
   trackQuizStep,
+  trackScrollDepth,
 } from "@/lib/metaPixelClient";
 import {
   SYMPTOM_LABELS,
@@ -514,20 +515,6 @@ type Phase =
   | "download";
 
 
-// The score's own colour is deliberately *not* a verdict any more.
-//
-// It used to be red under 40 and orange above - never green, at any value - on a
-// scale where higher is better. So the number always rendered in alarm paint
-// regardless of what it said, and a woman scoring well was shown a warning
-// colour for it. Between that, an ⚠ icon in the card header and a red-to-orange
-// progress fill, the card was three separate signals of "bad" attached to a
-// number whose direction she was never told.
-//
-// The number is now ink-coloured and the *gap* between her and the goal carries
-// the colour, because the gap is the thing the plan closes and therefore the
-// thing she is buying. See <ScoreGauge />.
-const SCORE_INK = "text-[#3D3D3D]";
-
 // Returns the sentence *after* the name, so the name can be rendered bold and
 // the rest regular weight (name carries the emphasis, not the whole line).
 //
@@ -537,15 +524,25 @@ const SCORE_INK = "text-[#3D3D3D]";
 // one more person telling her how to feel. Stating the finding instead lets her
 // draw the conclusion, which is both less presumptuous and more persuasive: she
 // arrives at "this can't continue" herself, and then it's hers.
-const getSeverityHeadline = (severity: string): string => {
+//
+// Split into three parts rather than returned as one string so the finding
+// itself can carry the marker sweep. This is the most loaded headline in the
+// funnel - her name, then the verdict - and until 2026-08-17 it was the only
+// headline in the funnel with no highlight on it at all, while the three on the
+// plan screen one tap later all had one. The swept phrase is deliberately the
+// finding and not the name: the name is already bold, and sweeping both would
+// leave the line with no hierarchy again.
+type SeverityHeadline = { pre: string; sweep: string; post: string };
+
+const getSeverityHeadline = (severity: string): SeverityHeadline => {
   switch (severity) {
     case "severe":
-      return ", this is worse than you've been told.";
+      return { pre: ", this is ", sweep: "worse than you've been told", post: "." };
     case "moderate":
-      return ", I need to be honest.";
+      return { pre: ", ", sweep: "I need to be honest", post: " with you." };
     case "mild":
     default:
-      return ", let's talk about what's really going on.";
+      return { pre: ", let's talk about ", sweep: "what's really going on", post: "." };
   }
 };
 
@@ -1042,16 +1039,25 @@ function ScoreGauge({
 }) {
   const prefersReducedMotion = useReducedMotion();
   const fillWidth = useTransform(scoreMv, (v) => `${v}%`);
-  // The number and the fill are two views of one motion value, so they can't
-  // drift: they used to be a 1.5s setInterval and a 1.2s framer tween racing
-  // each other on the same card, finishing 300ms apart.
-  const rounded = useTransform(scoreMv, (v) => Math.round(v));
   const gap = Math.max(0, SCORE_GOAL - score);
   const verdict = getScoreVerdict(score, benchmark);
 
   return (
     <div className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-4 shadow-md shadow-primary/5">
-      <div className="flex items-baseline justify-between gap-2 mb-3">
+      {/* The header used to repeat the letter's payoff verbatim - the same
+          number over the same "Higher is better", a screen-height below it. The
+          number now belongs to <EnvelopeReveal /> and this card leads with the
+          gap instead, which is the only figure on the screen she is actually
+          being asked to buy. Her score still reads off the bar, on her marker.
+
+          The gap is the one figure here allowed to carry colour, and it is
+          green. The score itself is never painted as a verdict: it used to
+          render red under 40 and orange above - never green, at any value - on
+          a scale where higher is better, so the number always appeared in alarm
+          paint regardless of what it said, and a woman scoring well was shown a
+          warning colour for it. Colour belongs on the gap because the gap is
+          what the plan closes, and therefore what she is buying. */}
+      <div className="flex items-baseline justify-between gap-3 mb-3">
         <div className="min-w-0">
           <h2 className="text-sm font-bold text-[#3D3D3D] leading-tight">
             Menopause Wellbeing Score
@@ -1060,23 +1066,30 @@ function ScoreGauge({
             Higher is better
           </p>
         </div>
-        <p className="flex shrink-0 items-baseline gap-0.5 leading-none">
-          <motion.span className={cn("text-4xl font-black tracking-tight", SCORE_INK)}>
-            {rounded}
-          </motion.span>
-          <span className="text-sm font-semibold text-[#B0B0B0]">/100</span>
+        {/* `gap` is always 12..68: calculateWellbeingScore compresses to a
+            SCORE_CEILING of 68 precisely so there is never a zero gap to
+            render, which is why there is no at-goal branch here. */}
+        <p className="shrink-0 text-right leading-none">
+          <span className="block text-4xl font-black tracking-tight text-green-600">{gap}</span>
+          <span className="mt-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9A9A]">
+            points to close
+          </span>
         </p>
       </div>
 
       {/* Her marker, above the bar on a connector - the one place it can sit
-          without colliding with the goal label at any score in range. */}
+          without colliding with the goal label at any score in range. It carries
+          the number now that the header doesn't, so the score is attached to its
+          own position on the scale rather than floating above it. */}
       <div className="relative h-5">
         <div
           className="absolute -translate-x-1/2 flex flex-col items-center"
           style={{ left: `${score}%` }}
         >
+          {/* Safe at any width: score is clamped to 12..68, so the label never
+              travels near either edge of the track. */}
           <span className="rounded-full bg-[#3D3D3D] px-1.5 py-0.5 text-[9px] font-bold leading-none text-white whitespace-nowrap">
-            You
+            You {score}
           </span>
           <span className="h-1.5 w-px bg-[#3D3D3D]/40" />
         </div>
@@ -1109,18 +1122,24 @@ function ScoreGauge({
         </span>
       </div>
 
+      {/* The cohort benchmark was computed, passed in as a prop, used to pick
+          the verdict word - and then shown to nobody but a screen reader. A
+          score out of 100 means nothing without a reference point, and this is
+          the reference point we already had. It is stated in words rather than
+          drawn as a third marker on the track, which is what the 2026-08-16
+          rebuild removed for crowding the scale. */}
       <p className="text-xs text-[#5A5A5A] leading-snug mt-1.5">
-        Menopause is <span className="font-bold text-[#3D3D3D]">{verdict}</span>.
+        Menopause is <span className="font-bold text-[#3D3D3D]">{verdict}</span>. Typical for{" "}
+        {cohortLabel} is around <span className="font-bold text-[#3D3D3D]">{benchmark}</span>.
       </p>
-      {gap > 0 && (
-        <p className="mt-1.5 flex items-start gap-1.5 text-xs text-[#5A5A5A] leading-snug">
-          <Goal className="w-4 h-4 text-green-600 shrink-0 mt-px" />
-          <span>
-            <span className="font-bold text-[#3D3D3D]">{gap} points</span> is the gap your{" "}
-            {PLAN_WEEKS}-week plan is built to close.
-          </span>
-        </p>
-      )}
+      <p className="mt-1.5 flex items-start gap-1.5 text-xs text-[#5A5A5A] leading-snug">
+        <Goal className="w-4 h-4 text-green-600 shrink-0 mt-px" />
+        <span>
+          That gap is what your{" "}
+          <span className="font-bold text-[#3D3D3D]">{PLAN_WEEKS}-week plan</span> is built to
+          close.
+        </span>
+      </p>
       <p className="sr-only">
         Your score is {score} out of 100, where higher is better. Typical for {cohortLabel} is
         around {benchmark}. The goal is {SCORE_GOAL}.
@@ -1208,8 +1227,18 @@ const FLAP_DURATION = 0.55;
 const FLAP_ZSWAP = FLAP_DELAY + FLAP_DURATION / 2; // 0.475s
 const LETTER_DELAY = 0.58;
 
-function EnvelopeReveal({ src, score }: { src: string; score: number }) {
+function EnvelopeReveal({
+  src,
+  scoreMv,
+  name,
+}: {
+  src: string;
+  scoreMv: MotionValue<number>;
+  name?: string;
+}) {
   const prefersReducedMotion = useReducedMotion();
+  // The count-up lives on the letter now - see the note on the sheet's face.
+  const rounded = useTransform(scoreMv, (v) => Math.round(v));
 
   // Reduced motion gets the finished picture: envelope open, letter out, no
   // travel. `initial={false}` on each mover skips the animation entirely.
@@ -1259,7 +1288,20 @@ function EnvelopeReveal({ src, score }: { src: string; score: number }) {
               art. The animation is the most expensive moment of craft in the
               funnel and it was delivering a non-answer - so the number moved
               onto the page, and the illustration stayed on as the backdrop it
-              always was. */}
+              always was.
+
+              The number *counts up here*, rather than sitting finished while a
+              separate card below counts up to it. Until 2026-08-17 both
+              happened: the sheet printed the final score at about 1s, and then
+              <ScoreGauge /> spent until 2.3s climbing to a number she had
+              already read, under a second copy of the same "Your score … /100 …
+              Higher is better" stack roughly 250px lower. The most expensive
+              reveal in the funnel was paying off a duplicate. One number, one
+              moment: the letter is the payoff, the gauge is the analysis.
+
+              Her name is on the paper because that is the one thing a letter
+              can say that a progress bar cannot, and it is not duplicated
+              anywhere else on the screen. */}
           <div className="absolute inset-x-0 top-0 flex h-[56%] flex-col items-center justify-center px-3 pt-2">
             {/* Illustration, demoted to a wash behind the number. */}
             <Image
@@ -1274,17 +1316,16 @@ function EnvelopeReveal({ src, score }: { src: string; score: number }) {
             <div className="relative flex flex-col items-center">
               <div className="flex items-center gap-1.5">
                 <Sparkles className="w-3 h-3 text-primary shrink-0" />
-                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#9A9A9A]">
-                  Your score
+                <span className="max-w-[13ch] truncate text-[10px] font-semibold uppercase tracking-[0.18em] text-[#9A9A9A]">
+                  {name ? `${name}'s results` : "Your results"}
                 </span>
               </div>
               <p className="mt-0.5 flex items-baseline gap-0.5 leading-none">
-                <span className="text-5xl font-black tracking-tight text-[#3D3D3D]">{score}</span>
+                <motion.span className="text-5xl font-black tracking-tight tabular-nums text-[#3D3D3D]">
+                  {rounded}
+                </motion.span>
                 <span className="text-base font-semibold text-[#B0B0B0]">/100</span>
               </p>
-              <span className="mt-1 text-[9px] font-medium uppercase tracking-[0.14em] text-[#9A9A9A]">
-                Higher is better
-              </span>
             </div>
           </div>
         </motion.div>
@@ -1660,12 +1701,24 @@ function RegisterPageContent() {
   const searchParams = useSearchParams();
   const prefersReducedMotion = useReducedMotion();
 
-  // Always start on the start screen; URL ?phase=download|paywall lets Stripe redirect skip back into the funnel.
-  // Initialize synchronously from URL so the auth-redirect effect below sees the correct phase on first render
-  // (otherwise authenticated users sent here by middleware bounce back to /dashboard → infinite loop).
+  /**
+   * The funnel has one entrance: question 1. Every load starts there.
+   *
+   * The answers live in React state and nothing persists them, so any URL that
+   * drops her *past* the quiz drops her into a funnel with no answers in it —
+   * and the paywall is the one place that matters, because checkout would then
+   * charge an account with no profile and `generatePlan()` would build the
+   * generic plan. Rather than detect that case, we removed it: `?phase=paywall`
+   * is gone, and everyone who already has an account goes to `/paywall`
+   * instead (Stripe's cancel URL, `proxy.ts`, the dashboard layout).
+   *
+   * `?phase=download` is the single exception and has to be: it is Stripe's
+   * success URL, she arrives on it from another origin, and by then she has
+   * paid — there is nothing left to personalise or lose.
+   */
   const [phase, setPhase] = useState<Phase>(() => {
     const phaseParam = searchParams.get("phase");
-    if (phaseParam === "download" || phaseParam === "paywall") return phaseParam;
+    if (phaseParam === "download") return phaseParam;
     // Dev-only: preview the results / plan / relief steps directly without
     // finishing the quiz.
     if (
@@ -1905,13 +1958,24 @@ function RegisterPageContent() {
   const diagnosisTransforms = useMemo(() => getSymptomTransforms(topProblems, 3), [topProblems]);
   const transformCarousel = useCarouselIndex(diagnosisTransforms.length);
 
-  // Scroll depth on the plan screen, the longest scroll in the funnel. Without
-  // it, "reached the plan screen" and "reached its CTA" are the same number.
+  // Scroll depth on the funnel's two long scrolls. Without it, "reached the
+  // screen" and "reached its CTA" are the same number on both of them.
+  //
+  // Results was unmeasured below the fold until 2026-08-17: `ResultsView` fired
+  // on mount and nothing else did, so there was no way to tell whether anyone
+  // reached "your 8-week plan is ready" - the block whose entire job is closing
+  // the promise the start screen opened.
+  const onResultsScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const travel = el.scrollHeight - el.clientHeight;
+    if (travel <= 0) return;
+    trackScrollDepth("results", Math.round((el.scrollTop / travel) * 100));
+  }, []);
   const onPlanScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
     const travel = el.scrollHeight - el.clientHeight;
     if (travel <= 0) return;
-    trackPlanScrollDepth(Math.round((el.scrollTop / travel) * 100));
+    trackScrollDepth("plan", Math.round((el.scrollTop / travel) * 100));
   }, []);
   // Normalized body metrics (canonical cm/kg) derived from the per-unit inputs.
   const bodyMetrics = useMemo(() => {
@@ -1999,6 +2063,20 @@ function RegisterPageContent() {
     return () => clearTimeout(t);
   }, [phase]);
 
+  // Results headline sweep. Timed to land *after* the letter finishes rising -
+  // LETTER_DELAY (0.58s) plus its 0.8s travel - so the marker doesn't pull the
+  // eye off the reveal it is supposed to follow. The headline itself is already
+  // on screen by then (delay 0.75); the sweep is the second beat, not the first.
+  const [resultsHighlight, setResultsHighlight] = useState(false);
+  useEffect(() => {
+    if (phase !== "results") {
+      setResultsHighlight(false);
+      return;
+    }
+    const t = setTimeout(() => setResultsHighlight(true), 1550);
+    return () => clearTimeout(t);
+  }, [phase]);
+
   // Calculating screen: the percentage and the message carousel, both derived
   // from one rAF clock so they never disagree about how far along she is. The
   // work that sits behind this loader (account + save-quiz) is driven by the
@@ -2037,9 +2115,14 @@ function RegisterPageContent() {
     }
     scoreAnimated.current = true;
     scoreMv.set(0);
+    // Retimed to the letter, which now carries the number: it starts rising at
+    // LETTER_DELAY (0.58s) and lands 0.8s later, so the count starts just as the
+    // sheet clears the envelope's mouth and settles a fraction after it stops.
+    // It used to start at 0.9s and run to 2.3s, which was tuned for a card
+    // roughly a screen below the reveal.
     const controls = animate(scoreMv, score, {
-      duration: prefersReducedMotion ? 0 : 1.4,
-      delay: prefersReducedMotion ? 0 : 0.9,
+      duration: prefersReducedMotion ? 0 : 1.15,
+      delay: prefersReducedMotion ? 0 : 0.75,
       ease: [0.16, 1, 0.3, 1],
     });
     return () => controls.stop();
@@ -2436,27 +2519,35 @@ function RegisterPageContent() {
     };
   }, [phase, searchParams]);
 
+  /** Back to question 1. The funnel's only recovery move — there is no state to
+   *  restore, so restarting is both the simplest repair and the honest one. */
+  const restartQuiz = useCallback(() => {
+    setStepIndex(0);
+    setPhase("quiz");
+  }, []);
+
   const handleStartCheckout = async () => {
     if (checkoutLoading) return;
     setError(null);
     setCheckoutLoading(true);
     try {
-      // The paywall is reachable without walking the funnel — proxy.ts sends
-      // lapsed accounts to `?phase=paywall`, and so does every "See my plan"
-      // link in the pending-payment emails. `create-checkout` needs a session,
-      // so mint one rather than dead-ending her on "Could not start checkout".
-      // If she is really an existing customer, the email she types at Stripe
+      // By construction she has an account here: this screen is only reachable
+      // by walking the funnel, and the loader does not open the results until
+      // `completeRegistration()` has saved her answers to it.
+      //
+      // So a missing session means the funnel is not in the state it looks like
+      // it is in — a wiped storage mid-visit, an expired token. Restart the quiz
+      // rather than minting a blank anonymous account, which is what this used
+      // to do: that account has no profile, and the plan she paid $59 for would
+      // come out generic. Two minutes of quiz beats the wrong plan.
+      // (If she is really an existing customer, the email she types at Stripe
       // collides in the webhook and the subscription is merged onto her real
-      // account (see resolveCheckoutAccount).
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (!sessionData?.session) {
-        const { error: anonError } = await supabase.auth.signInAnonymously();
-        if (anonError) {
-          console.error("Anonymous sign-in failed before checkout:", anonError);
-          setError("Could not start checkout. Please try again.");
-          setCheckoutLoading(false);
-          return;
-        }
+      // account — see resolveCheckoutAccount.)
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData?.user) {
+        restartQuiz();
+        setCheckoutLoading(false);
+        return;
       }
 
       const origin = typeof window !== "undefined" ? window.location.origin : "";
@@ -2577,14 +2668,11 @@ function RegisterPageContent() {
           return;
         }
 
-        // No access. She stays in the funnel and sees all of it. The only thing
-        // worth honouring is `proxy.ts` sending an account with no onboarding to
-        // `?phase=quiz` — otherwise the start screen is the right landing, and
-        // it is emphatically the right landing for an ad click.
-        if (searchParams.get("phase") === "quiz" && phase !== "quiz") {
-          setPhase("quiz");
-          setStepIndex(0);
-        }
+        // No access. She stays in the funnel and sees all of it, from the start
+        // screen — which is emphatically the right landing for an ad click, and
+        // now the only one. (`proxy.ts` used to send accounts with no onboarding
+        // to `?phase=quiz`; it sends them to plain `/register` instead, so there
+        // is no longer a phase param to honour.)
       } catch (e) {
         if (!mounted) return;
         console.error("Error checking session:", e);
@@ -2823,7 +2911,10 @@ function RegisterPageContent() {
 
       {/* Results Phase */}
       {phase === "results" && (
-        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pb-[calc(120px+env(safe-area-inset-bottom))] [scrollbar-width:thin] [scrollbar-color:rgba(255,141,161,0.35)_transparent] [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-primary/30 hover:[&::-webkit-scrollbar-thumb]:bg-primary/50">
+        <div
+          onScroll={onResultsScroll}
+          className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pb-[calc(120px+env(safe-area-inset-bottom))] [scrollbar-width:thin] [scrollbar-color:rgba(255,141,161,0.35)_transparent] [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-primary/30 hover:[&::-webkit-scrollbar-thumb]:bg-primary/50"
+        >
           <motion.div
             key="results"
             initial={{ opacity: 0 }}
@@ -2834,26 +2925,45 @@ function RegisterPageContent() {
                 rises out of it. The copy below is re-timed to cascade behind
                 the letter rather than land on top of it - see the delays. */}
             <div className="mb-3">
-              <EnvelopeReveal src="/results.webp" score={score} />
+              <EnvelopeReveal
+                src="/results.webp"
+                scoreMv={scoreMv}
+                name={firstName.trim() || undefined}
+              />
             </div>
 
-            {/* Headline */}
-            <motion.h1
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.75 }}
-              className="text-3xl sm:text-4xl font-normal text-[#3D3D3D] text-center leading-tight mb-2"
-            >
-              <span className="font-bold">{firstName.trim() || "You"}</span>
-              {getSeverityHeadline(derivedSeverity)}
-            </motion.h1>
+            {/* Headline. The finding carries a rose sweep - see
+                getSeverityHeadline for why it is split into three parts. */}
+            {(() => {
+              const headline = getSeverityHeadline(derivedSeverity);
+              return (
+                <motion.h1
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.75 }}
+                  className="text-3xl sm:text-4xl font-normal text-[#3D3D3D] text-center leading-tight mb-2"
+                >
+                  <span className="font-bold">{firstName.trim() || "You"}</span>
+                  {headline.pre}
+                  <HighlightSweep variant="rose" active={resultsHighlight}>
+                    {headline.sweep}
+                  </HighlightSweep>
+                  {headline.post}
+                </motion.h1>
+              );
+            })()}
 
-            {/* Pain paragraph */}
+            {/* Pain paragraph. Left-aligned and a step larger than it was: this
+                is the emotional core of the screen, it runs to four or five
+                lines, and centred 14px mid-grey is the hardest possible way to
+                read that on a 45-60 audience. Centred is right for one-line
+                headings and wrong for body copy - the ragged left edge costs a
+                re-fixation on every line. */}
             <motion.p
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.85 }}
-              className="text-sm text-[#5A5A5A] text-center leading-relaxed mb-4"
+              className="text-[15px] text-[#5A5A5A] leading-relaxed mb-4 px-0.5"
             >
               {getSeverityPainText(derivedSeverity, topProblems.length, firstName || "you")}
             </motion.p>
@@ -2886,9 +2996,11 @@ function RegisterPageContent() {
                 rather than "shifting estrogen", which is clinical shorthand
                 that tells a 45-60 reader nothing she can picture. */}
             {topProblems.length > 0 && (() => {
-              const chips = topProblems
-                .filter((id) => SYMPTOM_IMAGE[id])
-                .slice(0, 5);
+              const withImage = topProblems.filter((id) => SYMPTOM_IMAGE[id]);
+              // Six fills two clean rows of three. Five left an orphan tile on
+              // its own row, and nine turned the card into a wall.
+              const tiles = withImage.slice(0, 6);
+              const overflow = withImage.length - tiles.length;
               const one = topProblems.length === 1;
               return (
                 <motion.div
@@ -2901,7 +3013,11 @@ function RegisterPageContent() {
                     Why this is happening to you
                   </p>
                   <p className="text-center mb-4">
-                    <span className="block text-5xl font-black text-primary leading-none">
+                    {/* The count is the load she is carrying, so it takes the
+                        load colour. It used to render in brand pink - the same
+                        ink as the CTA gradient and the plan card, which made
+                        the one bad number on the screen look like an offer. */}
+                    <span className="block text-5xl font-black text-[#B23A31] leading-none">
                       {topProblems.length}
                     </span>
                     <span className="block text-sm font-medium text-[#3D3D3D] mt-1.5">
@@ -2912,28 +3028,69 @@ function RegisterPageContent() {
                     </span>
                   </p>
 
-                  {/* Her symptoms as image chips. This is the only place they are
-                      shown on this screen - there used to be a second, redundant
-                      row of red text pills immediately below this card, the same
-                      list twice in two visual languages about 40px apart. */}
-                  <div className="flex flex-wrap justify-center gap-2 mb-1">
-                    {chips.map((id) => (
-                      <div key={id} className="flex flex-col items-center gap-1 w-16">
-                        <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#E8DDD9] shadow-sm">
+                  {/* The claim above, drawn. See <EstrogenCurve /> for why this
+                      is the one block on the screen that isn't her own answers
+                      read back to her. */}
+                  <EstrogenCurve className="mb-4" />
+
+                  {/* Her symptoms, at a size she can actually read.
+                      These were 48px circles under 9px grey labels until
+                      2026-08-17 - the most personal element on the screen
+                      rendered as its smallest, in a type size a presbyopic
+                      45-60 reader cannot resolve at arm's length. She tapped
+                      these same tiles at ~224px ninety seconds earlier, so
+                      shrinking them to a fifth of that reads as a decorative
+                      afterthought rather than as her own answers coming back.
+
+                      This is also the only place they appear on this screen -
+                      there used to be a second, redundant row of red text pills
+                      immediately below this card, the same list twice in two
+                      visual languages about 40px apart. */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {tiles.map((id, i) => (
+                      <motion.div
+                        key={id}
+                        initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.92 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: 1.1 + i * 0.06, duration: 0.3 }}
+                        className="flex flex-col overflow-hidden rounded-2xl shadow-sm"
+                      >
+                        {/* Deliberately the *same* chrome as the quiz tile she
+                            tapped: square crop, object-cover, dark footer bar,
+                            white 11px label - see PROBLEM_OPTIONS' grid. The
+                            point of this block is recognition, and a symptom
+                            redrawn in a different visual language is just a
+                            picture of a symptom rather than her own answer
+                            handed back.
+
+                            Square also matters on its own: the sources are
+                            460x460 with the subject centred, so a landscape
+                            crop would cut a quarter off the top and bottom.
+
+                            The footer is the quiz's *unselected* dark rather
+                            than its selected pink. Every tile here is by
+                            definition selected, so pink would be redundant -
+                            and pink is the CTA's colour on this screen. */}
+                        <div className="relative aspect-square">
                           <Image
                             src={SYMPTOM_IMAGE[id]}
-                            alt={SYMPTOM_LABELS[id] || id}
-                            width={48}
-                            height={48}
-                            className="w-full h-full object-cover"
+                            alt=""
+                            fill
+                            sizes="(max-width: 480px) 30vw, 140px"
+                            className="object-cover"
                           />
                         </div>
-                        <span className="text-[9px] leading-tight text-[#9A9A9A] text-center">
-                          {SYMPTOM_LABELS[id] || id}
-                        </span>
-                      </div>
+                        <div className={cn(TILE_FOOTER_BASE, "bg-[#2a2a2a]")}>
+                          <span className={TILE_LABEL}>{SYMPTOM_LABELS[id] || id}</span>
+                        </div>
+                      </motion.div>
                     ))}
                   </div>
+                  {overflow > 0 && (
+                    <p className="mt-2 text-center text-[11px] font-medium text-[#9A9A9A]">
+                      + {overflow} more you told us about
+                    </p>
+                  )}
 
                   <p className="text-xs text-[#5A5A5A] leading-relaxed mt-3 text-center">
                     This isn&apos;t willpower or anything you did wrong - it&apos;s biology, and
@@ -3024,16 +3181,25 @@ function RegisterPageContent() {
                 page she waited for, and the last line before the CTA sold
                 knowledge rather than relief.
                 This block closes that loop, so the next tap opens something that
-                already exists rather than starting another pitch. */}
+                already exists rather than starting another pitch.
+
+                Green, not pink. Green is what the gauge above has just spent a
+                whole card establishing as "the gap and the thing that closes
+                it", so the plan arriving in the same colour reads as the answer
+                to the number she was just shown. Pink also put a brand-tinted
+                card directly above the pink gradient CTA, roughly 60px apart -
+                the card read as a second button, and the two of them split the
+                attention the real one needed. Pink is the CTA's colour on this
+                screen and nothing else's. */}
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1.22 }}
-              className="rounded-2xl border-2 border-primary/30 bg-primary/5 p-4 mb-5"
+              className="rounded-2xl border-2 border-green-600/30 bg-green-50 p-4 mb-5"
             >
               <div className="flex items-start gap-2.5">
-                <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15">
-                  <Check className="h-4 w-4 text-primary" strokeWidth={3} />
+                <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-600/15">
+                  <Check className="h-4 w-4 text-green-700" strokeWidth={3} />
                 </span>
                 <div className="min-w-0">
                   <h2 className="text-base font-bold text-[#3D3D3D] leading-tight">

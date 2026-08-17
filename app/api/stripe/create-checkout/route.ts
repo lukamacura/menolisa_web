@@ -163,9 +163,12 @@ export async function POST(req: NextRequest) {
     const defaultSuccess = fromRegistration
       ? `${baseUrl}/register?phase=download&session_id={CHECKOUT_SESSION_ID}&plan=${plan}`
       : `${baseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}&plan=${plan}`;
-    const defaultCancel = fromRegistration
-      ? `${baseUrl}/register?phase=paywall`
-      : `${baseUrl}/dashboard`;
+    // Backing out of Stripe returns her to `/paywall`, not into the funnel. She
+    // is coming back from another origin with her React state gone, and
+    // `/register` always restarts at question 1 — which would be a fresh quiz as
+    // the price of a moment's hesitation. `/paywall` is the same PaywallView on
+    // the account she already has, one tap from trying again.
+    const defaultCancel = fromRegistration ? `${baseUrl}/paywall` : `${baseUrl}/dashboard`;
 
     // The Stripe webhook is server-to-server, so the user's Meta cookies, IP and
     // user-agent are unreachable there. Snapshot them here - the last moment her

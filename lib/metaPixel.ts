@@ -106,10 +106,24 @@ export function quizStepOnceKey(index: number): string {
  * funnel: without this, "she saw the plan" and "she reached the CTA" are the
  * same number. Buckets rather than raw percentages so the breakdown has four
  * rows instead of a hundred.
+ *
+ * Both long scrolls in the funnel report through this one event, separated by a
+ * `screen` parameter, so Events Manager needs one Custom Conversion broken down
+ * two ways (`screen` × `depth`) rather than one per screen. The name is legacy
+ * — it covered only the plan screen for a day — and is kept because renaming it
+ * would silently orphan the Custom Conversion already defined against it.
+ *
+ * The results screen is the more important of the two: it is four stacked cards
+ * ending on "your 8-week plan is ready", which is the block that closes the
+ * promise the start screen made. Without a depth reading, "reached results" and
+ * "saw the plan exists" were the same number.
  */
 export const META_SCROLL_EVENT = "PlanScrollDepth";
 export const META_SCROLL_BUCKETS = [25, 50, 75, 100] as const;
 
-export function scrollDepthOnceKey(bucket: number): string {
-  return `plan_scroll_${bucket}`;
+/** Which long scroll reported. Sent as the `screen` param on every bucket. */
+export type MetaScrollScreen = "results" | "plan";
+
+export function scrollDepthOnceKey(screen: MetaScrollScreen, bucket: number): string {
+  return `${screen}_scroll_${bucket}`;
 }
