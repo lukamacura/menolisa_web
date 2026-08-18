@@ -368,9 +368,15 @@ const RELAXATION_STYLE_OPTIONS = [
 ];
 
 // What hurts when she moves. Text rows, no illustrations - these are body parts,
-// and a watercolor tile per joint would be noise. Multi-select, but the last row
-// is exclusive: ticking it clears the pains and any pain clears it, because
-// "nothing holds me back AND knee pain" is not an answer anyone means to give.
+// and a watercolor tile per joint would be noise. Plain multi-select: she ticks
+// what applies and nothing is ticked for her.
+//
+// There is deliberately no "nothing holds me back" row. It used to be here, and
+// pre-selected, so the step opened with one row lit up that she had not chosen -
+// which reads as a mistake to undo rather than a default to accept, and the tap
+// it invited (the row was already right) advanced the quiz. Saying nothing is
+// the answer now: an empty array means no limitations, which is exactly what the
+// old "none" meant downstream anyway.
 //
 // The ids are load-bearing twice over: `LIMITATION_EXCLUDES` in
 // `lib/plan/catalog.ts` filters the exercise pool on them in code, and
@@ -383,12 +389,7 @@ const LIMITATION_OPTIONS = [
   { id: "shoulder", label: "Neck or shoulder pain" },
   { id: "pelvic_floor", label: "Pelvic floor / leaking" },
   { id: "balance", label: "Balance problems or dizziness" },
-  { id: "none", label: "Nothing holds me back", exclusive: true },
 ];
-
-// The exclusive row's id, named once because it is also the step's default
-// answer and its fallback when she un-ticks her last pain.
-const NO_LIMITATION_ID = "none";
 
 // Shared option-tile footer styles - every quiz label is the same size, aligned,
 // and readable. The fixed min-height keeps footer bars level across a row even
@@ -677,9 +678,9 @@ const getSeverityPainText = (
 // It used to promise understanding: "See the why behind your symptoms." That is
 // the wrong noun. She did not come here to understand hot flashes, she came to
 // stop having them, and the thing we sell is a plan rather than an explanation.
-// Naming the plan here also closes the loop the start screen opened ("answer 13
-// questions, get your personalized 8-week plan") - the promised object finally
-// exists and the next tap opens it.
+// Naming the plan here also closes the loop the start screen opened ("your
+// personalized 8-week plan, built around your symptoms") - the promised object
+// finally exists and the next tap opens it.
 const RESULTS_CTA_SUB = "Built from your 13 answers. Nothing to pay to look.";
 
 // The funnel's one forward-tap look: gradient, dark ink, pink glow. It was
@@ -1972,15 +1973,10 @@ function RegisterPageContent() {
   const [hrtStatus, setHrtStatus] = useState<string>("");
   const [nutritionStyle, setNutritionStyle] = useState<string>("");
   const [relaxationStyle, setRelaxationStyle] = useState<string>("");
-  // Pre-answered with the exclusive "nothing" option, so q_limitations opens with
-  // a live Next button and costs nothing to pass. It is the only step in the quiz
-  // whose honest answer for most women is "none of these", and making them tap a
-  // row to say so was charging a click for silence. Ticking any pain clears it
-  // (see toggleLimitation), so the default can never ride along with a real
-  // limitation. `"none"` is inert downstream - LIMITATION_EXCLUDES and
-  // LIMITATION_LABEL have no entry for it, and save-quiz's zod enum accepts it -
-  // so this is identical to an empty array as far as the plan is concerned.
-  const [physicalLimits, setPhysicalLimits] = useState<string[]>([NO_LIMITATION_ID]);
+  // Starts empty, and empty is a valid answer - q_limitations is the one step
+  // whose honest answer for most women is "none of these", so Next is live from
+  // the moment she lands (see canProceed) and she can pass it without a tap.
+  const [physicalLimits, setPhysicalLimits] = useState<string[]>([]);
   const [firstName, setFirstName] = useState<string>("");
 
   // Derived for funnel compatibility: save-quiz / user_profiles still consume top_problems[].
@@ -2195,8 +2191,9 @@ function RegisterPageContent() {
           return relaxationStyle !== "";
         case "q5_hrt":
           return hrtStatus !== "";
+        // No answer required: an empty array means nothing holds her back.
         case "q_limitations":
-          return physicalLimits.length > 0;
+          return true;
         case "q8_name":
           return firstName.trim().length > 0;
         default:
@@ -2441,39 +2438,13 @@ function RegisterPageContent() {
     });
   };
 
-  // "Nothing holds me back" clears the pains, and any pain clears it - see
-  // LIMITATION_OPTIONS.
-  //
-  // Ticking the exclusive option also advances the step. It is a complete answer
-  // by definition - there is nothing to add to "nothing holds me back" - so it
-  // was the only single-meaning tap left in the quiz that still demanded a second
-  // press on Next. The pain rows keep the button, because there she may well have
-  // more than one to tick.
-  //
-  // The exclusive row never un-ticks. It starts selected (see physicalLimits), so
-  // a plain toggle would let her tap it and land on an empty answer with a dead
-  // Next button - a dead end she reached by tapping the row that was already
-  // right. Tapping it is always "yes, nothing holds me back", and always moves on.
+  // Plain multi-select toggle - she may well have more than one pain to tick, so
+  // nothing here auto-advances, and un-ticking her last one leaves the step empty
+  // rather than dead: empty is the "nothing holds me back" answer.
   const toggleLimitation = (limitId: string) => {
-    const exclusive = LIMITATION_OPTIONS.find((o) => o.id === limitId)?.exclusive;
-
-    if (exclusive) {
-      selectAndAdvance(() => setPhysicalLimits([limitId]));
-      return;
-    }
-
-    setPhysicalLimits((prev) => {
-      if (prev.includes(limitId)) {
-        // Un-ticking her last pain means "actually, nothing" - so say that,
-        // rather than leaving the step blank and Next dead.
-        const rest = prev.filter((id) => id !== limitId);
-        return rest.length ? rest : [NO_LIMITATION_ID];
-      }
-      return [
-        ...prev.filter((id) => !LIMITATION_OPTIONS.find((o) => o.id === id)?.exclusive),
-        limitId,
-      ];
-    });
+    setPhysicalLimits((prev) =>
+      prev.includes(limitId) ? prev.filter((id) => id !== limitId) : [...prev, limitId]
+    );
   };
 
   const toggleGoal = (goalId: string) => {
@@ -2767,17 +2738,22 @@ function RegisterPageContent() {
           a single tap. The quiz used to start here, which meant the first thing
           she was asked for was her age - an admin field, at the moment she is
           least committed. Price, credentials and a testimonial wall still stay
-          off this screen. The one exception is the hero photo (2026-08-17): a
+          off this screen. It has to answer three things and nothing else: what
+          she walks away with (a personalized 8-week plan), what it costs her
+          (2 minutes), and whether she can actually do it (three tasks anyone
+          can do, 15 minutes a day). The 2026-08-18 pass was about the order and
+          weight of those three, not about adding a fourth.
+          The one exception is the hero photo (2026-08-17): a
           real before/after - scrolling alone, then holding her plan, smiling -
           so the promise in the headline below is something she sees happen to
           someone else before she's asked to believe it for herself. */}
       {phase === "start" && (
-        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto items-center justify-center px-2 text-center">
+        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto items-center justify-start px-2 text-center pb-28">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: prefersReducedMotion ? 0 : 0.4 }}
-            className="w-full max-w-md mx-auto flex flex-col items-center py-2"
+            className="w-full max-w-md mx-auto my-auto flex flex-col items-center py-2"
           >
             <motion.div
               initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.96 }}
@@ -2792,7 +2768,7 @@ function RegisterPageContent() {
                 height={504}
                 priority
                 sizes="(max-width: 480px) 92vw, 420px"
-                className="w-full h-auto max-h-[30vh] sm:max-h-[34vh] object-cover"
+                className="w-full h-auto max-h-[30vh] sm:max-h-[34vh] object-cover object-[50%_35%]"
               />
 
               {/* The photo is a diptych and nothing on it said so, which left the
@@ -2850,57 +2826,103 @@ function RegisterPageContent() {
               rules.</span>
             </motion.p>
 
-            {/* What she actually walks away with. Named as the plan, and shown as
-                its three real pillars, so the outcome is concrete rather than
-                "take a quiz". */}
+            {/* What she actually walks away with.
+
+                The headline used to lead with "Answer 13 questions" - a cost
+                statement, bolded, above a 2-minute promise set in 11px grey. She
+                read the price of the quiz at full weight and the reassurance at
+                the page's lowest priority. The outcome leads now; the effort
+                moved down to the CTA bar where it belongs, and got readable.
+
+                The row shows each pillar's real `task` rather than its `label`.
+                "Movement / Nutrition / Relaxation" reads to an exhausted
+                45-60 woman as three more disciplines to fail at - a gym, a diet
+                and a meditation practice. "10-min walk / 25-30g protein at
+                breakfast / 4-7-8 breathing" is the same three pillars stated as
+                things anyone can do today, which is the whole point of the
+                screen. The data is already in PLAN_PILLARS; only the field
+                changed. The closing line is the daily budget the plan screen
+                already quotes, promoted out of 2.85:1 grey. */}
             <motion.div
               initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: prefersReducedMotion ? 0 : 0.4, duration: 0.4 }}
               className="mt-5 w-full rounded-2xl border border-foreground/10 bg-card px-4 py-3.5 shadow-sm"
             >
-              <p className="text-sm sm:text-base font-bold text-[#3D3D3D]">
-                Answer {QUESTION_STEPS.length} questions, get your{" "}
-                <HighlightSweep>personalized {PLAN_WEEKS}-week plan</HighlightSweep>
+              <p className="text-base sm:text-lg font-bold text-[#3D3D3D] leading-snug">
+                Your <HighlightSweep>personalized {PLAN_WEEKS}-week plan</HighlightSweep>,
+                built around your symptoms
               </p>
-              <div className="mt-3 flex items-start justify-center gap-3 sm:gap-5">
+              <div className="mt-3.5 flex items-start justify-center gap-2 sm:gap-4">
                 {PLAN_PILLARS.slice(0, 3).map((pillar) => (
-                  <div key={pillar.key} className="flex flex-col items-center gap-1 w-16">
-                    <pillar.icon className={cn("w-5 h-5", pillar.tint)} />
-                    <span className="text-[11px] font-medium text-[#5A5A5A] leading-tight">
-                      {pillar.label}
+                  <div key={pillar.key} className="flex flex-col items-center gap-1.5 w-[5.25rem]">
+                    <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-full", pillar.chip)}>
+                      <pillar.icon className={cn("w-4 h-4", pillar.tint)} />
+                    </span>
+                    <span className="text-xs font-medium text-[#5A5A5A] leading-tight">
+                      {pillar.short}
                     </span>
                   </div>
                 ))}
               </div>
-              <p className="mt-2.5 text-[11px] text-[#9A9A9A] leading-snug">
-                Built around your symptoms and your life - not a template.
+              <p className="mt-3.5 text-[13px] text-[#5A5A5A] leading-snug">
+                About 15 minutes a day. No gym, no cutting out food groups.
               </p>
             </motion.div>
 
-            {/* The one tap. Same gradient as the results and paywall CTAs, so the
-                first step and the last one look like the same size of decision. */}
-            <motion.div
-              initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: prefersReducedMotion ? 0 : 0.52, duration: 0.4 }}
-              className="w-full mt-5"
-            >
-              <button
-                type="button"
-                onClick={() => setPhase("quiz")}
-                className={cn(CTA_GRADIENT_CLASS, "min-h-13 cursor-pointer")}
-                style={CTA_GRADIENT_STYLE}
-              >
-                Build my plan
-                <ArrowRight className="w-4 h-4" />
-              </button>
-              <p className="text-[11px] text-[#9A9A9A] text-center mt-2">
-                Takes 2 minutes · free to take · no download
-              </p>
-            </motion.div>
           </motion.div>
         </div>
+      )}
+
+      {/* The one tap, in the same fixed bar every other phase uses.
+
+          This was the only screen in the funnel with a CTA that scrolled, and
+          it is the one screen where the CTA *is* the conversion event. The
+          stack runs ~550px on a 375x667 device, and an in-app browser (the
+          Instagram/Facebook webview most of the ad traffic arrives in) leaves
+          about 557px - so "Build my plan" sat within single digits of the fold,
+          and `overflow-y-auto` meant it failed silently by scrolling instead of
+          showing a button. Pinned, that can't happen at any viewport.
+
+          Safe despite the warning on the phase wrapper above: that wrapper
+          animates opacity only, so it never becomes the containing block for a
+          fixed child - the four other phases already pin bars inside it.
+
+          The sub-line carries all three of the screen's cost answers at a size
+          she can actually read (13px #5A5A5A is 6.9:1; the 11px #9A9A9A it
+          replaces was 2.85:1, i.e. the hardest text on the page belonged to the
+          audience least able to resolve it). "Free quiz" rather than "free to
+          take", which sat one line under the plan promise and could be read as
+          the plan being free 90 seconds before a $59 paywall. "Taps" rather
+          than "questions" because 8 of the 13 steps are auto-advancing image
+          tiles and only q_body and q8_name type anything - and because the
+          count is a cost, so it belongs here at footnote weight rather than
+          bolded above the outcome. "No email needed" is the funnel's strongest
+          unused fact: she genuinely gives no address until Stripe (see
+          "Anonymous accounts"), and "will they spam me" is a top objection on a
+          cold ad click. */}
+      {phase === "start" && (
+        <motion.div
+          initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: prefersReducedMotion ? 0 : 0.52, duration: 0.4 }}
+          className="fixed bottom-0 inset-x-0 z-30 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 pb-[env(safe-area-inset-bottom)]"
+        >
+          <div className="mx-auto max-w-md w-full px-4 sm:px-6 py-3">
+            <button
+              type="button"
+              onClick={() => setPhase("quiz")}
+              className={cn(CTA_GRADIENT_CLASS, "min-h-13 cursor-pointer")}
+              style={CTA_GRADIENT_STYLE}
+            >
+              Build my {PLAN_WEEKS}-week plan
+              <ArrowRight className="w-4 h-4" />
+            </button>
+            <p className="text-[13px] text-[#5A5A5A] text-center mt-2 leading-snug">
+              Free quiz · 2 minutes · {QUESTION_STEPS.length} taps · no email needed
+            </p>
+          </div>
+        </motion.div>
       )}
 
       {/* Calculating Phase - loader between quiz and results; also where the
@@ -3070,8 +3092,8 @@ function RegisterPageContent() {
                 of her own symptom tiles. */}
 
             {/* The plan, existing.
-                The start screen promised "answer 13 questions, get your
-                personalized 8-week plan" and the loader said "Building your 8
+                The start screen promised "your personalized 8-week plan, built
+                around your symptoms" and the loader said "Building your 8
                 weeks" - and then this screen used to deliver a score, a chart,
                 and a promise that she would *understand* her symptoms within two
                 weeks. The object she was promised did not appear anywhere on the
@@ -4759,11 +4781,7 @@ function RegisterPageContent() {
                               : "border-foreground/15 hover:border-primary/50"
                           }`}
                         >
-                          <span
-                            className={`font-semibold text-sm sm:text-base ${
-                              option.exclusive ? "text-[#5A5A5A]" : "text-[#3D3D3D]"
-                            }`}
-                          >
+                          <span className="font-semibold text-sm sm:text-base text-[#3D3D3D]">
                             {option.label}
                           </span>
                           {isSelected ? (

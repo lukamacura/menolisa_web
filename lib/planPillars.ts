@@ -20,13 +20,19 @@ export type PlanPillar = {
   /** A real task off a plan day. This is what the app actually asks of her,
       so it has to read like a to-do, not like a benefit. */
   task: string;
+  /** The same task at start-screen width. The start screen shows these three
+      abreast in ~84px columns, where `task` wraps to four lines and its
+      precision ("25-30g") reads as a rule to obey rather than a thing anyone
+      can do - the opposite of what that screen needs. <PlanStage /> keeps the
+      exact version, because by then she has bought the specificity. */
+  short: string;
 };
 
 export const PLAN_PILLARS: PlanPillar[] = [
-  { key: "movement",   label: "Movement",    icon: Footprints,   tint: "text-sky-500",     chip: "bg-sky-100",     task: "10-min walk" },
-  { key: "nutrition",  label: "Nutrition",   icon: Salad,        tint: "text-emerald-500", chip: "bg-emerald-100", task: "25-30g protein at breakfast" },
-  { key: "relaxation", label: "Relaxation",  icon: Wind,         tint: "text-violet-500",  chip: "bg-violet-100",  task: "4-7-8 breathing" },
-  { key: "habits",     label: "Your habits", icon: CheckCircle2, tint: "text-primary",     chip: "bg-primary/10",  task: "Lights out by 10:30" },
+  { key: "movement",   label: "Movement",    icon: Footprints,   tint: "text-sky-500",     chip: "bg-sky-100",     task: "10-min walk",                short: "A 10-min walk" },
+  { key: "nutrition",  label: "Nutrition",   icon: Salad,        tint: "text-emerald-500", chip: "bg-emerald-100", task: "25-30g protein at breakfast", short: "Protein at breakfast" },
+  { key: "relaxation", label: "Relaxation",  icon: Wind,         tint: "text-violet-500",  chip: "bg-violet-100",  task: "4-7-8 breathing",            short: "2 min of breathing" },
+  { key: "habits",     label: "Your habits", icon: CheckCircle2, tint: "text-primary",     chip: "bg-primary/10",  task: "Lights out by 10:30",        short: "Lights out by 10:30" },
 ];
 
 export type PlanPhase = {
