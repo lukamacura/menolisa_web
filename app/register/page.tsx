@@ -8,6 +8,7 @@ import {
   motion,
   AnimatePresence,
   animate,
+  useInView,
   useMotionValue,
   useReducedMotion,
   useTransform,
@@ -46,7 +47,7 @@ import MetaPurchaseTracker from "@/components/MetaPurchaseTracker";
 import { SocialProofPolaroid } from "@/components/SocialProof";
 import { PlanStage } from "@/components/PlanStage";
 import { HowLisaRuns } from "@/components/HowLisaRuns";
-import { PhoneShot, ShotStage, SHOT_W, SHOT_H, PHONE_SHOT_SIZES } from "@/components/PhoneShots";
+import { SHOT_W, SHOT_H } from "@/components/PhoneShots";
 import { PLAN_PILLARS } from "@/lib/planPillars";
 import {
   PLAN_ID,
@@ -472,25 +473,59 @@ const PLAN_SHOTS = {
 
 // SHOT_W / SHOT_H (the intrinsic size of the /screenshots masters) live in
 // components/PhoneShots.tsx alongside <PhoneShot /> and <ShotStage />, which the
-// paywall now shares.
+// paywall still uses - this screen shows all four shots at hero size now, so it
+// no longer renders either.
 
-// The hero's `sizes`, hoisted out of <PlanHeroShot /> because the preloader below
-// has to pass the *identical* string; PHONE_SHOT_SIZES comes from the shared
-// component for the same reason. A preload that declares a different layout width
-// than the <img> resolves to a different candidate in the srcset, which is a
-// second full download of the same shot - and a cold one, at the moment she's
-// looking at it.
+// The hero's `sizes`, hoisted out of <PlanHeroCarousel /> because the preloader
+// below has to pass the *identical* string. A preload that declares a different
+// layout width than the <img> resolves to a different candidate in the srcset,
+// which is a second full download of the same shot - and a cold one, at the
+// moment she's looking at it.
 const PLAN_HERO_SIZES = "(max-width: 480px) 56vw, 208px";
+
+// The screens <PlanHeroCarousel /> walks through, in the order she needs them:
+// the day she gets, then the three surfaces that run it. All four are shown at
+// hero size inside one static bezel - see the component for why they are no
+// longer a hero plus a tilted trio.
+//
+// Order is the argument, so it is worth stating: `day` first because it is the
+// only frame that contains the whole offer, and `rewards` last because it is the
+// one that answers "but will I keep doing it" - the objection she arrives at
+// after she has believed the other three.
+const PLAN_HERO_SLIDES: ReadonlyArray<{ src: string; caption: string; alt: string }> = [
+  {
+    src: PLAN_SHOTS.day,
+    caption: "Day 1, already built",
+    alt: `Day 1 of your personalized ${PLAN_WEEKS}-week plan in the MenoLisa app, showing movement, nutrition, relaxation and habit tasks`,
+  },
+  {
+    src: PLAN_SHOTS.nutrition,
+    caption: "What to eat today, as a list",
+    alt: "The nutrition list for today in the MenoLisa app, with each row explained",
+  },
+  {
+    src: PLAN_SHOTS.habits,
+    caption: "One small habit at a time",
+    alt: "Your habits in the MenoLisa app, with suggestions you can add",
+  },
+  {
+    src: PLAN_SHOTS.rewards,
+    caption: "Streaks that keep you going",
+    alt: "Streaks, levels and badges in the MenoLisa app",
+  },
+];
 
 // Real app screenshots used on the plan step. Preloaded while she reads her
 // results so the phone shots are already cached and don't pop in one by one.
 // The hero is first: it is the one that must never be seen loading.
-const DIAGNOSIS_SHOTS: ReadonlyArray<{ src: string; sizes: string }> = [
-  { src: PLAN_SHOTS.day, sizes: PLAN_HERO_SIZES },
-  { src: PLAN_SHOTS.nutrition, sizes: PHONE_SHOT_SIZES },
-  { src: PLAN_SHOTS.habits, sizes: PHONE_SHOT_SIZES },
-  { src: PLAN_SHOTS.rewards, sizes: PHONE_SHOT_SIZES },
-];
+//
+// Derived from the slide list rather than written out again, so a shot can never
+// be preloaded at a `sizes` the <img> doesn't declare - that resolves a different
+// candidate out of the srcset, i.e. a second cold download of the shot the
+// preload existed to warm. Every slide is now hero-sized, so there is one string.
+const DIAGNOSIS_SHOTS: ReadonlyArray<{ src: string; sizes: string }> = PLAN_HERO_SLIDES.map(
+  ({ src }) => ({ src, sizes: PLAN_HERO_SIZES })
+);
 
 // Build the same URL next/image requests, so the preload warms both the Vercel
 // optimizer cache and the browser HTTP cache (640/828 cover phone + desktop).
@@ -985,6 +1020,142 @@ function TrajectoryChart({ score }: { score: number }) {
 }
 
 /**
+ * Estrogen, rising and falling - drawn, on a loop.
+ *
+ * The node under the rail asserts one cause, and until 2026-08-18 it asserted
+ * it in words alone: "estrogen rising and falling", set in bold, sitting on a
+ * pale rose card. The three mechanism lines above it have just done the work of
+ * making that convergence feel earned, and then the conclusion of the argument
+ * was the quietest element in the whole card.
+ *
+ * So the sentence now says what it is and the line under it *does* it. A curve
+ * that never settles is the entire claim - it is why she has nine complaints at
+ * once and why none of them respond to trying harder - and it is the one idea
+ * on the results screen that a picture states faster than a sentence.
+ *
+ * ── Why it loops rather than draws once ──────────────────────────────────────
+ *
+ * A path that draws itself left-to-right and stops reads as a finished
+ * measurement: this happened, it is over. The point of the block is the
+ * opposite - it has not stopped, which is the reason the plan has to run for
+ * eight weeks rather than fix one bad night. The wave therefore slides
+ * continuously, so whenever her eye lands on it, it is moving.
+ *
+ * The pattern is exactly `W` wide and rendered twice, so translating by exactly
+ * `W` returns to the starting picture: the loop is seamless with no crossfade
+ * and no jump. Three sines whose periods all divide that width keep
+ * it irregular - a clean metronome sine reads as a signal generator, and what
+ * this is illustrating is anything but regular - while staying perfectly
+ * periodic. Every term must complete a whole number of cycles across the width
+ * (2, 3 and 5 here); change one to a fraction and the seam shows up as a kink
+ * twice a loop.
+ *
+ * `prefers-reduced-motion` gets the same curve, held still. It is legible
+ * static; the movement is emphasis, not information.
+ *
+ * ── What it deliberately is not ──────────────────────────────────────────────
+ *
+ * There are no axes, no units, no dates and no numbers, because it is not her
+ * data - nothing in the funnel measures anyone's estrogen - and a y-axis would
+ * be the funnel's second modelled-baseline problem (see the `TYPICAL_SCORE_BY_AGE`
+ * note). The caption says so out loud rather than in a footnote: it is the
+ * shape of the thing, and the shape is the whole point. An earlier version of
+ * this screen carried a two-line "before / now" chart that did make a personal
+ * claim; it was removed for exactly that reason and should not come back
+ * without real data behind it.
+ */
+function EstrogenWave({ className }: { className?: string }) {
+  const reduceMotion = useReducedMotion();
+  const W = 168; // one full period of the pattern
+  const H = 46;
+  const mid = H / 2;
+  const amp = 16;
+
+  const { d, area } = useMemo(() => {
+    // Every term completes a whole number of cycles across t = 0..1 (2, 3 and
+    // 5), so the pattern is exactly W-periodic and the loop seam is invisible.
+    // Two full swings rather than one because the box is ~170 units wide and
+    // renders at ~300px under preserveAspectRatio="none": a single stretched
+    // cycle reads as a flat line with one dent in it rather than as something
+    // that will not settle.
+    const wave = (t: number) =>
+      0.6 * Math.sin(4 * Math.PI * t) +
+      0.28 * Math.sin(6 * Math.PI * t + 1.1) +
+      0.15 * Math.sin(10 * Math.PI * t + 2.4);
+    const N = 84;
+    const ys: number[] = [];
+    for (let i = 0; i <= N * 2; i++) ys.push(wave((i / N) % 1));
+    // Normalised across its own min..max rather than by peak magnitude: three
+    // offset sines are not symmetric about zero, and dividing by the largest
+    // absolute value left a curve that dived a full amp down and rose a third
+    // of that - all falling, barely any rising, which is the wrong half of the
+    // sentence it sits under.
+    const lo = Math.min(...ys);
+    const hi = Math.max(...ys);
+    const span = hi - lo || 1;
+    const pts = ys.map((v, i) => {
+      const x = ((i / N) * W).toFixed(1);
+      const y = (mid - amp * ((2 * (v - lo)) / span - 1)).toFixed(1);
+      return `${i === 0 ? "M" : "L"}${x},${y}`;
+    });
+    const line = pts.join(" ");
+    return { d: line, area: `${line} L${W * 2},${H} L0,${H} Z` };
+  }, [W, H, mid, amp]);
+
+  return (
+    <div className={cn("overflow-hidden", className)}>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full h-auto"
+        role="img"
+        aria-label="Estrogen swinging up and down without settling."
+        preserveAspectRatio="none"
+      >
+        <defs>
+          <linearGradient id="estroFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
+          </linearGradient>
+          {/* Both ends dissolve into the card instead of being cut off by it,
+              so the curve reads as continuing rather than as ending here. */}
+          <linearGradient id="estroFade" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#000000" />
+            <stop offset="9%" stopColor="#FFFFFF" />
+            <stop offset="91%" stopColor="#FFFFFF" />
+            <stop offset="100%" stopColor="#000000" />
+          </linearGradient>
+          <mask id="estroMask">
+            <rect x="0" y="0" width={W} height={H} fill="url(#estroFade)" />
+          </mask>
+        </defs>
+
+        <g mask="url(#estroMask)">
+          <motion.g
+            initial={{ x: 0 }}
+            animate={{ x: reduceMotion ? 0 : -W }}
+            transition={
+              reduceMotion
+                ? { duration: 0 }
+                : { duration: 9, ease: "linear", repeat: Infinity, repeatType: "loop" }
+            }
+          >
+            <path d={area} fill="url(#estroFill)" />
+            <path
+              d={d}
+              fill="none"
+              stroke="#FFFFFF"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </motion.g>
+        </g>
+      </svg>
+    </div>
+  );
+}
+
+/**
  * Her symptoms, why each one happens, and the single cause underneath all of
  * them - as one card.
  *
@@ -1109,52 +1280,65 @@ function ScoreCauseCard({
             What&apos;s pulling your score down
           </p>
 
-          <div className="relative mt-3 pl-6">
-            {/* The rail itself. Top-anchored on the first dot, bottom-anchored
-                just inside the node, so it never pokes out of either end. */}
-            <span
-              aria-hidden
-              className="absolute left-[6px] top-2 bottom-4 w-px bg-gradient-to-b from-[#B23A31]/25 via-[#B23A31]/45 to-[#B23A31]"
-            />
+          <div className="mt-3 pl-6">
+            {/* Rows + rail. The rail hangs off *this* wrapper rather than off
+                the whole band, so the node below can be any height - it grew a
+                chart on 2026-08-18 - without the rail running down beside it
+                instead of into it. The node draws the last leg itself. */}
+            <div className="relative">
+              <span
+                aria-hidden
+                className="absolute -left-[18px] top-2 bottom-0 w-px bg-gradient-to-b from-[#B23A31]/25 via-[#B23A31]/55 to-[#B23A31]"
+              />
 
-            {rows.map((row, i) => (
-              <motion.div
-                key={row.id}
-                initial={{ opacity: 0, x: -6 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 1.05 + i * 0.12, duration: 0.35 }}
-                className={cn("relative", i > 0 && "mt-3")}
-              >
-                <span
-                  aria-hidden
-                  className="absolute -left-6 top-[5px] h-[11px] w-[11px] rounded-full border-2 border-card bg-[#B23A31] ring-1 ring-[#B23A31]/30"
-                />
-                <p className="text-[15px] font-bold leading-tight text-[#B23A31]">{row.label}</p>
-                {row.why && (
-                  <p className="mt-0.5 text-[12.5px] leading-snug text-[#6A6A6A]">{row.why}</p>
-                )}
-              </motion.div>
-            ))}
+              {rows.map((row, i) => (
+                <motion.div
+                  key={row.id}
+                  initial={{ opacity: 0, x: -6 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 1.05 + i * 0.12, duration: 0.35 }}
+                  className={cn("relative", i > 0 && "mt-3")}
+                >
+                  <span
+                    aria-hidden
+                    className="absolute -left-6 top-[5px] h-[11px] w-[11px] rounded-full border-2 border-card bg-[#B23A31] ring-1 ring-[#B23A31]/30"
+                  />
+                  <p className="text-[15px] font-bold leading-tight text-[#B23A31]">{row.label}</p>
+                  {row.why && (
+                    <p className="mt-0.5 text-[12.5px] leading-snug text-[#6A6A6A]">{row.why}</p>
+                  )}
+                </motion.div>
+              ))}
 
-            {/* Honest about what the rail is not showing. Three rows is as many
-                mechanisms as anyone reads on a phone; the count in the node
-                covers all of them either way. */}
-            {hidden > 0 && (
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 1.05 + rows.length * 0.12 }}
-                className="relative mt-3 text-[12px] font-medium text-[#9A9A9A]"
-              >
-                <span
-                  aria-hidden
-                  className="absolute -left-6 top-[5px] h-[11px] w-[11px] rounded-full border-2 border-card bg-[#D8C3BE]"
-                />
-                + {hidden} more, same story
-              </motion.p>
-            )}
+              {/* Honest about what the rail is not showing. Three rows is as
+                  many mechanisms as anyone reads on a phone. */}
+              {hidden > 0 && (
+                <motion.p
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 1.05 + rows.length * 0.12 }}
+                  className="relative mt-3 text-[12px] font-medium text-[#9A9A9A]"
+                >
+                  <span
+                    aria-hidden
+                    className="absolute -left-6 top-[5px] h-[11px] w-[11px] rounded-full border-2 border-card bg-[#D8C3BE]"
+                  />
+                  + {hidden} more, same story
+                </motion.p>
+              )}
+            </div>
 
             {/* The node. Everything above arrives here.
+
+                Filled deep rose since 2026-08-18, where it was a pale tint on
+                cream. It is the conclusion of the argument the rail just made,
+                and it was rendering as the softest element in the card - the
+                three symptom rows above it carried more colour than the answer
+                they converge on. It is also the last thing read before "Not
+                willpower. Biology": the sentence lands harder off a block that
+                looks like a diagnosis than off a note. Rose rather than pink,
+                per the screen's colour rule - this is the load she is carrying,
+                not the CTA.
 
                 The count used to sit in it, as a 40px numeral: "{n} symptoms,
                 one cause". It was cut on 2026-08-17 because the pain paragraph
@@ -1164,20 +1348,35 @@ function ScoreCauseCard({
                 note claims the merge fixed. The merge only removed the 5xl
                 version; this was the survivor. The convergence never needed the
                 number anyway: it is carried by the rail and by the word
-                arriving at the end of every mechanism line. */}
+                arriving at the end of every mechanism line.
+
+                No `overflow-hidden` here: the rail's last leg is drawn outside
+                the node's own box. <EstrogenWave /> clips itself. */}
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1.05 + (rows.length + (hidden > 0 ? 1 : 0)) * 0.12, duration: 0.4 }}
-              className="relative mt-3 rounded-xl bg-[#FBF1EE] border border-[#B23A31]/20 px-3.5 py-2.5"
+              className="relative mt-3 rounded-xl border border-[#8F2A22]/60 bg-gradient-to-br from-[#C04035] via-[#B23A31] to-[#8F2A22] px-3.5 py-3 shadow-md shadow-[#B23A31]/25"
             >
+              {/* The rail's last leg: down through the gap, then a right angle
+                  into the sentence it has been heading for all along. Offsets
+                  are keyed to the first text line, not to the node's centre,
+                  because the node is now taller than one line. */}
               <span
                 aria-hidden
-                className="absolute -left-[19px] top-1/2 h-px w-[13px] -translate-y-1/2 bg-[#B23A31]"
+                className="absolute -left-[18px] -top-3 h-[33px] w-px bg-[#B23A31]"
               />
-              <p className="text-[13.5px] leading-snug text-[#5A5A5A]">
+              <span
+                aria-hidden
+                className="absolute -left-[18px] top-[21px] h-px w-3 bg-[#B23A31]"
+              />
+              <p className="text-[13.5px] leading-snug text-white/85">
                 One cause:{" "}
-                <span className="font-bold text-[#3D3D3D]">estrogen rising and falling</span>
+                <span className="font-bold text-white">estrogen rising and falling</span>
+              </p>
+              <EstrogenWave className="mt-1.5" />
+              <p className="mt-1 text-[10px] leading-snug text-white/60">
+                Illustrative - the pattern, not your levels.
               </p>
             </motion.div>
           </div>
@@ -1204,7 +1403,7 @@ function ScoreCauseCard({
           it belongs now that no verdict names it. */}
       <p
         className={cn(
-          "px-4 pb-4 text-[13px] leading-relaxed text-[#5A5A5A]",
+          "px-4 pb-4 text-xs leading-relaxed text-[#5A5A5A]",
           rows.length > 0 ? "mt-3.5 border-t border-[#EFE6E2] pt-3.5" : "pt-4"
         )}
       >
@@ -1626,57 +1825,196 @@ function ToolkitStack({
   );
 }
 
+/** How long each hero screen holds before the next one slides in. Long enough to
+ *  read a screen that is mostly layout, short enough that a second one arrives
+ *  before she scrolls past. */
+const HERO_SLIDE_MS = 3000;
+
+/** Swipe threshold: horizontal travel that beats vertical travel by enough to be
+ *  a deliberate sideways gesture rather than the start of a page scroll. */
+const HERO_SWIPE_PX = 40;
+
 /**
- * The hero screenshot: her actual Day 1, at a size where it can be read.
+ * The hero: her actual app, at a size where it can be read, walking through the
+ * four screens that make up the plan.
  *
- * Every other phone on this page is cropped by a <ShotStage />, tilted, and
- * faded into the card - which is right for evidence that only has to prove the
- * app exists. It is exactly wrong for this one. This shot carries "Day 1 · Week
- * 1", the phase name, and all four pillars with real progress against them,
- * which is the entire offer in a single frame; at 27% width behind a gradient
- * fade it was decoration of the one thing that needed to be legible.
+ * It used to be one still (`day`) with the other three shots repeated 300px
+ * below as a tilted, cropped, faded-out trio - the treatment that is right for
+ * evidence which only has to prove the app exists. That split spent the screen's
+ * best real estate on one frame and then showed the remaining three at ~30%
+ * width behind a gradient, where the thing they each contain (a checklist with
+ * reasons, a habit she picks, a streak she keeps) is unreadable. Same three
+ * images, twice, and neither instance legible. They are one element now: one
+ * phone, four screens.
  *
- * So: no tilt, no crop, no fade, and a real device bezel so it reads as a
- * photograph of a product rather than an export.
+ * Design rules this has to keep, all of them earned:
  *
- * And no entrance of its own. It used to run `whileInView` at opacity 0 / y 30
- * over 0.7s, which stacked on top of two fades it was already inside - the
- * phase cross-fade (0.22s, and `mode="wait"` means this only mounts once that
- * exit finishes) and the block wrapper's own opacity tween. Roughly 1.2s from
- * tapping through to a legible hero, on the one image on the screen that is the
- * offer. Worse, `whileInView` is gated on an IntersectionObserver that framer
- * attaches in an effect *after* mount, so the fade could not even begin on the
- * frame the screen arrived. The block wrapper carries the entrance now; this
- * paints with it. The images are fetched and decoded from the calculating
- * loader onwards (see preloadResponsiveImage) so there is a bitmap ready.
+ * - **The bezel does not move.** Only the screen inside it changes, so it reads
+ *   as a person swiping one phone rather than a slideshow of assets. It also
+ *   means zero layout shift: the box is pinned to the masters' aspect ratio, so
+ *   nothing below it reflows as slides swap.
+ * - **No entrance of its own.** The first frame paints with the block wrapper
+ *   (see the phase cross-fade note there); `AnimatePresence initial={false}`
+ *   keeps the mount silent. A `whileInView` fade here would stack on top of two
+ *   fades it is already inside, which is how this element once took ~1.2s to
+ *   become legible. The bitmaps are fetched *and decoded* from the calculating
+ *   loader onwards (see preloadResponsiveImage), so there is one ready.
+ * - **It advances only while she can see it** (`useInView`), and stops for good
+ *   the moment she touches it. An auto-advance that resumes under her thumb
+ *   fights her for control of the one element she is trying to study.
+ * - **Swipe never blocks the page scroll.** This is a tall screen inside a
+ *   vertical scroller, so there is no framer `drag` here: a pointer gesture is
+ *   measured on release and only acted on when the horizontal travel beats the
+ *   vertical, and nothing ever calls preventDefault. Dragging the hero and
+ *   finding the page won't scroll is a worse bug than not being able to swipe.
+ * - **Reduced motion means it does not auto-play at all**, rather than playing
+ *   instantly - the dots are real buttons, so the control is still there. Note
+ *   that useReducedMotion only gates effects and durations here, never the
+ *   initial rendered style; it reads false through hydration, and branching a
+ *   style on it is a mismatch on every reduced-motion visitor.
  *
- * It is not full column width, though. The source is 1320x2868 - 2.17 times
- * taller than it is wide - so every pixel of width costs two of height: at the
- * 268px it used to run, the phone alone was ~580px, a whole viewport of scroll
- * for one image, and the headline it belongs to had left the screen before the
- * shot ended. At 208px it is ~450px and the block reads as one unit: promise,
- * proof, caption, pillars. Legibility survives the trim because the thing that
- * has to be read here is layout - "Day 1 · Week 1", four pillar rows, progress
- * against them - not body copy.
+ * It is not full column width. The source is 1320x2868 - 2.17 times taller than
+ * it is wide - so every pixel of width costs two of height: at the 268px it once
+ * ran, the phone alone was ~580px, a whole viewport of scroll, and the headline
+ * it belongs to had left the screen before the shot ended. At 208px it is ~450px
+ * and the block reads as one unit: promise, proof, caption, pillars. Legibility
+ * survives the trim because what has to be read here is layout - "Day 1 · Week
+ * 1", four pillar rows, progress against them - not body copy.
  */
-function PlanHeroShot({ src, alt }: { src: string; alt: string }) {
+function PlanHeroCarousel({ slides }: { slides: ReadonlyArray<{ src: string; caption: string; alt: string }> }) {
+  const prefersReducedMotion = useReducedMotion();
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const inView = useInView(stageRef, { amount: 0.35 });
+  const [index, setIndex] = useState(0);
+  // Which way the next screen travels. Kept in state rather than derived so a
+  // tap on dot 1 from dot 4 slides back the way she came.
+  const [direction, setDirection] = useState(1);
+  const [taken, setTaken] = useState(false);
+  const count = slides.length;
+
+  const go = useCallback(
+    (next: number, dir: number) => {
+      setDirection(dir);
+      setIndex(((next % count) + count) % count);
+    },
+    [count]
+  );
+
+  // Hers from the first touch: any manual selection stops the clock permanently.
+  const select = useCallback(
+    (next: number) => {
+      setTaken(true);
+      go(next, next > index ? 1 : -1);
+    },
+    [go, index]
+  );
+
+  useEffect(() => {
+    if (taken || !inView || prefersReducedMotion || count < 2) return;
+    const id = window.setTimeout(() => go(index + 1, 1), HERO_SLIDE_MS);
+    return () => window.clearTimeout(id);
+  }, [taken, inView, prefersReducedMotion, count, index, go]);
+
+  // Pointer gesture, measured on release. See the swipe rule above for why this
+  // is not framer's `drag`.
+  const gesture = useRef<{ x: number; y: number } | null>(null);
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    gesture.current = { x: e.clientX, y: e.clientY };
+  }, []);
+  const onPointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      const start = gesture.current;
+      gesture.current = null;
+      if (!start || count < 2) return;
+      const dx = e.clientX - start.x;
+      const dy = e.clientY - start.y;
+      if (Math.abs(dx) < HERO_SWIPE_PX || Math.abs(dx) <= Math.abs(dy)) return;
+      setTaken(true);
+      go(index + (dx < 0 ? 1 : -1), dx < 0 ? 1 : -1);
+    },
+    [count, go, index]
+  );
+
+  const slide = slides[index];
+  const travel = prefersReducedMotion ? 0 : 26;
+
   return (
-    <div className="relative mx-auto w-full max-w-[208px] rounded-[1.75rem] bg-[#1d1d1f] p-1.5 shadow-[0_24px_50px_-18px_rgba(61,61,61,0.6)]">
-      <Image
-        src={src}
-        alt={alt}
-        width={SHOT_W}
-        height={SHOT_H}
-        sizes={PLAN_HERO_SIZES}
-        className="w-full h-auto rounded-[1.45rem]"
-        priority
-        // Synchronous decode: the bitmap is already warm (preloaded and decoded
-        // back on the calculating loader), so blocking the paint on it costs
-        // nothing here and removes the one-frame gap where the bezel renders
-        // empty. `async` would let that frame through on exactly the image that
-        // cannot be seen arriving.
-        decoding="sync"
-        fetchPriority="high"
+    <div ref={stageRef}>
+      <div className="relative mx-auto w-full max-w-[208px] rounded-[1.75rem] bg-[#1d1d1f] p-1.5 shadow-[0_24px_50px_-18px_rgba(61,61,61,0.6)]">
+        <div
+          className="relative overflow-hidden rounded-[1.45rem] bg-[#f5f5f7] touch-pan-y"
+          style={{ aspectRatio: `${SHOT_W} / ${SHOT_H}` }}
+          onPointerDown={onPointerDown}
+          onPointerUp={onPointerUp}
+          onPointerCancel={() => (gesture.current = null)}
+        >
+          {/* Variants rather than inline objects, and `custom` on both the
+              presence and the child: an exiting element is no longer rendered,
+              so an inline `exit={{ x: -direction * travel }}` freezes the
+              direction the *previous* transition used - which is wrong on every
+              backward move, i.e. the whole reason the dots exist. `custom` on
+              AnimatePresence is the one channel that reaches an exiting child. */}
+          <AnimatePresence initial={false} custom={direction}>
+            <motion.div
+              key={slide.src}
+              custom={direction}
+              variants={{
+                enter: (dir: number) => ({ opacity: 0, x: dir * travel }),
+                center: { opacity: 1, x: 0 },
+                exit: (dir: number) => ({ opacity: 0, x: -dir * travel }),
+              }}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ duration: prefersReducedMotion ? 0 : 0.42, ease: [0.16, 1, 0.3, 1] }}
+              className="absolute inset-0"
+            >
+              <Image
+                src={slide.src}
+                alt={slide.alt}
+                width={SHOT_W}
+                height={SHOT_H}
+                sizes={PLAN_HERO_SIZES}
+                className="w-full h-auto"
+                draggable={false}
+                // Only the first screen is a page-load priority: the other three
+                // are already warm from the loader's preload, and marking four
+                // tall images high-priority just makes them compete.
+                priority={index === 0}
+                // Synchronous decode: the bitmap is already warm (preloaded and
+                // decoded back on the calculating loader), so blocking the paint
+                // on it costs nothing and removes the one-frame gap where the
+                // bezel renders empty. `async` would let that frame through on
+                // exactly the images that cannot be seen arriving.
+                decoding="sync"
+              />
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </div>
+
+      {/* Caption, in a box of reserved height so a two-word line and a five-word
+          line don't move the dots under her thumb. */}
+      <div className="relative mt-2.5 h-4">
+        <AnimatePresence initial={false} mode="wait">
+          <motion.p
+            key={slide.caption}
+            initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: prefersReducedMotion ? 0 : -4 }}
+            transition={{ duration: prefersReducedMotion ? 0 : 0.2 }}
+            className="absolute inset-x-0 text-center text-xs font-semibold text-[#3D3D3D]"
+          >
+            {slide.caption}
+          </motion.p>
+        </AnimatePresence>
+      </div>
+
+      <CarouselDots
+        count={count}
+        index={index}
+        onSelect={select}
+        label={(i) => `Show ${slides[i].caption}`}
       />
     </div>
   );
@@ -1707,17 +2045,55 @@ function useCarouselIndex(count: number) {
   return { ref, index, onScroll };
 }
 
-function CarouselDots({ count, index }: { count: number; index: number }) {
+function CarouselDots({
+  count,
+  index,
+  onSelect,
+  label,
+}: {
+  count: number;
+  index: number;
+  /** Makes the dots real controls. Omit for the snap scrollers, where the dots
+   *  only report where a scroll already is and the scroller itself is the
+   *  control - a second way to move the same list is noise. */
+  onSelect?: (i: number) => void;
+  label?: (i: number) => string;
+}) {
   if (count < 2) return null;
+
+  const dot = (i: number) => (
+    <motion.span
+      animate={{ width: i === index ? 18 : 6, opacity: i === index ? 1 : 0.35 }}
+      transition={{ type: "spring", stiffness: 260, damping: 26 }}
+      className="block h-1.5 rounded-full bg-primary"
+    />
+  );
+
+  if (!onSelect) {
+    return (
+      <div className="flex justify-center gap-1.5 mt-2" aria-hidden>
+        {Array.from({ length: count }).map((_, i) => (
+          <React.Fragment key={i}>{dot(i)}</React.Fragment>
+        ))}
+      </div>
+    );
+  }
+
   return (
-    <div className="flex justify-center gap-1.5 mt-2" aria-hidden>
+    // Padding, not gap: a 6px dot is not a tap target, so each one carries a
+    // ~28px invisible one and the negative margin keeps the row's own height.
+    <div className="flex justify-center -my-2 mt-0.5">
       {Array.from({ length: count }).map((_, i) => (
-        <motion.span
+        <button
           key={i}
-          animate={{ width: i === index ? 18 : 6, opacity: i === index ? 1 : 0.35 }}
-          transition={{ type: "spring", stiffness: 260, damping: 26 }}
-          className="h-1.5 rounded-full bg-primary"
-        />
+          type="button"
+          onClick={() => onSelect(i)}
+          aria-label={label?.(i) ?? `Show item ${i + 1} of ${count}`}
+          aria-current={i === index ? "true" : undefined}
+          className="px-1 py-2.5"
+        >
+          {dot(i)}
+        </button>
       ))}
     </div>
   );
@@ -2821,7 +3197,7 @@ function RegisterPageContent() {
               transition={{ delay: prefersReducedMotion ? 0 : 0.28, duration: 0.4 }}
               className="mt-2.5 text-sm sm:text-base text-[#5A5A5A] leading-snug px-2"
             >
-              The sleep, the mood, the fog - it isn&apos;t in your head, and it isn&apos;t your
+              The sleep, the weight gain, the mood - it isn&apos;t in your head, and it isn&apos;t your
               fault. <span className="font-semibold text-[#3D3D3D]">Your hormones changed the
               rules.</span>
             </motion.p>
@@ -2865,7 +3241,7 @@ function RegisterPageContent() {
                   </div>
                 ))}
               </div>
-              <p className="mt-3.5 text-[13px] text-[#5A5A5A] leading-snug">
+              <p className="mt-3.5 text-xs text-[#5A5A5A] leading-snug">
                 About 15 minutes a day. No gym, no cutting out food groups.
               </p>
             </motion.div>
@@ -2918,7 +3294,7 @@ function RegisterPageContent() {
               Build my {PLAN_WEEKS}-week plan
               <ArrowRight className="w-4 h-4" />
             </button>
-            <p className="text-[13px] text-[#5A5A5A] text-center mt-2 leading-snug">
+            <p className="text-xs text-[#5A5A5A] text-center mt-2 leading-snug">
               Free quiz · 2 minutes · {QUESTION_STEPS.length} taps · no email needed
             </p>
           </div>
@@ -3125,7 +3501,7 @@ function RegisterPageContent() {
                     {firstName.trim() ? `${firstName.trim()}, your ` : "Your "}
                     {PLAN_WEEKS}-week plan is ready
                   </h2>
-                  <p className="text-[13px] text-[#5A5A5A] leading-snug mt-1">
+                  <p className="text-xs text-[#5A5A5A] leading-snug mt-1">
                     Built from your {QUESTION_STEPS.length} answers - {PLAN_PILLARS.length} small
                     things a day, starting tomorrow.
                   </p>
@@ -3234,14 +3610,16 @@ function RegisterPageContent() {
                 the timeframe and the deliverable together, with the score
                 movement demoted to the subline where a proof point belongs.
 
-                The screenshots are also no longer decoration. `day` is her real
-                first day - "Day 1 · Week 1", the phase name, four pillars with
-                real progress - rendered uncropped and untilted, because it is
-                the one image in the funnel that has to be read rather than
-                glanced at. It is *not* full width: see <PlanHeroShot /> for why
-                a 2.17:1-tall shot eats a viewport at column width. The three
-                supporting shots keep the tilted, cropped treatment, since they
-                only have to prove the app is real. ───────────────────────── */}
+                The screenshots are also no longer decoration, and no longer
+                split. All four run through one static bezel as
+                <PlanHeroCarousel />: `day` first, because "Day 1 · Week 1" plus
+                four pillars with real progress is the whole offer in one frame,
+                then the three surfaces that run it. They used to be a hero plus
+                a tilted, cropped, faded trio of the same three shots 300px
+                lower, where nothing in them could be read - see the component
+                for why one legible phone beats one legible phone and three
+                thumbnails. It is *not* full width: a 2.17:1-tall shot eats a
+                viewport at column width. ─────────────────────────────────── */}
             {(() => {
               const goalLabel = getOfferPromise(goal).toLowerCase();
               return (
@@ -3271,12 +3649,9 @@ function RegisterPageContent() {
                     </p>
                   </div>
 
-                  <PlanHeroShot
-                    src={PLAN_SHOTS.day}
-                    alt={`Day 1 of your personalized ${PLAN_WEEKS}-week plan in the MenoLisa app, showing movement, nutrition, relaxation and habit tasks`}
-                  />
+                  <PlanHeroCarousel slides={PLAN_HERO_SLIDES} />
                   <p className="mt-2.5 text-center text-[11px] text-[#9A9A9A] leading-snug">
-                    You get this automatically in your mobile app.
+                    You get all of this automatically in your mobile app.
                   </p>
 
                   <div className="mt-4 rounded-2xl overflow-hidden border-2 border-[#E8DDD9] bg-card shadow-md shadow-primary/5">
@@ -3284,56 +3659,21 @@ function RegisterPageContent() {
                         plays a day on the plan and the eight weeks those days
                         add up to. It loops on its own while it's on screen -
                         nothing in it is tappable, so it never competes with the
-                        CTA for a thumb. */}
+                        CTA for a thumb.
+
+                        A <ShotStage /> of nutrition/habits/rewards used to
+                        close this card. Those three are now slides 2-4 of the
+                        hero directly above, at a size where the checklist,
+                        the habit and the streak can actually be read - so the
+                        stage was the same three images a second time, ~300px
+                        lower, tilted to ~30% width behind a gradient fade.
+                        Showing a shot twice on one screen doesn't double the
+                        proof; it halves the attention on the legible copy. */}
                     <PlanStage
                       firstName={firstName.trim() || undefined}
                       goalLabel={goalLabel}
                       className="pb-2"
                     />
-
-                    {/* Supporting evidence: the pillar screens behind the day.
-                        This is the last thing in the card, so its bottom fade
-                        lands on the card edge - which is what the fade was
-                        drawn for.
-
-                        A second stage used to follow it holding one 52%-wide
-                        shot of the plan email. Half of that strip was bare
-                        gradient either side of the phone, and it butted
-                        straight onto the flat clip of the three shots above,
-                        so the two stages together read as an empty band under
-                        the screenshots. It was also the last `/diagnosys`
-                        asset in this card - an older generation of the app UI
-                        sitting directly beneath the current `/screenshots`
-                        masters, which is the one comparison this block cannot
-                        afford. */}
-                    <ShotStage className="h-52">
-                      <PhoneShot
-                        src={PLAN_SHOTS.nutrition}
-                        alt="The nutrition list for today in the MenoLisa app"
-                        rotate={-8}
-                        className="w-[30%] -mr-3 mt-3"
-                        width={SHOT_W}
-                        height={SHOT_H}
-                      />
-                      <PhoneShot
-                        src={PLAN_SHOTS.habits}
-                        alt="Your habits in the MenoLisa app"
-                        rotate={0}
-                        delay={0.1}
-                        className="w-[32%] z-10"
-                        width={SHOT_W}
-                        height={SHOT_H}
-                      />
-                      <PhoneShot
-                        src={PLAN_SHOTS.rewards}
-                        alt="Streaks and badges in the MenoLisa app"
-                        rotate={8}
-                        delay={0.18}
-                        className="w-[30%] -ml-3 mt-3"
-                        width={SHOT_W}
-                        height={SHOT_H}
-                      />
-                    </ShotStage>
                   </div>
                 </motion.div>
               );
