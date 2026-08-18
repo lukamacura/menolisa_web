@@ -28,9 +28,7 @@ export default function GetTheAppScreen({
         animate={{ opacity: 1, y: 0 }}
         className="flex w-full flex-col items-center"
       >
-        <Image src="/mockup.webp" alt="" width={240} height={240} priority />
-
-        <h1 className="mb-3 mt-4 text-2xl font-bold text-[#3D3D3D] sm:text-3xl">
+        <h1 className="mb-3 text-2xl font-bold text-[#3D3D3D] sm:text-3xl">
           {title}
         </h1>
         <p className="mb-8 text-sm leading-relaxed text-[#5A5A5A] sm:text-base">
@@ -45,7 +43,7 @@ export default function GetTheAppScreen({
             className="transition-transform hover:scale-[1.03]"
           >
             <Image
-              src="/app_store.png"
+              src="/badges/app-store.png"
               alt="Download on the App Store"
               width={160}
               height={53}
@@ -59,7 +57,7 @@ export default function GetTheAppScreen({
             className="transition-transform hover:scale-[1.03]"
           >
             <Image
-              src="/play_store.png"
+              src="/badges/google-play.png"
               alt="Get it on Google Play"
               width={160}
               height={53}

@@ -6,7 +6,7 @@ import { writeSubscription } from "@/lib/subscriptionWrite";
 import { sendChargeConfirmedEmail, sendAdminNotification } from "@/lib/resend";
 import { paymentFailedCopy } from "@/lib/alerts/catalog";
 import { sendAlert } from "@/lib/alerts/send";
-import { sendMetaPurchase, metaMatchDataFrom } from "@/lib/metaCapi";
+import { sendMetaPurchase, metaContextFrom, isMobileCheckout } from "@/lib/metaCapi";
 import { META_CURRENCY, PLAN_VALUE, purchaseEventId } from "@/lib/metaPixel";
 import {
   customerIdOf,
@@ -89,7 +89,23 @@ async function handleCheckoutSessionCompleted(
   // Stale-check the id the session carried. The account can change under us in
   // fulfillCheckout (email collision → merge), but the watermark belongs to the
   // account Stripe has been talking to us about.
-  if (await isStaleEvent(supabaseAdmin, sessionUserId, eventCreatedSec)) return { ok: true };
+  //
+  // Unlike every other handler, a stale result does NOT skip the work here.
+  // `checkout.session.completed` is the first event of a subscription's life and
+  // the only one that binds her email, starts her plan and reports the Purchase
+  // — and Stripe guarantees no delivery order, so a `customer.subscription.*` or
+  // `invoice.payment_succeeded` created a second later can land first and stamp
+  // the watermark past it. Skipping then cost the whole fulfillment plus the
+  // Meta Purchase; `sync-session` could recover the former but deliberately
+  // never reports the latter.
+  //
+  // Running it out of order is safe because nothing here is read off the event
+  // payload: the subscription is re-fetched from Stripe, so the period end and
+  // cancel flag written are current at processing time, `writeSubscription`
+  // refuses to clobber another provider, and `claimFulfillment` makes the
+  // one-time side effects idempotent. All the watermark can do is move
+  // backwards, so that is the one thing we suppress.
+  const stale = await isStaleEvent(supabaseAdmin, sessionUserId, eventCreatedSec);
 
   try {
     const result = await fulfillCheckout({
@@ -98,17 +114,20 @@ async function handleCheckoutSessionCompleted(
       session,
       sessionUserId,
       atSec: eventCreatedSec,
-      stampWatermark: true,
+      stampWatermark: !stale,
     });
 
-    if (result.written) {
-      // Server-side Purchase for Meta ads attribution. Deduped against the
-      // browser pixel copy on the success page via a shared event_id. Deferred
-      // with after() so Stripe gets its 200 without waiting on Meta.
-      //
-      // Sent even when this call lost the fulfillment claim to sync-session:
-      // that fallback deliberately reports nothing to Meta, because it runs in
-      // the browser's request and cannot see whether the pixel copy fired.
+    // Server-side Purchase for Meta ads attribution. Deduped against the
+    // browser pixel copy on the success page via a shared event_id. Deferred
+    // with after() so Stripe gets its 200 without waiting on Meta.
+    //
+    // Sent even when this call lost the fulfillment claim to sync-session: that
+    // fallback deliberately reports nothing to Meta, because it runs in the
+    // browser's request and cannot see whether the pixel copy fired.
+    //
+    // Not sent for a checkout started in the Expo app - no web ad drove it, and
+    // it carries none of the browser match data anyway.
+    if (result.written && !isMobileCheckout(session.metadata)) {
       after(() =>
         sendMetaPurchase({
           eventId: purchaseEventId(session.id),
@@ -121,7 +140,7 @@ async function handleCheckoutSessionCompleted(
           email: session.customer_details?.email ?? session.customer_email ?? null,
           userId: result.userId,
           planType: result.planType,
-          ...metaMatchDataFrom(session.metadata),
+          ...metaContextFrom(session.metadata),
         })
       );
     }

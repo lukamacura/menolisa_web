@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabase } from "@/lib/supabaseClient";
 import { AlertCircle, ArrowRight, Loader2 } from "lucide-react";
 
 type Mode = "login" | "register";
@@ -117,6 +117,7 @@ export default function OtpForm({
     setInfo(null);
     setLoading(true);
     try {
+      const supabase = await getSupabase();
       const { error } = await supabase.auth.signInWithOtp({
         email: targetEmail,
         options: {
@@ -182,6 +183,7 @@ export default function OtpForm({
     setInfo(null);
     setLoading(true);
     try {
+      const supabase = await getSupabase();
       const { data, error } = await supabase.auth.verifyOtp({
         email: email.toLowerCase().trim(),
         token: codeJoined,

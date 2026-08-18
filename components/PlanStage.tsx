@@ -173,7 +173,7 @@ export function PlanStage({
         className="pointer-events-none relative mx-auto w-full max-w-[340px] select-none"
       >
         <Image
-          src="/quiz/offer.webp"
+          src="/illustrations/offer.webp"
           alt=""
           width={1024}
           height={1536}
@@ -215,7 +215,7 @@ export function PlanStage({
             must not add a second preload link for a file already preloaded. */}
         <div className="absolute inset-0 z-20" style={{ clipPath: BOTTOM_ROLL_CLIP }}>
           <Image
-            src="/quiz/offer.webp"
+            src="/illustrations/offer.webp"
             alt=""
             width={1024}
             height={1536}
@@ -316,7 +316,7 @@ function SealedScroll({
           survive at 80px. */}
       <motion.div variants={fade} className="mb-1.5">
         <Image
-          src="/personalized_plan.webp"
+          src="/illustrations/plan-preview.webp"
           alt=""
           width={500}
           height={500}

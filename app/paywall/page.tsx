@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabase } from "@/lib/supabaseClient";
+import { identifyMetaUser } from "@/lib/metaPixelClient";
 import { DisputedAccountBanner, PaywallView } from "@/components/PaywallView";
 import { PLAN_ID } from "@/lib/pricing";
 import type { AccountState } from "@/lib/getAccountState";
@@ -26,11 +27,16 @@ export default function PaywallPage() {
     let cancelled = false;
     void (async () => {
       try {
+        const supabase = await getSupabase();
         const { data } = await supabase.auth.getUser();
         if (!data.user) {
           if (!cancelled) router.replace("/login?redirectedFrom=/paywall");
           return;
         }
+        // Same reason as the funnel's own paywall: the ViewContent and
+        // InitiateCheckout PaywallView is about to fire need to match the
+        // person the server events name. See `identifyMetaUser`.
+        identifyMetaUser(data.user.id);
         const res = await fetch("/api/account/status", {
           credentials: "include",
           cache: "no-store",
@@ -68,9 +74,8 @@ export default function PaywallPage() {
         credentials: "include",
         // `from_registration` is about where checkout *returns*, not where it
         // started: success lands on `/register?phase=download` (get the app,
-        // here is the address you log in with) and cancel comes back here. The
-        // alternative, `/checkout/success`, still tells her to open Lisa on the
-        // web dashboard — a product that was deleted in 2026-08-14.
+        // here is the address you log in with) and cancel comes back here
+        // rather than on `/dashboard`.
         body: JSON.stringify({
           plan: PLAN_ID,
           from_registration: true,

@@ -28,17 +28,38 @@ export type MetaMatchData = {
   clientUa?: string;
 };
 
-/** Pull the match data stashed on the Checkout Session by create-checkout. */
-export function metaMatchDataFrom(
+/**
+ * Unpack the browser snapshot `create-checkout` stashed on the Checkout Session.
+ *
+ * The webhook is server-to-server, so her cookies, IP, user-agent and the page
+ * she was on are unreachable by the time it runs. This is the only place they
+ * survive, and without them a Purchase matches on hashed email alone.
+ */
+export function metaContextFrom(
   metadata: Record<string, string> | null | undefined
-): MetaMatchData {
+): MetaMatchData & { eventSourceUrl?: string } {
   if (!metadata) return {};
   return {
     fbp: metadata.fbp || undefined,
     fbc: metadata.fbc || undefined,
     clientIp: metadata.fb_client_ip || undefined,
     clientUa: metadata.fb_client_ua || undefined,
+    eventSourceUrl: metadata.fb_event_source_url || undefined,
   };
+}
+
+/**
+ * True when this Checkout Session was started from the Expo app rather than the
+ * web funnel. Those purchases are deliberately not reported - see the
+ * `checkout_surface` comment in `create-checkout`.
+ *
+ * Absent metadata means a session created before this field existed, which can
+ * only be a web checkout: the mobile app has always sent deep-link return URLs.
+ */
+export function isMobileCheckout(
+  metadata: Record<string, string> | null | undefined
+): boolean {
+  return metadata?.checkout_surface === "mobile";
 }
 
 /**

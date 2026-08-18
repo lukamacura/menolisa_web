@@ -4,7 +4,7 @@ import Script from "next/script";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { META_PIXEL_ID } from "@/lib/metaPixel";
-import { trackFb } from "@/lib/metaPixelClient";
+import { captureFbClickId, trackFb } from "@/lib/metaPixelClient";
 
 export default function MetaPixel() {
   const pathname = usePathname();
@@ -12,6 +12,12 @@ export default function MetaPixel() {
   const isFirstRender = useRef(true);
 
   useEffect(() => {
+    // Before anything else: persist the ad click id off the landing URL, so the
+    // Conversions API can still match this visit if fbevents.js never loads.
+    // See `captureFbClickId` - this is the one match signal a blocked pixel
+    // does not cost us.
+    captureFbClickId();
+
     if (isFirstRender.current) {
       isFirstRender.current = false;
       return;

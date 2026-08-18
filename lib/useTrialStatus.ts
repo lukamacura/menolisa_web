@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "./supabaseClient";
+import { getSupabase } from "./supabaseClient";
 import {
   getAccountState,
   TRIAL_SELECT_COLS,
@@ -64,6 +64,7 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
   const fetchUserTrial = useCallback(
     async (userId: string): Promise<AccountStateRow | null> => {
       try {
+        const supabase = await getSupabase();
         const { data, error } = await supabase
           .from("user_trials")
           .select(SELECT_COLS)
@@ -91,6 +92,7 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
   const loadTrial = useCallback(async () => {
     setTrialStatus((prev) => ({ ...prev, loading: true, error: null }));
     try {
+      const supabase = await getSupabase();
       const { data, error } = await supabase.auth.getUser();
       if (error) throw error;
 

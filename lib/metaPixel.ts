@@ -53,8 +53,19 @@
 
 import { PLAN_PRICE } from "@/lib/pricing";
 
+/**
+ * The dataset every event in the app lands in - `fbq('init')` in the browser and
+ * the Graph API path the Conversions API POSTs to.
+ *
+ * `?? ` alone was not enough. A Vercel env var that exists but was left blank is
+ * the empty STRING, which `??` happily accepts, and an empty pixel id means
+ * `fbq('init', '')` plus a CAPI POST to `graph.facebook.com/v21.0//events` -
+ * every event in the funnel silently discarded, with nothing in any log to say
+ * so. (Same trap as `customer_email: ""` in create-checkout.) Trim first, so a
+ * blank var falls through to the literal below rather than half-configuring us.
+ */
 export const META_PIXEL_ID =
-  process.env.NEXT_PUBLIC_META_PIXEL_ID ?? "7118800424899365";
+  process.env.NEXT_PUBLIC_META_PIXEL_ID?.trim() || "7118800424899365";
 
 export const META_CURRENCY = "USD";
 

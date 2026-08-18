@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowBigRight } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabase } from "@/lib/supabaseClient";
 
 const SWIPE_THRESHOLD = 80;
 const DRAG_CAP_PX = 200;
@@ -27,15 +27,27 @@ export default function SwipeButton() {
   const didSwipeRef = useRef(false);
 
   useEffect(() => {
-    const checkAuth = async () => {
+    let mounted = true;
+    let unsubscribe: (() => void) | undefined;
+
+    (async () => {
+      const supabase = await getSupabase();
+      if (!mounted) return;
+
       const { data: { user } } = await supabase.auth.getUser();
-      setIsAuthenticated(!!user);
+      if (mounted) setIsAuthenticated(!!user);
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (mounted) setIsAuthenticated(!!session?.user);
+      });
+      unsubscribe = () => subscription.unsubscribe();
+      if (!mounted) unsubscribe();
+    })();
+
+    return () => {
+      mounted = false;
+      unsubscribe?.();
     };
-    checkAuth();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsAuthenticated(!!session?.user);
-    });
-    return () => subscription.unsubscribe();
   }, []);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps

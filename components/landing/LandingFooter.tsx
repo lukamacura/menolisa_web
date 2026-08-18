@@ -13,7 +13,7 @@ export default function LandingFooter() {
             <Link href="/" prefetch={false} className="flex items-center gap-2 mb-4">
               <div className="relative h-8 w-8 rounded-full overflow-hidden">
                 <Image
-                  src="/lisa_profile.webp"
+                  src="/brand/lisa-profile.webp"
                   alt="MenoLisa"
                   fill
                   className="object-cover"

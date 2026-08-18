@@ -439,7 +439,7 @@ export function PaywallView({
                 are the difference between one tap and finding a card. */}
             <div className="mt-3 flex justify-center border-t border-[#F0E6E2] pt-3">
               <Image
-                src="/paywall/paywall_logos.webp"
+                src="/badges/payment-methods.webp"
                 alt="Visa, Mastercard, Google Pay and Apple Pay accepted"
                 width={430}
                 height={140}
@@ -646,7 +646,7 @@ export function PaywallView({
             <span className="inline-flex items-center justify-center gap-1 flex-wrap">
               <b>Safe & Secure</b> with
               <Image
-                src="/paywall/stripe.webp"
+                src="/badges/stripe.webp"
                 alt="Stripe"
                 width={200}
                 height={83}

@@ -577,9 +577,15 @@ from the browser on purpose: the browser copy deduped in sessionStorage, i.e.
 inflated Lead, understated cost-per-lead, and taught delivery to buy more repeat
 clickers. Keyed off the profile insert, one human is one Lead forever.
 
-Since the funnel collects no email before Stripe, CAPI events match on
-`external_id` (SHA-256 of the Supabase user id) plus `_fbp`/`_fbc`/IP/UA. That
-is also why `Lead` should be read as "profile saved", not "contact captured".
+Since the funnel collects no email before Stripe, events match on `external_id`
+(the Supabase user id) plus `_fbp`/`_fbc`/IP/UA. That is also why `Lead` should
+be read as "profile saved", not "contact captured". The server hashes the id;
+the browser sends it raw via `identifyMetaUser()` and lets Meta hash it, called
+the moment the account exists (the anonymous sign-in in `completeRegistration`,
+and the `/paywall` gate) so the browser `ViewContent` / `InitiateCheckout` /
+`Purchase` resolve to the same person as the server copies. Only events fired
+*after* that call carry it — re-initialising the pixel is Meta's documented way
+to attach advanced matching post-sign-in and does not re-fire `PageView`.
 
 The CAPI sender in `lib/metaCapi.ts` **never throws** — a Meta outage must not
 fail the Stripe webhook (Stripe would retry and send duplicate welcome emails),
@@ -603,10 +609,30 @@ weeks for a subscriber it already won. The webhook prefers the real
 `unit_amount` off the Stripe price over `PLAN_VALUE`, so a legacy plan or a
 coupon-discounted first invoice still reports the amount actually charged.
 
-`_fbp`/`_fbc` cookies plus the client IP and user-agent are captured in
-`app/api/stripe/create-checkout/route.ts` and stashed on the Checkout Session
-metadata, because the webhook is server-to-server and cannot see them. That same
-route now uses them directly for its own `InitiateCheckout`.
+`_fbp`/`_fbc` cookies plus the client IP, user-agent and referring URL are
+captured in `app/api/stripe/create-checkout/route.ts` and stashed on the Checkout
+Session metadata, because the webhook is server-to-server and cannot see them
+(`metaContextFrom()` unpacks them again). That same route uses them directly for
+its own `InitiateCheckout`.
+
+**`_fbc` is reconstructed when the pixel is blocked.** `captureFbClickId()` (in
+`lib/metaPixelClient.ts`, called from `MetaPixel` on every route) writes the
+`_fbc` cookie itself from the landing URL's `fbclid`. fbevents.js normally does
+this — but only if it loaded, and the cohort CAPI exists to recover is precisely
+the one where it didn't; for those visitors both cookies were absent and every
+server event fell back to IP+UA, Meta's weakest match tier, on the clicks we most
+need attributed. `fbclid` is a real Meta-issued click id, so a reconstructed
+`_fbc` is a genuine match. **Do not mint a `_fbp` the same way** — that one is
+browser-generated, so a value we invent matches nothing Meta has ever seen. The
+value is shape-validated before it reaches a cookie (a raw `;` in an ad URL would
+otherwise let a crafted link write a second cookie on our own domain).
+
+**Purchase is web-only.** `create-checkout` stamps `checkout_surface` on the
+session, and the webhook skips the CAPI `Purchase` when it reads `"mobile"`. A
+checkout begun in the Expo app is not a web ad conversion, and reporting it as
+one inflates the campaign with sales no ad drove — the same feedback loop that
+moved `Lead` server-side (`save-quiz` already excludes Bearer callers). So Meta's
+Purchase count is deliberately ≤ Stripe's; reconcile the *web* ones only.
 
 ### Styling
 Tailwind CSS v4. Utility function for merging classes:
@@ -633,8 +659,25 @@ for on every page load. Before adding an image, shrink it (e.g. squoosh.app):
   can't be relied on to render WebP.
 - **Size:** resize to ~2x the CSS box it renders into, not the size it was
   exported at. A quiz tile renders at ~224px, so 460px wide is plenty; the app
-  screenshots in `diagnosys/` render at 260px. Aim to keep each file under 50KB.
+  screenshots in `screenshots/` render at 260px. Aim to keep each file under 50KB.
 - There is no build step — what you put in `public/` is exactly what ships.
+- **Put it in the right folder** — `public/` is organized by role, and a file
+  dropped at the root is a file nobody finds again:
+
+  | Folder | Holds |
+  |---|---|
+  | `badges/` | Third-party trust marks — app store, Google Play, Stripe, card logos |
+  | `brand/` | MenoLisa's own marks (Lisa's avatar) |
+  | `illustrations/` | Full-screen funnel art — start, results, offer, rewards, login |
+  | `landing/` | Landing-page art |
+  | `proof/` | Social proof — `before`/`after` photos and `testimonials/` |
+  | `quiz/` | Tap tiles, one folder per question (`age/`, `symptoms/`, `hrt/`, …) |
+  | `screenshots/` | Real app screenshots (1320x2868 masters) |
+
+  `favicon.png` stays at the root because the browser convention expects it
+  there. Two folders share filenames on purpose: `quiz/symptoms/` are 460x460
+  tiles she taps, `proof/testimonials/` are 900x490 before/after strips — same
+  symptom names, different assets.
 
 ### External Services
 | Service | Purpose | Key files |
@@ -831,6 +874,38 @@ again also works — that calls `sync-session`.
 ## 7. CURRENT STATUS
 
 Recent work:
+- **Pixel/CAPI hardened for the first campaign (2026-08-18)** — an audit ahead of
+  launch, five fixes, no new events (the AEM budget is unchanged at five).
+  - **`_fbc` is reconstructed from `fbclid`** when fbevents.js never loads, which
+    is the whole cohort CAPI exists for. Biggest match-quality win of the set;
+    see §4 for why `_fbp` deliberately is *not* reconstructed.
+  - **Browser events carry `external_id`** (`identifyMetaUser()`), so a browser
+    `ViewContent` and the server `Lead` from the same woman stop looking like two
+    strangers. Closes the open item from 2026-08-17.
+  - **Mobile-app checkouts no longer report a web `Purchase`** — `checkout_surface`
+    on the session metadata, read by the webhook. Makes `Purchase` consistent with
+    `Lead`, which already excluded Bearer callers.
+  - **`checkout.session.completed` no longer skips itself when it looks stale.**
+    Stripe guarantees no delivery order, so a `customer.subscription.*` created a
+    second later could land first, stamp the watermark past it, and cost the whole
+    fulfillment *plus* the Purchase — `sync-session` recovers the former but
+    deliberately never reports the latter. It now runs regardless and suppresses
+    only the watermark write (`stampWatermark: !stale`), which is safe because
+    nothing in that path is read off the event payload: the subscription is
+    re-fetched from Stripe, `writeSubscription` refuses to clobber another
+    provider, and `claimFulfillment` makes the one-time side effects idempotent.
+  - **A blank `NEXT_PUBLIC_META_PIXEL_ID` no longer half-configures the pixel.**
+    `??` accepts the empty string, so a Vercel var created and left blank meant
+    `fbq('init','')` and a CAPI POST to `/v21.0//events` — every event silently
+    discarded. Trimmed truthiness now falls through to the literal. Same trap as
+    `customer_email: ""` in create-checkout.
+  `event_source_url` was also added to the CAPI `Purchase` (the other two already
+  had it). **Left alone deliberately:** the browser `InitiateCheckout` still fires
+  on tap, before `create-checkout` can answer `409 already_subscribed`, so a
+  retargeted existing customer reports an unpaired IC. Firing it after the
+  response instead would mean firing into a `window.location` redirect, which
+  loses the event outright for everyone — a rare over-count beats a systematic
+  under-count on the signal delivery leans on.
 - **The price hold got its clock back (2026-08-17)** — the static "your $59 rate
   is held while you finish" band is a live `PLAN_DISCOUNT_WINDOW_MINUTES` (10)
   countdown again, and at zero the paywall reverts to the anchor: grey border,
@@ -886,9 +961,8 @@ Recent work:
   `onCheckout` now takes that id, so both callers (`/register`, `/paywall`) pass
   it through.
   **Still open:** `ViewContent` has no server copy (no server call at paywall
-  mount), and the browser pixel sends no advanced-matching `external_id`, so
-  browser events match on cookies/IP/UA alone while the CAPI copies match on the
-  hashed Supabase user id.
+  mount). The missing browser-side `external_id` was closed on 2026-08-18 — see
+  that entry.
 - **The nutrition checklist is gone (2026-08-17)** — the `relief` phase is now
   breathing → reward → paywall. The five-row audit (`checklist`) and its verdict
   screen (`done`) are deleted from `app/register/page.tsx`, along with
@@ -1043,6 +1117,8 @@ Recent work:
   `/paywall` also passes `from_registration: true` now, so a purchase there ends
   on the funnel's download screen instead of `/checkout/success`, which still
   invites her to open Lisa on the web dashboard deleted in 2026-08-14.
+  (`/checkout/success` was deleted outright on 2026-08-18 — every checkout now
+  returns to `/register?phase=download`, and `defaultSuccess` no longer branches.)
   **Server-side data was never being lost** — every `user_trials` row has its
   `user_profiles` row; only the browser's copy goes, and re-walking the funnel
   UPDATEs the profile on the same account.

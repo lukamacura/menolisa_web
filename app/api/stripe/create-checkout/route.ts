@@ -162,9 +162,16 @@ export async function POST(req: NextRequest) {
     // session_id + plan let the success page fire the browser-side Meta Purchase
     // with the right value and the event_id that dedupes it against the
     // Conversions API copy sent from the Stripe webhook.
-    const defaultSuccess = fromRegistration
-      ? `${baseUrl}/register?phase=download&session_id={CHECKOUT_SESSION_ID}&plan=${plan}`
-      : `${baseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}&plan=${plan}`;
+    //
+    // One web destination, unconditionally. `/checkout/success` used to be the
+    // non-funnel branch, but it sent her to the web dashboard to "open Lisa" -
+    // a product surface deleted in 2026-08-14 - and no caller reached it: both
+    // web callers pass `from_registration`, and the mobile app passes explicit
+    // deep links that win above. It was deleted rather than left as a fallback
+    // nothing exercised. `?phase=download` is the funnel's own post-purchase
+    // screen and does the same two jobs (mounts MetaPurchaseTracker, calls
+    // sync-session if the webhook is late) while pointing her at the app.
+    const defaultSuccess = `${baseUrl}/register?phase=download&session_id={CHECKOUT_SESSION_ID}&plan=${plan}`;
     // Backing out of Stripe returns her to `/paywall`, not into the funnel. She
     // is coming back from another origin with her React state gone, and
     // `/register` always restarts at question 1 — which would be a fresh quiz as
@@ -183,10 +190,24 @@ export async function POST(req: NextRequest) {
     const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
     // Stripe caps metadata values at 500 chars.
     const clientUa = req.headers.get("user-agent")?.slice(0, 500);
+    // The page she tapped the CTA on. Meta uses event_source_url for domain
+    // attribution, and the webhook has no other way to know it.
+    const eventSourceUrl = req.headers.get("referer")?.slice(0, 500);
     if (fbp) metaMetadata.fbp = fbp;
     if (fbc) metaMetadata.fbc = fbc;
     if (clientIp) metaMetadata.fb_client_ip = clientIp;
     if (clientUa) metaMetadata.fb_client_ua = clientUa;
+    if (eventSourceUrl) metaMetadata.fb_event_source_url = eventSourceUrl;
+
+    // Which surface started this checkout, recorded for the webhook.
+    //
+    // A checkout begun in the Expo app is not a web ad conversion, and reporting
+    // it as one inflates the campaign's Purchase count with sales no web ad
+    // drove - the same feedback loop that moved `Lead` server-side. `save-quiz`
+    // already excludes Bearer callers from `Lead`; this is the matching rule for
+    // `Purchase`, which had no such guard. The mobile app is the only caller
+    // that passes its own deep-link return URLs.
+    const checkoutSurface = useMobileReturns ? "mobile" : "web";
 
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: "subscription",
@@ -205,7 +226,7 @@ export async function POST(req: NextRequest) {
       // is not enough — Stripe rejects `customer_email: ""` outright with
       // "Invalid email address" and the whole checkout 500s.
       customer_email: user.email?.trim() ? user.email : undefined,
-      metadata: { user_id: user.id, plan, ...metaMetadata },
+      metadata: { user_id: user.id, plan, checkout_surface: checkoutSurface, ...metaMetadata },
       // No trial: the card is charged the full price at checkout and the
       // subscription renews every 8 weeks off the price's own interval.
       subscription_data: {
@@ -245,7 +266,7 @@ export async function POST(req: NextRequest) {
           fbc,
           clientIp,
           clientUa,
-          eventSourceUrl: req.headers.get("referer"),
+          eventSourceUrl,
         })
       );
     }

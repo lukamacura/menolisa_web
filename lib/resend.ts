@@ -40,11 +40,10 @@ export function buildEmailHtml(body: string): string {
     <td align="center" style="padding:40px 16px 48px">
       <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px">
 
-        <!-- Purple header with logo -->
+        <!-- Purple header with wordmark -->
         <tr>
           <td bgcolor="#7c3aed" style="background-color:#7c3aed;border-radius:20px 20px 0 0;padding:32px 40px 0;text-align:center">
-            <img src="${APP_URL}/email-logo.png" width="96" alt="MenoLisa"
-                 style="display:block;margin:0 auto;border:0;max-width:96px;height:auto" />
+            <p style="margin:0;color:#ffffff;font-size:26px;font-weight:700;letter-spacing:0.5px;line-height:1.2">MenoLisa</p>
           </td>
         </tr>
 

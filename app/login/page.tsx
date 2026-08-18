@@ -7,7 +7,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle } from "lucide-react";
 import OtpForm from "@/components/auth/OtpForm";
 
-export const dynamic = "force-dynamic";
+// `export const dynamic` lives in layout.tsx, not here: route segment config is
+// ignored in a "use client" module. See the note there.
 
 /** Account is the fallback: it is the only web surface left that does something. */
 const DEFAULT_NEXT_PATH = "/dashboard/account";
@@ -36,7 +37,7 @@ function LoginForm() {
       <div className="flex-1 flex flex-col justify-center">
         <div className="flex justify-center mb-6">
           <Image
-            src="/quiz/illustration_email.webp"
+            src="/illustrations/login.webp"
             alt="Email illustration"
             width={120}
             height={120}

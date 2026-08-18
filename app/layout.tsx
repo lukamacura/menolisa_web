@@ -2,7 +2,6 @@
 import "./globals.css";
 
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
 import ConditionalNavbar from "@/components/ConditionalNavbar";
 import MetaPixel from "@/components/MetaPixel";
 import { Dancing_Script, Poppins, Lora } from "next/font/google";
@@ -45,23 +44,27 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function RootLayout({
+// Deliberately NOT async, and deliberately reads no cookies.
+//
+// This used to `await cookies()` to give <ConditionalNavbar /> a first-paint
+// hint about whether anyone was logged in. Reading a dynamic API in the ROOT
+// layout opts every route in the app into dynamic rendering, so `/register`,
+// `/paywall`, `/privacy` and `/terms` — none of which render anything
+// user-specific on the server — were server-rendered on demand: a serverless
+// invocation, and possibly a cold start, in front of the first byte of HTML on
+// every Meta ad click.
+//
+// With the read gone those four prerender to static HTML and are served from
+// the CDN edge. ConditionalNavbar establishes auth on the client instead (it
+// already re-verified there anyway, and it renders nothing at all on the two
+// funnel routes). If you need request data in this file again, put it behind a
+// <Suspense> boundary in a leaf component rather than awaiting it here.
+export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-  // Navbar-only hint: is there an auth cookie at all? This is a local cookie read,
-  // NOT a call to Supabase. The previous `supabase.auth.getUser()` here put a network
-  // round-trip to the Supabase auth API in front of the first byte of HTML on EVERY
-  // request — including anonymous landing and quiz-funnel traffic that has no session
-  // to check. ConditionalNavbar already re-verifies the session on the client, so the
-  // server value only needs to be right often enough to avoid a logged-in/out flash.
-  const cookieStore = await cookies();
-  const isAuthenticated = cookieStore
-    .getAll()
-    .some((c) => /^sb-.*-auth-token(\.\d+)?$/.test(c.name) && !!c.value);
 
   return (
     <html lang="en" data-scroll-behavior="smooth" className={`${dancingScript.variable} ${poppins.variable} ${lora.variable}`}>
@@ -69,10 +72,17 @@ export default async function RootLayout({
         {/* Preconnect to Supabase for faster API/auth on first request */}
         {supabaseUrl && <link rel="preconnect" href={supabaseUrl} />}
         {supabaseUrl && <link rel="dns-prefetch" href={supabaseUrl} />}
+        {/*
+          The pixel is on every page and fires before anything else we care
+          about, so pay its DNS + TLS handshake in parallel with the document
+          instead of after fbevents.js is requested. Paid traffic lands cold,
+          with nothing for this origin in the connection pool.
+        */}
+        <link rel="preconnect" href="https://connect.facebook.net" crossOrigin="" />
       </head>
       <body className="min-h-screen flex flex-col font-sans text-foreground bg-background">
         <MetaPixel />
-        <ConditionalNavbar isAuthenticated={isAuthenticated} />
+        <ConditionalNavbar />
 
         <main className="flex-1 w-full">{children}</main>
 

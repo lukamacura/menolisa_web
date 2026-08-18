@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabase } from "@/lib/supabaseClient";
 
 /**
  * Sign out of the web app, then navigate to `destination`.
@@ -17,12 +17,13 @@ import { supabase } from "@/lib/supabaseClient";
  *   the actual product lives. Signing out of billing on the web must not sign
  *   her out of the app.
  *
- * A hard navigation rather than `router.push`, so the root layout re-renders
- * server-side with the cookies actually gone; its navbar hint is a cookie
- * sniff, and a soft push would leave it reading "signed in".
+ * A hard navigation rather than `router.push`, so the whole client tree is
+ * rebuilt with the cookies actually gone. A soft push leaves every mounted
+ * component holding state it derived while signed in.
  */
 export async function signOutAndRedirect(destination = "/login") {
   try {
+    const supabase = await getSupabase();
     await supabase.auth.signOut({ scope: "local" });
   } catch {
     // Revoking failed (offline, Supabase down). Navigate anyway rather than

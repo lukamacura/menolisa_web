@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Bell, ArrowRight, Trash2 } from "lucide-react";
 import DeleteConfirmationDialog from "@/components/DeleteConfirmationDialog";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabase } from "@/lib/supabaseClient";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +28,7 @@ export default function SettingsPage() {
       // session it holds should die with it, including the Expo app's. This is
       // the one place that differs from signOutAndRedirect(), which is local
       // so that signing out of billing doesn't log her out of her phone.
+      const supabase = await getSupabase();
       await supabase.auth.signOut();
       window.location.href = "/login";
     } catch {

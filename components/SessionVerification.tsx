@@ -2,7 +2,7 @@
 
 import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabase } from "@/lib/supabaseClient";
 import { detectBrowser, hasBrowserMismatchIssue, getBrowserMismatchMessage } from "@/lib/browserUtils";
 import { AlertCircle, X } from "lucide-react";
 
@@ -20,6 +20,7 @@ function SessionVerificationContent() {
   useEffect(() => {
     const checkSession = async () => {
       // Check session - cookies should be available immediately after auth callback
+      const supabase = await getSupabase();
       const { data, error } = await supabase.auth.getSession();
       
       const session = data.session;
@@ -51,6 +52,7 @@ function SessionVerificationContent() {
               <button
                 onClick={async () => {
                   // Try to refresh the session
+                  const supabase = await getSupabase();
                   const { data, error } = await supabase.auth.refreshSession();
                   if (data.session) {
                     setShowWarning(false);

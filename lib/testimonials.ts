@@ -17,13 +17,13 @@ export const SOCIAL_PROOF_WEEKS = PLAN_WEEKS + 1;
 // the layout.
 export const SOCIAL_PROOF_PHOTOS = [
   {
-    src: "/social_proof/social_proof2.webp",
+    src: "/proof/before.webp",
     objectPosition: "50% 66%",
     badge: "Day 1",
     alt: "taking this quiz on her phone",
   },
   {
-    src: "/social_proof/social_proof.webp",
+    src: "/proof/after.webp",
     objectPosition: "58% 82%",
     badge: `Week ${SOCIAL_PROOF_WEEKS}`,
     alt: `${SOCIAL_PROOF_WEEKS} weeks later, on the beach`,
@@ -43,15 +43,15 @@ export const SOCIAL_PROOF = {
 export type SymptomTransform = { image: string; label: string; before: string; after: string };
 
 export const SYMPTOM_TRANSFORM: Record<string, SymptomTransform> = {
-  hot_flashes:    { image: "/testimonials/hot_flashes.webp", label: "Hot flashes",    before: "Drenched, sleepless nights",        after: "Sleeping through, dry and cool" },
-  sleep_issues:   { image: "/testimonials/sleep.webp",       label: "Sleep",          before: "Tossing and turning till 3am",      after: "Falling asleep and staying there" },
-  brain_fog:      { image: "/testimonials/brain_fog.webp",   label: "Brain fog",      before: "Losing your train of thought",      after: "Words arriving when you need them" },
-  mood_swings:    { image: "/testimonials/mood_swings.webp", label: "Mood swings",    before: "Snapping at the people you love",   after: "Feeling steady around the people you love" },
-  weight_changes: { image: "/testimonials/weight_gain.webp", label: "Weight changes", before: "Nothing fitting like it used to",   after: "Your clothes fitting the way they should" },
-  low_energy:     { image: "/testimonials/fatigue.webp",     label: "Fatigue",        before: "Running on empty by midday",        after: "Still having something left at 4pm" },
-  anxiety:        { image: "/testimonials/anxiety.webp",     label: "Anxiety",        before: "A constant, low hum of worry",      after: "A quiet chest and a calmer day" },
-  joint_pain:     { image: "/testimonials/joint_pain.webp",  label: "Joint pain",     before: "Stiff, aching mornings",            after: "Getting out of bed without bracing" },
-  bloating:       { image: "/testimonials/bloating.webp",    label: "Bloating",       before: "Heavy and uncomfortable",           after: "Light and comfortable after meals" },
+  hot_flashes:    { image: "/proof/testimonials/hot_flashes.webp", label: "Hot flashes",    before: "Drenched, sleepless nights",        after: "Sleeping through, dry and cool" },
+  sleep_issues:   { image: "/proof/testimonials/sleep.webp",       label: "Sleep",          before: "Tossing and turning till 3am",      after: "Falling asleep and staying there" },
+  brain_fog:      { image: "/proof/testimonials/brain_fog.webp",   label: "Brain fog",      before: "Losing your train of thought",      after: "Words arriving when you need them" },
+  mood_swings:    { image: "/proof/testimonials/mood_swings.webp", label: "Mood swings",    before: "Snapping at the people you love",   after: "Feeling steady around the people you love" },
+  weight_changes: { image: "/proof/testimonials/weight_gain.webp", label: "Weight changes", before: "Nothing fitting like it used to",   after: "Your clothes fitting the way they should" },
+  low_energy:     { image: "/proof/testimonials/fatigue.webp",     label: "Fatigue",        before: "Running on empty by midday",        after: "Still having something left at 4pm" },
+  anxiety:        { image: "/proof/testimonials/anxiety.webp",     label: "Anxiety",        before: "A constant, low hum of worry",      after: "A quiet chest and a calmer day" },
+  joint_pain:     { image: "/proof/testimonials/joint_pain.webp",  label: "Joint pain",     before: "Stiff, aching mornings",            after: "Getting out of bed without bracing" },
+  bloating:       { image: "/proof/testimonials/bloating.webp",    label: "Bloating",       before: "Heavy and uncomfortable",           after: "Light and comfortable after meals" },
 };
 
 /** Representative fallback when there's no quiz context to personalize from

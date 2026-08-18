@@ -4,6 +4,7 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image, { getImageProps } from "next/image";
+import dynamic from "next/dynamic";
 import {
   motion,
   AnimatePresence,
@@ -13,8 +14,9 @@ import {
   useReducedMotion,
   useTransform,
   type MotionValue,
+  type Variants,
 } from "framer-motion";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabase, hasAuthCookieHint } from "@/lib/supabaseClient";
 import {
   getAccountState,
   stateAllowsAccess,
@@ -22,6 +24,7 @@ import {
 } from "@/lib/getAccountState";
 import { detectBrowser, hasBrowserMismatchIssue } from "@/lib/browserUtils";
 import { cn } from "@/lib/utils";
+import { identifyMetaUser } from "@/lib/metaPixelClient";
 import { APP_STORE_URL, PLAY_STORE_URL } from "@/lib/constants";
 import {
   ArrowRight,
@@ -38,16 +41,67 @@ import {
   Lock,
   Sparkles,
 } from "lucide-react";
-import { PaywallView } from "@/components/PaywallView";
+import { HighlightSweep } from "@/components/HighlightSweep";
+import { SHOT_W, SHOT_H } from "@/components/PhoneShots";
+
+/*
+ * Everything past the quiz is code-split.
+ *
+ * This page is the landing page for paid traffic, and until she taps through
+ * question 12 none of the screens below can appear. Statically importing them
+ * put the paywall, the plan stage, the finish board and the polaroid animation
+ * into the chunk that has to parse before question 1 becomes tappable - a cost
+ * paid by every ad click, including the majority that bounce on question 1.
+ *
+ * The loaders are named so they can be *called* as well as rendered. A phase
+ * transition must never show a spinner - she is mid-funnel and a stall on the
+ * paywall is a stall in front of the price - so `warmPhaseChunks()` below
+ * fetches them well before the phase that needs them. `next/dynamic` dedupes,
+ * so warming and rendering share one request.
+ */
+const loadPaywallView = () =>
+  import("@/components/PaywallView").then((m) => ({ default: m.PaywallView }));
 // The identical component used to be defined a second time in this file, with a
 // narrower `variant` union that had already drifted from the shared one.
-import { PlanFinishBoard } from "@/components/PlanFinishBoard";
-import { HighlightSweep } from "@/components/HighlightSweep";
-import MetaPurchaseTracker from "@/components/MetaPurchaseTracker";
-import { SocialProofPolaroid } from "@/components/SocialProof";
-import { PlanStage } from "@/components/PlanStage";
-import { HowLisaRuns } from "@/components/HowLisaRuns";
-import { SHOT_W, SHOT_H } from "@/components/PhoneShots";
+const loadPlanFinishBoard = () =>
+  import("@/components/PlanFinishBoard").then((m) => ({ default: m.PlanFinishBoard }));
+const loadPlanStage = () =>
+  import("@/components/PlanStage").then((m) => ({ default: m.PlanStage }));
+const loadHowLisaRuns = () =>
+  import("@/components/HowLisaRuns").then((m) => ({ default: m.HowLisaRuns }));
+const loadSocialProofPolaroid = () =>
+  import("@/components/SocialProof").then((m) => ({ default: m.SocialProofPolaroid }));
+const loadMetaPurchaseTracker = () => import("@/components/MetaPurchaseTracker");
+
+const PaywallView = dynamic(loadPaywallView);
+const PlanFinishBoard = dynamic(loadPlanFinishBoard);
+const PlanStage = dynamic(loadPlanStage);
+const HowLisaRuns = dynamic(loadHowLisaRuns);
+const SocialProofPolaroid = dynamic(loadSocialProofPolaroid);
+const MetaPurchaseTracker = dynamic(loadMetaPurchaseTracker);
+
+/**
+ * Pull the chunks for the screens that come after `phase`.
+ *
+ * Mirrors the image preloading either side of it: warm the next screen while
+ * she is still reading this one. The calculating loader is 6.5s of dead time
+ * and results is a long scroll, so by the time anything here renders its code
+ * has been sitting in the module cache for a minute or more.
+ */
+function warmPhaseChunks(phase: Phase) {
+  if (phase === "quiz" || phase === "calculating") {
+    void loadSocialProofPolaroid();
+    void loadPlanStage();
+    void loadHowLisaRuns();
+  }
+  if (phase === "calculating" || phase === "results" || phase === "diagnosis") {
+    void loadPaywallView();
+    void loadPlanFinishBoard();
+  }
+  if (phase === "paywall") {
+    void loadMetaPurchaseTracker();
+  }
+}
 import { PLAN_PILLARS } from "@/lib/planPillars";
 import {
   PLAN_ID,
@@ -67,7 +121,7 @@ import {
 
 /** Quiz step/phase -> illustration filename (from public/quiz/, same as mobile app assets/quiz/). */
 const QUIZ_ILLUSTRATION: Record<string, string> = {
-  q8_name: "illustration_q8_name.webp",
+  q8_name: "name.webp",
 };
 
 
@@ -212,15 +266,15 @@ const MENOPAUSE_TYPE_TONE: Record<
 // Image-based symptom tiles (same style as Q1 age / Q2 status). 9 options, multi-select.
 // IDs reuse the existing downstream keys (SYMPTOM_LABELS, pillars, comparison) so results keep working.
 const PROBLEM_OPTIONS = [
-  { id: "hot_flashes", label: "Hot flashes", image: "/symptoms/hot_flashes.webp" },
-  { id: "sleep_issues", label: "Can't sleep", image: "/symptoms/insomnia.webp" },
-  { id: "brain_fog", label: "Brain fog", image: "/symptoms/brain_fog.webp" },
-  { id: "mood_swings", label: "Mood swings", image: "/symptoms/mood_swings.webp" },
-  { id: "weight_changes", label: "Weight changes", image: "/symptoms/weight_gain.webp" },
-  { id: "low_energy", label: "Fatigue", image: "/symptoms/fatigue.webp" },
-  { id: "anxiety", label: "Anxiety", image: "/symptoms/anxiety.webp" },
-  { id: "joint_pain", label: "Joint pain", image: "/symptoms/joint_pain.webp" },
-  { id: "bloating", label: "Bloating", image: "/symptoms/bloating.webp" },
+  { id: "hot_flashes", label: "Hot flashes", image: "/quiz/symptoms/hot_flashes.webp" },
+  { id: "sleep_issues", label: "Can't sleep", image: "/quiz/symptoms/insomnia.webp" },
+  { id: "brain_fog", label: "Brain fog", image: "/quiz/symptoms/brain_fog.webp" },
+  { id: "mood_swings", label: "Mood swings", image: "/quiz/symptoms/mood_swings.webp" },
+  { id: "weight_changes", label: "Weight changes", image: "/quiz/symptoms/weight_gain.webp" },
+  { id: "low_energy", label: "Fatigue", image: "/quiz/symptoms/fatigue.webp" },
+  { id: "anxiety", label: "Anxiety", image: "/quiz/symptoms/anxiety.webp" },
+  { id: "joint_pain", label: "Joint pain", image: "/quiz/symptoms/joint_pain.webp" },
+  { id: "bloating", label: "Bloating", image: "/quiz/symptoms/bloating.webp" },
 ];
 
 // id -> tile image, so results can show her actual selected symptoms as visual chips.
@@ -449,8 +503,8 @@ const STEP_IMAGES: Partial<Record<Step, string[]>> = {
   q2_here_for: HERE_FOR_OPTIONS.map((o) => o.image),
   q4_symptoms: PROBLEM_OPTIONS.map((o) => o.image),
   q3_goals: GOAL_OPTIONS.map((o) => o.image),
-  reward_symptoms: ["/quiz/rewards/reward1.webp"],
-  reward_progress: ["/quiz/rewards/reward2.webp"],
+  reward_symptoms: ["/illustrations/reward-1.webp"],
+  reward_progress: ["/illustrations/reward-2.webp"],
   q_fitness: FITNESS_OPTIONS.map((o) => o.image),
   q_nutrition: NUTRITION_STYLE_OPTIONS.map((o) => o.image),
   q_relaxation: RELAXATION_STYLE_OPTIONS.map((o) => o.image),
@@ -1375,17 +1429,14 @@ function ScoreCauseCard({
                 <span className="font-bold text-white">estrogen rising and falling</span>
               </p>
               <EstrogenWave className="mt-1.5" />
-              <p className="mt-1 text-[10px] leading-snug text-white/60">
-                Illustrative - the pattern, not your levels.
-              </p>
+
             </motion.div>
           </div>
 
           {/* The line that turns the cause into permission. It is not her
               fault, and - the half that matters commercially - it moves. */}
           <p className="mt-3 text-[13px] leading-relaxed text-[#5A5A5A]">
-            Not willpower. <span className="font-bold text-[#3D3D3D]">Biology - and biology
-            responds.</span>
+            <span className="font-bold text-[#3D3D3D]">This is biology and it responds.</span>
           </p>
         </div>
       )}
@@ -1403,7 +1454,7 @@ function ScoreCauseCard({
           it belongs now that no verdict names it. */}
       <p
         className={cn(
-          "px-4 pb-4 text-xs leading-relaxed text-[#5A5A5A]",
+          "px-4 pb-4 text-xs leading-relaxed text-[#5A5A5A]/30",
           rows.length > 0 ? "mt-3.5 border-t border-[#EFE6E2] pt-3.5" : "pt-4"
         )}
       >
@@ -2302,6 +2353,11 @@ function RegisterPageContent() {
     if (phase !== "calculating" && phase !== "results") return;
     DIAGNOSIS_SHOTS.forEach(({ src, sizes }) => preloadResponsiveImage(src, sizes));
   }, [phase]);
+
+  // Same idea, for JavaScript. See warmPhaseChunks().
+  useEffect(() => {
+    warmPhaseChunks(phase);
+  }, [phase]);
   // Question position for the progress label/dots (reward steps excluded; during a
   // reward step we keep the last answered question's dot lit).
   const activeQuestionIndex = QUESTION_STEPS.includes(currentStep)
@@ -2705,6 +2761,7 @@ function RegisterPageContent() {
       // instead of trusting localStorage. A token for an account the purge cron
       // has since deleted still parses locally but is dead server-side, and
       // save-quiz would 401 on it with no way out but a cleared browser.
+      const supabase = await getSupabase();
       const { data: userData } = await supabase.auth.getUser();
       let sessionUser = userData?.user ?? null;
 
@@ -2741,6 +2798,14 @@ function RegisterPageContent() {
         }
         sessionUser = anonData.user;
       }
+
+      // She now has an id, and it is the only identifier this funnel will ever
+      // have for her - Stripe collects the email, and that is two screens away.
+      // Hand it to the pixel as advanced-matching `external_id` so the browser
+      // ViewContent and InitiateCheckout below match the same person as the
+      // server-side Lead this next request is about to send. See
+      // `identifyMetaUser`.
+      identifyMetaUser(sessionUser.id);
 
       const res = await fetch("/api/auth/save-quiz", {
         method: "POST",
@@ -2882,6 +2947,7 @@ function RegisterPageContent() {
     let cancelled = false;
 
     void (async () => {
+      const supabase = await getSupabase();
       const read = async () => (await supabase.auth.getUser()).data?.user?.email ?? null;
 
       let email = await read();
@@ -2933,6 +2999,7 @@ function RegisterPageContent() {
       // (If she is really an existing customer, the email she types at Stripe
       // collides in the webhook and the subscription is merged onto her real
       // account — see resolveCheckoutAccount.)
+      const supabase = await getSupabase();
       const { data: userData } = await supabase.auth.getUser();
       if (!userData?.user) {
         restartQuiz();
@@ -3015,12 +3082,21 @@ function RegisterPageContent() {
       return;
     }
 
+    // No auth cookie means there is no session to find, and the overwhelming
+    // majority of this page's traffic is a cold ad click with exactly that.
+    // Skipping the check keeps the Supabase auth chunk (52KB gz) off the wire
+    // entirely for those visitors - they first need it when the quiz ends and
+    // completeRegistration() signs them in. The hint is only allowed to skip
+    // work here; the branch below still verifies before redirecting anyone.
+    if (!hasAuthCookieHint()) return;
+
     let mounted = true;
 
     async function checkSessionAndRedirect() {
       if (!mounted) return;
 
       try {
+        const supabase = await getSupabase();
         const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
 
         if (sessionError) {
@@ -3138,7 +3214,7 @@ function RegisterPageContent() {
               className="relative w-full shrink-0 rounded-2xl overflow-hidden ring-1 ring-black/5 shadow-[0_16px_36px_-10px_rgba(61,61,61,0.35)]"
             >
               <Image
-                src="/start/start.webp"
+                src="/illustrations/start.webp"
                 alt="The same woman twice: alone with her phone, then holding her plan and smiling."
                 width={900}
                 height={504}
@@ -3385,7 +3461,7 @@ function RegisterPageContent() {
                 delays. */}
             <div className="mb-3">
               <EnvelopeReveal
-                src="/results.webp"
+                src="/illustrations/results.webp"
                 scoreMv={scoreMv}
                 score={score}
                 name={firstName.trim() || undefined}
@@ -3783,47 +3859,61 @@ function RegisterPageContent() {
                 sold; the cost of doing nothing lands far better *after* she
                 knows there is a concrete alternative, because now it is a
                 comparison rather than a threat. ─────────────────────────────── */}
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.18 }}
-              className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-5 shadow-md shadow-primary/5"
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <TrendingDown className="w-5 h-5 text-red-500" />
-                <h2 className="text-base font-bold text-[#3D3D3D]">And if you do nothing</h2>
-              </div>
-              <p className="text-xs text-[#5A5A5A] mb-3">
-                {firstName.trim() ? (
-                  <>
-                    <span className="font-bold">{firstName.trim()}</span>, untreated
-                  </>
-                ) : (
-                  "Untreated"
-                )}{" "}
-                perimenopause symptoms persist 4&ndash;7 years on average - and often get worse
-                before they settle.
-              </p>
-              <TrajectoryChart score={score} />
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <div className="rounded-xl border border-red-200 bg-red-50 p-2.5">
-                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-red-700">
-                    Without a plan
-                  </div>
-                  <p className="text-xs text-red-700/80 mt-0.5 leading-snug">
-                    Symptoms drift on for years.
-                  </p>
-                </div>
-                <div className="rounded-xl border border-green-200 bg-green-50 p-2.5">
-                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-green-700">
-                    With Lisa
-                  </div>
-                  <p className="text-xs text-green-700/80 mt-0.5 leading-snug">
-                    {SCORE_GOAL}+ by week {PLAN_WEEKS}, then hold it.
-                  </p>
-                </div>
-              </div>
-            </motion.div>
+            {(() => {
+              // Unlike the blocks above it, this one arrives on scroll rather
+              // than on mount: it sits far enough down the plan scroll that a
+              // mount animation has always finished playing to nobody, and the
+              // card is an argument in three beats - the claim, the sentence,
+              // then the chart that draws it - so the beats are staggered in
+              // that order.
+              //
+              // Reduced motion collapses every duration to zero instead of
+              // branching on `initial`: `useReducedMotion()` reads false through
+              // hydration, so a branch there is a mismatch on exactly the
+              // visitors it is meant to help.
+              const rise: Variants = {
+                hidden: { opacity: 0, y: 14 },
+                show: {
+                  opacity: 1,
+                  y: 0,
+                  transition: {
+                    duration: prefersReducedMotion ? 0 : 0.5,
+                    ease: [0.16, 1, 0.3, 1],
+                  },
+                },
+              };
+              return (
+                <motion.div
+                  variants={{
+                    hidden: {},
+                    show: { transition: { staggerChildren: prefersReducedMotion ? 0 : 0.14 } },
+                  }}
+                  initial="hidden"
+                  whileInView="show"
+                  viewport={{ once: true, amount: 0.25 }}
+                  className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-5 shadow-md shadow-primary/5"
+                >
+                  <motion.div variants={rise} className="flex items-center gap-2 mb-1">
+                    <TrendingDown className="w-5 h-5 text-red-500" />
+                    <h2 className="text-base font-bold text-[#3D3D3D]">And if you do nothing</h2>
+                  </motion.div>
+                  <motion.p variants={rise} className="text-xs text-[#5A5A5A] mb-3">
+                    {firstName.trim() ? (
+                      <>
+                        <span className="font-bold">{firstName.trim()}</span>, untreated
+                      </>
+                    ) : (
+                      "Untreated"
+                    )}{" "}
+                    perimenopause symptoms persist 4&ndash;7 years on average - and often get
+                    worse before they settle.
+                  </motion.p>
+                  <motion.div variants={rise}>
+                    <TrajectoryChart score={score} />
+                  </motion.div>
+                </motion.div>
+              );
+            })()}
 
             {/* ── Block 5: What she gets alongside the plan. Deliberately after
                 the plan and deliberately small - these are the tools she runs
@@ -4329,7 +4419,7 @@ function RegisterPageContent() {
                 className="transition-transform hover:scale-[1.03]"
               >
                 <Image
-                  src="/app_store.png"
+                  src="/badges/app-store.png"
                   alt="Download on the App Store"
                   width={160}
                   height={53}
@@ -4344,7 +4434,7 @@ function RegisterPageContent() {
                 className="transition-transform hover:scale-[1.03]"
               >
                 <Image
-                  src="/play_store.png"
+                  src="/badges/google-play.png"
                   alt="Get it on Google Play"
                   width={160}
                   height={53}
@@ -4937,7 +5027,7 @@ function RegisterPageContent() {
                         />
                       )}
                       <Image
-                        src="/quiz/rewards/reward1.webp"
+                        src="/illustrations/reward-1.webp"
                         alt=""
                         width={320}
                         height={320}
@@ -5030,7 +5120,7 @@ function RegisterPageContent() {
                         />
                       )}
                       <Image
-                        src="/quiz/rewards/reward2.webp"
+                        src="/illustrations/reward-2.webp"
                         alt=""
                         width={320}
                         height={320}
