@@ -21,6 +21,9 @@ export default function PaywallPage() {
   const [error, setError] = useState<string | null>(null);
   const [gateLoading, setGateLoading] = useState(true);
   const [isDisputed, setIsDisputed] = useState(false);
+  // Held for PaywallView's ViewContent: it keys the once-per-tab guard and
+  // derives the event_id the server copy dedups against. See `userId` there.
+  const [userId, setUserId] = useState<string | null>(null);
 
   // Bounce users who don't belong here: unauthenticated → /login, has access → /dashboard.
   useEffect(() => {
@@ -37,6 +40,7 @@ export default function PaywallPage() {
         // InitiateCheckout PaywallView is about to fire need to match the
         // person the server events name. See `identifyMetaUser`.
         identifyMetaUser(data.user.id);
+        setUserId(data.user.id);
         const res = await fetch("/api/account/status", {
           credentials: "include",
           cache: "no-store",
@@ -125,6 +129,7 @@ export default function PaywallPage() {
           error={error}
           banner={isDisputed ? <DisputedAccountBanner /> : undefined}
           trackingSource="dashboard"
+          userId={userId}
         />
       </div>
     </main>

@@ -519,7 +519,7 @@ first.
 |---|---|---|---|---|
 | `PageView` | yes | — | `components/MetaPixel.tsx` (in `app/layout.tsx`); re-fires on App Router route changes | — |
 | `Lead` | — | yes | `sendMetaLead()` from `/api/auth/save-quiz`, **only on `user_profiles` insert** and only for cookie (web) callers | — |
-| `ViewContent` | yes | — | `components/PaywallView.tsx` on mount (once) | $59 |
+| `ViewContent` | yes | yes | Browser: `components/PaywallView.tsx` on mount. Server: `sendMetaViewContent()` from `POST /api/paywall-view`, the beacon that mount fires | $59 |
 | `InitiateCheckout` | yes | yes | Browser: `PaywallView` CTA click. Server: `sendMetaInitiateCheckout()` from `/api/stripe/create-checkout` once the session exists | $59 |
 | `Purchase` | yes | yes | Browser: `components/MetaPurchaseTracker.tsx` on the success landing. Server: `sendMetaPurchase()` from the Stripe webhook | $59 |
 
@@ -569,6 +569,11 @@ Both dual-reported events collapse on a shared `(event_name, event_id)`:
   (`isValidMetaEventId`) and skips the server copy on anything malformed —
   an unpaired id double-counts her, which is worse than under-reporting. It
   sends inside `after()`, so Meta never sits between her tap and the redirect.
+- `ViewContent` — `viewContentEventId()`, from the Supabase user id, so **neither
+  side has to tell the other anything.** That is what lets `/api/paywall-view`
+  accept no request body, which is the whole reason it is safe to expose (see
+  below). It also makes the id stable across tabs, so Meta's 48h dedup collapses
+  a re-view onto the first one.
 
 `Lead` is server-only and its id (`leadEventId()`, from the user id) exists just
 so a retried save-quiz collapses to one Lead. It is sent server-side rather than
@@ -578,7 +583,14 @@ inflated Lead, understated cost-per-lead, and taught delivery to buy more repeat
 clickers. Keyed off the profile insert, one human is one Lead forever.
 
 Since the funnel collects no email before Stripe, events match on `external_id`
-(the Supabase user id) plus `_fbp`/`_fbc`/IP/UA. That is also why `Lead` should
+(the Supabase user id) plus `_fbp`/`_fbc`/IP/UA — and, on `Lead`, her first name
+(`fn`) and country (2026-08-19). Two parameters Meta scores are deliberately
+absent, and `lib/metaCapi.ts` says so at the call site so nobody "fixes" them:
+**`db` is impossible** (Meta wants `YYYYMMDD`; the quiz asks for an age *band*,
+and a bucket midpoint is a birthday that is wrong all year), and **`ge` is a
+choice** — the quiz never asks, it is a single bit of match value, and trans and
+non-binary people go through menopause too. If gender is ever wanted, ask for it
+on the quiz and send the answer. That is also why `Lead` should
 be read as "profile saved", not "contact captured". The server hashes the id;
 the browser sends it raw via `identifyMetaUser()` and lets Meta hash it, called
 the moment the account exists (the anonymous sign-in in `completeRegistration`,
@@ -591,8 +603,44 @@ The CAPI sender in `lib/metaCapi.ts` **never throws** — a Meta outage must not
 fail the Stripe webhook (Stripe would retry and send duplicate welcome emails),
 nor show a woman "we couldn't save your results".
 
-`ViewContent` is browser-only: there is no server call at paywall mount to hang
-a CAPI copy on. It is the one kept event without server backup.
+#### `ViewContent` and the paywall beacon (`POST /api/paywall-view`)
+
+`ViewContent` is the only event that needed a request invented for it. The other
+three server copies ride an HTTP call that was happening anyway — `save-quiz`,
+`create-checkout`, the Stripe webhook — but reaching the paywall in the funnel is
+`setPhase("paywall")` on a click handler and talks to no server. So it was
+browser-only until 2026-08-19, and that had a specific cost: for an ad-blocked or
+ITP-restricted visitor, `Lead`, `InitiateCheckout` and `Purchase` all still
+arrived server-side and `ViewContent` alone vanished — the one step between
+"finished the quiz" and "tapped pay" going dark for exactly the cohort CAPI
+exists to recover. That makes the paywall→checkout rate biased, not just noisy.
+
+**The route takes no request body, and that is load-bearing.** Every field is
+derived server-side: the event name is a literal, the value is `PLAN_VALUE`, the
+`event_id` comes from her user id, the match data comes off the request's own
+cookies and headers. The only thing a caller may say is *which* paywall, checked
+against a two-item allowlist. A beacon that accepted an event name, a value or an
+`event_id` would be an open endpoint for writing arbitrary conversions into the
+dataset — inflating a campaign is the cheap version, poisoning the optimization
+signal we buy media against is the expensive one. Keep it that way: if a new
+server event ever needs a beacon, give it its own route with its own literals
+rather than adding parameters to this one.
+
+Bearer callers are answered `{ ok: true, skipped: "mobile" }`, the same exclusion
+`Lead` and `Purchase` already make.
+
+**Counting.** `ViewContent` is one-per-woman, not one-per-mount, via three
+stacked guards — a ref (this mount), `sessionStorage` (this tab), and Meta's 48h
+`(event_name, event_id)` dedup (everywhere else). The ref alone was the whole
+guard until 2026-08-19: `<PaywallView />` sits under `<AnimatePresence mode="wait"
+key={phase}>`, so Back-and-forward through the relief screen remounted it, as did
+returning from a cancelled Stripe checkout, and it was running ~3x the Lead
+count. Adding a server copy to a number nobody could divide by anything would
+have made it worse, so the counting was fixed in the same pass.
+
+`PageView` remains browser-only and should stay that way — highest volume on the
+site, not an optimization target, not in AEM, and a server copy buys nothing in
+the auction.
 
 There is one plan — $59 for an 8-week period, no free trial — so reported values
 are money actually collected at checkout and Events Manager should reconcile
@@ -874,6 +922,42 @@ again also works — that calls `sync-session`.
 ## 7. CURRENT STATUS
 
 Recent work:
+- **`ViewContent` got a server copy and an honest denominator (2026-08-19)** —
+  the last browser-only funnel event is now dual-reported, closing the item left
+  open on 2026-08-17. `Purchase` and `InitiateCheckout` were deliberately not
+  touched.
+  Two problems, and fixing only one would have made things worse. **The count
+  was wrong**: `<PaywallView />` guarded its mount effect with a `useRef`, but it
+  lives under `<AnimatePresence mode="wait" key={phase}>`, so Back into the
+  relief screen and forward again remounted it — as did returning from a
+  cancelled Stripe checkout — and it was reporting ~3x the Lead count, which made
+  "reached the paywall ÷ anything" unreadable. **The coverage was biased**: for
+  an ad-blocked or ITP visitor, `Lead` / `InitiateCheckout` / `Purchase` all
+  still landed server-side while `ViewContent` alone disappeared, so the one step
+  that went dark was the one in the middle.
+  New `POST /api/paywall-view` (`sendMetaViewContent()`), fired by the same mount
+  effect alongside the pixel — neither waits on the other, and `keepalive` keeps
+  it alive through the navigation to Stripe. **It accepts no request body**: name,
+  value and `event_id` are all derived server-side, the last from her user id via
+  `viewContentEventId()`, which is also how both copies agree on an id without
+  either telling the other. `?source=` is allowlisted to `register|dashboard`.
+  That shape is the point — see §4 before adding a parameter to it.
+  Counting is now three stacked guards (mount ref → `sessionStorage` per tab →
+  Meta's 48h id dedup everywhere else), so it is one-per-woman like `Lead`.
+  `userId` is threaded into `PaywallView` from both callers; absent, it degrades
+  to the old undeduplicated browser-only fire rather than dropping the event.
+  **`Lead` got its match data in the same pass.** It scored 4.4/10 against 6.1
+  for every other event because `sendMetaLead` sent only `external_id` +
+  `_fbp`/`_fbc`/IP/UA, while her first name sat three lines away in the same
+  request going only to the database. It now sends `fn` (normalized Meta's way:
+  NFKC, lowercase, letters and combining marks only, so `"  LINDA! "` and
+  `"Linda"` hash alike and `"Renée"` keeps its accent) and `country` from
+  Vercel's edge geo header. A name with no letters left in it sends **no** `fn`
+  rather than the hash of the empty string — a parameter every junk entry shares
+  matches nobody and dilutes the ones that work. `db` and `ge` were considered
+  and rejected; the reasons are in `sendMetaLead`'s docstring and in §4.
+  **Still not done:** `Purchase` ignores `session.customer_details.name`,
+  `.phone` and `.address`, which Stripe already collected.
 - **Pixel/CAPI hardened for the first campaign (2026-08-18)** — an audit ahead of
   launch, five fixes, no new events (the AEM budget is unchanged at five).
   - **`_fbc` is reconstructed from `fbclid`** when fbevents.js never loads, which
@@ -960,9 +1044,8 @@ Recent work:
   reporting was losing a large slice of it to ITP and ad blockers.
   `onCheckout` now takes that id, so both callers (`/register`, `/paywall`) pass
   it through.
-  **Still open:** `ViewContent` has no server copy (no server call at paywall
-  mount). The missing browser-side `external_id` was closed on 2026-08-18 — see
-  that entry.
+  The missing browser-side `external_id` was closed on 2026-08-18, and
+  `ViewContent`'s missing server copy on 2026-08-19 — see those entries.
 - **The nutrition checklist is gone (2026-08-17)** — the `relief` phase is now
   breathing → reward → paywall. The five-row audit (`checklist`) and its verdict
   screen (`done`) are deleted from `app/register/page.tsx`, along with

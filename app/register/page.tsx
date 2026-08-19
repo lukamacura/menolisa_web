@@ -2468,6 +2468,11 @@ function RegisterPageContent() {
 
   const [error, setError] = useState<string | null>(null);
 
+  // Set the moment she has an account (the anonymous sign-in in
+  // `completeRegistration`), which is four screens before the paywall needs it.
+  // PaywallView keys its ViewContent off this - see the `userId` prop there.
+  const [userId, setUserId] = useState<string | null>(null);
+
   // Her own answer outranks the fallback: she just told us how hard this hits.
   const derivedSeverity = (symptomImpact || deriveSeverity(totalBurden)) as
     | "mild"
@@ -2806,6 +2811,7 @@ function RegisterPageContent() {
       // server-side Lead this next request is about to send. See
       // `identifyMetaUser`.
       identifyMetaUser(sessionUser.id);
+      setUserId(sessionUser.id);
 
       const res = await fetch("/api/auth/save-quiz", {
         method: "POST",
@@ -4355,6 +4361,7 @@ function RegisterPageContent() {
           trackingSource="register"
           topProblems={topProblems}
           goal={goal}
+          userId={userId}
         />
       )}
 

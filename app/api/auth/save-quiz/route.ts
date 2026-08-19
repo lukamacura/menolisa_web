@@ -237,6 +237,14 @@ export async function POST(request: NextRequest) {
         eventTimeSec: Math.floor(Date.now() / 1000),
         userId,
         email: user.email?.trim() ? user.email : null,
+        // The one identity parameter this funnel has before Stripe. She typed it
+        // twelve screens ago and it was going only to the database; sending it
+        // hashed is what lifts Lead off the bottom of the match-quality table.
+        firstName: quizAnswers.name ?? null,
+        // Vercel's edge geo header. Not new information — Meta already gets the
+        // IP this was derived from — but it is a parameter Meta scores, and it
+        // costs a header read.
+        country: request.headers.get("x-vercel-ip-country"),
         fbp: request.cookies.get("_fbp")?.value,
         fbc: request.cookies.get("_fbc")?.value,
         clientIp: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),

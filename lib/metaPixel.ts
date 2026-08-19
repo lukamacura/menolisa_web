@@ -9,7 +9,7 @@
  * |-------------------|---------|------|---------------------------------|
  * | `PageView`        | yes     | -    | every route                     |
  * | `Lead`            | -       | yes  | `user_profiles` insert          |
- * | `ViewContent`     | yes     | -    | paywall mount ($59)             |
+ * | `ViewContent`     | yes     | yes  | paywall mount ($59)             |
  * | `InitiateCheckout`| yes     | yes  | paywall CTA ($59)               |
  * | `Purchase`        | yes     | yes  | checkout completed ($59)        |
  *
@@ -42,13 +42,23 @@
  *
  * ## Deduplication
  *
- * `InitiateCheckout` and `Purchase` are each reported twice - once from the
- * browser, once server-side - so they survive Safari ITP, ad blockers, and users
- * who close the tab before the redirect. Meta collapses the pair on matching
- * (event_name, event_id), so both sides must carry the same id. `Purchase`
- * derives it from the Stripe Checkout Session (`purchaseEventId`); the two
- * `InitiateCheckout` copies are the same HTTP round trip, so the browser mints
- * the id and hands it to `create-checkout` in the request body.
+ * `ViewContent`, `InitiateCheckout` and `Purchase` are each reported twice -
+ * once from the browser, once server-side - so they survive Safari ITP, ad
+ * blockers, and users who close the tab before the redirect. Meta collapses the
+ * pair on matching (event_name, event_id), so both sides must carry the same id.
+ * Three events, three ways of agreeing on one:
+ *
+ * - `Purchase` derives it from the Stripe Checkout Session (`purchaseEventId`),
+ *   which both sides can see independently.
+ * - `InitiateCheckout` has no shared identifier, so the browser mints one
+ *   (`newInitiateCheckoutEventId`) and hands it to `create-checkout` in the
+ *   request body - the two copies are the same HTTP round trip.
+ * - `ViewContent` derives it from the Supabase user id (`viewContentEventId`),
+ *   so neither side has to tell the other anything. See that function for why
+ *   that matters more than it looks.
+ *
+ * `Lead` is the odd one out: server-only, with an id that exists purely so a
+ * retried save-quiz collapses to one event.
  */
 
 import { PLAN_PRICE } from "@/lib/pricing";
@@ -99,6 +109,32 @@ export function purchaseEventId(stripeSessionId: string): string {
  */
 export function leadEventId(userId: string): string {
   return `lead_${userId}`;
+}
+
+/**
+ * Dedup key for `ViewContent`, derived from the Supabase user id.
+ *
+ * Both copies compute it from the same id rather than one side minting it and
+ * shipping it to the other, which is what `InitiateCheckout` has to do. That is
+ * not a stylistic difference - it is the whole security model of the beacon:
+ * `/api/paywall-view` takes **no body at all**, so there is nothing for a caller
+ * to forge. An endpoint that accepted an event_id (or a value, or an event name)
+ * would be a way for anyone holding a session to inject arbitrary conversions
+ * into the dataset.
+ *
+ * It also has a second, useful effect. Meta collapses same-name/same-id events
+ * inside a 48-hour window, so this id is what makes ViewContent count **women
+ * rather than page views**: she can bounce back from Stripe, hit Back into the
+ * relief screen and return, or reopen the funnel in a second tab, and all of it
+ * still reports one ViewContent. Before this, the browser fired on every mount
+ * of `<PaywallView />` - it was running about 3x the number of Leads, which made
+ * the paywall-to-checkout rate unreadable.
+ *
+ * The 48h window is the deliberate limit of that: a genuine return visit days
+ * later reports a second view, which is right - that is a second decision.
+ */
+export function viewContentEventId(userId: string): string {
+  return `vc_${userId}`;
 }
 
 /**

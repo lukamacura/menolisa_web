@@ -22,6 +22,7 @@ import {
   META_CURRENCY,
   PLAN_VALUE,
   newInitiateCheckoutEventId,
+  viewContentEventId,
 } from "@/lib/metaPixel";
 import {
   PLAN_ADHERENCE_PCT,
@@ -71,6 +72,18 @@ export interface PaywallViewProps {
    * Events Manager.
    */
   trackingSource?: "register" | "dashboard";
+  /**
+   * Her Supabase user id. Both callers have it before this component renders -
+   * the funnel signed her in anonymously back on the calculating screen, and
+   * `/paywall` resolved her session before it dropped the loader.
+   *
+   * It is what makes `ViewContent` a count of women rather than of mounts: it
+   * keys the once-per-tab guard and derives the `event_id` that the Conversions
+   * API copy independently derives too (`viewContentEventId`). Absent, the event
+   * still fires from the browser - undeduplicated and with no server copy, which
+   * is what the whole screen did until 2026-08-19.
+   */
+  userId?: string | null;
   /**
    * Her selected symptoms, when we have them (the /register funnel has just
    * asked). Personalizes the before/after outcome cards; the dashboard paywall
@@ -240,6 +253,7 @@ export function PaywallView({
   trackingSource,
   topProblems,
   goal,
+  userId,
 }: PaywallViewProps) {
   const name = firstName?.trim() ?? "";
   // Same promise as the finish board's far end (lib/planTimeline.ts) - the
@@ -251,17 +265,65 @@ export function PaywallView({
   // are identical either side of zero.
   const { remainingMs, expired } = useDiscountWindow();
 
-  // ViewContent fires once when the paywall appears.
+  // ViewContent: she has seen the offer. Reported twice, browser and server, and
+  // counted once per woman rather than once per mount.
+  //
+  // Three guards stack, each covering what the one before it can't:
+  //
+  //   1. `viewTracked` - this mount. Cheap, and the only one that survives a
+  //      browser with storage disabled.
+  //   2. `sessionStorage` - this tab. The ref alone was the whole guard until
+  //      2026-08-19, and a ref dies with the mount: `<PaywallView />` sits under
+  //      `<AnimatePresence mode="wait" key={phase}>` in the funnel, so Back into
+  //      the relief screen and forward again remounted it, as did returning from
+  //      a cancelled Stripe checkout. It was reporting ~3x the number of Leads,
+  //      which is why "reached the paywall" could not be divided by anything.
+  //   3. Meta's own 48h dedup on `(event_name, event_id)` - every tab, every
+  //      device. This is also the browser/server pair's dedup, which is why the
+  //      id is derived from her user id rather than minted: see
+  //      `viewContentEventId`.
+  //
+  // The beacon fires alongside the pixel, not instead of it, and neither waits
+  // on the other - an ad blocker takes out fbevents.js, ITP takes out the
+  // cookies, and this route is unaffected by both. `keepalive` so it survives
+  // her tapping the CTA a moment later and the page navigating to Stripe.
   const viewTracked = useRef(false);
   useEffect(() => {
     if (viewTracked.current) return;
     viewTracked.current = true;
-    trackFb("ViewContent", {
+
+    const params = {
       content_name: "paywall",
       content_category: trackingSource,
       content_type: "product",
       value: PLAN_VALUE,
       currency: META_CURRENCY,
+    };
+
+    // No id to dedup on and no session for the beacon to authenticate. Report
+    // the view rather than lose it, and accept the double count. Neither caller
+    // reaches here in practice; see the `userId` prop.
+    if (!userId) {
+      trackFb("ViewContent", params);
+      return;
+    }
+
+    const storageKey = `fb:vc:${userId}`;
+    try {
+      if (window.sessionStorage.getItem(storageKey)) return;
+      window.sessionStorage.setItem(storageKey, "1");
+    } catch {
+      // Private mode / storage disabled - fall through and let guard 3 handle it.
+    }
+
+    trackFb("ViewContent", params, { eventID: viewContentEventId(userId) });
+
+    void fetch(
+      `/api/paywall-view${trackingSource ? `?source=${trackingSource}` : ""}`,
+      { method: "POST", credentials: "include", keepalive: true }
+    ).catch(() => {
+      // The pixel copy already went. A failed beacon costs match quality on the
+      // ad-blocked cohort, never the event.
     });
     // Mount-only by design.
     // eslint-disable-next-line react-hooks/exhaustive-deps
