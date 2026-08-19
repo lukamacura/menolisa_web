@@ -922,6 +922,29 @@ again also works — that calls `sync-session`.
 ## 7. CURRENT STATUS
 
 Recent work:
+- **`autoConfig: false` re-asserted on the second `init` (2026-08-19)** — Events
+  Manager raised "improve deduplication" on `Purchase` **and `Lead`**, and `Lead`
+  is the tell: it is server-only, so there is no browser copy of ours to pair
+  with, and a redundancy warning on it means a browser `Lead` exists that this
+  codebase never fired.
+  `identifyMetaUser()` is the only place that calls `fbq('init')` a second time
+  (advanced matching, added 2026-08-18) and it did not re-assert the flag.
+  `autoConfig: false` is applied per pixel at init, Meta does not document
+  whether a re-init resets it, and if it does then Automatic Event Detection
+  comes back on mid-funnel — the same machinery that once inferred `Subscribe`
+  off the paywall CTA on every Framer Motion re-render. AED's phantoms carry no
+  `event_id`, so they can never dedup against our copies, and the two it invents
+  most readily are exactly the two that got flagged.
+  The fix asserts `set` before `init`, matching the base snippet's order. It is a
+  no-op if re-init preserves the flag, which is the point: the cost of asserting
+  it twice is nothing and the cost of being wrong is a corrupted `Purchase`
+  count. **Confirm from the browser, not from this file** — Network, filter
+  `facebook.com/tr`, walk past results: any `ev=Lead` request is not ours. If one
+  still appears after this ships, the second source is outside the codebase (a
+  partner integration or CAPI Gateway on the dataset), which is a Business
+  Manager cleanup and not a code change. That would also finally explain the
+  unresolved "Integration: Multiple" on every row — including `PageView`, which
+  has no server copy at all.
 - **`ViewContent` got a server copy and an honest denominator (2026-08-19)** —
   the last browser-only funnel event is now dual-reported, closing the item left
   open on 2026-08-17. `Purchase` and `InitiateCheckout` were deliberately not

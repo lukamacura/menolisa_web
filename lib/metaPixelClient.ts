@@ -79,6 +79,26 @@ export function trackFbOnce(
 export function identifyMetaUser(userId: string | null | undefined): void {
   if (typeof window === "undefined" || !userId) return;
   try {
+    // Re-assert autoConfig BEFORE the re-init, in that order, exactly as the
+    // base snippet does it.
+    //
+    // This is the only place in the app that calls `init` a second time, and
+    // `autoConfig: false` is a per-pixel setting applied at init. Meta does not
+    // document whether a re-init resets it, so we do not rely on the answer:
+    // asserting it twice costs nothing, and being wrong costs a lot.
+    //
+    // What it costs, specifically, is Automatic Event Detection coming back on
+    // — the thing that scans the DOM and fires standard events off button copy
+    // with no fbq() call of ours. It has already happened once on this site
+    // (phantom `Subscribe` off the paywall CTA, re-firing on every Framer
+    // Motion re-render; see the block comment in `components/MetaPixel.tsx`),
+    // and the two events it invents most readily are `Lead` and `Purchase`.
+    //
+    // Those phantoms carry no `event_id`, so they can never pair with our
+    // copies — which is what an "improve deduplication" warning in Events
+    // Manager looks like from the inside. `Lead` is the clean tell: ours is
+    // server-only, so *any* browser Lead is not ours.
+    window.fbq?.("set", "autoConfig", false, META_PIXEL_ID);
     window.fbq?.("init", META_PIXEL_ID, { external_id: userId });
   } catch (err) {
     console.error("Meta pixel identify failed:", err);
