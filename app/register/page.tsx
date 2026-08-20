@@ -3517,9 +3517,12 @@ function RegisterPageContent() {
           least committed. Price, credentials and a testimonial wall still stay
           off this screen. It has to answer three things and nothing else: what
           she walks away with (a personalized 8-week plan), what it costs her
-          (2 minutes), and whether she can actually do it (three tasks anyone
-          can do, 15 minutes a day). The 2026-08-18 pass was about the order and
-          weight of those three, not about adding a fourth.
+          (2 minutes), and whether she can actually do it. The 2026-08-18 pass
+          was about the order and weight of those three, not about adding a
+          fourth; the 2026-08-20 pass cut the screen from seven message blocks
+          to four, because it had grown dense in *mechanism* and thin in
+          *outcome* - seventy words, not one of which said what she walks away
+          with. See the card comment below for what moved downstream and why.
           The one exception is the hero photo (2026-08-17): a
           real before/after - scrolling alone, then holding her plan, smiling -
           so the promise in the headline below is something she sees happen to
@@ -3553,10 +3556,12 @@ function RegisterPageContent() {
                   one transformation - the whole reason it is here. The seam is
                   drawn, the halves are named, and the arrow states the direction,
                   so the before/after is on the screen instead of in the alt text.
-                  The right-hand label is the CTA's "takes 2 minutes" promise
-                  attached to the picture of the payoff, 200px above where she
-                  reads the words. Rose = the load she carries now, green = what
-                  closes it, per the funnel's colour rule. */}
+                  The right-hand label names the *plan* as the thing that closes
+                  the gap. It read "In 2 minutes" until 2026-08-20, which pinned
+                  the screen's strongest outcome image to how long the quiz takes
+                  - and was the third mention of two minutes on one screen. Rose
+                  = the load she carries now, green = what closes it, per the
+                  funnel's colour rule. */}
               <div
                 aria-hidden
                 className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-white/70"
@@ -3569,7 +3574,7 @@ function RegisterPageContent() {
                   </span>
                   <span className="flex items-center justify-center gap-1.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wide text-white">
                     <span className="h-1.5 w-1.5 rounded-full bg-[#4ADE80]" />
-                    In 2 minutes
+                    With your plan
                   </span>
                 </div>
                 <span
@@ -3591,60 +3596,81 @@ function RegisterPageContent() {
             </motion.h1>
 
             {/* The reframe. It has to land before she is asked to do any work -
-                self-blame is what keeps her from starting at all. */}
+                self-blame is what keeps her from starting at all.
+
+                It opened on the symptom list ("The sleep, the weight gain, the
+                mood") until 2026-08-20. That was the most specific thing on the
+                screen and it was spent at 22 words, at the moment she is
+                deciding whether to keep reading at all - and the word
+                "symptoms" now does the same job one block down, where it sells
+                the personalization rather than only naming the problem. */}
             <motion.p
               initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: prefersReducedMotion ? 0 : 0.28, duration: 0.4 }}
               className="mt-2.5 text-sm sm:text-base text-[#5A5A5A] leading-snug px-2"
             >
-              The sleep, the weight gain, the mood - it isn&apos;t in your head, and it isn&apos;t your
-              fault. <span className="font-semibold text-[#3D3D3D]">Your hormones changed the
+              It isn&apos;t in your head, and it isn&apos;t your fault.{" "}
+              <span className="font-semibold text-[#3D3D3D]">Your hormones changed the
               rules.</span>
             </motion.p>
 
-            {/* What she actually walks away with.
+            {/* What she actually walks away with - the product, in one card.
 
-                The headline used to lead with "Answer 13 questions" - a cost
-                statement, bolded, above a 2-minute promise set in 11px grey. She
-                read the price of the quiz at full weight and the reassurance at
-                the page's lowest priority. The outcome leads now; the effort
-                moved down to the CTA bar where it belongs, and got readable.
+                Until 2026-08-20 this was a three-column mechanism row (a 10-min
+                walk / protein at breakfast / 2 min of breathing) under the plan
+                promise, closed by "About 15 minutes a day. No gym, no cutting
+                out food groups." Both are good arguments and both belong later:
+                the mechanism is what <PlanStage /> animates on the diagnosis
+                screen, and objection handling only works once an objection
+                exists. Four seconds off a cold ad click she has not decided she
+                wants this yet, so the screen was answering questions she had not
+                asked - and spending the plan screen's ammunition early, which is
+                the mistake the 2026-08-16 pass had just undone on results.
 
-                The row shows each pillar's real `task` rather than its `label`.
-                "Movement / Nutrition / Relaxation" reads to an exhausted
-                45-60 woman as three more disciplines to fail at - a gym, a diet
-                and a meditation practice. "10-min walk / 25-30g protein at
-                breakfast / 4-7-8 breathing" is the same three pillars stated as
-                things anyone can do today, which is the whole point of the
-                screen. The data is already in PLAN_PILLARS; only the field
-                changed. The closing line is the daily budget the plan screen
-                already quotes, promoted out of 2.85:1 grey. */}
+                What replaced them is the outcome the plan is actually bought
+                for, in the funnel's own words: GOAL_PROMISE's generic fallback
+                is "Feel like yourself again", which closes the exact sentence
+                the headline opens with. Two checks, not three - three reads as a
+                list to skim, two reads as a promise. The first sells the
+                personalization, i.e. the only reason to answer a dozen
+                questions rather than download a generic PDF;
+                the second is the "can I actually do this" answer the 15-minutes
+                line used to carry, at one clause instead of a row plus a
+                sentence.
+
+                Green on the checks per the funnel's colour rule - the plan is
+                what closes the gap. Pink stays on the CTA and nothing else.
+
+                Deliberately absent: her wellbeing score. It is a fear device for
+                the results screen, and teasing it here as the payoff would sell
+                the diagnosis instead of the plan - see the header of
+                lib/planTimeline.ts, which refuses it at the paywall for exactly
+                the same reason. */}
             <motion.div
               initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: prefersReducedMotion ? 0 : 0.4, duration: 0.4 }}
-              className="mt-5 w-full rounded-2xl border border-foreground/10 bg-card px-4 py-3.5 shadow-sm"
+              className="mt-5 w-full rounded-2xl border border-foreground/10 bg-card px-4 py-4 shadow-sm"
             >
               <p className="text-base sm:text-lg font-bold text-[#3D3D3D] leading-snug">
-                Your <HighlightSweep>personalized {PLAN_WEEKS}-week plan</HighlightSweep>,
-                built around your symptoms
+                Your <HighlightSweep>personalized {PLAN_WEEKS}-week plan</HighlightSweep> to
+                feel like yourself again
               </p>
-              <div className="mt-3.5 flex items-start justify-center gap-2 sm:gap-4">
-                {PLAN_PILLARS.slice(0, 3).map((pillar) => (
-                  <div key={pillar.key} className="flex flex-col items-center gap-1.5 w-[5.25rem]">
-                    <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-full", pillar.chip)}>
-                      <pillar.icon className={cn("w-4 h-4", pillar.tint)} />
-                    </span>
-                    <span className="text-xs font-medium text-[#5A5A5A] leading-tight">
-                      {pillar.short}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-3.5 text-xs text-[#5A5A5A] leading-snug">
-                About 15 minutes a day. No gym, no cutting out food groups.
-              </p>
+              <ul className="mt-3 flex flex-col gap-2 text-left">
+                <li className="flex items-start gap-2">
+                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#16A34A]" strokeWidth={3} />
+                  <span className="text-sm text-[#5A5A5A] leading-snug">
+                    Built around the symptoms hitting you hardest
+                  </span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#16A34A]" strokeWidth={3} />
+                  <span className="text-sm text-[#5A5A5A] leading-snug">
+                    A few small steps a day, from week 1 to week {PLAN_WEEKS}
+                  </span>
+                </li>
+              </ul>
             </motion.div>
 
           </motion.div>
@@ -3665,19 +3691,25 @@ function RegisterPageContent() {
           animates opacity only, so it never becomes the containing block for a
           fixed child - the four other phases already pin bars inside it.
 
-          The sub-line carries all three of the screen's cost answers at a size
-          she can actually read (13px #5A5A5A is 6.9:1; the 11px #9A9A9A it
-          replaces was 2.85:1, i.e. the hardest text on the page belonged to the
-          audience least able to resolve it). "Free quiz" rather than "free to
-          take", which sat one line under the plan promise and could be read as
-          the plan being free 90 seconds before a $59 paywall. "Taps" rather
-          than "questions" because 8 of the 13 steps are auto-advancing image
-          tiles and only q_body and q8_name type anything - and because the
-          count is a cost, so it belongs here at footnote weight rather than
-          bolded above the outcome. "No email needed" is the funnel's strongest
-          unused fact: she genuinely gives no address until Stripe (see
-          "Anonymous accounts"), and "will they spam me" is a top objection on a
-          cold ad click. */}
+          The sub-line answers "what does this cost me" at a size she can
+          actually read (13px #5A5A5A is 6.9:1; the 11px #9A9A9A it replaces was
+          2.85:1, i.e. the hardest text on the page belonged to the audience
+          least able to resolve it). "Free quiz" rather than "free to take",
+          which sat one line under the plan promise and could be read as the plan
+          being free 90 seconds before a $59 paywall. "No email needed" is the
+          funnel's strongest unused fact: she genuinely gives no address until
+          Stripe (see "Anonymous accounts"), and "will they spam me" is a top
+          objection on a cold ad click.
+
+          It read "Free quiz - 2 minutes - {QUESTION_STEPS.length} taps - no
+          email needed" until 2026-08-20. The count was the only pure *cost* in
+          the line - the other three items are all things she gets - and it was
+          stated at the exact moment she decides whether to start at all.
+          "2 minutes" already answers the same question in the unit she cares
+          about, so the count bought nothing and priced the quiz twice. (It said
+          "taps" rather than "questions" for a good reason, which still holds if
+          it ever comes back: 8 of the steps are auto-advancing image tiles and
+          only q_body and q8_name type anything.) */}
       {phase === "start" && (
         <motion.div
           initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
@@ -3696,7 +3728,7 @@ function RegisterPageContent() {
               <ArrowRight className="w-4 h-4" />
             </button>
             <p className="text-xs text-[#5A5A5A] text-center mt-2 leading-snug">
-              Free quiz · 2 minutes · {QUESTION_STEPS.length} taps · no email needed
+              Free quiz · 2 minutes · no email needed
             </p>
           </div>
         </motion.div>
