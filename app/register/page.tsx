@@ -1,7 +1,7 @@
  
 "use client";
 
-import React, { useState, useCallback, useEffect, useMemo, useRef, Suspense } from "react";
+import React, { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image, { getImageProps } from "next/image";
 import dynamic from "next/dynamic";
@@ -40,6 +40,7 @@ import {
   PartyPopper,
   Lock,
   Sparkles,
+  ChevronRight,
 } from "lucide-react";
 import { HighlightSweep } from "@/components/HighlightSweep";
 import { SHOT_W, SHOT_H } from "@/components/PhoneShots";
@@ -666,6 +667,177 @@ type Phase =
   | "relief"
   | "paywall"
   | "download";
+
+/**
+ * The resume ticket - what brings her back to the paywall after Stripe, instead
+ * of back to question 1.
+ *
+ * Tapping the card sends her to `checkout.stripe.com`, another origin. Pressing
+ * Back there usually restores this page from bfcache with every bit of React
+ * state intact, and nothing below runs. But bfcache is a courtesy, not a
+ * guarantee - one `no-store` response, a memory-pressured phone, a browser that
+ * declines - and when it misses, this page reloads. The answers live in React
+ * state, so a reload is a wiped funnel: the woman who hesitated for four seconds
+ * at a payment form came back to question 1 and a twelve-question quiz she had
+ * just finished. She does not do it twice.
+ *
+ * So `handleStartCheckout` stamps a ticket the moment before it leaves for
+ * Stripe, and a load that finds a fresh one reopens the paywall on the same
+ * account with the same answers.
+ *
+ * Three properties keep this from reintroducing the cold-paywall bug that
+ * removed `?phase=paywall` (see the phase initializer):
+ *
+ * - **It is written after she has an account, never before.** The only writer
+ *   is the checkout handler, which runs downstream of `completeRegistration()`
+ *   and re-verifies the session; the ticket carries that user id, and a ticket
+ *   without one is discarded. So a restored paywall is always a paywall on an
+ *   account whose `user_profiles` row is already saved - there is no path here
+ *   to checking out on a blank account and being handed the generic plan.
+ * - **It expires.** An hour, so a stale tab reused for a fresh ad click lands on
+ *   question 1 like any other ad click, which is where a paid click belongs.
+ * - **It is per-tab.** `sessionStorage`, so it dies with the tab and never
+ *   follows her to tomorrow's visit.
+ *
+ * This is a copy of her answers in browser storage, which the funnel deliberately
+ * had none of - the old `pending_quiz_answers` stash was removed in 2026-08-16
+ * because all three of its call sites were `removeItem` and nothing ever read it
+ * back. This one is read back, by `readFunnelResume()` below, and it is cleared
+ * the moment it stops being useful: on the download screen (she has paid) and on
+ * a quiz restart.
+ */
+const FUNNEL_RESUME_KEY = "menolisa:funnel-resume";
+const FUNNEL_RESUME_MAX_AGE_MS = 60 * 60 * 1000;
+
+type FunnelAnswers = {
+  ageBand: string;
+  heightUnit: "cm" | "ft";
+  heightCm: string;
+  heightFt: string;
+  heightIn: string;
+  weightUnit: "kg" | "lb";
+  weightKg: string;
+  weightLb: string;
+  fitnessLevel: string;
+  hereFor: string;
+  menopauseType: string;
+  goal: string[];
+  symptomSeverity: Record<string, number>;
+  symptomImpact: string;
+  hrtStatus: string;
+  nutritionStyle: string;
+  relaxationStyle: string;
+  physicalLimits: string[];
+  firstName: string;
+};
+
+type FunnelResume = { ts: number; userId: string; answers: FunnelAnswers };
+
+const resumeStr = (v: unknown): string => (typeof v === "string" ? v : "");
+const resumeStrArray = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+
+/**
+ * Insertion order is the answer, not just the shape: `topProblems` is
+ * `Object.keys(symptomSeverity)` and its first entry is the symptom she tapped
+ * first, which is the one the follow-up severity question rated. JSON preserves
+ * key order for non-integer keys and symptom ids are words, so a round trip
+ * keeps it.
+ */
+const resumeSeverity = (v: unknown): Record<string, number> => {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  const out: Record<string, number> = {};
+  for (const [id, level] of Object.entries(v as Record<string, unknown>)) {
+    if (typeof level === "number" && Number.isFinite(level)) out[id] = level;
+  }
+  return out;
+};
+
+/**
+ * Read the ticket back, or null. Every field is re-validated rather than cast:
+ * this is user-writable storage, and a hand-edited value that reaches the render
+ * is a white screen on the one page that takes money.
+ */
+function readFunnelResume(): FunnelResume | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(FUNNEL_RESUME_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const { ts, userId, answers } = parsed as Record<string, unknown>;
+    if (typeof ts !== "number" || !Number.isFinite(ts)) return null;
+    // A future timestamp is a clock change or a tampered value; treat both as no
+    // ticket rather than as a ticket that never expires.
+    const age = Date.now() - ts;
+    if (age < 0 || age > FUNNEL_RESUME_MAX_AGE_MS) return null;
+    if (typeof userId !== "string" || !userId) return null;
+    if (!answers || typeof answers !== "object") return null;
+    const a = answers as Record<string, unknown>;
+    return {
+      ts,
+      userId,
+      answers: {
+        ageBand: resumeStr(a.ageBand),
+        heightUnit: a.heightUnit === "ft" ? "ft" : "cm",
+        heightCm: resumeStr(a.heightCm) || "165",
+        heightFt: resumeStr(a.heightFt) || "5",
+        heightIn: resumeStr(a.heightIn) || "5",
+        weightUnit: a.weightUnit === "lb" ? "lb" : "kg",
+        weightKg: resumeStr(a.weightKg) || "70",
+        weightLb: resumeStr(a.weightLb) || "154",
+        fitnessLevel: resumeStr(a.fitnessLevel),
+        hereFor: resumeStr(a.hereFor),
+        menopauseType: resumeStr(a.menopauseType),
+        goal: resumeStrArray(a.goal),
+        symptomSeverity: resumeSeverity(a.symptomSeverity),
+        symptomImpact: resumeStr(a.symptomImpact),
+        hrtStatus: resumeStr(a.hrtStatus),
+        nutritionStyle: resumeStr(a.nutritionStyle),
+        relaxationStyle: resumeStr(a.relaxationStyle),
+        physicalLimits: resumeStrArray(a.physicalLimits),
+        firstName: resumeStr(a.firstName),
+      },
+    };
+  } catch {
+    // Private mode, a full quota, malformed JSON. Losing the ticket costs her a
+    // restart; throwing here would cost her the page.
+    return null;
+  }
+}
+
+function writeFunnelResume(userId: string, answers: FunnelAnswers) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(
+      FUNNEL_RESUME_KEY,
+      JSON.stringify({ ts: Date.now(), userId, answers } satisfies FunnelResume)
+    );
+  } catch {
+    // Storage refused. She keeps the funnel she is standing in; only the Back
+    // path degrades to what it did before this existed.
+  }
+}
+
+function clearFunnelResume() {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(FUNNEL_RESUME_KEY);
+  } catch {
+    // Nothing to do, and nothing depends on it having worked.
+  }
+}
+
+/**
+ * `useLayoutEffect` on the client, `useEffect` on the server - the standard dodge
+ * for React's "useLayoutEffect does nothing on the server" warning.
+ *
+ * The resume restore has to be a *layout* effect. A passive effect runs after
+ * the browser has painted, so she would see the start screen flash before the
+ * paywall replaced it - Back from a payment form, landing on a one-frame glimpse
+ * of question 1, which is the exact thing this is meant to prevent.
+ */
+const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 
 // Returns the sentence *after* the name, so the name can be rendered bold and
@@ -2213,7 +2385,11 @@ function RegisterPageContent() {
   const prefersReducedMotion = useReducedMotion();
 
   /**
-   * The funnel has one entrance: question 1. Every load starts there.
+   * The funnel has one entrance: question 1. Every load starts there — the one
+   * exception being a load that finds a fresh resume ticket, which reopens the
+   * paywall she just left for Stripe (see `readFunnelResume` and the restore
+   * effect; the ticket carries her answers and her account id, so it is not an
+   * entrance in the sense this paragraph is about).
    *
    * The answers live in React state and nothing persists them, so any URL that
    * drops her *past* the quiz drops her into a funnel with no answers in it —
@@ -2696,11 +2872,63 @@ function RegisterPageContent() {
     ]
   );
 
-  // There is no sessionStorage copy of the answers. There used to be a
-  // `pending_quiz_answers` stash written here, but nothing ever read it back —
-  // the three call sites were all `removeItem`. It was a copy of her health
-  // answers sitting in browser storage doing no work, so it is gone. The live
-  // `quizPayload` above is the only copy, and `completeRegistration` POSTs it.
+  /**
+   * The same answers in the shape this component holds them, for the resume
+   * ticket. `quizPayload` above is the server's shape - normalized cm/kg, nulls
+   * for empties - and restoring the funnel from it would hand her back a
+   * rounded-off version of what she typed and lose which unit she typed it in.
+   *
+   * Written to `sessionStorage` only by `handleStartCheckout`, read back only by
+   * the restore effect below it. See the ticket's docstring at the top of this
+   * file for why that single writer is what keeps a restored paywall from being
+   * a cold one. (The funnel had no browser copy of the answers at all between
+   * 2026-08-16 and now: the old `pending_quiz_answers` stash was removed because
+   * all three of its call sites were `removeItem` and nothing ever read it.)
+   */
+  const funnelAnswers = useMemo(
+    () => ({
+      ageBand,
+      heightUnit,
+      heightCm,
+      heightFt,
+      heightIn,
+      weightUnit,
+      weightKg,
+      weightLb,
+      fitnessLevel,
+      hereFor,
+      menopauseType,
+      goal,
+      symptomSeverity,
+      symptomImpact,
+      hrtStatus,
+      nutritionStyle,
+      relaxationStyle,
+      physicalLimits,
+      firstName,
+    }),
+    [
+      ageBand,
+      heightUnit,
+      heightCm,
+      heightFt,
+      heightIn,
+      weightUnit,
+      weightKg,
+      weightLb,
+      fitnessLevel,
+      hereFor,
+      menopauseType,
+      goal,
+      symptomSeverity,
+      symptomImpact,
+      hrtStatus,
+      nutritionStyle,
+      relaxationStyle,
+      physicalLimits,
+      firstName,
+    ]
+  );
 
   const goNext = useCallback(() => {
     if (!stepIsAnswered(currentStep)) return;
@@ -2950,6 +3178,10 @@ function RegisterPageContent() {
 
   useEffect(() => {
     if (phase !== "download") return;
+    // She has paid. The ticket's whole job was getting her back to the price
+    // screen, and it must not survive to pull a paying customer onto a paywall
+    // if this tab is reloaded.
+    clearFunnelResume();
     let cancelled = false;
 
     void (async () => {
@@ -2982,10 +3214,88 @@ function RegisterPageContent() {
   }, [phase, searchParams]);
 
   /** Back to question 1. The funnel's only recovery move — there is no state to
-   *  restore, so restarting is both the simplest repair and the honest one. */
+   *  restore, so restarting is both the simplest repair and the honest one.
+   *  Drops the resume ticket with it: she is being sent to question 1 on
+   *  purpose, and a ticket left behind would pull her back out of the quiz she
+   *  has just been asked to retake on the next reload. */
   const restartQuiz = useCallback(() => {
+    clearFunnelResume();
     setStepIndex(0);
     setPhase("quiz");
+  }, []);
+
+  /**
+   * Come back from Stripe onto the paywall, not onto question 1.
+   *
+   * Runs once, before the first paint (see `useIsomorphicLayoutEffect`), and
+   * only when this load would otherwise have started the funnel from the top -
+   * `?phase=download` and the dev-only phase params are already decided by the
+   * initializer and outrank a ticket.
+   *
+   * What it restores is every answer she gave plus the account id she gave them
+   * on, so the screens behind the paywall (Back → relief → diagnosis → results)
+   * are the same screens she just walked, not cold ones. `reliefStage` is pinned
+   * to `reward` for the reason the stage machine never rewinds past it either:
+   * she has already done the breathing exercise, and making her do it again to
+   * get back to a price she has already seen is a worse tax than the reload was.
+   *
+   * The pixel needs re-identifying because this is a fresh document - without it
+   * the browser `ViewContent` this paywall is about to fire carries no
+   * `external_id` and stops matching the server copy. Its own once-per-tab guard
+   * (also `sessionStorage`) means a restored paywall does not re-count her.
+   */
+  const resumeChecked = useRef(false);
+  const skipPhaseTransition = useRef(false);
+  useEffect(() => {
+    // Runs after every commit, i.e. after the restore swap has painted.
+    skipPhaseTransition.current = false;
+  });
+  useIsomorphicLayoutEffect(() => {
+    if (resumeChecked.current) return;
+    resumeChecked.current = true;
+    if (phase !== "start") return;
+
+    const saved = readFunnelResume();
+    if (!saved) return;
+
+    const a = saved.answers;
+    setAgeBand(a.ageBand);
+    setHeightUnit(a.heightUnit);
+    setHeightCm(a.heightCm);
+    setHeightFt(a.heightFt);
+    setHeightIn(a.heightIn);
+    setWeightUnit(a.weightUnit);
+    setWeightKg(a.weightKg);
+    setWeightLb(a.weightLb);
+    setFitnessLevel(a.fitnessLevel);
+    setHereFor(a.hereFor);
+    setMenopauseType(a.menopauseType);
+    setGoal(a.goal);
+    setSymptomSeverity(a.symptomSeverity);
+    setSymptomImpact(a.symptomImpact);
+    setHrtStatus(a.hrtStatus);
+    setNutritionStyle(a.nutritionStyle);
+    setRelaxationStyle(a.relaxationStyle);
+    setPhysicalLimits(a.physicalLimits);
+    setFirstName(a.firstName);
+    setUserId(saved.userId);
+    identifyMetaUser(saved.userId);
+    // She reached the paywall the first time, so the quiz is behind her: leave
+    // the step index at the end rather than at question 1, or a Back out of the
+    // funnel's front half would restart it after all.
+    setStepIndex(STEPS.length - 1);
+    setReliefStage("reward");
+    // Swap without the phase cross-fade. This one is not a step she took: the
+    // start screen is here only because it is what the server rendered before
+    // the ticket could be read, and fading it out for 0.22s in front of her is
+    // the same "your quiz is gone" beat, just prettier. Reset after the paint
+    // below, so every real phase change still animates.
+    skipPhaseTransition.current = true;
+    setPhase("paywall");
+    // Mount-only by construction: the ref makes a re-run a no-op, and `phase` is
+    // read only for the guard above, where it is "start" on the mount that
+    // matters. (The lint rule does not walk into the isomorphic alias, so the
+    // empty dep array is not flagged - it is still deliberate.)
   }, []);
 
   const handleStartCheckout = async (metaEventId: string) => {
@@ -3047,6 +3357,12 @@ function RegisterPageContent() {
         return;
       }
       if (data.url) {
+        // The last line before she leaves our origin. Stamp the resume ticket so
+        // Back at Stripe reopens this paywall instead of question 1 - see the
+        // ticket's docstring at the top of this file. The id is the one we just
+        // verified above, which is also the account this checkout session is
+        // being opened on.
+        writeFunnelResume(userData.user.id, funnelAnswers);
         window.location.href = data.url;
         return;
       }
@@ -3187,7 +3503,10 @@ function RegisterPageContent() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: prefersReducedMotion ? 0 : 0.22, ease: "easeOut" }}
+          transition={{
+            duration: prefersReducedMotion || skipPhaseTransition.current ? 0 : 0.22,
+            ease: "easeOut",
+          }}
           className="flex-1 flex flex-col min-h-0"
         >
 
@@ -4230,13 +4549,19 @@ function RegisterPageContent() {
                       : "Let the exhale be longer than the breath in."}
                   </p>
 
+                  {/* Skip: an escape hatch on a 60-second timer has to be
+                      findable at a glance, or she waits it out or leaves. Sized
+                      as a real tap target rather than an 11px underline, but
+                      outlined and neutral so it never competes with the circle
+                      it sits under. */}
                   {reliefStage === "running" && (
                     <button
                       type="button"
                       onClick={skipRelief}
-                      className="text-[11px] text-[#9A9A9A] hover:text-[#5A5A5A] underline underline-offset-2 transition-colors shrink-0"
+                      className="shrink-0 inline-flex items-center gap-1 rounded-full border border-[#D8D8D8] bg-white/80 px-4 py-2 text-[13px] font-semibold text-[#5A5A5A] transition-colors hover:border-[#BDBDBD] hover:bg-white hover:text-[#3D3D3D]"
                     >
-                      Skip
+                      Skip this step
+                      <ChevronRight className="w-3.5 h-3.5" aria-hidden />
                     </button>
                   )}
                 </motion.div>

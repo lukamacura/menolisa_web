@@ -49,6 +49,50 @@ function normalizeCountry(value: string): string | null {
   return /^[a-z]{2}$/.test(cleaned) ? cleaned : null;
 }
 
+/**
+ * Meta's normalization for `ph`: digits only, country code included, no `+`.
+ *
+ * Stripe hands back E.164 (`+15551234567`), so stripping non-digits is the whole
+ * job. A number with no country code matches far worse than none at all - Meta
+ * cannot tell `5551234567` in the US from the same digits in Germany - so
+ * anything shorter than 8 digits is dropped rather than guessed at.
+ */
+function normalizePhone(value: string): string | null {
+  const digits = value.replace(/\D/g, "");
+  return digits.length >= 8 ? digits : null;
+}
+
+/** Meta's normalization for `ct`/`st`: lowercase, letters only, no spaces. */
+function normalizeCityOrState(value: string): string | null {
+  const cleaned = value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{M}]/gu, "");
+  return cleaned.length > 0 ? cleaned : null;
+}
+
+/** Meta's normalization for `zp`: lowercase, no spaces; US zips to 5 digits. */
+function normalizeZip(value: string): string | null {
+  const cleaned = value.trim().toLowerCase().replace(/\s/g, "");
+  if (!cleaned) return null;
+  return /^\d{5}-\d{4}$/.test(cleaned) ? cleaned.slice(0, 5) : cleaned;
+}
+
+/**
+ * Split Stripe's single `name` field into `fn` / `ln`.
+ *
+ * Stripe collects one free-text field, so the last whitespace-separated token is
+ * the best available guess at a surname. A single-token name sends `fn` only -
+ * inventing an `ln` from the same token would hash a wrong value, which matches
+ * nobody and is worse than the parameter being absent.
+ */
+function splitName(value: string): { first: string | null; last: string | null } {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { first: null, last: null };
+  if (parts.length === 1) return { first: parts[0], last: null };
+  return { first: parts.slice(0, -1).join(" "), last: parts[parts.length - 1] };
+}
+
 export type MetaMatchData = {
   fbp?: string;
   fbc?: string;
@@ -90,6 +134,60 @@ export function isMobileCheckout(
   return metadata?.checkout_surface === "mobile";
 }
 
+/** The person fields Meta hashes, as they arrive from a Stripe Checkout Session. */
+export type MetaPersonData = {
+  firstName?: string | null;
+  lastName?: string | null;
+  phone?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  country?: string | null;
+};
+
+/**
+ * Unpack `session.customer_details` into the match parameters Meta scores.
+ *
+ * Stripe has already collected all of this on its own page - name and country
+ * always, phone and address whenever the account or the card requires them - and
+ * until now `Purchase` sent none of it. That is the event the whole campaign is
+ * optimized against, so it was the one carrying the least identity: `em` plus
+ * `external_id` and nothing else a person is actually findable by.
+ *
+ * Everything here is normalized and hashed downstream in `buildUserData`; a
+ * field that normalizes to nothing is dropped rather than sent as the hash of an
+ * empty string, which would be a constant every such customer shares.
+ */
+export function metaPersonFrom(
+  details:
+    | {
+        name?: string | null;
+        phone?: string | null;
+        address?: {
+          city?: string | null;
+          state?: string | null;
+          postal_code?: string | null;
+          country?: string | null;
+        } | null;
+      }
+    | null
+    | undefined
+): MetaPersonData {
+  if (!details) return {};
+  const { first, last } = details.name
+    ? splitName(details.name)
+    : { first: null, last: null };
+  return {
+    firstName: first,
+    lastName: last,
+    phone: details.phone ?? null,
+    city: details.address?.city ?? null,
+    state: details.address?.state ?? null,
+    zip: details.address?.postal_code ?? null,
+    country: details.address?.country ?? null,
+  };
+}
+
 /**
  * fbp/fbc/IP/UA are sent raw - hashing them breaks matching. Only PII is hashed.
  *
@@ -102,16 +200,55 @@ function buildUserData(
     email?: string | null;
     userId?: string | null;
     firstName?: string | null;
+    lastName?: string | null;
+    phone?: string | null;
+    city?: string | null;
+    state?: string | null;
+    zip?: string | null;
     country?: string | null;
   }
 ): Record<string, unknown> {
-  const { email, userId, firstName, country, fbp, fbc, clientIp, clientUa } = params;
+  const {
+    email,
+    userId,
+    firstName,
+    lastName,
+    phone,
+    city,
+    state,
+    zip,
+    country,
+    fbp,
+    fbc,
+    clientIp,
+    clientUa,
+  } = params;
   const userData: Record<string, unknown> = {};
   if (email) userData.em = [hashEmail(email)];
   if (userId) userData.external_id = [hash(userId)];
   if (firstName) {
     const fn = normalizeName(firstName);
     if (fn) userData.fn = [hash(fn)];
+  }
+  if (lastName) {
+    const ln = normalizeName(lastName);
+    if (ln) userData.ln = [hash(ln)];
+  }
+  if (phone) {
+    const ph = normalizePhone(phone);
+    if (ph) userData.ph = [hash(ph)];
+  }
+  if (city) {
+    const ct = normalizeCityOrState(city);
+    if (ct) userData.ct = [hash(ct)];
+  }
+  if (state) {
+    const st = normalizeCityOrState(state);
+    if (st) userData.st = [hash(st)];
+  }
+  if (zip) {
+    const zp = normalizeZip(zip);
+    if (zp) userData.zp = [hash(zp)];
   }
   if (country) {
     const c = normalizeCountry(country);
@@ -163,17 +300,18 @@ async function postEvent(event: Record<string, unknown>, label: string): Promise
   }
 }
 
-export type SendMetaPurchaseParams = MetaMatchData & {
-  /** Must equal the browser event's eventID - see purchaseEventId(). */
-  eventId: string;
-  eventTimeSec: number;
-  value: number;
-  currency?: string;
-  email?: string | null;
-  userId?: string | null;
-  planType?: string | null;
-  eventSourceUrl?: string | null;
-};
+export type SendMetaPurchaseParams = MetaMatchData &
+  MetaPersonData & {
+    /** Must equal the browser event's eventID - see purchaseEventId(). */
+    eventId: string;
+    eventTimeSec: number;
+    value: number;
+    currency?: string;
+    email?: string | null;
+    userId?: string | null;
+    planType?: string | null;
+    eventSourceUrl?: string | null;
+  };
 
 /** Sends a Purchase to the Conversions API. See `postEvent` - never throws. */
 export async function sendMetaPurchase(params: SendMetaPurchaseParams): Promise<void> {

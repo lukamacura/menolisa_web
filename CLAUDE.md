@@ -922,6 +922,69 @@ again also works — that calls `sync-session`.
 ## 7. CURRENT STATUS
 
 Recent work:
+- **Purchase reports what Stripe already knew (2026-08-20)** — three fixes to
+  the event the campaign is actually optimized against, prompted by Events
+  Manager's "send more parameters" prompt.
+  - **The browser `Purchase` was firing with no `external_id`.**
+    `identifyMetaUser()` runs in `completeRegistration()` and in the resume
+    restore, and neither survives the trip to Stripe: `?phase=download` is a
+    cold page load, so the pixel there had never been told who she was. The
+    reason that mattered more than a missing parameter usually does is Meta's
+    dedup rule — of a matched pair it keeps **the copy that arrives first**, and
+    the browser copy fires on landing while the CAPI copy waits on the webhook.
+    The surviving `Purchase` was therefore routinely the weaker one, and the
+    richer server copy was the one being discarded. `MetaPurchaseTracker` now
+    identifies off `getSession()` (local read, no round trip) before firing, and
+    falls through to an unidentified fire on any error — an under-matched
+    Purchase still beats a missing one.
+  - **`Purchase` now sends `fn`/`ln`/`ph`/`ct`/`st`/`zp`/`country`** off
+    `session.customer_details` via `metaPersonFrom()`. Stripe collects all of it
+    on its own page and the event was sending `em` + `external_id` and nothing
+    else a person is findable by — the *only* event in the funnel with real
+    identity attached, carrying the least of it. Normalization mirrors Meta's
+    SDK (`normalizePhone` drops anything under 8 digits rather than send a
+    country-code-less number; `splitName` sends `fn` alone for a single-token
+    name rather than invent an `ln`); any field that normalizes to nothing is
+    dropped, never sent as the hash of the empty string.
+  - **Localhost no longer reports into the live dataset.** `META_PIXEL_ID` falls
+    back to a hard-coded literal and the env var is unset in `.env.local`, so
+    every `npm run dev` session fired real events into production — and a Stripe
+    *test-mode* checkout landing on `?phase=download` fired a real $59
+    `Purchase`. Browser events need no access token, which is what made it easy
+    to miss; and since `META_CAPI_ACCESS_TOKEN` is also unset locally those dev
+    events arrived unpaired, which is indistinguishable from a dedup fault at
+    Meta's end. `MetaPixel` is gated on `NODE_ENV === "production"` — enough on
+    its own, because `trackFb`/`identifyMetaUser` both go through
+    `window.fbq?.()` and no-op with no snippet installed. `VERCEL_ENV` was
+    deliberately not used: preview deployments still report, so a branch can be
+    tested end to end.
+  **Events Manager housekeeping, not code:** the "connect to chat activity"
+  prompt is for click-to-Messenger ads and does not apply. The two `fbc`
+  coverage prompts (including the "parameter builder" SDK add-on) are already
+  answered by `captureFbClickId()` — coverage is structurally capped by the
+  share of traffic that arrives with an `fbclid` at all, which is a campaign
+  volume question, not a code one. Do not install the add-on to satisfy a card.
+- **Back from Stripe no longer restarts the quiz (2026-08-20)** — tapping the
+  paywall CTA leaves for `checkout.stripe.com`, and a Back that misses bfcache
+  reloads `/register` with her React state gone, i.e. question 1 and a
+  twelve-question quiz she finished ninety seconds ago. `handleStartCheckout`
+  now stamps a **resume ticket** in `sessionStorage`
+  (`menolisa:funnel-resume` — her raw answers plus the user id it just
+  verified) as its last act before `window.location.href`, and a load that
+  finds a fresh one restores the answers and reopens the paywall.
+  It does not reintroduce the cold-paywall bug that killed `?phase=paywall`:
+  the only writer runs downstream of `completeRegistration()`, so a restored
+  paywall always sits on an account whose `user_profiles` row is saved and can
+  never check out blank into the generic plan. The ticket **expires after an
+  hour**, is **per-tab**, and is cleared on the download screen and on
+  `restartQuiz()` — so a later ad click still lands on the start screen, which
+  is where a paid click belongs.
+  The restore is a *layout* effect (`useIsomorphicLayoutEffect`) and suppresses
+  the phase cross-fade for that one swap: `/register` is server-rendered, so
+  the start screen is in the HTML, and fading it out over 0.22s in front of her
+  is the same "your quiz is gone" beat with better manners.
+  Stripe's own back arrow is unchanged — `cancel_url` still points at
+  `/paywall`, which needs no ticket and was never the broken path.
 - **`autoConfig: false` re-asserted on the second `init` (2026-08-19)** — Events
   Manager raised "improve deduplication" on `Purchase` **and `Lead`**, and `Lead`
   is the tell: it is server-only, so there is no browser copy of ours to pair
@@ -979,8 +1042,8 @@ Recent work:
   rather than the hash of the empty string — a parameter every junk entry shares
   matches nobody and dilutes the ones that work. `db` and `ge` were considered
   and rejected; the reasons are in `sendMetaLead`'s docstring and in §4.
-  **Still not done:** `Purchase` ignores `session.customer_details.name`,
-  `.phone` and `.address`, which Stripe already collected.
+  (`Purchase`'s missing `customer_details` was closed on 2026-08-20 — see the
+  entry at the top of this list.)
 - **Pixel/CAPI hardened for the first campaign (2026-08-18)** — an audit ahead of
   launch, five fixes, no new events (the AEM budget is unchanged at five).
   - **`_fbc` is reconstructed from `fbclid`** when fbevents.js never loads, which

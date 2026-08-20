@@ -6,7 +6,12 @@ import { writeSubscription } from "@/lib/subscriptionWrite";
 import { sendChargeConfirmedEmail, sendAdminNotification } from "@/lib/resend";
 import { paymentFailedCopy } from "@/lib/alerts/catalog";
 import { sendAlert } from "@/lib/alerts/send";
-import { sendMetaPurchase, metaContextFrom, isMobileCheckout } from "@/lib/metaCapi";
+import {
+  sendMetaPurchase,
+  metaContextFrom,
+  metaPersonFrom,
+  isMobileCheckout,
+} from "@/lib/metaCapi";
 import { META_CURRENCY, PLAN_VALUE, purchaseEventId } from "@/lib/metaPixel";
 import {
   customerIdOf,
@@ -140,6 +145,11 @@ async function handleCheckoutSessionCompleted(
           email: session.customer_details?.email ?? session.customer_email ?? null,
           userId: result.userId,
           planType: result.planType,
+          // Name, phone and billing address, straight off the Stripe page. This
+          // is the only event in the funnel with real identity attached to it -
+          // she typed none of it before the card - so it is where the match
+          // parameters are worth sending. See `metaPersonFrom`.
+          ...metaPersonFrom(session.customer_details),
           ...metaContextFrom(session.metadata),
         })
       );
