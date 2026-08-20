@@ -26,9 +26,9 @@ import {
 } from "@/lib/metaPixel";
 import {
   PLAN_ADHERENCE_PCT,
+  PLAN_ANCHOR_PRICE,
   PLAN_ANCHOR_PRICE_PER_DAY,
   PLAN_DISCOUNT_PCT,
-  PLAN_DISCOUNT_WINDOW_MINUTES,
   PLAN_DISCOUNT_WINDOW_MS,
   PLAN_ID,
   PLAN_PRICE,
@@ -98,6 +98,7 @@ export interface PaywallViewProps {
 }
 
 const PRICE = formatPrice(PLAN_PRICE);
+const ANCHOR_PRICE = formatPrice(PLAN_ANCHOR_PRICE);
 const PER_DAY = `$${PLAN_PRICE_PER_DAY.toFixed(2)}`;
 const ANCHOR_PER_DAY = `$${PLAN_ANCHOR_PRICE_PER_DAY.toFixed(2)}`;
 
@@ -260,10 +261,13 @@ export function PaywallView({
   // headline and the chart should name the same outcome.
   const promise = getOfferPromise(goal ?? []);
 
-  // Display-only price window. Nothing below the fold branches on it except the
-  // hold band and the price card - the CTA, the checkout call and the invoice
-  // are identical either side of zero.
+  // Display-only price window. `handleCheckoutClick` and `onCheckout` are
+  // byte-identical either side of zero - she is charged PLAN_PRICE whether the
+  // clock ran out or not. See the note at the bottom of this file before
+  // touching that.
   const { remainingMs, expired } = useDiscountWindow();
+  const livePrice = expired ? ANCHOR_PRICE : PRICE;
+  const livePricePerDay = expired ? ANCHOR_PER_DAY : PER_DAY;
 
   // ViewContent: she has seen the offer. Reported twice, browser and server, and
   // counted once per woman rather than once per mount.
@@ -412,15 +416,22 @@ export function PaywallView({
             <HighlightSweep variant="green">{promise}</HighlightSweep> in{" "}
             {PLAN_WEEKS} weeks or a full refund if it doesn’t work
           </h2>
+          {/* The discount is only claimed while it is still on the card. Once
+              the badge reads REGULAR PRICE, a headline shouting "50% off" is the
+              screen contradicting itself. */}
           <p className="text-sm text-[#5A5A5A] mt-1">
-            Start today,{" "}
-            <span
-              className="font-bold bg-clip-text text-transparent"
-              style={{ backgroundImage: "linear-gradient(135deg, #ff74b1, #65dbff)" }}
-            >
-              {PLAN_DISCOUNT_PCT}% off
-            </span>{" "}
-   
+            Start today
+            {!expired && (
+              <>
+                ,{" "}
+                <span
+                  className="font-bold bg-clip-text text-transparent"
+                  style={{ backgroundImage: "linear-gradient(135deg, #ff74b1, #65dbff)" }}
+                >
+                  {PLAN_DISCOUNT_PCT}% off
+                </span>
+              </>
+            )}
           </p>
         </motion.div>
 
@@ -430,27 +441,64 @@ export function PaywallView({
             that read. Outcome, then hold, then number. */}
         <PlanFinishBoard topProblems={topProblems} goal={goal} className="mb-2.5" />
 
-        {/* The price hold. Same pink pairing with the card below that the
-            countdown had, minus the clock: it says the number is hers and will
-            not move, which is the only claim about the price that is actually
-            true. See the note about the retired countdown above. */}
+        {/* The price hold, with its clock. Pairs with the price card below -
+            same pink border - so the number and the time left on it read as one
+            object. Her name goes here and nowhere else on the screen (see the
+            `firstName` prop): a generic hold is site-wide theatre, the same
+            sentence with her name in it is held for something already hers.
+
+            The seconds are `aria-hidden` and only the expiry is announced: a
+            per-second live region reads the whole band aloud sixty times a
+            minute, which is a screen reader jackhammer, not urgency. */}
         <motion.div
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.28 }}
           className="flex items-center justify-center gap-2 rounded-xl border px-3 py-1.5 mb-2.5"
-          style={{
-            borderColor: "#ff74b1",
-            background:
-              "linear-gradient(135deg, rgba(255,116,177,0.10) 0%, rgba(255,157,108,0.10) 100%)",
-          }}
+          style={
+            expired
+              ? { borderColor: "#E0D9D5", background: "#F7F4F2" }
+              : {
+                  borderColor: "#ff74b1",
+                  background:
+                    "linear-gradient(135deg, rgba(255,116,177,0.10) 0%, rgba(255,157,108,0.10) 100%)",
+                }
+          }
         >
-          <Lock className="w-4 h-4 shrink-0 text-[#ff74b1]" />
-          <p className="text-xs sm:text-sm font-semibold text-[#3D3D3D]">
-            {name ? `${name}, your ` : "Your "}
-            <span className="font-extrabold text-[#ff74b1]">{PRICE}</span> rate is held
-            while you finish
-          </p>
+          {expired ? (
+            <>
+              <Lock className="w-4 h-4 shrink-0 text-[#9A9A9A]" />
+              <p className="text-xs sm:text-sm font-semibold text-[#7A7A7A]">
+                {name ? `${name}, your ` : "Your "}
+                {PLAN_DISCOUNT_PCT}% discount window has closed
+              </p>
+            </>
+          ) : (
+            <>
+              <Clock className="w-4 h-4 shrink-0 text-[#ff74b1]" />
+              <p className="text-xs sm:text-sm font-semibold text-[#3D3D3D]">
+                {name ? `${name}, your ` : "Your "}
+                <span className="font-extrabold text-[#ff74b1]">{PRICE}</span> rate is held
+                for{" "}
+                <span
+                  aria-hidden
+                  className="font-extrabold tabular-nums text-[#ff74b1]"
+                >
+                  {formatRemaining(remainingMs)}
+                </span>
+                {/* The digits are hidden from assistive tech and replaced with
+                    minutes, read once at whatever moment she reaches the band.
+                    A per-second announcement of "09:44, 09:43, ..." is noise,
+                    not urgency. */}
+                <span className="sr-only">
+                  {Math.max(1, Math.ceil(remainingMs / 60000))} more minutes
+                </span>
+              </p>
+            </>
+          )}
+          <span aria-live="polite" className="sr-only">
+            {expired ? `Your ${PLAN_DISCOUNT_PCT}% discount window has closed.` : ""}
+          </span>
         </motion.div>
 
         {/* Price card - the single plan, no choice to make */}
@@ -459,38 +507,62 @@ export function PaywallView({
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.3 }}
           className="relative rounded-2xl border bg-white p-4 mb-4 shadow-sm"
-          style={{
-            borderColor: "#ff74b1",
-            backgroundImage:
-              "linear-gradient(135deg, rgba(255,116,177,0.06) 0%, rgba(255,235,118,0.04) 50%, rgba(101,219,255,0.06) 100%)",
-          }}
+          style={
+            expired
+              ? { borderColor: "#E0D9D5" }
+              : {
+                  borderColor: "#ff74b1",
+                  backgroundImage:
+                    "linear-gradient(135deg, rgba(255,116,177,0.06) 0%, rgba(255,235,118,0.04) 50%, rgba(101,219,255,0.06) 100%)",
+                }
+          }
         >
           <span
             className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-bold tracking-wide text-white shadow-md flex items-center gap-1 whitespace-nowrap"
-            style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ff9d6c 100%)" }}
+            style={
+              expired
+                ? { background: "#9A9A9A" }
+                : { background: "linear-gradient(135deg, #ff74b1 0%, #ff9d6c 100%)" }
+            }
           >
-            <Sparkles className="w-3 h-3" />
-            {PLAN_WEEKS} WEEK PLAN &middot; {PLAN_DISCOUNT_PCT}% OFF
+            {expired ? (
+              <>
+                {PLAN_WEEKS} WEEK PLAN &middot; REGULAR PRICE
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-3 h-3" />
+                {PLAN_WEEKS} WEEK PLAN &middot; {PLAN_DISCOUNT_PCT}% OFF
+              </>
+            )}
           </span>
 
           <div className="pt-2 text-center">
             <div className="flex items-baseline justify-center gap-2 flex-wrap">
-              <span className="text-sm text-[#9A9A9A] line-through font-medium">
-                {ANCHOR_PER_DAY}
-              </span>
-              <span
-                className="text-4xl font-extrabold bg-clip-text text-transparent"
-                style={{ backgroundImage: "linear-gradient(135deg, #ff74b1 0%, #65dbff 100%)" }}
-              >
-                {PER_DAY}
-              </span>
+              {!expired && (
+                <span className="text-sm text-[#9A9A9A] line-through font-medium">
+                  {ANCHOR_PER_DAY}
+                </span>
+              )}
+              {expired ? (
+                <span className="text-4xl font-extrabold text-[#3D3D3D]">
+                  {livePricePerDay}
+                </span>
+              ) : (
+                <span
+                  className="text-4xl font-extrabold bg-clip-text text-transparent"
+                  style={{ backgroundImage: "linear-gradient(135deg, #ff74b1 0%, #65dbff 100%)" }}
+                >
+                  {livePricePerDay}
+                </span>
+              )}
               <span className="text-sm text-[#5A5A5A] font-medium">/ day</span>
             </div>
             {/* The renewal is stated at the price, not in the small print under
                 the button. She is agreeing to a subscription; burying that is
                 how a week-8 charge turns into a chargeback. */}
             <p className="text-xs text-[#5A5A5A] mt-1.5">
-              Billed {PRICE} today &middot; renews every {PLAN_WEEKS} weeks
+              Billed {livePrice} today &middot; renews every {PLAN_WEEKS} weeks
               <br />
               We email you {RENEWAL_NOTICE_DAYS} days before. <b>Cancel anytime.</b>
             </p>
@@ -590,7 +662,7 @@ export function PaywallView({
 
         {/* Trust boxes */}
         <div className="grid grid-cols-2 gap-2 mb-4">
-          {trustLabels(PRICE).map((item, i) => {
+          {trustLabels(livePrice).map((item, i) => {
             const Icon = item.icon;
             return (
               <motion.div
@@ -700,7 +772,7 @@ export function PaywallView({
             ) : (
               <>
                 <Lock className="w-4 h-4" />
-                Get my plan for {PER_DAY}/day
+                Get my plan for {livePricePerDay}/day
               </>
             )}
           </motion.button>
@@ -741,3 +813,37 @@ export function DisputedAccountBanner() {
     </div>
   );
 }
+
+/**
+ * Why the countdown is safe, and what must not be "fixed".
+ *
+ * At zero, every figure on this screen moves to the anchor - the badge, the
+ * per-day number, the "Billed ... today" line, the trust box and the CTA label -
+ * and `handleCheckoutClick` / `onCheckout` do not move at all. There is one
+ * Stripe Price ({@link PLAN_PRICE}), so she is charged $59 either side of zero;
+ * a Stripe page reading $59 after a paywall reading $118 is meant to feel to her
+ * like the discount slipped through.
+ *
+ * Two properties make that defensible. Any change here has to keep both:
+ *
+ *  1. **The error is always in her favour.** Displayed >= charged, always. The
+ *     page may understate what she pays and must never overstate it, and the
+ *     "renews every {PLAN_WEEKS} weeks" + {@link RENEWAL_NOTICE_DAYS} disclosure
+ *     sits on both branches. Nobody is out of pocket by a cent - which is what
+ *     separates this from the FTC's false-urgency cases, all of which are
+ *     overcharges.
+ *  2. **Nothing about the money is client-controlled.** The deadline is in
+ *     sessionStorage and the clock is hers, so `expired` is trivially forgeable.
+ *     That is fine precisely because it buys nothing. Do **not** resolve the
+ *     mismatch by selecting a second Stripe Price when `expired` - that inverts
+ *     property 1 and lets a user's system clock decide whether she pays double.
+ *     Real expiry pricing needs a server-side deadline and a charge derived from
+ *     it.
+ *
+ * What did not come back with the clock is the reclaim button. The 2026-08-12
+ * removal was about a timer that visibly reset on one tap, which is the tell
+ * that a page is theatre - and doubt on this screen lands on the refund
+ * guarantee. Hence {@link DEADLINE_KEY}: a reload does not hand her a fresh ten
+ * minutes, and a stored deadline further out than the full window is discarded
+ * as tampered.
+ */
