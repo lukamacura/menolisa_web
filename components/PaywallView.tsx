@@ -412,10 +412,10 @@ export function PaywallView({
               Price cut and refund move to a subline underneath: still on screen
               with the price card, still the terms of the deal, just not what she
               reads first. */}
-          <h2 className="text-xl sm:text-2xl font-bold text-[#3D3D3D] leading-tight text-balance">
+          <h1 className="text-2xl sm:text-2xl font-bold text-[#3D3D3D] leading-tight text-balance">
             <HighlightSweep variant="green">{promise}</HighlightSweep> in{" "}
             {PLAN_WEEKS} weeks or a full refund if it doesn’t work
-          </h2>
+          </h1>
           {/* The discount is only claimed while it is still on the card. Once
               the badge reads REGULAR PRICE, a headline shouting "50% off" is the
               screen contradicting itself. */}

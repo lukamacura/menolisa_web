@@ -496,6 +496,13 @@ const LOADING_MESSAGE_COLORS = [
 // has not frozen.
 const CALCULATING_MAX_PCT = 99;
 
+// The "What have you tried" step was removed from the funnel. The field stays in
+// the save-quiz payload (the Expo app still asks it, and every existing row
+// carries a value), so web signups write an empty list. Frozen at module scope
+// rather than held in a never-set `useState`: a stable identity keeps it out of
+// the memo dependency lists that build the payload.
+const TRIED_OPTIONS: string[] = [];
+
 // Images shown on each step, so we can preload the *next* step while the user
 // answers the current one (next/image lazy-loads, so otherwise tiles flash blank
 // on every step change - bad for a conversion funnel).
@@ -942,7 +949,7 @@ const getSeverityPainText = (
 // Naming the plan here also closes the loop the start screen opened ("your
 // personalized 8-week plan, built around your symptoms") - the promised object
 // finally exists and the next tap opens it.
-const RESULTS_CTA_SUB = "Built from your 13 answers. Nothing to pay to look.";
+const RESULTS_CTA_SUB = "Look what Lisa prepared for you.";
 
 // The funnel's one forward-tap look: gradient, dark ink, pink glow. It was
 // pasted inline at five call sites (start screen, results, plan, relief, and now
@@ -1093,7 +1100,7 @@ function getSymptomPhrase(topProblems: string[]): string {
 // costs her something. So the line names what the next screen is NOT (a pitch,
 // a form, a charge) before it names what it is.
 function getDiagnosisForwardCopy(): { sub: React.ReactNode } {
-  return { sub: "Not a pitch - 36 seconds of relief you can use tonight." };
+  return { sub: "One simple exercise to feel calm." };
 }
 
 
@@ -1112,32 +1119,11 @@ function getDiagnosisForwardCopy(): { sub: React.ReactNode } {
 // anyone gets better - so on the diagnosis screen they aren't a list any more:
 // <PlanStage /> plays them inside the plan scroll.
 
-/**
- * Two diverging trajectories: slow decline with no plan vs. the climb her plan
- * is built to produce.
- *
- * The horizon used to contradict itself three ways. The sentence above the chart
- * said symptoms persist **4-7 years**; the x-axis was labelled **Now / 4 weeks /
- * 8 weeks**; and the code claimed **~2 years**. As rendered, the red line
- * therefore asserted she would measurably deteriorate within eight weeks - which
- * is not what the sentence above it says, is not defensible, and sat directly
- * above the block where she most needs to believe us.
- *
- * The window is now two years, stated on the axis, with one compressed segment:
- * the first third of the plot is her 8 weeks, the remaining two thirds are the
- * rest of the two years. That is a broken axis, and it is the honest way to draw
- * this - the alternative is her whole plan squeezed into 7% of the width, where
- * the line that matters is invisible. The ticks say exactly where the break is.
- *
- * The two lines now make different claims on purpose:
- *   - green climbs to the goal *by week 8* and then holds, which is precisely
- *     what the offer promises and nothing more.
- *   - red drifts down slowly across two years, which is the "persist 4-7 years
- *     and often get worse before they settle" sentence, drawn.
- */
 const TRAJ_PLAN_SPLIT = 1 / 3;
 
-function TrajectoryChart({ score }: { score: number }) {
+/** Geometry only - pure, memoizable, and the same on the server as in the
+    browser. Kept out of the component so the render is layout + variants. */
+function buildTrajectory(score: number) {
   const W = 320;
   const H = 190;
   const padTop = 24;
@@ -1169,13 +1155,157 @@ function TrajectoryChart({ score }: { score: number }) {
   }
   const toPath = (pts: [number, number][]) =>
     pts.map((p, i) => `${i === 0 ? "M" : "L"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
-  const treatedArea = `${toPath(treated)} L${xAt(1)},${H - padBottom} L${padLeft},${H - padBottom} Z`;
-  const endU = untreated[untreated.length - 1];
-  const endT = treated[treated.length - 1];
-  const goalY = yAt(SCORE_GOAL);
+
+  return {
+    W,
+    H,
+    padLeft,
+    padTop,
+    padBottom,
+    xAt,
+    yAt,
+    untreatedPath: toPath(untreated),
+    treatedPath: toPath(treated),
+    treatedArea: `${toPath(treated)} L${xAt(1)},${H - padBottom} L${padLeft},${H - padBottom} Z`,
+    endU: untreated[untreated.length - 1],
+    endT: treated[treated.length - 1],
+    goalY: yAt(SCORE_GOAL),
+  };
+}
+
+/**
+ * Two diverging trajectories: slow decline with no plan vs. the climb her plan
+ * is built to produce.
+ *
+ * ── The horizon ─────────────────────────────────────────────────────────────
+ *
+ * It used to contradict itself three ways. The sentence above the chart said
+ * symptoms persist **4-7 years**; the x-axis was labelled **Now / 4 weeks /
+ * 8 weeks**; and the code claimed **~2 years**. As rendered, the red line
+ * therefore asserted she would measurably deteriorate within eight weeks -
+ * which is not what the sentence above it says, is not defensible, and sat
+ * directly above the block where she most needs to believe us.
+ *
+ * The window is now two years, stated on the axis, with one compressed segment:
+ * the first third of the plot is her 8 weeks, the remaining two thirds are the
+ * rest of the two years. That is a broken axis, and it is the honest way to draw
+ * this - the alternative is her whole plan squeezed into 7% of the width, where
+ * the line that matters is invisible. The ticks say exactly where the break is.
+ *
+ * The two lines make different claims on purpose:
+ *   - green climbs to the goal *by week 8* and then holds, which is precisely
+ *     what the offer promises and nothing more.
+ *   - red drifts down slowly across two years, which is the "persist 4-7 years
+ *     and often get worse before they settle" sentence, drawn.
+ *
+ * ── Why it draws itself, and in that order ──────────────────────────────────
+ *
+ * It arrived fully formed, as a finished picture the eye had to take apart:
+ * two lines, four labels, a goal rule and a scale break, all at once, at the
+ * one place on the page where she is being asked to accept a claim about her
+ * own future. A chart that draws is a chart that is *making an argument*, and
+ * the order is the argument - the axis first (this is the frame), then the red
+ * line alone (this is what happens anyway), then the green one climbing away
+ * from it (this is what changes), then each line saying its own name.
+ *
+ * It runs on scroll, not on mount. The card sits far enough down the plan
+ * scroll that a mount animation has always finished playing to nobody, and
+ * `once: true` means scrolling back past it never replays it - a chart that
+ * re-animates every time it crosses the fold reads as a broken widget.
+ * `amount: 0.4` waits until it is genuinely on screen rather than a sliver.
+ * See the trigger itself for why it is a `useInView` boolean and not the
+ * `whileInView` prop this obviously wants to be.
+ *
+ * Everything is `pathLength` or `opacity`: no layout, no filters, and one
+ * animation per element. Under reduced motion every duration collapses to zero,
+ * so the finished chart is simply there - the variant labels are unchanged,
+ * which keeps the server and client markup identical (see the `useReducedMotion`
+ * hydration note on `<PhoneShot />`).
+ *
+ * The dashed goal rule and the dashed scale break are deliberately faded rather
+ * than drawn: framer owns `strokeDasharray` while it animates `pathLength`, so
+ * animating those two would silently render them solid - which is the exact bug
+ * that made `<EstrogenCurve />`'s reference line stop reading as a reference.
+ */
+function TrajectoryChart({ score, reduced }: { score: number; reduced?: boolean }) {
+  const g = useMemo(() => buildTrajectory(score), [score]);
+  const { W, H, padLeft, padTop, padBottom, xAt, yAt, endU, endT, goalY } = g;
+
+  /* One boolean for the whole chart, and every part states both ends of its own
+     animation off it.
+
+     `initial="hidden" whileInView="show"` on the `<svg>` alone, with the parts
+     inheriting the label, is the tidier spelling and it does not work here.
+     Both failure modes were reproduced in a browser before this shape was
+     settled on:
+
+       - inherited label: framer emits no `initial` styles for it in the
+         server-rendered markup, so the chart arrives fully drawn and then
+         "animates" from finished to finished.
+       - `initial="hidden"` added to the parts to fix that: a part that declares
+         its own `initial` stops inheriting the parent's *gesture* variant, so
+         nothing animates at all.
+
+     Explicit `initial` + `animate` on each part is immune to both, and
+     `once: true` on the observer means it draws once and stays drawn. */
+  const ref = useRef<SVGSVGElement | null>(null);
+  const shown = useInView(ref, { once: true, amount: 0.4 });
+
+  // One knob for the whole timeline, so reduced motion is a single branch
+  // rather than nine of them.
+  const d = useCallback((v: number) => (reduced ? 0 : v), [reduced]);
+
+  const variants = useMemo(() => {
+    const draw = (delay: number): Variants => ({
+      hidden: { pathLength: 0 },
+      show: {
+        pathLength: 1,
+        transition: { duration: d(1.05), delay: d(delay), ease: [0.4, 0, 0.25, 1] },
+      },
+    });
+    const fade = (delay: number, duration = 0.45): Variants => ({
+      hidden: { opacity: 0 },
+      show: { opacity: 1, transition: { duration: d(duration), delay: d(delay), ease: "easeOut" } },
+    });
+    const label = (delay: number): Variants => ({
+      hidden: { opacity: 0, x: -6 },
+      show: {
+        opacity: 1,
+        x: 0,
+        transition: { duration: d(0.4), delay: d(delay), ease: [0.16, 1, 0.3, 1] },
+      },
+    });
+    return {
+      frame: fade(0),
+      // Red first: the card is headed "And if you do nothing".
+      decline: draw(0.2),
+      declineLabel: label(1.15),
+      climb: draw(0.65),
+      // The fill trails its own line rather than leading it, so the green area
+      // reads as the consequence of the climb and not as a block that appeared
+      // under it.
+      climbArea: fade(1.0, 0.7),
+      climbLabel: label(1.6),
+      you: {
+        hidden: { opacity: 0, y: 5 },
+        show: {
+          opacity: 1,
+          y: 0,
+          transition: { duration: d(0.45), delay: d(0.1), ease: [0.16, 1, 0.3, 1] },
+        },
+      } as Variants,
+    };
+  }, [d]);
+
+  const pillW = 60;
+  const pillH = 18;
+  const youX = xAt(0);
+  const pillX = Math.min(Math.max(youX - pillW / 2, 0), W - pillW);
+  const pillY = Math.max(2, yAt(score) - pillH - 8);
 
   return (
     <svg
+      ref={ref}
       viewBox={`0 0 ${W} ${H}`}
       className="w-full h-auto"
       role="img"
@@ -1188,59 +1318,87 @@ function TrajectoryChart({ score }: { score: number }) {
         </linearGradient>
       </defs>
 
-      {/* Goal line */}
-      <line x1={padLeft} y1={goalY} x2={xAt(1)} y2={goalY} stroke="#16A34A" strokeWidth="1" strokeDasharray="3 4" opacity="0.45" />
+      {/* The frame: the goal rule, the scale break and the axis. One group, one
+          fade - it is context, not a beat. */}
+      <motion.g initial="hidden" animate={shown ? "show" : "hidden"} variants={variants.frame}>
+        <line
+          x1={padLeft}
+          y1={goalY}
+          x2={xAt(1)}
+          y2={goalY}
+          stroke="#16A34A"
+          strokeWidth="1"
+          strokeDasharray="3 4"
+          opacity="0.45"
+        />
 
-      {/* Where her 8 weeks end and the axis changes scale. Drawn, because a
-          broken axis that isn't marked is a misleading axis. */}
-      <line
-        x1={xAt(TRAJ_PLAN_SPLIT)}
-        y1={padTop - 6}
-        x2={xAt(TRAJ_PLAN_SPLIT)}
-        y2={H - padBottom}
-        stroke="#9A9A9A"
-        strokeWidth="1"
-        strokeDasharray="2 3"
-        opacity="0.5"
+        {/* Where her 8 weeks end and the axis changes scale. Drawn, because a
+            broken axis that isn't marked is a misleading axis. */}
+        <line
+          x1={xAt(TRAJ_PLAN_SPLIT)}
+          y1={padTop - 6}
+          x2={xAt(TRAJ_PLAN_SPLIT)}
+          y2={H - padBottom}
+          stroke="#9A9A9A"
+          strokeWidth="1"
+          strokeDasharray="2 3"
+          opacity="0.5"
+        />
+
+        {/* X axis labels. The middle tick sits on the scale break, so it is
+            labelled with what it is - the end of her plan - rather than with a
+            midpoint the axis does not actually have. */}
+        <text x={xAt(0)} y={H - 9} textAnchor="start" fontSize="11" fill="#9A9A9A" fontWeight="500">Now</text>
+        <text x={xAt(TRAJ_PLAN_SPLIT)} y={H - 9} textAnchor="middle" fontSize="11" fill="#3D3D3D" fontWeight="700">Week {PLAN_WEEKS}</text>
+        <text x={xAt(1)} y={H - 9} textAnchor="end" fontSize="11" fill="#9A9A9A" fontWeight="500">2 years</text>
+      </motion.g>
+
+      <motion.path initial="hidden" animate={shown ? "show" : "hidden"} variants={variants.climbArea} d={g.treatedArea} fill="url(#trajGreen)" />
+
+      <motion.path
+        initial="hidden"
+        animate={shown ? "show" : "hidden"}
+        variants={variants.decline}
+        d={g.untreatedPath}
+        fill="none"
+        stroke="#EF4444"
+        strokeWidth="3.5"
+        strokeLinecap="round"
+      />
+      <motion.path
+        initial="hidden"
+        animate={shown ? "show" : "hidden"}
+        variants={variants.climb}
+        d={g.treatedPath}
+        fill="none"
+        stroke="#16A34A"
+        strokeWidth="3.5"
+        strokeLinecap="round"
       />
 
-      {/* Treated area + lines */}
-      <path d={treatedArea} fill="url(#trajGreen)" />
-      <path d={toPath(untreated)} fill="none" stroke="#EF4444" strokeWidth="3.5" strokeLinecap="round" />
-      <path d={toPath(treated)} fill="none" stroke="#16A34A" strokeWidth="3.5" strokeLinecap="round" />
+      {/* Start dot + "You" pill - placed above the dot so it never sits on top
+          of the diverging lines. It leads, because it is where both lines start
+          and she should be watching that point when they separate. */}
+      <motion.g initial="hidden" animate={shown ? "show" : "hidden"} variants={variants.you}>
+        <circle cx={youX} cy={yAt(score)} r="4.5" fill="#3D3D3D" />
+        <line x1={youX} y1={yAt(score)} x2={youX} y2={pillY + pillH} stroke="#3D3D3D" strokeWidth="1" opacity="0.4" />
+        <rect x={pillX} y={pillY} width={pillW} height={pillH} rx="9" fill="#3D3D3D" />
+        <text x={pillX + pillW / 2} y={pillY + 13} textAnchor="middle" fontSize="11" fill="#FFFFFF" fontWeight="700">You · {score}</text>
+      </motion.g>
 
-      {/* Start dot + "You" pill - placed above the dot so it never sits on top of the diverging lines */}
-      <circle cx={xAt(0)} cy={yAt(score)} r="4.5" fill="#3D3D3D" />
-      {(() => {
-        const pillW = 60;
-        const pillH = 18;
-        const cx = xAt(0);
-        const pillX = Math.min(Math.max(cx - pillW / 2, 0), W - pillW);
-        const pillY = Math.max(2, yAt(score) - pillH - 8);
-        return (
-          <g>
-            <line x1={cx} y1={yAt(score)} x2={cx} y2={pillY + pillH} stroke="#3D3D3D" strokeWidth="1" opacity="0.4" />
-            <rect x={pillX} y={pillY} width={pillW} height={pillH} rx="9" fill="#3D3D3D" />
-            <text x={pillX + pillW / 2} y={pillY + 13} textAnchor="middle" fontSize="11" fill="#FFFFFF" fontWeight="700">You · {score}</text>
-          </g>
-        );
-      })()}
+      {/* End-of-line labels so each path is self-explanatory. Each arrives as
+          its own line lands, which is what stops them reading as a legend. */}
+      <motion.g initial="hidden" animate={shown ? "show" : "hidden"} variants={variants.climbLabel}>
+        <circle cx={endT[0]} cy={endT[1]} r="4.5" fill="#16A34A" />
+        <text x={endT[0] + 8} y={endT[1] - 3} fontSize="12" fill="#16A34A" fontWeight="800">With{" "}Lisa</text>
+        <text x={endT[0] + 8} y={endT[1] + 10} fontSize="10" fill="#16A34A" fontWeight="600" opacity="0.85">better</text>
+      </motion.g>
 
-      {/* End-of-line labels so each path is self-explanatory */}
-      <circle cx={endT[0]} cy={endT[1]} r="4.5" fill="#16A34A" />
-      <text x={endT[0] + 8} y={endT[1] - 3} fontSize="12" fill="#16A34A" fontWeight="800">With{" "}Lisa</text>
-      <text x={endT[0] + 8} y={endT[1] + 10} fontSize="10" fill="#16A34A" fontWeight="600" opacity="0.85">better</text>
-
-      <circle cx={endU[0]} cy={endU[1]} r="4.5" fill="#EF4444" />
-      <text x={endU[0] + 8} y={endU[1] + 1} fontSize="12" fill="#EF4444" fontWeight="800">No{" "}plan</text>
-      <text x={endU[0] + 8} y={endU[1] + 14} fontSize="10" fill="#EF4444" fontWeight="600" opacity="0.85">worse</text>
-
-      {/* X axis labels. The middle tick sits on the scale break, so it is
-          labelled with what it is - the end of her plan - rather than with a
-          midpoint the axis does not actually have. */}
-      <text x={xAt(0)} y={H - 9} textAnchor="start" fontSize="11" fill="#9A9A9A" fontWeight="500">Now</text>
-      <text x={xAt(TRAJ_PLAN_SPLIT)} y={H - 9} textAnchor="middle" fontSize="11" fill="#3D3D3D" fontWeight="700">Week {PLAN_WEEKS}</text>
-      <text x={xAt(1)} y={H - 9} textAnchor="end" fontSize="11" fill="#9A9A9A" fontWeight="500">2 years</text>
+      <motion.g initial="hidden" animate={shown ? "show" : "hidden"} variants={variants.declineLabel}>
+        <circle cx={endU[0]} cy={endU[1]} r="4.5" fill="#EF4444" />
+        <text x={endU[0] + 8} y={endU[1] + 1} fontSize="12" fill="#EF4444" fontWeight="800">No{" "}plan</text>
+        <text x={endU[0] + 8} y={endU[1] + 14} fontSize="10" fill="#EF4444" fontWeight="600" opacity="0.85">worse</text>
+      </motion.g>
     </svg>
   );
 }
@@ -2379,6 +2537,113 @@ function ImageChoiceGrid({
   );
 }
 
+/**
+ * The 6.5 seconds between the last question and her results.
+ *
+ * ── Why it is a component and not four lines in the page ────────────────────
+ *
+ * The percentage and the message carousel are driven by one `requestAnimation-
+ * Frame` clock, so they can never disagree about how far along she is. That
+ * clock used to live in `RegisterPageContent` and write to state there, which
+ * meant ~90 renders of the entire funnel - every quiz screen, every memo, the
+ * whole 5,000-line tree - across the exact window in which the anonymous
+ * sign-in and `save-quiz` are in flight. On a mid-range Android that is main
+ * thread taken away from the two network calls this screen exists to hide.
+ *
+ * Owning the clock here bounds every one of those renders to this box.
+ *
+ * ── What it is not ──────────────────────────────────────────────────────────
+ *
+ * It is not a progress bar for the work behind it. `completeRegistration()`
+ * advances the phase on its own, and deliberately outlasts the network call on
+ * a fast connection - the clock here is presentation only. It stalls at
+ * `CALCULATING_MAX_PCT`, never 100: see that constant.
+ *
+ * Saving her answers happens behind this loader, so a failure has to surface
+ * *here* - silently spinning forever would strand her one tap short of her
+ * results.
+ */
+function CalculatingScreen({ error, onRetry }: { error: string | null; onRetry: () => void }) {
+  const [pct, setPct] = useState(0);
+  const [messageIndex, setMessageIndex] = useState(0);
+
+  useEffect(() => {
+    let raf = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / CALCULATING_MS);
+      setPct(Math.round(t * CALCULATING_MAX_PCT));
+      setMessageIndex(
+        Math.min(LOADING_MESSAGES.length - 1, Math.floor(t * LOADING_MESSAGES.length))
+      );
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  return (
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden -mx-4 sm:-mx-6 px-4 sm:px-6">
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.4, ease: [0.42, 0, 0.58, 1] }}
+        className="flex-1 flex flex-col items-center justify-center px-4"
+      >
+        {/* The percentage carries the "something is being built" job that a
+            static header can't. There used to be a fixed h2 here reading
+            "Getting to know you better..." *above* the three rotating
+            messages - two headers on a three-second screen, one of which
+            never changed. */}
+        <p className="mb-1 text-4xl font-black tabular-nums text-[#3D3D3D]">
+          {pct}
+          <span className="text-xl font-bold text-[#B0B0B0]">%</span>
+        </p>
+        <div className="mb-4 h-1.5 w-40 overflow-hidden rounded-full bg-primary/15">
+          {/* `scaleX`, not `width`. The bar is re-targeted ~90 times over the
+              6.5s; a width animation relayouts and repaints the run on every
+              one of them, a transform is handed straight to the compositor. */}
+          <motion.div
+            className="h-full w-full origin-left rounded-full bg-primary"
+            initial={false}
+            animate={{ scaleX: pct / 100 }}
+            transition={{ ease: "linear", duration: 0.12 }}
+          />
+        </div>
+
+        {error ? (
+          <div className="w-full max-w-sm text-center">
+            <p className="text-sm text-error mb-3">{error}</p>
+            <button
+              type="button"
+              onClick={onRetry}
+              className="min-h-11 px-6 py-2.5 font-bold text-foreground rounded-xl transition-all hover:scale-[1.02]"
+              style={CTA_GRADIENT_STYLE}
+            >
+              Try again
+            </button>
+          </div>
+        ) : (
+          <AnimatePresence mode="wait">
+            <motion.p
+              key={messageIndex}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.28, ease: [0.42, 0, 0.58, 1] }}
+              className="h-6 font-medium min-w-48 text-center"
+              style={{ color: LOADING_MESSAGE_COLORS[messageIndex] ?? "#6B7280" }}
+            >
+              {LOADING_MESSAGES[messageIndex]}
+            </motion.p>
+          </AnimatePresence>
+        )}
+      </motion.div>
+    </div>
+  );
+}
+
 function RegisterPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -2539,15 +2804,11 @@ function RegisterPageContent() {
   const activeQuestionIndex = QUESTION_STEPS.includes(currentStep)
     ? QUESTION_STEPS.indexOf(currentStep)
     : STEPS.slice(0, stepIndex).filter((s) => QUESTION_STEPS.includes(s)).length - 1;
-  const [, setBrowserInfo] = useState<ReturnType<typeof detectBrowser> | null>(null);
-
-
-  // Detect browser on mount
+  // A `browserInfo` state used to be set here on mount and read by nobody - a
+  // second render of this whole component, on every ad click, to reach a
+  // `console.warn`. The warning is kept; the state is not.
   useEffect(() => {
     const browser = detectBrowser();
-    setBrowserInfo(browser);
-    
-    // Check if there's a browser mismatch issue
     if (hasBrowserMismatchIssue(browser)) {
       console.warn("Browser mismatch detected:", browser);
     }
@@ -2576,8 +2837,6 @@ function RegisterPageContent() {
   const [symptomSeverity, setSymptomSeverity] = useState<Record<string, number>>({});
   // Her Mild/Moderate/Severe answer for the symptom she picked first.
   const [symptomImpact, setSymptomImpact] = useState<string>("");
-  // "What have you tried" step removed; kept empty so the score calc + save-quiz payload stay intact.
-  const [triedOptions] = useState<string[]>([]);
   const [hrtStatus, setHrtStatus] = useState<string>("");
   const [nutritionStyle, setNutritionStyle] = useState<string>("");
   const [relaxationStyle, setRelaxationStyle] = useState<string>("");
@@ -2689,9 +2948,8 @@ function RegisterPageContent() {
   // estrogen link as what it is: a general fact about menopause, not a
   // personalized statistic. See the "Why this is happening" block below.
 
-  // Loading screen state (between quiz and results)
-  const [messageIndex, setMessageIndex] = useState(0);
-  const [calcPct, setCalcPct] = useState(0);
+  // The calculating loader's clock lives in <CalculatingScreen /> - see the
+  // component for why it is not held here.
 
   // Her score, as one animated value. The results card renders both the number
   // and the bar off this, so they cannot finish on different frames.
@@ -2720,31 +2978,6 @@ function RegisterPageContent() {
     }
     const t = setTimeout(() => setResultsHighlight(true), 1550);
     return () => clearTimeout(t);
-  }, [phase]);
-
-  // Calculating screen: the percentage and the message carousel, both derived
-  // from one rAF clock so they never disagree about how far along she is. The
-  // work that sits behind this loader (account + save-quiz) is driven by the
-  // effect next to completeRegistration below, which is also what advances the
-  // phase - the clock here is presentation only and deliberately outlasts the
-  // network call on a fast connection.
-  useEffect(() => {
-    if (phase !== "calculating") return;
-    setMessageIndex(0);
-    setCalcPct(0);
-
-    let raf = 0;
-    const start = performance.now();
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / CALCULATING_MS);
-      setCalcPct(Math.round(t * CALCULATING_MAX_PCT));
-      setMessageIndex(
-        Math.min(LOADING_MESSAGES.length - 1, Math.floor(t * LOADING_MESSAGES.length))
-      );
-      if (t < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
   }, [phase]);
 
   // Count the score up once, the first time she reaches results. Guarded on a
@@ -2838,7 +3071,7 @@ function RegisterPageContent() {
       age_band: ageBand || null,
       top_problems: topProblems,
       symptom_impact: symptomImpact || null,
-      tried_options: triedOptions,
+      tried_options: TRIED_OPTIONS,
       hrt_status: hrtStatus || null,
       goal,
       goals: goal,
@@ -2858,7 +3091,6 @@ function RegisterPageContent() {
       ageBand,
       topProblems,
       symptomImpact,
-      triedOptions,
       hrtStatus,
       goal,
       hereFor,
@@ -3474,7 +3706,7 @@ function RegisterPageContent() {
     return () => {
       mounted = false;
     };
-  }, [router, phase, searchParams]);
+  }, [router, phase]);
 
   // max-w-4xl, with the horizontal padding trimmed on phones, so the quiz card
   // gets the extra width in both directions. The quiz is the only phase that
@@ -3737,67 +3969,13 @@ function RegisterPageContent() {
       {/* Calculating Phase - loader between quiz and results; also where the
           account is created and the quiz is saved (see completeRegistration) */}
       {phase === "calculating" && (
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden -mx-4 sm:-mx-6 px-4 sm:px-6">
-          <motion.div
-            key="calculating"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.4, ease: [0.42, 0, 0.58, 1] }}
-            className="flex-1 flex flex-col items-center justify-center px-4"
-          >
-            {/* The percentage carries the "something is being built" job that a
-                static header can't. There used to be a fixed h2 here reading
-                "Getting to know you better..." *above* the three rotating
-                messages - two headers on a three-second screen, one of which
-                never changed. */}
-            <p className="mb-1 text-4xl font-black tabular-nums text-[#3D3D3D]">
-              {calcPct}
-              <span className="text-xl font-bold text-[#B0B0B0]">%</span>
-            </p>
-            <div className="mb-4 h-1.5 w-40 overflow-hidden rounded-full bg-primary/15">
-              <motion.div
-                className="h-full rounded-full bg-primary"
-                animate={{ width: `${calcPct}%` }}
-                transition={{ ease: "linear", duration: 0.1 }}
-              />
-            </div>
-
-            {/* Saving her answers happens behind this loader, so a failure has to
-                surface here - silently spinning forever would strand her one tap
-                short of her results. */}
-            {error ? (
-              <div className="w-full max-w-sm text-center">
-                <p className="text-sm text-error mb-3">{error}</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setError(null);
-                    setRegistrationRetry((n) => n + 1);
-                  }}
-                  className="min-h-11 px-6 py-2.5 font-bold text-foreground rounded-xl transition-all hover:scale-[1.02]"
-                  style={CTA_GRADIENT_STYLE}
-                >
-                  Try again
-                </button>
-              </div>
-            ) : (
-              <AnimatePresence mode="wait">
-                <motion.p
-                  key={messageIndex}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.28, ease: [0.42, 0, 0.58, 1] }}
-                  className="h-6 font-medium min-w-48 text-center"
-                  style={{ color: LOADING_MESSAGE_COLORS[messageIndex] ?? "#6B7280" }}
-                >
-                  {LOADING_MESSAGES[messageIndex]}
-                </motion.p>
-              </AnimatePresence>
-            )}
-          </motion.div>
-        </div>
+        <CalculatingScreen
+          error={error}
+          onRetry={() => {
+            setError(null);
+            setRegistrationRetry((n) => n + 1);
+          }}
+        />
       )}
 
       {/* Results Phase */}
@@ -4265,9 +4443,12 @@ function RegisterPageContent() {
                     perimenopause symptoms persist 4&ndash;7 years on average - and often get
                     worse before they settle.
                   </motion.p>
-                  <motion.div variants={rise}>
-                    <TrajectoryChart score={score} />
-                  </motion.div>
+                  {/* Not a `rise` child: the chart runs its own draw off its
+                      own `whileInView`, so it starts when *it* is on screen
+                      rather than when the card's headline is. Two beats that
+                      happen to overlap read better than a chart that finished
+                      drawing above the fold. */}
+                  <TrajectoryChart score={score} reduced={!!prefersReducedMotion} />
                 </motion.div>
               );
             })()}
