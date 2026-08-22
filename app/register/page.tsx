@@ -16,6 +16,7 @@ import {
   type MotionValue,
   type Variants,
 } from "framer-motion";
+import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { getSupabase, hasAuthCookieHint } from "@/lib/supabaseClient";
 import {
   getAccountState,
@@ -2537,6 +2538,103 @@ function ImageChoiceGrid({
   );
 }
 
+/* A type-only import, so it is erased at build time and the auth stack stays in
+   the lazy chunk `getSupabase()` puts it in. Never import a *value* from
+   `@supabase/supabase-js` here. */
+
+/**
+ * The anonymous sign-in, retried - because it is the single point of failure in
+ * the whole funnel.
+ *
+ * Everything downstream hangs off the id this call mints: the quiz answers, the
+ * Stripe session, the subscription, her login. It is also one `fetch`, on a
+ * phone, on whatever connection an ad click arrived over, and it used to get
+ * exactly one attempt. A dropped request there ends a paid click on an error
+ * screen.
+ *
+ * The 2026-08-21 report was this: no `/signup` request in Supabase's auth log
+ * had failed in 24 hours - every one returned 200 - and yet the funnel showed
+ * the failure sentence. The call never reached Supabase. `supabase-js` folds a
+ * fetch failure into the `error` field instead of throwing (an
+ * `AuthRetryableFetchError`), so a request the browser dropped is
+ * indistinguishable, at this call site, from the server saying no - and it
+ * leaves no server-side trace to find afterwards.
+ *
+ * ── What it will and will not retry ─────────────────────────────────────────
+ *
+ * Only failures that could plausibly succeed on the next attempt: a transport
+ * error (no status), or a 5xx. A 4xx is Supabase answering, and answering the
+ * same way every time - `422 anonymous_provider_disabled` means the provider is
+ * off in the dashboard and no amount of asking will turn it on, and retrying a
+ * `429` spends the rate limit it is complaining about. Both fail on the first
+ * attempt, as they should.
+ *
+ * Three attempts, ~0.4s then ~1.2s apart. The worst case adds ~1.6s and she
+ * waits none of it: `completeRegistration()` runs inside `CALCULATING_MS`
+ * (6.5s) of loader that is held open anyway.
+ *
+ * The error is duck-typed rather than tested with `isAuthRetryableFetchError`
+ * on purpose. Importing that helper statically pulls the auth stack into the
+ * entry chunk and undoes the lazy `getSupabase()` split - see the warning at
+ * the top of `lib/supabaseClient.ts`.
+ */
+const ANON_SIGNIN_BACKOFF_MS = [400, 1200];
+
+type AnonSignInError = { status?: number; code?: string; message?: string } | null;
+
+function isRetryableAuthError(err: AnonSignInError): boolean {
+  if (!err) return true; // no user and no error: something odd, worth one more go
+  const status = typeof err.status === "number" ? err.status : 0;
+  // status 0 / absent is the transport failure - the case this exists for.
+  return status === 0 || status >= 500;
+}
+
+async function signInAnonymouslyWithRetry(
+  supabase: SupabaseClient
+): Promise<{ user: User | null; error: AnonSignInError }> {
+  let lastError: AnonSignInError = null;
+
+  for (let attempt = 0; attempt <= ANON_SIGNIN_BACKOFF_MS.length; attempt++) {
+    const { data, error } = await supabase.auth.signInAnonymously();
+    if (data?.user) return { user: data.user, error: null };
+
+    lastError = (error as AnonSignInError) ?? null;
+    if (!isRetryableAuthError(lastError)) break;
+
+    const wait = ANON_SIGNIN_BACKOFF_MS[attempt];
+    if (wait === undefined) break;
+    console.warn(`Anonymous sign-in attempt ${attempt + 1} failed, retrying:`, lastError);
+    await new Promise((r) => setTimeout(r, wait));
+  }
+
+  return { user: null, error: lastError };
+}
+
+/**
+ * One sentence per cause, because "we couldn't save your results" was the same
+ * sentence for a dropped request, a disabled provider and a rate limit - which
+ * left her retrying a thing that could not work, and left us unable to tell the
+ * three apart from a bug report.
+ *
+ * None of them name Supabase or a status code at her: she is 90 seconds from a
+ * price and the only thing she needs to know is whether tapping again is worth
+ * it.
+ */
+function anonSignInMessage(err: AnonSignInError): string {
+  const status = typeof err?.status === "number" ? err.status : 0;
+  if (status === 429) {
+    return "Too many attempts just now. Give it a minute, then tap Try again.";
+  }
+  if (status === 0) {
+    return "We couldn't reach the server - check your connection and tap Try again.";
+  }
+  // 4xx that isn't a rate limit is a configuration problem on our side (the
+  // provider being switched off is the one that has actually happened), and
+  // there is nothing she can do about it. Say so rather than sending her round
+  // the retry loop again.
+  return "Something went wrong on our end saving your results. Please try again in a moment.";
+}
+
 /**
  * The 6.5 seconds between the last question and her results.
  *
@@ -3253,15 +3351,13 @@ function RegisterPageContent() {
         // Drop any dead token locally first, or signInAnonymously refuses to
         // replace what it thinks is a live session.
         await supabase.auth.signOut({ scope: "local" }).catch(() => {});
-        const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
-        if (anonError || !anonData?.user) {
-          // Almost always "Anonymous sign-ins are disabled" in the Supabase
-          // dashboard - see scripts/sql/2026-08-10-anonymous-funnel-accounts.sql.
+        const { user: anonUser, error: anonError } = await signInAnonymouslyWithRetry(supabase);
+        if (!anonUser) {
           console.error("Anonymous sign-in failed:", anonError);
-          setError("We couldn't save your results. Please try again.");
+          setError(anonSignInMessage(anonError));
           return false;
         }
-        sessionUser = anonData.user;
+        sessionUser = anonUser;
       }
 
       // She now has an id, and it is the only identifier this funnel will ever

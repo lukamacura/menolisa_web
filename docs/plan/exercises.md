@@ -144,9 +144,27 @@ behind a CDN, and a re-cut clip is live the moment it's uploaded.
 
 ```
 bucket: exercise-clips   (public read, no RLS needed — nothing user-specific)
-  L01.mp4    6-10s silent loop, H.264, ≤720p, ≤400KB
-  L01.webp   poster frame, ≤40KB
+  L01.mp4    6-10s silent loop, H.264, no audio track, 4:5 1080×1350, ≤800KB
+  L01.webp   poster frame, 4:5 1080×1350, ≤60KB
 ```
+
+### Shooting spec
+
+**4:5, always.** The session runner (`MovementSessionScreen`) makes the clip the
+stage and overlays the countdown on it, so the box is portrait: it matches 4:5
+exactly on a large phone and stays a little wider than that on a small one. The
+player uses `contentFit="contain"`, so nothing is ever cropped — a clip in the
+wrong ratio doesn't break, it just letterboxes.
+
+- Shoot 4K vertical if that's easiest, deliver a 4:5 centre crop. That keeps a
+  full-bleed redesign possible later without a re-shoot.
+- **Same backdrop for all 59.** `contain` letterboxes against `surfaceElevated`;
+  one consistent backdrop makes the bars stop reading as bars.
+- Keep the **top-right corner** clear — the countdown chip sits there. For a
+  standing figure that's backdrop anyway.
+- Full body in frame with headroom and floor room. Feet matter.
+- `-an` on every export. Silent loops mean no audio session to manage, and a
+  stray empty audio track is pure overhead.
 
 Filename **is** the exercise id. Nothing else maps them.
 

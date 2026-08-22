@@ -356,8 +356,8 @@ export function cardioMinutes(sessionMinutes: number, exerciseCount: number): nu
  * id, and the app caches each one on first play.
  *
  * Bucket layout (`exercise-clips`, public read):
- *   L01.mp4   H.264 / AAC-less, 6-10s silent loop, ≤720p, ≤400KB
- *   L01.webp  poster frame, ≤40KB
+ *   L01.mp4   H.264, no audio track, 6-10s silent loop, 4:5 1080×1350, ≤800KB
+ *   L01.webp  poster frame, 4:5 1080×1350, ≤60KB
  *
  * Only the API builds these URLs. If the bucket ever moves to another CDN, this
  * constant is the only thing that changes — no client ships a hardcoded path.
