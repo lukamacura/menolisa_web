@@ -3,6 +3,10 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 const REVIEWER_EMAILS = new Set<string>([
   "luka.xzy@gmail.com",
+  // Seeded test account, parked at a chosen point in its subscription by
+  // scripts/seed-renewal-test.ts. Sign-in is OTP everywhere else, and this
+  // account exists to be signed into on demand.
+  "luka.xzy+renewal@gmail.com",
 ]);
 
 export async function POST(req: NextRequest) {

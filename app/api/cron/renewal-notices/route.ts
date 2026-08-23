@@ -55,6 +55,17 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Query failed" }, { status: 500 });
     }
 
+    // Names for everyone due, in one query rather than one per row. The alert
+    // copy addresses her by name, so this is needed for every row now — not
+    // just the ones that get an email.
+    const dueIds = (due ?? []).map((r) => r.user_id);
+    const { data: profiles } = dueIds.length
+      ? await supabase.from("user_profiles").select("user_id, name").in("user_id", dueIds)
+      : { data: [] as { user_id: string; name: string | null }[] };
+    const firstNames = new Map(
+      (profiles ?? []).map((p) => [p.user_id, (p.name ?? "").trim().split(" ")[0] || null])
+    );
+
     let sent = 0;
     const errors: { user_id: string; error: string }[] = [];
     const alerts: AlertRequest[] = [];
@@ -77,7 +88,7 @@ export async function GET(req: NextRequest) {
           : {
               userId: row.user_id,
               kind: "renewal",
-              copy: renewalCopy(endsAt),
+              copy: renewalCopy(endsAt, firstNames.get(row.user_id) ?? null),
               occurrence: row.subscription_ends_at,
             }
       );
@@ -95,15 +106,9 @@ export async function GET(req: NextRequest) {
       const email = authUser?.user?.email;
       if (!email) continue;
 
-      const { data: profile } = await supabase
-        .from("user_profiles")
-        .select("name")
-        .eq("user_id", row.user_id)
-        .maybeSingle();
-
       const { error: sendError } = await sendRenewalNoticeEmail(
         email,
-        profile?.name ?? null,
+        firstNames.get(row.user_id) ?? null,
         new Date(row.subscription_ends_at)
       );
 

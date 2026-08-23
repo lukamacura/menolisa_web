@@ -30,8 +30,14 @@ export type AlertCopy = { title: string; body: string };
 /**
  * Where tapping the push lands. `Account` opens the billing page on the web,
  * because subscriptions are managed there; everything else is a mobile route.
+ *
+ * `PlanContinue` is the renewal screen inside the app. Renewal is the one money
+ * alert with nothing for her to do — the card is charged automatically — so
+ * sending her to a billing page would be answering a question she did not ask,
+ * next to a Cancel button. The alerts that *do* need her to act on billing
+ * (`access_ending`, `payment_failed`) still go to `Account`.
  */
-export type AlertScreen = "DailyLoop" | "Notifications" | "Account";
+export type AlertScreen = "DailyLoop" | "Notifications" | "Account" | "PlanContinue";
 
 type AlertSpec = {
   /** `notifications.type` — the app picks its icon and fallback title from this. */
@@ -52,7 +58,7 @@ export const ALERTS: Record<AlertKind, AlertSpec> = {
   streak_risk: { type: "reminder", screen: "DailyLoop" },
   week_start: { type: "reminder", screen: "DailyLoop" },
   weekly_recap: { type: "weekly_insights", screen: "Notifications" },
-  renewal: { type: "trial", screen: "Account", alwaysDeliver: true },
+  renewal: { type: "trial", screen: "PlanContinue", alwaysDeliver: true },
   access_ending: { type: "trial", screen: "Account", alwaysDeliver: true },
   payment_failed: { type: "trial", screen: "Account", alwaysDeliver: true },
 };
@@ -155,10 +161,21 @@ export function weeklyRecapCopy(input: {
 }
 
 /** Three days before the card is charged again. Reassurance, not a warning. */
-export function renewalCopy(renewsOn: Date): AlertCopy {
+/**
+ * Three days out from the charge — the moment she decides whether to keep going.
+ *
+ * This used to read "Your plan renews on the 14th / Nothing to do". Accurate,
+ * and completely forgettable: it treated the one point in eight weeks where she
+ * actively chooses to continue as a receipt. It is now the nudge back into the
+ * app, and it still names the date, because a motivating line that hides the
+ * charge is a dark pattern rather than a nudge.
+ */
+export function renewalCopy(renewsOn: Date, firstName: string | null): AlertCopy {
   return {
-    title: `Your plan renews on ${formatAlertDate(renewsOn)}`,
-    body: "Nothing to do — Lisa keeps going from here.",
+    title: firstName
+      ? `${firstName}, your 8 weeks are nearly up`
+      : "Your 8 weeks are nearly up",
+    body: `Your plan renews on ${formatAlertDate(renewsOn)} and carries straight on. This is not the week to stop.`,
   };
 }
 

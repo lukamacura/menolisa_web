@@ -229,6 +229,10 @@ async function buildEvening(
           .select("user_id, started_at, plan")
           .in("user_id", batch)
           .eq("status", "ready")
+          // A row per cycle now. `plans` below keeps the last one it sees, so
+          // ascending order makes that her newest — the plan whose week 3 is
+          // actually starting tomorrow.
+          .order("cycle", { ascending: true })
     ),
     selectByUser<{ user_id: string; date: string }>(userIds, (batch) =>
       supabase

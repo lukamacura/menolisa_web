@@ -400,7 +400,9 @@ export async function POST(req: NextRequest) {
         .order("created_at", { ascending: false })
         .limit(MAX_CLIENTS),
       supabaseAdmin.from("user_profiles").select("user_id, name"),
-      supabaseAdmin.from("user_plans").select("user_id, status"),
+      // One row per cycle; `planMap` keeps the last, so ascending order shows
+      // the newest cycle's status rather than an arbitrary one.
+      supabaseAdmin.from("user_plans").select("user_id, status").order("cycle", { ascending: true }),
       supabaseAdmin.from("user_profiles").select("user_id", { count: "exact", head: true }),
       loadRevenue(),
       loadLlmStats(),

@@ -44,7 +44,16 @@ export async function GET(req: NextRequest) {
   const date = resolveDate(req.nextUrl.searchParams.get("date"));
 
   const [planResult, logsResult, symptomResult] = await Promise.all([
-    supabaseAdmin.from("user_plans").select("plan, started_at").eq("user_id", user.id).maybeSingle(),
+    // Every cycle, oldest first. Rewards need both ends of that list and they
+    // are not the same row: the plan being scored is her newest one, while the
+    // week origin is her *first* start date. Bucketing weekly XP from the
+    // current cycle instead would shift every week boundary at a rollover and
+    // hand her a half-week that scores as a bad one.
+    supabaseAdmin
+      .from("user_plans")
+      .select("cycle, plan, started_at")
+      .eq("user_id", user.id)
+      .order("cycle", { ascending: true }),
     // No date floor: XP and lifetime badges count everything she has ever done,
     // including ticks logged before `started_at` was stamped.
     supabaseAdmin.from("user_plan_logs").select("task_key, date, count").eq("user_id", user.id),
@@ -61,10 +70,16 @@ export async function GET(req: NextRequest) {
   if (planResult.error) console.error("Rewards: plan fetch failed:", planResult.error);
   if (symptomResult.error) console.error("Rewards: symptom fetch failed:", symptomResult.error);
 
+  const cycleRows = (planResult.data ?? []) as {
+    cycle: number;
+    plan: unknown;
+    started_at: string | null;
+  }[];
+
   const payload = computeRewards({
     date,
-    plan: (planResult.data?.plan ?? null) as PlanShape,
-    startedAt: planResult.data?.started_at ?? null,
+    plan: (cycleRows.length ? cycleRows[cycleRows.length - 1].plan : null) as PlanShape,
+    startedAt: cycleRows.find((r) => r.started_at)?.started_at ?? null,
     logs: (logsResult.data ?? []) as PlanLogRow[],
     symptomTimestamps: (symptomResult.data ?? [])
       .map((row) => row.logged_at as string)

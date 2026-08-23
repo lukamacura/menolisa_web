@@ -368,6 +368,132 @@ rep-specific UI, and treat an unknown `unit` as timed.
 
 ---
 
+## 12. Plans renew every 8 weeks — cycles (**additive**) — 2026-08-23
+
+Her plan is no longer a thing she has once. Fifty-six days after `startedAt`,
+the first `GET /api/plan` of that day scores what she actually did, writes her a
+new 8-week plan shaped by those numbers, and raises her **cycle**. The old plan
+and every log behind it stay readable forever.
+
+`user_plans` is now keyed `(user_id, cycle)`. `user_plan_logs` did not change at
+all — task keys repeat across cycles, but cycles never overlap in time, so the
+date already tells them apart.
+
+### `GET /api/plan`
+
+```jsonc
+{ "status": "generating", "cycle": 2 }      // rollover in progress
+{ "status": "ready", "cycle": 2, "date": "...", "startedAt": "...", ... }
+```
+
+- `cycle` is new on **both** states. 1 is the plan she bought.
+- It rides along on `generating` on purpose: at a rollover that is the only
+  signal available *while she waits*, and the wait is when the recap of the
+  eight weeks she just finished should be on screen.
+- Nothing else about the ready payload changed. `startedAt` is the current
+  cycle's start, `currentWeek` is 1-8 within it, and `weeks` is still 8 long.
+- **A rollover is stamped from the day she comes back**, not from day 56. A
+  woman who was away for a month opens on day 1 of the new plan, not week 5 of
+  one she has never seen.
+
+### `GET /api/plan/history`
+
+Gains `?cycle=<n>`. Omit it for the cycle she is living in; pass a number to
+read a plan she has finished.
+
+```jsonc
+{
+  "cycle": 1,
+  "cycles": [
+    { "cycle": 1, "startedAt": "2026-08-16", "endsAt": "2026-10-10", "current": false },
+    { "cycle": 2, "startedAt": "2026-10-11", "endsAt": "2026-12-05", "current": true }
+  ],
+  "startedAt": "...", "weeks": [...], "overall": { ... }
+}
+```
+
+- `cycles` is on **every** response, so a switcher never costs a second request.
+  One entry means she is on her first plan and there is nothing to switch.
+- A finished cycle is scored against **its own last day**, so it renders as
+  eight full weeks rather than trailing off into blank future.
+- Only `ready` cycles with a stamped `started_at` appear in `cycles`.
+- Still 404s when she has no plan at all, and still never generates.
+
+### What the LLM is told
+
+Only percentages, and only these: movement / nutrition / relaxation adherence
+over the finished cycle, the overall score, and first-half vs second-half so it
+can tell a fade from a build. `null` on a pillar means the last plan asked
+nothing there — it is never a zero.
+
+The rule it is given is the opposite of the obvious one: **a pillar she scored
+low on gets a smaller ask, not a bigger one.** A plan she could not keep for
+eight weeks will not be kept by being made harder.
+
+**The numbers are banned from every title, focus and `why`.** She is opening a
+new plan, not a report card. Nothing about a previous cycle reaches her copy.
+
+**Why:** she is paying a subscription. Week 8 used to be a cliff — the plan
+simply stopped progressing and repeated forever — and a plan that silently
+resets to week 1 reads as a bug rather than as something earned.
+
+**What the app should do:** read `cycle` from both plan states; when it comes
+back higher than the last one shown, show her a one-time recap of `cycle - 1`
+(`GET /api/plan/history?cycle=<cycle - 1>`) while the new plan generates. Offer
+past cycles from the progress screen via `cycles`.
+
+---
+
+## 13. The pre-renewal screen — `first_name` + a re-aimed alert — 2026-08-23
+
+Three days before her card is charged she is shown one screen: what she did over
+these eight weeks, and why not to stop. It is the only point in the cycle where
+continuing is a decision rather than a default, and the point she is most likely
+to quit — the work is done, and the next eight weeks look like more of it.
+
+### `GET /api/account/status` gains `first_name`
+
+```jsonc
+{ "has_access": true, "subscription_ends_at": "2026-08-25T11:32:56Z", "first_name": "Ana", ... }
+```
+
+- First name only, already trimmed server-side. **Null** when the quiz never
+  captured one — never build a sentence that breaks without it.
+- It rides on this endpoint because it is the one the app already polls for
+  "who is this and what may she see". The alternative was a second call from
+  every screen that wants to address her by name.
+
+### The `renewal` alert changed target and copy
+
+| | before | after |
+|---|---|---|
+| title | `Your plan renews on 25 August` | `Ana, your 8 weeks are nearly up` |
+| body | `Nothing to do — Lisa keeps going from here.` | `Your plan renews on 25 August and carries straight on. This is not the week to stop.` |
+| `screen` | `Account` (opens web billing) | `PlanContinue` (in-app) |
+
+- Push payload is now `{ "screen": "PlanContinue" }` instead of
+  `{ "action": "upgrade" }`. Route it to the plan screen.
+- The Alerts-tab row for `alert_kind: "renewal"` should open the same screen
+  rather than the billing page. `access_ending` and `payment_failed` are
+  unchanged — those two genuinely need her at a billing page.
+- It still names the date. A motivating line that hides the charge three days
+  away is a dark pattern, not a nudge.
+
+### No new endpoint
+
+The screen is built from what already exists: `first_name` and
+`subscription_ends_at` from `/api/account/status`, and her outcome from
+`GET /api/plan/history` (`overall.movement.done`, `.nutrition.done`,
+`.relaxation.done` and the ratios).
+
+**What the app should do:** when `subscription_ends_at` is 0-3 days away, she
+has access and has **not** cancelled, show the screen once. Key the seen-marker
+off `subscription_ends_at` itself — the next period is a different string and
+re-arms it automatically, the same trick `renewal_notice_sent_for` plays
+server-side. A cancelled subscriber never sees it; she has already decided.
+
+---
+
 ## Quick checklist
 
 - [ ] Remove `trial_start` / `trial_end` / `trial_days` reads
@@ -384,3 +510,11 @@ rep-specific UI, and treat an unknown `unit` as timed.
 - [ ] Read `exercises[].dose` for sets and seconds; keep the flat fields as fallback
 - [ ] Show "each side" wherever `dose.perSide` is true
 - [ ] Remove every rep count from the UI — `dose.unit` is never `"reps"` again
+- [ ] Read `cycle` from `GET /api/plan` on both `generating` and `ready`
+- [ ] Show the 8-week recap once per finished cycle, during the rollover wait
+- [ ] Render past cycles from `history.cycles`; hide the switcher when there is one
+- [ ] Never render a plan reset to week 1 without the recap in front of it
+- [ ] Read `first_name` from `/api/account/status`; render fine when it is null
+- [ ] Route `{ screen: "PlanContinue" }` pushes into the app, not to web billing
+- [ ] Open the Alerts-tab `renewal` row in-app; leave the other two on billing
+- [ ] Show the pre-renewal screen once per `subscription_ends_at`, never when cancelled

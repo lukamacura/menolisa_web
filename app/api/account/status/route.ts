@@ -21,11 +21,18 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("user_trials")
-    .select(TRIAL_SELECT_COLS)
-    .eq("user_id", user.id)
-    .maybeSingle();
+  // Her first name comes along because this is the one endpoint the app polls
+  // for "who is this and what may she see". The alternative was a second call
+  // from every screen that wants to address her by name, which is how a hot
+  // path picks up an extra round trip per render.
+  const [{ data, error }, { data: profile }] = await Promise.all([
+    supabase
+      .from("user_trials")
+      .select(TRIAL_SELECT_COLS)
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase.from("user_profiles").select("name").eq("user_id", user.id).maybeSingle(),
+  ]);
 
   if (error && error.code !== "PGRST116") {
     console.error("account/status DB error:", error);
@@ -51,5 +58,8 @@ export async function GET(req: NextRequest) {
     subscription_canceled: row?.subscription_canceled ?? false,
     payment_failed_at: row?.payment_failed_at ?? null,
     has_onboarding: row !== null,
+    // First name only, already trimmed. Null when the quiz never captured one —
+    // every surface that uses it must read fine without it.
+    first_name: (profile?.name ?? "").trim().split(" ")[0] || null,
   });
 }

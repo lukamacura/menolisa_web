@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { recordLlmUsage } from "@/lib/llmUsage";
+import type { Adherence } from "@/lib/plan/cycles";
 import {
   MOVEMENT_VOLUME,
   NUTRITION,
@@ -295,7 +296,66 @@ function planJsonSchema(pool: Exercise[]) {
 }
 
 /** Exported for `scripts/verify-plan-dose.ts`, which reads the dose rules back. */
-export function buildPrompt(profile: Profile, pool: Exercise[]): string {
+/**
+ * What the last eight weeks tell the model about how to size the next ones.
+ *
+ * Two things this block is careful about, and both have a wrong version that
+ * looks reasonable:
+ *
+ * 1. **A low pillar shrinks the ask, it does not scold her.** The instinct is
+ *    to push harder where she fell behind. That is exactly backwards — a plan
+ *    she could not keep for eight weeks will not be kept by being made bigger.
+ * 2. **The numbers never reach her.** They change what gets built; they are
+ *    banned from every title, focus and why. She is opening a new plan, not a
+ *    report card, and "last time you only managed 38%" is the sentence that
+ *    makes her cancel.
+ *
+ * A `null` pillar means the last plan never asked for it. That is a gap in the
+ * plan, not a failure of hers, and it is stated as such.
+ */
+function adherenceBlock(a: Adherence | null): string[] {
+  if (!a) return [];
+
+  const line = (label: string, value: number | null) =>
+    value === null
+      ? `- ${label}: her last plan asked nothing here.`
+      : `- ${label}: she did ${value}% of what her last plan asked.`;
+
+  // Only call it a fade or a build when the gap is big enough to mean
+  // something. Eight percentage points either way is noise, and a plan built
+  // to correct noise is a plan built on nothing.
+  const drift = a.secondHalf - a.firstHalf;
+  const trend =
+    drift <= -10
+      ? `- She started well and faded: ${a.firstHalf}% over the first four weeks, ${a.secondHalf}% over the last four. Weeks 6-8 must stay as easy to keep as week 2 — grow the dose, never the number of separate things she has to remember in a day.`
+      : drift >= 10
+        ? `- She built as she went: ${a.firstHalf}% over the first four weeks, ${a.secondHalf}% over the last four. She is on an upward slope, so open week 1 above true beginner and keep climbing.`
+        : `- She held steady across the eight weeks (${a.firstHalf}% then ${a.secondHalf}%).`;
+
+  return [
+    `HER LAST 8 WEEKS — this is plan number ${a.cycle + 1}. She has already lived one, and finished it.`,
+    line("Movement", a.movement),
+    line("Nutrition", a.nutrition),
+    line("Relaxation", a.relaxation),
+    trend,
+    ``,
+    `Size this plan to what she ACTUALLY did, pillar by pillar:`,
+    `- 80% or above — she has room. Progress it: open week 1 near where her last plan's week 6 sat, and add one genuinely new thing.`,
+    `- 50-79% — the size was right, the shape was not. Keep the same weekly ask and change what fills it: different exercises, a different relaxation item, a different habit.`,
+    `- Below 50% — the ask was too big. CUT it. Fewer sessions a week, shorter sets, one daily practice instead of two. Make the smaller plan excellent rather than the bigger plan optional.`,
+    `- Where a pillar was never asked for, introduce it gently: one short task, cadence "daily", nothing to schedule.`,
+    `- Nutrition focus follows the same rule. Under 50% means going back to one or two rows and staying there, not marching through all ten again.`,
+    `- Give her new habit tasks and new resist_suggestions. She has had eight weeks of the last set.`,
+    `- NEVER put a percentage, a score, "last time", "you missed", "you struggled", or any reference to a previous plan into a title, a focus or a why. The numbers above decide what you build. They never appear in what she reads.`,
+    ``,
+  ];
+}
+
+export function buildPrompt(
+  profile: Profile,
+  pool: Exercise[],
+  adherence: Adherence | null = null
+): string {
   const vol = MOVEMENT_VOLUME[profile.fitness_level ?? "beginner"] ?? MOVEMENT_VOLUME.beginner;
   const movement = vol.perDay
     ? `${vol.sessions} short bursts per day of about ${vol.minutes} minutes (cadence "per_day")`
@@ -309,7 +369,9 @@ export function buildPrompt(profile: Profile, pool: Exercise[]): string {
   const perSide = pool.filter((e) => e.perSide).map((e) => e.id);
 
   return [
-    `Woman in menopause. Build her 8-week plan.`,
+    adherence
+      ? `Woman in menopause who has just finished an 8-week plan. Build her next one.`
+      : `Woman in menopause. Build her 8-week plan.`,
     ``,
     `Her answers:`,
     `- Symptoms, worst first: ${profile.top_problems?.join(", ") || "general menopause symptoms"}${profile.symptom_impact ? ` · the worst one hits her: ${profile.symptom_impact}` : ""}`,
@@ -322,6 +384,7 @@ export function buildPrompt(profile: Profile, pool: Exercise[]): string {
       : []),
     `- Eating right now: ${profile.nutrition_style ?? "unknown"} · unwinds: ${profile.relaxation_style ?? "unknown"}`,
     ``,
+    ...adherenceBlock(adherence),
     `MOVEMENT — pick only these exercise ids, and give ${movement}:`,
     pool.map((e) => `${e.id} ${e.name}`).join(" | "),
     ``,
@@ -818,7 +881,11 @@ function fallbackPlan(profile: Profile, pool: Exercise[]): Plan {
  * Builds the plan from her answers. Never throws — falls back to the
  * deterministic plan so she always gets something usable.
  */
-export async function buildPlan(p: Profile, userId?: string | null): Promise<Plan> {
+export async function buildPlan(
+  p: Profile,
+  userId?: string | null,
+  adherence: Adherence | null = null
+): Promise<Plan> {
   // One run id across both calls, so the admin panel can add them up into the
   // cost of *a plan* rather than averaging two very differently sized calls.
   const meter: PlanMeter = { userId: userId ?? null, runId: randomUUID() };
@@ -863,7 +930,7 @@ export async function buildPlan(p: Profile, userId?: string | null): Promise<Pla
           content:
             "You are Lisa, a warm, evidence-informed menopause companion. You build practical 8-week plans by selecting from an approved list. Never invent exercises or supplements. Return JSON only.",
         },
-        { role: "user", content: buildPrompt(p, pool) },
+        { role: "user", content: buildPrompt(p, pool, adherence) },
       ],
     });
 
@@ -920,19 +987,38 @@ export async function buildPlan(p: Profile, userId?: string | null): Promise<Pla
 }
 
 /**
- * Generates the full 8-week plan and saves it. Called from the Stripe webhook
- * via after(), and re-kicked by GET /api/plan if a run never finished.
+ * What cycle to write, and what the cycle before it looked like.
+ *
+ * Both default to "her first plan", so the Stripe webhook keeps calling
+ * `generatePlan(userId)` and gets cycle 1 with no history behind it.
+ */
+export type GenerateOptions = {
+  cycle?: number;
+  /** The finished cycle's numbers. Null on cycle 1, and on any rollover we failed to score. */
+  adherence?: Adherence | null;
+};
+
+/**
+ * Generates one 8-week cycle and saves it. Called from the Stripe webhook via
+ * after() for cycle 1, from GET /api/plan at rollover for every cycle after,
+ * and re-kicked by GET /api/plan if a run never finished.
  *
  * Never throws — a purchase must not fail because OpenAI is down.
  */
-export async function generatePlan(userId: string): Promise<void> {
+export async function generatePlan(
+  userId: string,
+  { cycle = 1, adherence = null }: GenerateOptions = {}
+): Promise<void> {
   const supabaseAdmin = getSupabaseAdmin();
 
   // Idempotent: the webhook can retry, and /api/plan re-kicks stalled runs.
+  // Scoped to the cycle, so a rollover is never mistaken for a finished run of
+  // the plan it is replacing.
   const { data: existing } = await supabaseAdmin
     .from("user_plans")
     .select("status")
     .eq("user_id", userId)
+    .eq("cycle", cycle)
     .maybeSingle();
   if (existing?.status === "ready") return;
 
@@ -944,27 +1030,52 @@ export async function generatePlan(userId: string): Promise<void> {
     .eq("user_id", userId)
     .maybeSingle();
 
-  const plan = await buildPlan((profile ?? {}) as Profile, userId);
+  const plan = await buildPlan((profile ?? {}) as Profile, userId, adherence);
 
+  // `started_at` is deliberately not written here. It is stamped by the first
+  // GET that reads the row, from her local date — which for a rollover is the
+  // day she comes back, not the day the cron-less kick happened to run.
   const { error } = await supabaseAdmin
     .from("user_plans")
     .upsert(
-      { user_id: userId, status: "ready", plan, generated_at: new Date().toISOString() },
-      { onConflict: "user_id" }
+      {
+        user_id: userId,
+        cycle,
+        status: "ready",
+        plan,
+        prior_adherence: adherence,
+        generated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,cycle" }
     );
   if (error) console.error("Plan: save failed:", error);
 }
 
 /**
- * Claims the plan row so the app can show "building your plan" the moment she
- * opens it. Fast and synchronous — safe inside the Stripe webhook. Never
- * overwrites a plan she already has.
+ * Claims the row for one cycle so the app can show "building your plan" the
+ * moment she opens it. Fast and synchronous — safe inside the Stripe webhook.
+ *
+ * `ignoreDuplicates` is what makes this the claim rather than a write: two
+ * requests racing to start the same cycle both call this, and only the one
+ * that inserted a row gets `claimed` back. The loser kicks nothing.
  */
-export async function markPlanGenerating(userId: string): Promise<void> {
-  const { error } = await getSupabaseAdmin()
+export async function markPlanGenerating(
+  userId: string,
+  cycle = 1,
+  priorAdherence: Adherence | null = null
+): Promise<{ claimed: boolean }> {
+  const { data, error } = await getSupabaseAdmin()
     .from("user_plans")
-    .upsert({ user_id: userId, status: "generating" }, { onConflict: "user_id", ignoreDuplicates: true });
-  if (error) console.error("Plan: could not mark generating:", error);
+    .upsert(
+      { user_id: userId, cycle, status: "generating", prior_adherence: priorAdherence },
+      { onConflict: "user_id,cycle", ignoreDuplicates: true }
+    )
+    .select("cycle");
+  if (error) {
+    console.error("Plan: could not mark generating:", error);
+    return { claimed: false };
+  }
+  return { claimed: Boolean(data?.length) };
 }
 
 /**
