@@ -1772,7 +1772,7 @@ function ScoreCauseCard({
             <div className="relative">
               <span
                 aria-hidden
-                className="absolute -left-[18px] top-2 bottom-0 w-px bg-gradient-to-b from-[#B23A31]/25 via-[#B23A31]/55 to-[#B23A31]"
+                className="absolute -left-[18px] top-2 bottom-0 w-px bg-linear-to-b from-[#B23A31]/25 via-[#B23A31]/55 to-[#B23A31]"
               />
 
               {rows.map((row, i) => (
@@ -1840,7 +1840,7 @@ function ScoreCauseCard({
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1.05 + (rows.length + (hidden > 0 ? 1 : 0)) * 0.12, duration: 0.4 }}
-              className="relative mt-3 rounded-xl border border-[#8F2A22]/60 bg-gradient-to-br from-[#C04035] via-[#B23A31] to-[#8F2A22] px-3.5 py-3 shadow-md shadow-[#B23A31]/25"
+              className="relative mt-3 rounded-xl border border-[#8F2A22]/60 bg-linear-to-br from-[#C04035] via-[#B23A31] to-[#8F2A22] px-3.5 py-3 shadow-md shadow-[#B23A31]/25"
             >
               {/* The rail's last leg: down through the gap, then a right angle
                   into the sentence it has been heading for all along. Offsets
@@ -2421,7 +2421,7 @@ function PlanHeroCarousel({ slides }: { slides: ReadonlyArray<{ src: string; cap
 
   return (
     <div ref={stageRef}>
-      <div className="relative mx-auto w-full max-w-[208px] rounded-[1.75rem] bg-[#1d1d1f] p-1.5 shadow-[0_24px_50px_-18px_rgba(61,61,61,0.6)]">
+      <div className="relative mx-auto w-full max-w-52 rounded-[1.75rem] bg-[#1d1d1f] p-1.5 shadow-[0_24px_50px_-18px_rgba(61,61,61,0.6)]">
         <div
           className="relative overflow-hidden rounded-[1.45rem] bg-[#f5f5f7] touch-pan-y"
           style={{ aspectRatio: `${SHOT_W} / ${SHOT_H}` }}
@@ -3439,21 +3439,7 @@ function RegisterPageContent() {
           return false;
       }
     },
-    [
-      ageBand,
-      bodyMetrics,
-      fitnessLevel,
-      hereFor,
-      menopauseType,
-      goal,
-      topProblems,
-      symptomImpact,
-      nutritionStyle,
-      relaxationStyle,
-      hrtStatus,
-      physicalLimits,
-      firstName,
-    ]
+    [ageBand, bodyMetrics, fitnessLevel, hereFor, menopauseType, goal, topProblems, symptomImpact, nutritionStyle, relaxationStyle, hrtStatus, firstName]
   );
 
   // One payload, two consumers: the sessionStorage stash below and the
@@ -4189,7 +4175,7 @@ function RegisterPageContent() {
                 aria-hidden
                 className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-white/70"
               />
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/65 via-black/25 to-transparent px-2 pt-8 pb-2">
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-black/65 via-black/25 to-transparent px-2 pt-8 pb-2">
                 <div className="grid grid-cols-2 items-center">
                   <span className="flex items-center justify-center gap-1.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wide text-white">
                     <span className="h-1.5 w-1.5 rounded-full bg-[#FB7185]" />
