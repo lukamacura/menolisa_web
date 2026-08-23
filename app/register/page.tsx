@@ -139,6 +139,7 @@ type Step =
   | "q_fitness"
   | "q_nutrition"
   | "q_relaxation"
+  | "reward_plan_shape"
   | "q5_hrt"
   | "q_limitations"
   | "reward_progress"
@@ -156,6 +157,7 @@ const STEPS: Step[] = [
   "q_fitness",
   "q_nutrition",
   "q_relaxation",
+  "reward_plan_shape",
   "q5_hrt",
   "q_limitations",
   "reward_progress",
@@ -182,7 +184,28 @@ const AUTO_ADVANCE_STEPS: Step[] = [
 
 // Reward steps mirror her answers back with a stat - pure dopamine, not questions.
 // They're excluded from the numbered progress so they read as a gift, not a task.
-const REWARD_STEPS: Step[] = ["reward_symptoms", "reward_progress"];
+//
+// Each one now opens with a short <ComputeMeter /> before its payoff - the same
+// percentage instrument the post-quiz calculating screen uses, run at ~1.7s
+// instead of 6.5s. The reason is the one the calculating screen's own comment
+// makes: a reveal that arrives with no visible work in front of it reads as a
+// poster, and the entire claim being sold here is that her answers are being
+// computed on. Three cheap receipts across the quiz beat one expensive receipt
+// at the end.
+//
+// They also break up the run of questions. `reward_plan_shape` exists for that
+// as much as for its content: q_body -> q_fitness -> q_nutrition ->
+// q_relaxation -> q5_hrt -> q_limitations was six screens with no payoff, and
+// it is the least engaging block in the funnel.
+const REWARD_STEPS: Step[] = ["reward_symptoms", "reward_plan_shape", "reward_progress"];
+
+// Header label per reward, in place of the numbered "Question X of N". Each one
+// names what she just got rather than repeating "Quick win" three times.
+const REWARD_LABEL: Record<string, string> = {
+  reward_symptoms: "Quick win",
+  reward_plan_shape: "Your week, sized",
+  reward_progress: "Your plan rules",
+};
 
 // Numbered progress excludes the reward steps.
 const QUESTION_STEPS: Step[] = STEPS.filter((s) => !REWARD_STEPS.includes(s));
@@ -497,6 +520,81 @@ const LOADING_MESSAGE_COLORS = [
 // has not frozen.
 const CALCULATING_MAX_PCT = 99;
 
+// ─── The mid-quiz loaders ───────────────────────────────────────────────────
+// The same instrument as the screen above, run short. Three of them sit inside
+// the quiz (see REWARD_STEPS), and the only thing separating them from theatre
+// is that every number they print is either a count of her own answers or a
+// value the plan generator actually uses. Nothing here invents a statistic
+// about her - that is the line `estrogenPct` crossed and was removed for.
+//
+// 1.7s over three captions is ~570ms a line, which is the floor for a
+// four-word phrase to be read rather than glimpsed. Shorter and the captions
+// are a blur; longer and three of them start costing real completion.
+const QUIZ_LOADER_MS = 1700;
+
+// Unlike the calculating screen this one really does reach 100: there is no
+// work in flight behind it, so stalling at 99 would be the dishonest option.
+const QUIZ_LOADER_MAX_PCT = 100;
+
+const QUIZ_LOADER_COLORS = ["#E91E8C", "#0EA5E9", "#7C3AED"];
+
+// Where her plan opens on each pillar, keyed off the answer she just gave.
+// Directional descriptions of what the plan does, not claims about her.
+const NUTRITION_START: Record<string, string> = {
+  skipping: "One real meal, anchored first",
+  convenience: "Swaps, not a new diet",
+  inconsistent: "Your good days, made repeatable",
+  intentional: "Fine-tuned, not rebuilt",
+};
+
+const RELAXATION_START: Record<string, string> = {
+  none: "Built from scratch, 3 min",
+  occasional: "Turned into a daily one",
+  routine: "Kept, aimed at your symptoms",
+  want_to: "Started this week, no experience",
+};
+
+/**
+ * `lib/plan/catalog.ts` on demand.
+ *
+ * Two of the three loaders print a number that only the catalog knows -
+ * `MOVEMENT_VOLUME` for her weekly minutes, `allowedExercises()` for the moves
+ * her limitations remove. Importing it statically would put the whole exercise,
+ * nutrition and relaxation dataset into the chunk that has to parse before
+ * question 1 is tappable, which is the cost this page already goes out of its
+ * way to avoid for the paywall and the plan stage.
+ *
+ * So it is a chunk, warmed from `q_body` - four steps before the first loader
+ * that needs it. By the time a meter is running it has been in the module cache
+ * for a minute; the `ready` gate below is for the case where it isn't.
+ */
+type PlanCatalog = typeof import("@/lib/plan/catalog");
+const loadPlanCatalog = () => import("@/lib/plan/catalog");
+let planCatalogCache: PlanCatalog | null = null;
+
+function warmPlanCatalog() {
+  if (planCatalogCache) return;
+  void loadPlanCatalog().then((m) => {
+    planCatalogCache = m;
+  });
+}
+
+function usePlanCatalog(): PlanCatalog | null {
+  const [catalog, setCatalog] = useState<PlanCatalog | null>(planCatalogCache);
+  useEffect(() => {
+    if (catalog) return;
+    let alive = true;
+    void loadPlanCatalog().then((m) => {
+      planCatalogCache = m;
+      if (alive) setCatalog(m);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [catalog]);
+  return catalog;
+}
+
 // The "What have you tried" step was removed from the funnel. The field stays in
 // the save-quiz payload (the Expo app still asks it, and every existing row
 // carries a value), so web signups write an empty list. Frozen at module scope
@@ -513,6 +611,7 @@ const STEP_IMAGES: Partial<Record<Step, string[]>> = {
   q4_symptoms: PROBLEM_OPTIONS.map((o) => o.image),
   q3_goals: GOAL_OPTIONS.map((o) => o.image),
   reward_symptoms: ["/illustrations/reward-1.webp"],
+  reward_plan_shape: ["/illustrations/plan-preview.webp"],
   reward_progress: ["/illustrations/reward-2.webp"],
   q_fitness: FITNESS_OPTIONS.map((o) => o.image),
   q_nutrition: NUTRITION_STYLE_OPTIONS.map((o) => o.image),
@@ -2661,25 +2760,121 @@ function anonSignInMessage(err: AnonSignInError): string {
  * *here* - silently spinning forever would strand her one tap short of her
  * results.
  */
-function CalculatingScreen({ error, onRetry }: { error: string | null; onRetry: () => void }) {
+/**
+ * The percentage meter every "we are computing on your answers" moment shares.
+ *
+ * One instrument, two scales. The post-quiz calculating screen runs it for 6.5s
+ * at full size; the three mid-quiz loaders run it `compact` for 1.7s. That they
+ * are visibly the same thing is the point - the short ones are what makes the
+ * long one legible as work rather than lag, and the long one is what makes the
+ * short ones look like they belong to something.
+ *
+ * `hideCaption` is the error case: the caller replaces the rotating line with a
+ * retry, and the meter keeps running behind it so the screen doesn't go dead.
+ */
+function ComputeMeter({
+  durationMs,
+  maxPct,
+  messages,
+  colors,
+  compact = false,
+  hideCaption = false,
+  onDone,
+}: {
+  durationMs: number;
+  maxPct: number;
+  messages: readonly string[];
+  colors: readonly string[];
+  compact?: boolean;
+  hideCaption?: boolean;
+  onDone?: () => void;
+}) {
   const [pct, setPct] = useState(0);
   const [messageIndex, setMessageIndex] = useState(0);
 
+  // Held in a ref so an inline arrow at the call site doesn't restart the run
+  // on every parent render - which on a 1.7s meter would mean it never lands.
+  const onDoneRef = useRef(onDone);
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  });
+
+  const messageCount = messages.length;
   useEffect(() => {
     let raf = 0;
     const start = performance.now();
     const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / CALCULATING_MS);
-      setPct(Math.round(t * CALCULATING_MAX_PCT));
-      setMessageIndex(
-        Math.min(LOADING_MESSAGES.length - 1, Math.floor(t * LOADING_MESSAGES.length))
-      );
-      if (t < 1) raf = requestAnimationFrame(tick);
+      const t = Math.min(1, (now - start) / durationMs);
+      setPct(Math.round(t * maxPct));
+      setMessageIndex(Math.min(messageCount - 1, Math.floor(t * messageCount)));
+      if (t < 1) {
+        raf = requestAnimationFrame(tick);
+      } else {
+        onDoneRef.current?.();
+      }
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [durationMs, maxPct, messageCount]);
 
+  return (
+    <>
+      {/* The percentage carries the "something is being built" job that a
+          static header can't. There used to be a fixed h2 here reading
+          "Getting to know you better..." *above* the three rotating
+          messages - two headers on a three-second screen, one of which
+          never changed. */}
+      <p
+        className={cn(
+          "mb-1 font-black tabular-nums text-[#3D3D3D]",
+          compact ? "text-3xl" : "text-4xl"
+        )}
+      >
+        {pct}
+        <span className={cn("font-bold text-[#B0B0B0]", compact ? "text-lg" : "text-xl")}>%</span>
+      </p>
+      <div
+        className={cn(
+          "h-1.5 overflow-hidden rounded-full bg-primary/15",
+          compact ? "mb-3 w-32" : "mb-4 w-40"
+        )}
+      >
+        {/* `scaleX`, not `width`. The bar is re-targeted ~90 times over the
+            6.5s; a width animation relayouts and repaints the run on every
+            one of them, a transform is handed straight to the compositor. */}
+        <motion.div
+          className="h-full w-full origin-left rounded-full bg-primary"
+          initial={false}
+          animate={{ scaleX: pct / 100 }}
+          transition={{ ease: "linear", duration: 0.12 }}
+        />
+      </div>
+
+      {!hideCaption && (
+        <AnimatePresence mode="wait">
+          <motion.p
+            key={messageIndex}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            // Compact runs ~570ms a caption, so the crossfade has to be well
+            // inside that or every line is caught mid-fade and none is read.
+            transition={{ duration: compact ? 0.15 : 0.28, ease: [0.42, 0, 0.58, 1] }}
+            className={cn(
+              "text-center font-medium",
+              compact ? "h-5 min-w-44 px-4 text-sm" : "h-6 min-w-48"
+            )}
+            style={{ color: colors[messageIndex] ?? "#6B7280" }}
+          >
+            {messages[messageIndex]}
+          </motion.p>
+        </AnimatePresence>
+      )}
+    </>
+  );
+}
+
+function CalculatingScreen({ error, onRetry }: { error: string | null; onRetry: () => void }) {
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden -mx-4 sm:-mx-6 px-4 sm:px-6">
       <motion.div
@@ -2689,28 +2884,15 @@ function CalculatingScreen({ error, onRetry }: { error: string | null; onRetry: 
         transition={{ duration: 0.4, ease: [0.42, 0, 0.58, 1] }}
         className="flex-1 flex flex-col items-center justify-center px-4"
       >
-        {/* The percentage carries the "something is being built" job that a
-            static header can't. There used to be a fixed h2 here reading
-            "Getting to know you better..." *above* the three rotating
-            messages - two headers on a three-second screen, one of which
-            never changed. */}
-        <p className="mb-1 text-4xl font-black tabular-nums text-[#3D3D3D]">
-          {pct}
-          <span className="text-xl font-bold text-[#B0B0B0]">%</span>
-        </p>
-        <div className="mb-4 h-1.5 w-40 overflow-hidden rounded-full bg-primary/15">
-          {/* `scaleX`, not `width`. The bar is re-targeted ~90 times over the
-              6.5s; a width animation relayouts and repaints the run on every
-              one of them, a transform is handed straight to the compositor. */}
-          <motion.div
-            className="h-full w-full origin-left rounded-full bg-primary"
-            initial={false}
-            animate={{ scaleX: pct / 100 }}
-            transition={{ ease: "linear", duration: 0.12 }}
-          />
-        </div>
+        <ComputeMeter
+          durationMs={CALCULATING_MS}
+          maxPct={CALCULATING_MAX_PCT}
+          messages={LOADING_MESSAGES}
+          colors={LOADING_MESSAGE_COLORS}
+          hideCaption={!!error}
+        />
 
-        {error ? (
+        {error && (
           <div className="w-full max-w-sm text-center">
             <p className="text-sm text-error mb-3">{error}</p>
             <button
@@ -2722,23 +2904,79 @@ function CalculatingScreen({ error, onRetry }: { error: string | null; onRetry: 
               Try again
             </button>
           </div>
-        ) : (
-          <AnimatePresence mode="wait">
-            <motion.p
-              key={messageIndex}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.28, ease: [0.42, 0, 0.58, 1] }}
-              className="h-6 font-medium min-w-48 text-center"
-              style={{ color: LOADING_MESSAGE_COLORS[messageIndex] ?? "#6B7280" }}
-            >
-              {LOADING_MESSAGES[messageIndex]}
-            </motion.p>
-          </AnimatePresence>
         )}
       </motion.div>
     </div>
+  );
+}
+
+/**
+ * A reward step: short meter, then the payoff.
+ *
+ * `initialDone` is what stops the meter replaying on Back. Backing into a
+ * reward and watching it recompute reads as the funnel having changed its mind
+ * about her answers - the same reason the results score is guarded by
+ * `scoreAnimated`. Once seen, the payoff is just there.
+ *
+ * `ready` gates the swap on data the payoff needs (the plan catalog chunk). The
+ * meter is allowed to sit at 100 for the frames that takes, which is the honest
+ * option: a payoff that renders without its number and then pops it in is worse
+ * than a beat of stillness.
+ */
+function QuizReward({
+  messages,
+  initialDone,
+  onDone,
+  ready = true,
+  children,
+}: {
+  messages: readonly string[];
+  initialDone: boolean;
+  onDone: () => void;
+  ready?: boolean;
+  children: React.ReactNode;
+}) {
+  const [timerDone, setTimerDone] = useState(initialDone);
+  const done = timerDone && ready;
+
+  // Fire once, on the transition. Both the ref and the guard are load-bearing:
+  // callers pass an inline arrow, so a plain `[done, onDone]` effect re-runs on
+  // every render for as long as she stands on the payoff.
+  const onDoneRef = useRef(onDone);
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  });
+  const reported = useRef(false);
+  useEffect(() => {
+    if (!done || reported.current) return;
+    reported.current = true;
+    onDoneRef.current();
+  }, [done]);
+
+  if (!done) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center">
+        <ComputeMeter
+          compact
+          durationMs={QUIZ_LOADER_MS}
+          maxPct={QUIZ_LOADER_MAX_PCT}
+          messages={messages}
+          colors={QUIZ_LOADER_COLORS}
+          onDone={() => setTimerDone(true)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <motion.div
+      initial={initialDone ? false : { opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+      className="flex-1 flex flex-col min-h-0"
+    >
+      {children}
+    </motion.div>
   );
 }
 
@@ -2879,6 +3117,13 @@ function RegisterPageContent() {
         img.src = optimizedImageUrl(src, w);
       }
     });
+  }, [stepIndex]);
+
+  // Pull the plan catalog from q_body onwards - four steps before the first
+  // loader that prints a number out of it, and on a step with a Next button so
+  // she is standing still while it lands.
+  useEffect(() => {
+    if (stepIndex >= STEPS.indexOf("q_body")) warmPlanCatalog();
   }, [stepIndex]);
 
   // Warm the diagnosis screenshots from the calculating loader onwards. That
@@ -3032,6 +3277,55 @@ function RegisterPageContent() {
   // card leads on instead of the size of the gap - see <ScoreGapCard />.
   const scoreDrivers = useMemo(() => getTopBurdenSymptoms(scoredSeverity, 3), [scoredSeverity]);
 
+  // ─── What the three mid-quiz loaders print ────────────────────────────────
+  // Seen-once guard, so Back into a reward shows the payoff instead of
+  // recomputing it in front of her. A ref rather than state: nothing renders
+  // off it, it only decides <QuizReward />'s initial state at mount.
+  const rewardSeen = useRef<Partial<Record<Step, boolean>>>({});
+  const markRewardSeen = useCallback((step: Step) => {
+    rewardSeen.current[step] = true;
+  }, []);
+
+  const planCatalog = usePlanCatalog();
+
+  // Loader B: her week, straight off MOVEMENT_VOLUME - the same numbers the
+  // generator uses, so what she is shown here is what the plan actually gives
+  // her. `perDay` is the snack cadence, hence the x7.
+  const weekShape = useMemo(() => {
+    const volume = planCatalog?.MOVEMENT_VOLUME[fitnessLevel];
+    if (!volume) return null;
+    return {
+      weeklyMinutes: volume.perDay
+        ? volume.sessions * volume.minutes * 7
+        : volume.sessions * volume.minutes,
+      cadence: volume.perDay
+        ? `${volume.sessions} x ${volume.minutes} min, spread through the day`
+        : `${volume.sessions} x ${volume.minutes} min a week`,
+    };
+  }, [planCatalog, fitnessLevel]);
+
+  // Loader C: the exercise pool, before and after her limitations.
+  //
+  // `removed` is deliberately the difference the *limitations* make, not the
+  // difference from the full catalog - `allowedExercises` also filters on her
+  // fitness level and on joint pain, and attributing those to her knee would be
+  // a number that says something untrue about why it moved.
+  const exercisePool = useMemo(() => {
+    if (!planCatalog) return null;
+    const withoutLimits = planCatalog.allowedExercises(fitnessLevel || null, topProblems, []);
+    const allowed = planCatalog.allowedExercises(fitnessLevel || null, topProblems, physicalLimits);
+    return { allowed: allowed.length, removed: withoutLimits.length - allowed.length };
+  }, [planCatalog, fitnessLevel, topProblems, physicalLimits]);
+
+  const limitPhrase = useMemo(() => {
+    const names = physicalLimits
+      .map((id) => LIMITATION_OPTIONS.find((o) => o.id === id)?.label.toLowerCase())
+      .filter(Boolean) as string[];
+    if (names.length === 0) return null;
+    if (names.length <= 2) return names.join(" and ");
+    return `the ${names.length} things you told us about`;
+  }, [physicalLimits]);
+
   // There used to be an `estrogenPct` here: `80 + (burden/maxBurden) * 15`,
   // rendered at 5xl as "{n}% of your symptoms trace back to shifting estrogen".
   //
@@ -3127,6 +3421,7 @@ function RegisterPageContent() {
         case "q_symptom_impact":
           return symptomImpact !== "";
         case "reward_symptoms":
+        case "reward_plan_shape":
         case "reward_progress":
           return true;
         case "q_nutrition":
@@ -5144,7 +5439,7 @@ function RegisterPageContent() {
           <div className="mb-1.5 sm:mb-2 shrink-0 pt-1 sm:pt-2 px-2">
             <p className="text-center text-base sm:text-lg font-semibold text-[#3D3D3D] mb-1.5 min-h-6" role="status" aria-live="polite">
               {REWARD_STEPS.includes(currentStep)
-                ? "Quick win"
+                ? REWARD_LABEL[currentStep] ?? "Quick win"
                 : activeQuestionIndex >= QUESTION_STEPS.length - 2
                   ? "Almost there"
                   : `Question ${activeQuestionIndex + 1} of ${QUESTION_STEPS.length}`}
@@ -5650,7 +5945,19 @@ function RegisterPageContent() {
                 const symptomLabel = (SYMPTOM_LABELS[topSymptom] || "these symptoms").toLowerCase();
                 const cohort = COHORT_PHRASE[hereFor] ?? "women your age";
                 const chips = topProblems.filter((id) => SYMPTOM_IMAGE[id]).slice(0, 3);
+                // Everything these captions name is a count of her own answers
+                // or a lookup keyed off one - nothing is asserted about her.
+                const messages = [
+                  `Reading your ${topProblems.length} symptom${topProblems.length === 1 ? "" : "s"}...`,
+                  `Comparing with ${cohort}...`,
+                  "Ranking what to move first...",
+                ];
                 return (
+                  <QuizReward
+                    messages={messages}
+                    initialDone={!!rewardSeen.current.reward_symptoms}
+                    onDone={() => markRewardSeen("reward_symptoms")}
+                  >
                   <div className="flex-1 flex flex-col justify-center items-center text-center space-y-4">
                     {/* Illustration springs in over a soft pulsing glow */}
                     <motion.div
@@ -5738,13 +6045,142 @@ function RegisterPageContent() {
                       <span className="font-bold">biology</span> talking - and it&apos;s <span className="font-bold">workable</span>.
                     </motion.p>
                   </div>
+                  </QuizReward>
                 );
               })()}
 
-              {/* Reward 2: one fact (the 6-year wait) + one personal win (stage-keyed pride). No overlap. */}
+              {/* Reward 2: her week, sized. Breaks the six-question run through
+                  body/fitness/nutrition/relaxation/HRT/limitations in half, and
+                  it is the only screen before the paywall that shows her the
+                  actual shape of what she'd be buying. Every figure is read
+                  straight out of MOVEMENT_VOLUME. */}
+              {currentStep === "reward_plan_shape" && (() => {
+                const messages = [
+                  "Sizing your week...",
+                  "Setting your food starting point...",
+                  "Placing your wind-down...",
+                ];
+                const food = NUTRITION_START[nutritionStyle];
+                const windDown = RELAXATION_START[relaxationStyle];
+                return (
+                  <QuizReward
+                    messages={messages}
+                    initialDone={!!rewardSeen.current.reward_plan_shape}
+                    onDone={() => markRewardSeen("reward_plan_shape")}
+                    ready={!!weekShape}
+                  >
+                  <div className="flex-1 flex flex-col justify-center items-center text-center space-y-4">
+                    <motion.div
+                      className="relative"
+                      initial={{ scale: 0, rotate: -8, opacity: 0 }}
+                      animate={{ scale: 1, rotate: 0, opacity: 1 }}
+                      transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 220, damping: 13, delay: 0.05 }}
+                    >
+                      {!prefersReducedMotion && (
+                        <motion.div
+                          aria-hidden
+                          className="absolute inset-0 rounded-full bg-primary/30 blur-2xl"
+                          animate={{ scale: [0.9, 1.15, 0.9], opacity: [0.4, 0.7, 0.4] }}
+                          transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+                        />
+                      )}
+                      <Image
+                        src="/illustrations/plan-preview.webp"
+                        alt=""
+                        width={320}
+                        height={320}
+                        priority
+                        className="relative w-28 h-28 sm:w-36 sm:h-36 object-contain"
+                      />
+                    </motion.div>
+
+                    <motion.p
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.25, duration: 0.4 }}
+                      className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground"
+                    >
+                      Your week, sized to you
+                    </motion.p>
+
+                    <motion.div
+                      initial={{ scale: 0.4, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 260, damping: 14, delay: 0.4 }}
+                    >
+                      <CountUpNumber
+                        value={weekShape?.weeklyMinutes ?? 0}
+                        suffix=" min"
+                        className="block text-6xl font-black text-primary leading-none"
+                      />
+                      {/* The number is framed as small on purpose - she just
+                          told us her time budget, and "I don't have time" is
+                          the objection this screen exists to answer. */}
+                      <span className="block text-sm sm:text-base font-normal text-[#5A5A5A] mt-3 max-w-xs mx-auto leading-snug">
+                        of movement a week - <span className="font-bold text-[#3D3D3D]">{weekShape?.cadence}</span>. That&apos;s the whole ask.
+                      </span>
+                    </motion.div>
+
+                    {(food || windDown) && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.75, duration: 0.45 }}
+                        className="w-full max-w-xs rounded-xl bg-primary/5 border border-primary/20 divide-y divide-primary/15 text-left"
+                      >
+                        {food && (
+                          <div className="flex items-baseline justify-between gap-3 px-4 py-2.5">
+                            <span className="shrink-0 text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">Food</span>
+                            <span className="text-right text-sm font-semibold text-[#3D3D3D] leading-snug">{food}</span>
+                          </div>
+                        )}
+                        {windDown && (
+                          <div className="flex items-baseline justify-between gap-3 px-4 py-2.5">
+                            <span className="shrink-0 text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">Wind-down</span>
+                            <span className="text-right text-sm font-semibold text-[#3D3D3D] leading-snug">{windDown}</span>
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+                  </div>
+                  </QuizReward>
+                );
+              })()}
+
+              {/* Reward 3: the movement rules her last two answers just set,
+                  then the stage-keyed pride line.
+
+                  This used to lead on "6 years is how long the average woman
+                  waits for support" - a generic factoid, and a regret argument
+                  aimed at a woman who has just answered fourteen questions.
+                  What replaces it is the one number in the funnel she can
+                  verify against the plan she buys: `LIMITATION_EXCLUDES` really
+                  does strip these exercises out of the pool before the model
+                  sees it. See lib/plan/catalog.ts. */}
               {currentStep === "reward_progress" && (() => {
                 const pride = STAGE_PRIDE_LINE[hereFor] ?? "You're finally putting yourself first - that takes strength.";
+                // Two honest branches. With limitations we can name what came
+                // out and why; without them there is nothing removed to count,
+                // so we count what is left instead of inventing a subtraction.
+                const filtered = !!limitPhrase && !!exercisePool && exercisePool.removed > 0;
+                const messages = filtered
+                  ? [
+                      "Checking what hurts...",
+                      "Removing what would aggravate it...",
+                      "Locking your movement rules...",
+                    ]
+                  : [
+                      "Checking your history...",
+                      "Matching moves to your level...",
+                      "Locking your movement rules...",
+                    ];
                 return (
+                  <QuizReward
+                    messages={messages}
+                    initialDone={!!rewardSeen.current.reward_progress}
+                    onDone={() => markRewardSeen("reward_progress")}
+                    ready={!!exercisePool}
+                  >
                   <div className="flex-1 flex flex-col justify-center items-center text-center space-y-4">
                     <motion.div
                       className="relative"
@@ -5776,7 +6212,7 @@ function RegisterPageContent() {
                       transition={{ delay: 0.25, duration: 0.4 }}
                       className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground"
                     >
-                      What most women don&apos;t know
+                      {filtered ? "What your plan just dropped" : "What your plan just locked"}
                     </motion.p>
 
                     <motion.div
@@ -5785,12 +6221,20 @@ function RegisterPageContent() {
                       transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 260, damping: 14, delay: 0.4 }}
                     >
                       <CountUpNumber
-                        value={6}
-                        suffix=" years"
+                        value={filtered ? exercisePool!.removed : exercisePool?.allowed ?? 0}
+                        suffix=" moves"
                         className="block text-6xl font-black text-primary leading-none"
                       />
                       <span className="block text-sm sm:text-base font-normal text-[#5A5A5A] mt-3 max-w-xs mx-auto leading-snug">
-                        is how long the average woman waits before getting <span className="font-bold text-[#3D3D3D]">real menopause support</span>.
+                        {filtered ? (
+                          <>
+                            taken out because of your <span className="font-bold text-[#3D3D3D]">{limitPhrase}</span>. {exercisePool!.allowed} left that won&apos;t aggravate it.
+                          </>
+                        ) : (
+                          <>
+                            matched to <span className="font-bold text-[#3D3D3D]">your level and your symptoms</span> - nothing generic.
+                          </>
+                        )}
                       </span>
                     </motion.div>
 
@@ -5803,6 +6247,7 @@ function RegisterPageContent() {
                       {pride}
                     </motion.p>
                   </div>
+                  </QuizReward>
                 );
               })()}
 
