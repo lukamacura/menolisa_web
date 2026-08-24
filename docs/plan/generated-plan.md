@@ -167,7 +167,14 @@ so there are only two shapes:
 | Exercise kind | Fields sent | Example |
 |---|---|---|
 | A set of anything | `sets` + `seconds` | `{"id":"L01","sets":3,"seconds":40}` |
-| Cardio (`K*`) or a flow | `minutes` | `{"id":"K01","minutes":12}` |
+| A continuous block | `minutes` | `{"id":"K01","minutes":12}` |
+
+The second shape is **currently unused**: cardio (`K*`) and the mobility flow
+(`M01`) were retired from the catalog on 2026-08-24, so nothing in the pool has
+`unit: "duration"` any more. The shape, `hydrateDose()`'s branch for it and the
+prompt rule that asks for it are all still wired — the app must keep handling a
+`minutes`-only exercise, both for plans stored before that date and for the day
+cardio comes back. See the RETIRED block in `lib/plan/catalog.ts`.
 
 `reps` appears only on plans stored before 2026-08-15. Nothing writes it now;
 `hydrateDose()` converts it to seconds on the way out so those plans keep

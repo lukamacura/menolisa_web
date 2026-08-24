@@ -47,78 +47,138 @@ export type Exercise = {
   seconds?: number;
 };
 
-// Source: docs/plan/exercises.md — all 59 exercises. X01 "Rest day" is an icon,
-// not an exercise, so it is not selectable.
+// Source: docs/plan/exercises.md — all 42 exercises.
+//
+// The list narrowed from 59 to these 42 on 2026-08-24, and it is not a subset:
+// cardio (`K`), balance (`B`) and mobility (`M`) left the plan entirely, and a
+// number of `L`/`U`/`C`/`I` ids were REUSED for different movements. Everything
+// that went is preserved, commented out, in RETIRED below — nothing was deleted,
+// so putting any of it back is a decision rather than a rediscovery.
+//
+// Names are house sentence case rather than the doc's title case: the ids are
+// the contract, the strings are UI copy.
 const E: [string, string, string, 1 | 2 | 3, Impact, boolean][] = [
-  // Lower body — strength
+  // Lower body — strength (13)
   ["L01", "Box squat", "Sturdy chair", 1, "none", true],
   ["L02", "Bodyweight squat", "None", 1, "none", true],
   ["L03", "Goblet squat", "1 dumbbell", 2, "none", false],
-  ["L04", "Barbell back squat", "Barbell, rack", 3, "none", false],
-  ["L05", "Step-up", "Stair or low step", 1, "low", true],
-  ["L06", "Step-up, loaded", "Stair, 2 dumbbells", 2, "low", false],
-  ["L07", "Supported reverse lunge", "1 dumbbell, wall", 2, "none", false],
-  ["L08", "Walking lunge, loaded", "2 dumbbells", 3, "none", false],
-  // Posterior chain / hinge
+  ["L04", "Step-up", "Stair or sturdy chair", 1, "low", true],
+  ["L05", "Step-up, loaded", "Stair, 2 dumbbells", 2, "low", false],
+  ["L06", "Supported reverse lunge", "Wall or counter", 2, "none", false],
+  ["L07", "Walking lunge, loaded", "2 dumbbells", 3, "none", false],
+  ["L08", "Calf raise, loaded", "2 dumbbells, bottom stair", 2, "none", false],
+  ["L09", "Bulgarian split squat", "Chair or couch, 2 dumbbells", 3, "none", false],
+  ["L10", "Split squat", "None, or 2 dumbbells", 2, "none", false],
+  ["L11", "Prisoner squat", "None", 1, "none", true],
+  ["L12", "Air squat", "None", 1, "none", true],
+  ["L13", "Dumbbell sumo deadlift", "1 dumbbell", 2, "none", false],
+  // Posterior chain / hinge (3)
   ["P01", "Glute bridge", "Mat", 1, "none", true],
   ["P02", "Glute bridge, weighted", "Mat, 1 dumbbell", 2, "none", false],
-  ["P03", "Bent-over dumbbell row", "2 dumbbells", 2, "none", false],
-  ["P04", "Romanian deadlift", "2 dumbbells", 2, "none", false],
-  ["P05", "Hex bar deadlift", "Hex bar", 3, "none", false],
-  // Upper body — push
+  ["P03", "Romanian deadlift", "2 dumbbells", 2, "none", false],
+  // Upper body — push (6)
   ["U01", "Wall push-up", "Wall", 1, "none", true],
   ["U02", "Counter push-up", "Kitchen counter", 1, "none", true],
-  ["U03", "Bench / table push-up", "Low table or bench", 2, "none", true],
-  ["U04", "Floor push-up", "Floor", 3, "none", false],
+  ["U03", "Incline push-up", "Sturdy table or bench", 2, "none", true],
+  ["U04", "Floor push-up", "Mat", 3, "none", false],
   ["U05", "Dumbbell floor press", "2 dumbbells, floor", 2, "none", false],
-  ["U06", "Dumbbell bench press", "2 dumbbells, flat bench", 3, "none", false],
-  // Upper body — press & pull
+  ["U06", "Bodyweight triceps extension", "Mat", 2, "none", true],
+  // Upper body — press & pull (6)
   ["U07", "Seated overhead press", "2 dumbbells, chair", 2, "none", false],
   ["U08", "Standing overhead press", "2 dumbbells", 2, "none", false],
-  ["U09", "Band row", "Tube band, door anchor", 1, "none", true],
-  ["U10", "Band pull-apart", "Flat loop band", 1, "none", true],
-  ["U11", "Lat pulldown", "Cable machine", 3, "none", false],
-  ["U12", "Weighted pull-up", "Bar, dip belt", 3, "none", false],
-  ["U13", "Incline dumbbell row", "2 dumbbells, incline bench", 3, "none", false],
-  // Core, stability & carries
+  ["U09", "Bent-over dumbbell row", "2 dumbbells", 2, "none", false],
+  ["U10", "Rear-delt fly", "2 dumbbells", 2, "none", false],
+  ["U11", "Prone Y-T-W raise", "Mat", 1, "none", false],
+  ["U12", "Dumbbell lateral raise", "2 dumbbells", 2, "none", false],
+  // Core, stability & carries (7)
   ["C01", "Wall sit", "Wall", 1, "none", true],
   ["C02", "Bird-dog", "Mat", 1, "none", true],
-  ["C03", "Hanging knee raise", "Pull-up bar", 3, "none", false],
-  ["C04", "Farmer's carry", "2 heavy dumbbells", 2, "none", false],
-  ["C05", "Household heavy carry", "Detergent jug, hugged to chest", 1, "none", true],
-  ["C06", "Farmer's carry, household", "Grocery bags or jugs", 1, "none", true],
-  // Balance
-  ["B01", "Single-leg balance, supported", "Counter", 1, "none", true],
-  ["B02", "Single-leg balance, unstable", "Foam pad or cushion", 2, "none", true],
-  ["B03", "Ball-toss balance", "Foam pad, tennis ball, wall", 3, "none", false],
-  ["B04", "Toothbrush single-leg stand", "Sink, toothbrush", 1, "none", true],
-  // Bone impact
+  ["C03", "Farmer's carry", "2 heavy dumbbells", 2, "none", false],
+  ["C04", "Plank", "Mat", 1, "none", true],
+  ["C05", "Side plank", "Mat", 2, "none", false],
+  ["C06", "Dead bug", "Mat", 1, "none", true],
+  ["C07", "Pallof press", "Tube band, door anchor", 2, "none", false],
+  // Impact & bone loading (7)
+  //
+  // The doc grades I03-I07 "Moderate Impact"; `Impact` has no middle value, so
+  // they map to "high" — the jarring, landing-on-your-joints kind that
+  // `joint_pain` and every limitation rule but `shoulder` drops wholesale.
+  // Grading them "low" to keep them in the pool would put a pogo jump in front
+  // of a woman who has just told us her knee hurts.
   ["I01", "Stomping march", "None", 1, "low", true],
-  ["I02", "Low hop", "None", 2, "high", true],
-  ["I03", "Box drop landing", "8-inch box", 3, "high", false],
+  ["I02", "Supported heel drop", "Wall or counter", 1, "low", true],
+  ["I03", "Low hop", "None", 2, "high", true],
   ["I04", "Plyometric skip", "None", 3, "high", false],
-  ["I05", "Heel drop", "None", 1, "low", true],
-  // Cardio
-  ["K01", "Zone 2 walk", "Outdoor path", 1, "low", false],
-  ["K02", "Fast walk interval", "Outdoor path", 2, "low", false],
-  ["K03", "Recovery stroll / hike", "Path or trail", 1, "low", false],
-  ["K04", "Hill power walk", "Incline", 2, "low", false],
-  ["K05", "Treadmill incline walk", "Treadmill", 2, "low", false],
-  ["K06", "Cycling", "Upright bike", 2, "none", false],
-  ["K07", "Assault / spin bike sprint", "Air bike", 3, "none", false],
-  ["K08", "Elliptical", "Machine", 2, "none", false],
-  ["K09", "Run / sprint", "Outdoor or track", 3, "high", false],
-  ["K10", "Sled push", "Weighted sled", 3, "none", false],
-  ["K11", "Stair climbing", "Flight of stairs", 2, "low", true],
-  ["K12", "Jump rope", "Rope", 3, "high", false],
-  ["K13", "Jumping jacks", "None", 2, "high", true],
-  ["K14", "High knees in place", "None", 2, "high", true],
-  // Mobility & flexibility
-  ["M01", "Dynamic floor stretching", "Mat", 1, "none", false],
-  ["M02", "Neck circles & shoulder rolls", "None", 1, "none", true],
-  ["M03", "Torso twist with arm swings", "None", 1, "none", true],
-  ["M04", "Hip circles", "None", 1, "none", true],
+  ["I05", "Pogo jump", "None", 2, "high", true],
+  ["I06", "Lateral step-and-stick", "None", 2, "high", true],
+  ["I07", "Low step-off landing", "Bottom stair or low step", 3, "high", false],
 ];
+
+/**
+ * RETIRED 2026-08-24. Verbatim, so restoring one is moving a line back into `E`.
+ *
+ * Two things to know before doing that:
+ *
+ * - **The `L`/`P`/`U`/`C`/`I` ids below are taken.** The new list reused them for
+ *   different movements — old `C04` was a farmer's carry, new `C04` is a plank.
+ *   Restoring one of those means giving it an id nothing else uses (`L14`,
+ *   `C08`, `U13`…), never pasting the line back as it stands.
+ * - **`B`, `K` and `M` ids are still free, and their machinery is intact.** The
+ *   `duration` dose unit, `isCardioId()`, `cardioMinutes()` and the prompt's
+ *   continuous-block rule all still work — `duration` simply has no members
+ *   right now, and `buildPrompt()` drops that rule on its own when the pool
+ *   holds none. Uncommenting the `K` rows is genuinely all cardio needs.
+ *
+ * What their absence costs, so it stays a decision and not a drift: cardio was
+ * half the beginner pool and the only unloaded aerobic work in the plan; `B` was
+ * the fall-and-fracture training, which is why `LIMITATION_EXCLUDES.balance` has
+ * nothing balance-specific left to remove; `M01` was the one mobility flow and
+ * the only non-cardio `duration` id.
+ */
+// Lower body — strength
+// ["L04", "Barbell back squat", "Barbell, rack", 3, "none", false],
+// Posterior chain / hinge
+// ["P03", "Bent-over dumbbell row", "2 dumbbells", 2, "none", false],   // kept, now U09
+// ["P05", "Hex bar deadlift", "Hex bar", 3, "none", false],
+// Upper body — push
+// ["U06", "Dumbbell bench press", "2 dumbbells, flat bench", 3, "none", false],
+// Upper body — press & pull
+// ["U09", "Band row", "Tube band, door anchor", 1, "none", true],
+// ["U10", "Band pull-apart", "Flat loop band", 1, "none", true],
+// ["U11", "Lat pulldown", "Cable machine", 3, "none", false],
+// ["U12", "Weighted pull-up", "Bar, dip belt", 3, "none", false],
+// ["U13", "Incline dumbbell row", "2 dumbbells, incline bench", 3, "none", false],
+// Core, stability & carries
+// ["C03", "Hanging knee raise", "Pull-up bar", 3, "none", false],
+// ["C05", "Household heavy carry", "Detergent jug, hugged to chest", 1, "none", true],
+// ["C06", "Farmer's carry, household", "Grocery bags or jugs", 1, "none", true],
+// Balance — ids still free
+// ["B01", "Single-leg balance, supported", "Counter", 1, "none", true],   // DOSE ["hold", true, 30]
+// ["B02", "Single-leg balance, unstable", "Foam pad or cushion", 2, "none", true],  // ["hold", true, 30]
+// ["B03", "Ball-toss balance", "Foam pad, tennis ball, wall", 3, "none", false],    // ["hold", true, 30]
+// ["B04", "Toothbrush single-leg stand", "Sink, toothbrush", 1, "none", true],      // ["hold", true, 60]
+// Bone impact
+// ["I03", "Box drop landing", "8-inch box", 3, "high", false],
+// Cardio — ids still free, the `duration` unit is still wired for them
+// ["K01", "Zone 2 walk", "Outdoor path", 1, "low", false],
+// ["K02", "Fast walk interval", "Outdoor path", 2, "low", false],
+// ["K03", "Recovery stroll / hike", "Path or trail", 1, "low", false],
+// ["K04", "Hill power walk", "Incline", 2, "low", false],
+// ["K05", "Treadmill incline walk", "Treadmill", 2, "low", false],
+// ["K06", "Cycling", "Upright bike", 2, "none", false],
+// ["K07", "Assault / spin bike sprint", "Air bike", 3, "none", false],
+// ["K08", "Elliptical", "Machine", 2, "none", false],
+// ["K09", "Run / sprint", "Outdoor or track", 3, "high", false],
+// ["K10", "Sled push", "Weighted sled", 3, "none", false],
+// ["K11", "Stair climbing", "Flight of stairs", 2, "low", true],
+// ["K12", "Jump rope", "Rope", 3, "high", false],
+// ["K13", "Jumping jacks", "None", 2, "high", true],
+// ["K14", "High knees in place", "None", 2, "high", true],
+// Mobility & flexibility — ids still free
+// ["M01", "Dynamic floor stretching", "Mat", 1, "none", false],   // DOSE ["duration", false, 300]
+// ["M02", "Neck circles & shoulder rolls", "None", 1, "none", true],
+// ["M03", "Torso twist with arm swings", "None", 1, "none", true],
+// ["M04", "Hip circles", "None", 1, "none", true],
 
 /**
  * Every exercise whose dose is NOT a plain both-sides timed set.
@@ -132,25 +192,28 @@ const E: [string, string, string, 1 | 2 | 3, Impact, boolean][] = [
  * They are deliberately conservative; progression is a separate piece of work.
  */
 const DOSE: Record<string, [DoseUnit, boolean, number?]> = {
-  // Isometrics — the hold IS the exercise.
+  // Isometrics — the hold IS the exercise. A plank opens shorter than a wall sit
+  // because it is the whole trunk holding a line, not a leg holding a chair.
   C01: ["hold", false, 30],
-  B01: ["hold", true, 30],
-  B02: ["hold", true, 30],
-  B03: ["hold", true, 30],
-  // She is standing on one leg while brushing her teeth, so it runs long.
-  B04: ["hold", true, 60],
+  C04: ["hold", false, 20],
+  C05: ["hold", true, 15],
   // Carries — measured in time because the alternative is measuring hallways.
-  C04: ["carry", false, 40],
-  C05: ["carry", false, 40],
-  C06: ["carry", false, 40],
-  // Unilateral work — the seconds are per leg, so the set runs twice.
+  C03: ["carry", false, 40],
+  // Unilateral work — the seconds are per side, so the set runs twice. The
+  // alternating floor work (bird-dog, dead bug) is prescribed a side at a time
+  // rather than alternating within the set: one thing to obey per countdown.
   C02: ["timed", true],
+  C06: ["timed", true],
+  C07: ["timed", true],
+  L04: ["timed", true],
   L05: ["timed", true],
   L06: ["timed", true],
   L07: ["timed", true],
-  L08: ["timed", true],
-  // A flow, not a set. Five minutes of moving through positions.
-  M01: ["duration", false, 300],
+  L09: ["timed", true],
+  L10: ["timed", true],
+  // No `duration` id is currently in the catalog — cardio and the mobility flow
+  // are both retired. The unit and everything that runs it stay wired; see the
+  // RETIRED block above.
 };
 
 /** Cardio's default block length when nothing else says otherwise. */
@@ -350,7 +413,7 @@ export function cardioMinutes(sessionMinutes: number, exerciseCount: number): nu
 // ─── Exercise video ─────────────────────────────────────────────────────────
 
 /**
- * Clips are NOT bundled with the Expo app. 59 of them would add tens of MB to
+ * Clips are NOT bundled with the Expo app. 42 of them would add tens of MB to
  * every binary and force an App Store release to re-cut a single one. They live
  * in a public Supabase Storage bucket behind its CDN, named after the exercise
  * id, and the app caches each one on first play.
@@ -367,9 +430,14 @@ const MEDIA_BASE =
   `${process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""}/storage/v1/object/public/exercise-clips`;
 
 /**
- * Which clips have actually been produced. Add ids here as they land — an id
- * that isn't listed returns no media and the app falls back to name + props,
- * so a half-finished shoot never shows her a broken player.
+ * Which clips have actually been **uploaded to the bucket**, not which ones are
+ * planned. All 42 are being filmed; an id lands here when its `.mp4` and
+ * `.webp` are actually in `exercise-clips`.
+ *
+ * The gate stays because the mobile app is live: an id listed here with nothing
+ * behind it is a 404 in her player mid-session, while an id left out falls back
+ * to name + props and looks deliberate. When the whole shoot is uploaded, this
+ * whole set becomes `EXERCISES.map((e) => e.id)` and the gate can go.
  */
 const MEDIA_READY = new Set<string>([
   "L01",
@@ -401,41 +469,51 @@ export function exerciseMedia(id: string): ExerciseMedia | undefined {
  * "none" is not a key — she is saying nothing applies, so nothing is removed.
  */
 const LIMITATION_EXCLUDES: Record<string, { impact: boolean; ids: string[] }> = {
-  // Loaded spinal flexion, hinging under load and anything that hangs or drags
-  // the spine.
+  // Loaded spinal flexion and hinging under load. The two hinges (P03, L13) and
+  // the bent-over row go; the bridges stay, because they load the same chain
+  // with her back on the floor.
   back: {
     impact: true,
-    ids: ["L04", "L08", "P03", "P04", "P05", "C03", "C04", "K10"],
+    ids: ["L07", "L13", "P03", "U09", "C03"],
   },
-  // Lunges, step-ups and deep loaded knee flexion. L01 box squat and L02
-  // bodyweight squat stay — sitting to a chair is the knee-friendly pattern and
+  // Lunges, split positions, step-ups and long loaded knee flexion. L01, L02,
+  // L11 and L12 stay — sitting to a chair is the knee-friendly pattern and
   // dropping it would leave her no lower-body strength work at all.
   knee: {
     impact: true,
-    ids: ["L04", "L05", "L06", "L07", "L08", "C01", "K11"],
+    ids: ["L04", "L05", "L06", "L07", "L09", "L10", "C01"],
   },
+  // Deep hip flexion under load and the wide-stance loaded hinge.
   hip: {
     impact: true,
-    ids: ["L04", "L07", "L08", "P05", "K10"],
+    ids: ["L06", "L07", "L09", "L10", "L13"],
   },
-  // Overhead, hanging, and pressing from the floor. No impact rule — a sore
-  // shoulder is not a reason to drop cardio.
+  // Overhead, abduction and pressing from the floor. No impact rule — a sore
+  // shoulder is not a reason to drop bone loading. U01-U03 stay (that graded
+  // wall → counter → table ramp IS the way back), as do the two scapular moves
+  // U10 and U11, which are what a sore shoulder usually needs more of.
   shoulder: {
     impact: false,
-    ids: ["U04", "U06", "U07", "U08", "U11", "U12", "C03"],
+    ids: ["U04", "U05", "U06", "U07", "U08", "U12"],
   },
-  // Anything that spikes intra-abdominal pressure. Heavy carries and heavy
-  // hinging go with the jumping.
+  // Anything that spikes intra-abdominal pressure: the heavy carry, the front
+  // plank, and the loaded hinges, alongside the jumping. C05 side plank, C06
+  // dead bug and C07 pallof press stay in deliberately — they are the core work
+  // that is routinely prescribed *for* this, at a fraction of the pressure.
   pelvic_floor: {
     impact: true,
-    ids: ["C03", "C04", "K10", "L04", "P05"],
+    ids: ["C03", "C04", "L13", "P03"],
   },
-  // Unstable surfaces and anything she could fall from or during. B01 and B04 —
-  // the *supported* balance holds — stay in on purpose: they are the training
+  // Anything she could fall from or during — the single-leg stances. The
+  // *supported* reverse lunge (L06) stays: a hand on the counter is the training
   // for this, not a risk of it.
+  //
+  // This rule used to name B02/B03 (the unstable balance holds) as its core.
+  // With the `B` family retired there is no balance training left to grade, so
+  // what remains is exclusion only — worth remembering if `B` ever comes back.
   balance: {
     impact: true,
-    ids: ["B02", "B03", "L08", "K10"],
+    ids: ["L07", "L09", "L10"],
   },
 };
 
@@ -447,11 +525,18 @@ const LIMITATION_EXCLUDES: Record<string, { impact: boolean; ids: string[] }> = 
  * remove work she shouldn't be given; those filters run in code, never in the
  * prompt, so a model can't opt out of them.
  *
- * The pool is never emptied by this: a beginner ticking every limitation still
- * keeps 20 exercises, including lower body, upper body, core, balance, cardio
- * and mobility. Adding a limitation means re-checking that — the exclusions are
- * a hard gate, and a gate that starves the generator produces a worse plan than
+ * The pool is never emptied by this: a beginner ticking every limitation AND
+ * reporting joint pain still keeps 12 exercises, with lower body, hinge, upper
+ * body, core and low-impact bone loading all represented — enough for the 4-6
+ * different ids a session needs. Adding a limitation means re-measuring that
+ * (`scripts/verify-plan-dose.ts` prints every pool size): the exclusions are a
+ * hard gate, and a gate that starves the generator produces a worse plan than
  * one that lets a step-up through.
+ *
+ * That floor was 20 before the 2026-08-24 catalog change and the headroom is
+ * genuinely thinner now — cardio was carrying a lot of it, and every `K` id
+ * survived every limitation. Twelve is workable across eight weeks; ten would
+ * not be.
  */
 export function allowedExercises(
   fitnessLevel: string | null,

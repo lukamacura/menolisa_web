@@ -255,7 +255,7 @@ and four generic resist suggestions.
 
 ## Related
 
-- [exercises.md](exercises.md) — the 59 exercises, their clips, and where clips live
+- [exercises.md](exercises.md) — the 42 exercises, their clips, and where clips live
 - [pillars.md](pillars.md) — the nutrition wording shared with the funnel
 - [relaxation.md](relaxation.md) — the breathing patterns and why they're timed that way
 - [nutrition.md](nutrition.md) — nutrition tracking copy

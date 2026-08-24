@@ -45,7 +45,9 @@ console.log("\n=== progression, weeks 1 -> 8 (28-min session, 4 exercises) ===")
 const magnitude = (d: ReturnType<typeof defaultDoseForWeek>) =>
   (d.minutes ?? 0) * 60 + (d.sets ?? 1) * (d.seconds ?? 0);
 
-for (const id of ["L01", "C01", "C04", "K01"]) {
+// One id per dose unit still in the catalog. There is no `duration` id right
+// now — cardio and the mobility flow are retired — so nothing stands in for it.
+for (const id of ["L01", "C01", "C03"]) {
   const ex = getExercise(id)!;
   const weeks = [1, 2, 3, 4, 5, 6, 7, 8].map((w) => defaultDoseForWeek(ex, w, 28, 4));
   const shown = weeks.map((d) => (d.minutes ? `${d.minutes}m` : `${d.sets}x${d.seconds}s`));

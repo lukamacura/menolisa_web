@@ -342,7 +342,16 @@ function adherenceBlock(a: Adherence | null): string[] {
     `Size this plan to what she ACTUALLY did, pillar by pillar:`,
     `- 80% or above — she has room. Progress it: open week 1 near where her last plan's week 6 sat, and add one genuinely new thing.`,
     `- 50-79% — the size was right, the shape was not. Keep the same weekly ask and change what fills it: different exercises, a different relaxation item, a different habit.`,
-    `- Below 50% — the ask was too big. CUT it. Fewer sessions a week, shorter sets, one daily practice instead of two. Make the smaller plan excellent rather than the bigger plan optional.`,
+    // "Fewer sessions a week" used to lead this line, and it was the one cut
+    // the model could not make: sanitize() overwrites `cadence` and `target`
+    // from MOVEMENT_VOLUME on every movement task, so a model that dutifully
+    // wrote 2 sessions for a woman at 30% had it put back to 3 on the way to
+    // the database. A prompt that promises a smaller plan and a code path that
+    // silently restores the big one is worse than either alone — the cut she
+    // needed most was the only one guaranteed not to happen. The session count
+    // is hers by fitness level; the cut goes inside the session.
+    `- Below 50% — the ask was too big. CUT it: fewer exercises in a session, shorter sets, one daily practice instead of two. Make the smaller plan excellent rather than the bigger plan optional.`,
+    `- How many sessions a week is set by her fitness level and is not yours to change. Cut inside the session, never the number of them.`,
     `- Where a pillar was never asked for, introduce it gently: one short task, cadence "daily", nothing to schedule.`,
     `- Nutrition focus follows the same rule. Under 50% means going back to one or two rows and staying there, not marching through all ten again.`,
     `- Give her new habit tasks and new resist_suggestions. She has had eight weeks of the last set.`,
@@ -440,11 +449,30 @@ export function buildPrompt(
       : []),
     ``,
     `PROGRESSION — this is the point of an 8-week plan. The same exercise must not carry the same numbers in week 1 and week 8.`,
-    `- Weeks 1-2: 2 sets. 25-30 seconds per set.`,
-    `- Weeks 3-5: 2-3 sets. 30-45 seconds per set.`,
-    `- Weeks 6-8: 3 sets. 45-60 seconds per set.`,
+    // The absolute ladder is for a FIRST plan only.
+    //
+    // It used to print unconditionally, including underneath the adherence
+    // block — which tells a woman who did 80% to "open week 1 near where her
+    // last plan's week 6 sat", i.e. 3 sets of 45-60s. So the same prompt named
+    // two different week-1 doses, four times as many words apart as the model
+    // needs to forget the first one, and nothing downstream could tell which
+    // rule it had followed. From cycle 2 the opening dose belongs to the
+    // adherence rules, and this block only says which way to climb from there.
+    ...(adherence
+      ? [
+          `- Open week 1 where the rules above put it, NOT at a beginner dose. She has already lived eight weeks of this.`,
+          `- Climb from wherever week 1 opens: add seconds first, then a third set. Never go past 3 sets or 60 seconds a set.`,
+        ]
+      : [
+          `- Weeks 1-2: 2 sets. 25-30 seconds per set.`,
+          `- Weeks 3-5: 2-3 sets. 30-45 seconds per set.`,
+          `- Weeks 6-8: 3 sets. 45-60 seconds per set.`,
+        ]),
     `- Move one number at a time. Add seconds before adding a set, and never raise both in the same week.`,
-    `- Cardio minutes climb too, within the cap above.`,
+    // Conditional for the same reason the DOSE rule above it is: with no
+    // continuous ids in her pool, telling the model that "minutes climb" is an
+    // invitation to invent a block that sanitize() then has to throw away.
+    ...(continuous.length ? [`- Cardio minutes climb too, within the cap above.`] : []),
     `- If you bring an exercise back in a later week, it gets the later week's dose — never a smaller one than it had before.`,
     `- Title each movement session after what is actually in it, and give all 8 weeks different titles. Never title a session after one exercise, and never repeat a title you have already used.`,
     `- Titles and focus lines are sentence case: "Steady the basics", not "Steady The Basics".`,
@@ -462,7 +490,7 @@ export function buildPrompt(
     `quitting a medication or HRT. "why" is one warm sentence, no shame, and the`,
     `banned phrases above apply to it too.`,
     ``,
-    `Return JSON: {"weeks":[{"number":1,"title":"...","focus":"...","nutrition_focus":["protein_25_30g"],"tasks":[{"pillar":"movement","title":"...","why":"...","cadence":"weekly","target":2,"item_id":null,"exercises":[{"id":"...","sets":3,"seconds":40,"minutes":null},{"id":"C01","sets":3,"seconds":45,"minutes":null},{"id":"K01","sets":null,"seconds":null,"minutes":12}]},{"pillar":"relaxation","title":"...","why":"...","cadence":"daily","target":1,"item_id":"breath_sleep","exercises":null},{"pillar":"habit","title":"...","why":"...","cadence":"daily","target":1,"item_id":null,"exercises":null}]}],"resist_suggestions":[{"title":"...","why":"..."}]}`,
+    `Return JSON: {"weeks":[{"number":1,"title":"...","focus":"...","nutrition_focus":["protein_25_30g"],"tasks":[{"pillar":"movement","title":"...","why":"...","cadence":"weekly","target":2,"item_id":null,"exercises":[{"id":"...","sets":3,"seconds":40,"minutes":null},{"id":"C01","sets":3,"seconds":45,"minutes":null}]},{"pillar":"relaxation","title":"...","why":"...","cadence":"daily","target":1,"item_id":"breath_sleep","exercises":null},{"pillar":"habit","title":"...","why":"...","cadence":"daily","target":1,"item_id":null,"exercises":null}]}],"resist_suggestions":[{"title":"...","why":"..."}]}`,
   ].join("\n");
 }
 
@@ -475,6 +503,12 @@ const MIN_EXERCISES = 3;
 /** A 5-minute burst done four times a day is two or three moves, not six. */
 const MIN_SNACK_EXERCISES = 2;
 const MAX_EXERCISES = 6;
+/**
+ * …and the ceiling has to agree with that comment. It didn't: the prompt asks a
+ * snack for 2-3 ids and this file then trimmed every session to 6, so a model
+ * that sent six put six exercises into five minutes and nothing caught it.
+ */
+const MAX_SNACK_EXERCISES = 3;
 
 /**
  * Habit titles that restate a nutrition row.
@@ -573,7 +607,7 @@ function sanitize(
           ...base,
           cadence: vol.perDay ? "per_day" : "weekly",
           target: vol.sessions,
-          exercises: exercises.slice(0, MAX_EXERCISES),
+          exercises: exercises.slice(0, vol.perDay ? MAX_SNACK_EXERCISES : MAX_EXERCISES),
         });
         continue;
       }
