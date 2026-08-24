@@ -8,6 +8,8 @@ import {
   hydrateExercises,
   hydrateRelaxation,
   markPlanGenerating,
+  sessionCooldown,
+  sessionWarmup,
   type Plan,
 } from "@/lib/plan/generate";
 import {
@@ -244,7 +246,13 @@ export async function GET(req: NextRequest) {
           target: t.target,
           doneToday: countIn(t.key, date, date),
           doneThisWeek: countIn(t.key, weekStart, weekEnd),
+          // The main work, and only the main work — every adherence and volume
+          // read in this app measures this array.
           exercises: hydrateExercises(t, includeMedia),
+          // The bookends around it. Undefined on a session that wants none (a
+          // snack, a walk), so the app draws no empty section.
+          warmup: sessionWarmup(t, includeMedia),
+          cooldown: sessionCooldown(t, includeMedia),
           // Breathing pattern and round count, so the app can run the timer
           // without shipping its own copy of the protocol.
           relaxation: hydrateRelaxation(t),

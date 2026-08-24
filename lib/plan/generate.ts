@@ -5,6 +5,8 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { recordLlmUsage } from "@/lib/llmUsage";
 import type { Adherence } from "@/lib/plan/cycles";
 import {
+  DEFAULT_COOLDOWN,
+  DEFAULT_WARMUP,
   MOVEMENT_VOLUME,
   NUTRITION,
   RELAXATION,
@@ -21,6 +23,7 @@ import {
   relaxationDetail,
   relaxationForSymptom,
   type Exercise,
+  type StoredExercise,
 } from "@/lib/plan/catalog";
 
 export const PLAN_WEEKS = 8;
@@ -61,7 +64,21 @@ export type PlanTask = {
    * `reps` is only ever present on plans stored before the dose became time.
    * Nothing writes it now; `hydrateDose()` converts it on the way out.
    */
-  exercises?: { id: string; sets?: number; reps?: number; seconds?: number; minutes?: number }[];
+  exercises?: StoredExercise[];
+  /**
+   * What she does before and after the work, when the plan wrote it herself.
+   *
+   * Nothing writes these yet — the plan-building model has not been taught to,
+   * so every stored plan in existence has neither. They exist now so that when
+   * it is taught, a bespoke warm-up simply overrides the generic one with no
+   * migration and no second shape: read them through `sessionWarmup()` /
+   * `sessionCooldown()`, never directly.
+   *
+   * `exercises` stays meaning the main work only. Folding bookends into it
+   * would silently change what every adherence and volume read is measuring.
+   */
+  warmup?: StoredExercise[];
+  cooldown?: StoredExercise[];
 };
 
 export type PlanWeek = {
@@ -1125,8 +1142,13 @@ export async function markPlanGenerating(
  * player.
  */
 export function hydrateExercises(task: PlanTask, includeMedia = false) {
-  if (!task.exercises) return undefined;
-  return task.exercises.flatMap((e) => {
+  return hydrateList(task.exercises, includeMedia);
+}
+
+/** Hydrates any stored exercise list. Unknown ids are dropped, never faked. */
+function hydrateList(list: readonly StoredExercise[] | undefined, includeMedia: boolean) {
+  if (!list) return undefined;
+  return list.flatMap((e) => {
     const ex = getExercise(e.id);
     if (!ex) return [];
     // `dose` is the repaired, runnable version of the stored sets/reps/minutes.
@@ -1142,6 +1164,50 @@ export function hydrateExercises(task: PlanTask, includeMedia = false) {
       },
     ];
   });
+}
+
+/**
+ * Whether this session is one a generic warm-up and cool-down belong on.
+ *
+ * Two sessions are left alone, both because a generic bookend would make them
+ * worse rather than safer:
+ *
+ * - **Movement snacks** (`per_day`). Four five-minute bursts a day is the whole
+ *   design. Two minutes of hip circles in front of each of them is not a
+ *   warm-up, it is a 40% tax on the thing she agreed to do four times.
+ * - **Cardio-only sessions.** A Zone 2 walk warms up by being a walk for the
+ *   first five minutes, and cools down the same way. Bolting mobility work onto
+ *   either end asks her to stand in the driveway doing arm swings before going
+ *   for a walk, which is how a walk stops happening.
+ *
+ * Everything else — anything with a loaded or bodyweight movement in it — gets
+ * them. That is the case the bookends were added for.
+ */
+function wantsBookends(task: PlanTask): boolean {
+  if (task.pillar !== "movement") return false;
+  const exercises = task.exercises ?? [];
+  if (!exercises.length) return false;
+  if (task.cadence === "per_day") return false;
+  return !exercises.every((e) => isCardioId(e.id));
+}
+
+/**
+ * The session's warm-up: hers if the plan wrote one, the generic one otherwise.
+ *
+ * Resolved at read time rather than stamped into the stored plan on purpose.
+ * Every plan already in the database was written before bookends existed, and
+ * a woman mid-cycle should not have to wait eight weeks for a warm-up — nor
+ * should her stored plan be rewritten underneath her to give her one.
+ */
+export function sessionWarmup(task: PlanTask, includeMedia = false) {
+  if (task.warmup?.length) return hydrateList(task.warmup, includeMedia);
+  return wantsBookends(task) ? hydrateList(DEFAULT_WARMUP, includeMedia) : undefined;
+}
+
+/** The session's cool-down, on the same terms as `sessionWarmup`. */
+export function sessionCooldown(task: PlanTask, includeMedia = false) {
+  if (task.cooldown?.length) return hydrateList(task.cooldown, includeMedia);
+  return wantsBookends(task) ? hydrateList(DEFAULT_COOLDOWN, includeMedia) : undefined;
 }
 
 /** Attaches the breathing pattern (or practice length) to a relaxation task. */

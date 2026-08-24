@@ -239,6 +239,53 @@ export function isCardioId(id: string) {
 /** Mobility work. Short, unloaded, and it does not want a minute of rest after it. */
 const isMobilityId = (id: string) => id.startsWith("M");
 
+// ─── Warm-up and cool-down ──────────────────────────────────────────────────
+
+/** An exercise reference exactly as a plan stores one. */
+export type StoredExercise = {
+  id: string;
+  sets?: number;
+  reps?: number;
+  seconds?: number;
+  minutes?: number;
+};
+
+/**
+ * The warm-up every strength session gets when the plan did not write its own.
+ *
+ * Shoulders, then hips, then spine — the three joints about to be loaded, in
+ * the order a session tends to reach for them. Every move here has props
+ * `"None"` on purpose: a generic warm-up must never be the reason the gear list
+ * on the setup screen grows, because that list is what she goes and fetches
+ * before she starts, and a hip circle is not worth a trip to the cupboard.
+ *
+ * Deliberately not personalised. This is the floor, not the prescription: once
+ * the plan-building model is taught to write bookends it will send its own and
+ * these stop being read (see `sessionWarmup`).
+ */
+export const DEFAULT_WARMUP: readonly StoredExercise[] = [
+  { id: "M02", sets: 1, seconds: 40 },
+  { id: "M04", sets: 1, seconds: 40 },
+  { id: "M03", sets: 1, seconds: 40 },
+];
+
+/**
+ * The matching cool-down. Two minutes on the floor, then the neck and shoulders.
+ *
+ * It reuses `M02` from the warm-up at a longer, slower dose, and that is a
+ * limitation of the catalog rather than a choice: there are four mobility
+ * entries and no static-stretch family at all, so there is nothing else gentle
+ * to reach for. Adding one is the content work this default is standing in for.
+ *
+ * `M01` is the catalog's only `duration` mobility item — one continuous flow
+ * rather than sets — which is the right shape for a cool-down: nothing to count,
+ * just keep moving until the clock stops.
+ */
+export const DEFAULT_COOLDOWN: readonly StoredExercise[] = [
+  { id: "M01", minutes: 2 },
+  { id: "M02", sets: 1, seconds: 60 },
+];
+
 // ─── Dose, rest and session length ──────────────────────────────────────────
 
 /**
@@ -419,8 +466,20 @@ export function cardioMinutes(sessionMinutes: number, exerciseCount: number): nu
  * id, and the app caches each one on first play.
  *
  * Bucket layout (`exercise-clips`, public read):
- *   L01.mp4   H.264, no audio track, 6-10s silent loop, 4:5 1080×1350, ≤800KB
- *   L01.webp  poster frame, 4:5 1080×1350, ≤60KB
+ *   L01.mp4   H.264, no audio track, 6-10s silent loop, 9:16 1080×1920, ≤800KB
+ *   L01.webp  poster frame, 9:16 1080×1920, ≤60KB
+ *
+ * **9:16, and frame the movement inside the central 76% of width.** The mobile
+ * session runner is a full-bleed stage — the clip is the whole screen — so it
+ * covers the display rather than fitting inside a box. On a 19.5:9 phone that
+ * drops roughly the outer 100px on each side of a 1080-wide frame; on a 16:9
+ * device nothing is cropped at all, so the framing has to survive both. Keep
+ * the body inside 820px at the widest point of the movement (arms overhead,
+ * full lunge stride) and 5% clear top and bottom.
+ *
+ * It was 4:5 until 2026-08-23. A 4:5 clip covering a modern phone loses 42% of
+ * its width — on a lateral raise that is both arms. `L01` below was cut to the
+ * old spec and needs re-exporting from its master before any more are shot.
  *
  * Only the API builds these URLs. If the bucket ever moves to another CDN, this
  * constant is the only thing that changes — no client ships a hardcoded path.
@@ -441,6 +500,7 @@ const MEDIA_BASE =
  */
 const MEDIA_READY = new Set<string>([
   "L01",
+  "M02",
 ]);
 
 export type ExerciseMedia = { video: string; poster: string };

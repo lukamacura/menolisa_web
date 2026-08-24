@@ -494,6 +494,61 @@ server-side. A cancelled subscriber never sees it; she has already decided.
 
 ---
 
+## 14. `GET /api/plan` — movement sessions gained a warm-up and cool-down (**additive**) — 2026-08-23
+
+A movement task now carries two optional siblings to `exercises`:
+
+```jsonc
+{
+  "key": "w1_movement0",
+  "pillar": "movement",
+  "warmup":    [ /* PlanExercise[] — before the work */ ],
+  "exercises": [ /* PlanExercise[] — the work itself, UNCHANGED */ ],
+  "cooldown":  [ /* PlanExercise[] — after the work */ ]
+}
+```
+
+Same element shape as `exercises`, `dose` object and all — an exercise is an
+exercise, so the app needs no second renderer and no second player.
+
+### `exercises` still means the main work only
+
+This is the part to hold on to. Every read in either codebase that asks "how
+much did she train" — session length, the exercise count, adherence, the volume
+the next cycle is sized from — goes through `exercises`. Folding the bookends
+into it would have changed all of those answers at once with nothing failing to
+compile. They are separate arrays so that any place that needs the whole session
+has to say so.
+
+### Both are optional, and absent on purpose for some sessions
+
+`sessionWarmup()` / `sessionCooldown()` in `lib/plan/generate.ts` resolve them at
+request time:
+
+1. If the stored plan wrote its own, that wins.
+2. Otherwise a generic default (`DEFAULT_WARMUP` / `DEFAULT_COOLDOWN` in
+   `lib/plan/catalog.ts`) is used — three unloaded mobility moves in, a
+   two-minute floor flow plus neck and shoulders out.
+3. Except on two kinds of session, which get **neither** field:
+   - **movement snacks** (`cadence: "per_day"`) — five-minute bursts; two
+     minutes of hip circles in front of each is a 40% tax on the whole idea.
+   - **cardio-only sessions** (every id starts with `K`) — a Zone 2 walk warms
+     up by being a walk. Nobody does arm swings in the driveway first.
+
+Resolved at read time rather than stamped into stored plans, so every plan
+already in the database has bookends today with no migration and no rewrite
+underneath a woman mid-cycle. Nothing writes the stored `warmup` / `cooldown`
+yet — the plan-building LLM has not been taught to. When it is, step 1 takes
+over silently.
+
+**What the app should do:** build the session as warm-up → work → cool-down, and
+never read the three arrays separately. Phase is not a label on a card; it
+changes how the session runs — a shorter card between prep moves, a capped rest,
+and only the `main` sets deciding whether the session counts as done. Draw no
+section for a phase that is absent.
+
+---
+
 ## Quick checklist
 
 - [ ] Remove `trial_start` / `trial_end` / `trial_days` reads
@@ -518,3 +573,7 @@ server-side. A cancelled subscriber never sees it; she has already decided.
 - [ ] Route `{ screen: "PlanContinue" }` pushes into the app, not to web billing
 - [ ] Open the Alerts-tab `renewal` row in-app; leave the other two on billing
 - [ ] Show the pre-renewal screen once per `subscription_ends_at`, never when cancelled
+- [ ] Run a movement session as `warmup` → `exercises` → `cooldown`
+- [ ] Keep `exercises` meaning the main work in every count, estimate and score
+- [ ] Draw no warm-up or cool-down section when the field is absent
+- [ ] Let her leave during the cool-down without losing the logged session
