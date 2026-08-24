@@ -662,19 +662,18 @@ const PLAN_SHOTS = {
   rewards: "/screenshots/screen4.webp",
 };
 
-// Three masters in /screenshots are deliberately not in the list above, so that
-// staying out stays a decision rather than an oversight:
+// Every master in /screenshots is used, here or by the paywall. Two rules worth
+// keeping when the next batch of captures lands, both learned from the three
+// that were deleted rather than wired in:
 //
-// - `achievement.webp` - the "Achievement unlocked" modal, confetti and all. The
-//   best-looking frame in the set and the one argument already made: it says
-//   "you get rewarded for showing up", which is `rewards` with a party over it.
-//   A seventh slide costs three more seconds of a loop she is unlikely to finish
-//   as it is, and it would be spent restating slide six.
-// - `day-week2.webp` / `nutrition-empty.webp` - newer captures of the two
-//   screens `screen1` / `screen2` already cover, both caught with the day's
-//   tasks untouched (0/4, 0/10, 0/1). They are the same screens showing nothing
-//   done, and this carousel is proof that the plan runs. `screen1` also happens
-//   to read "Day 1 - Week 1", which is what the caption under it claims.
+// - **Capture a day with work done on it.** Two of them were `day` and
+//   `nutrition` caught with the tasks untouched (0/4, 0/10, 0/1). This carousel
+//   is proof that the plan runs, and an empty checklist argues the opposite.
+// - **A screen that restates a slide is not a slide.** The third was the
+//   "Achievement unlocked" modal - the best-looking frame of the set, and the
+//   same point `rewards` already makes with confetti over it. Each slide here
+//   answers a different objection; a seventh costs three more seconds of a loop
+//   she is unlikely to finish as it is.
 
 // SHOT_W / SHOT_H (the intrinsic size of the /screenshots masters) live in
 // components/PhoneShots.tsx alongside <PhoneShot /> and <ShotStage />, which the
@@ -4811,8 +4810,8 @@ function RegisterPageContent() {
                 <PlanHeroCarousel />: `day` first, because "Day 1 · Week 1" plus
                 four pillars with real progress is the whole offer in one frame,
                 then the surfaces that run it - a session, the food list, a
-                habit, the eight weeks, the streak. See PLAN_HERO_SLIDES for why
-                that order, and which masters are deliberately left out of it. They used to be a hero plus
+                habit, the eight weeks, the streak. See PLAN_HERO_SLIDES for
+                why that order. They used to be a hero plus
                 a tilted, cropped, faded trio of the same three shots 300px
                 lower, where nothing in them could be read - see the component
                 for why one legible phone beats one legible phone and three
