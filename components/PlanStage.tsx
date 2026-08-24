@@ -10,6 +10,8 @@ import {
   useMotionValue,
   useMotionValueEvent,
   useReducedMotion,
+  useTransform,
+  type AnimationPlaybackControls,
   type MotionValue,
 } from "framer-motion";
 import { Check, Sparkles } from "lucide-react";
@@ -26,6 +28,9 @@ import { PLAN_WEEKS } from "@/lib/pricing";
  * Three separate things saying one thing. Now the parchment is the stage and
  * those grids play *inside* it, in the order she'd actually live them:
  *
+ *   0. sealed - the scroll rolled shut. Not an act: it is what she scrolls
+ *                *to*. It unrolls the first time it comes into view, and only
+ *                then does act 1 begin. See "The entrance" below.
  *   1. `plan`  - the sealed scroll with her name on it. This is yours.
  *   2. `today` - a phone rises out of the scroll: today's four tasks, ticking
  *                themselves off one by one.
@@ -58,6 +63,26 @@ import { PLAN_WEEKS } from "@/lib/pricing";
  * 17.8%-83.3% down. The phone is pinned inside those bounds and the bottom roll
  * is painted back over the top of it (BOTTOM_ROLL_CLIP), so the phone rises out
  * from behind the roll instead of floating on the page.
+ *
+ * **The entrance.** Her name being written onto the paper is the made-for-you
+ * moment of the whole funnel, and it used to play to an empty room: the stage
+ * mounts with the plan block, which sits roughly a viewport above where the
+ * scroll actually lands, so act 1 drew itself while it was still below the fold.
+ * The act *clock* was gated on `useInView` but the act *contents* were not, so
+ * by the time she scrolled down the ink was already dry and she got a still.
+ *
+ * So the scroll now starts shut and opens on arrival. One motion value
+ * (`unroll`, 0 -> 1) drives two layers off the same number:
+ *
+ *   - the bottom roll travels down from just under the top roll to its resting
+ *     place (`ROLL_TRAVEL_PCT` of the illustration's height), and
+ *   - the paper is clipped to exactly the roll's top edge the whole way, so no
+ *     paper is ever visible below the roll that has not been unrolled yet.
+ *
+ * Nothing is written on the paper until that finishes - only then does the act
+ * clock start, which is what makes the name land on an open scroll. It happens
+ * once per session: scrolling away and back never re-seals it, and scrolling
+ * away *during* the unroll pauses it rather than letting it finish unseen.
  */
 
 type ActId = "plan" | "today" | "weeks";
@@ -93,9 +118,28 @@ const ACTS: { id: ActId; label: string; hold: number; caption: string }[] = [
   },
 ];
 
-/** Where the scroll's bottom roll starts. The paper above it is repainted over
-    the phone, so the phone reads as rising out of the scroll. */
-const BOTTOM_ROLL_CLIP = "inset(81% 0 0 0)";
+/** Where the scroll's bottom roll starts, as a % of the illustration's height.
+    The paper above it is repainted over the phone, so the phone reads as rising
+    out of the scroll. */
+const BOTTOM_ROLL_TOP_PCT = 81;
+const BOTTOM_ROLL_CLIP = `inset(${BOTTOM_ROLL_TOP_PCT}% 0 0 0)`;
+
+/* ── The unroll ─────────────────────────────────────────────────────────── */
+
+/** How long the scroll takes to open, in ms. Long enough to read as paper
+    rather than a swipe, short enough that act 1 still has its full 3.4s hold to
+    write her name in afterwards. */
+const UNROLL_MS = 780;
+
+/** How far the bottom roll sits above its resting place while the scroll is
+    still shut, as a % of the illustration's height. It stops at 21% down, which
+    leaves a sliver of paper under the top roll - two rolls flush against each
+    other read as a stick, not a scroll. */
+const ROLL_TRAVEL_PCT = BOTTOM_ROLL_TOP_PCT - 21;
+
+/** Bottom inset that clips the paper to the roll's top edge once the scroll is
+    fully open. Everything below it is the roll, which is painted back on top. */
+const PAPER_REST_INSET_PCT = 100 - BOTTOM_ROLL_TOP_PCT;
 
 /** Ink color for everything written on the paper. */
 const INK = "#5c4327";
@@ -134,8 +178,81 @@ export function PlanStage({
   const inView = useInView(stageRef, { amount: 0.3 });
   const [index, setIndex] = useState(0);
   const progress = useMotionValue(0);
-  const playing = inView;
   const act = ACTS[index];
+
+  /* ── The entrance ─────────────────────────────────────────────────────
+     `opened` is the gate on everything written on the paper. Nothing mounts
+     inside the scroll until the scroll is actually open, which is the whole
+     point: the name has to be written while she is looking at it. */
+  const unroll = useMotionValue(0);
+
+  /** A second observer on the same element, latching on first sight. `inView`
+      above cannot do this job as well: it has to keep flipping, because it is
+      what pauses the act clock. And re-sealing the scroll every time she
+      scrolls off it would turn the one personal moment on the page into a loop.
+      Two IntersectionObservers on one element is what `once` is for. */
+  const armed = useInView(stageRef, { once: true, amount: 0.3 });
+
+  /** True once the paper is flat. Under reduced motion there is no unroll to
+      wait on, so it derives straight off `armed` - which is also why the effect
+      below has no `setState` to make in that branch. */
+  const [unrolled, setUnrolled] = useState(false);
+  const opened = unrolled || (reduced && armed);
+
+  /** The unroll, once. `armed` only ever goes false -> true, so this effect
+      runs exactly once and its cleanup only fires on unmount. */
+  const unrollControls = useRef<AnimationPlaybackControls | null>(null);
+  useEffect(() => {
+    if (!armed) return;
+    if (reduced) {
+      unroll.set(1);
+      return;
+    }
+    const controls = animate(unroll, 1, {
+      duration: UNROLL_MS / 1000,
+      // Gentle in, steady through, soft settle. The ease used everywhere else
+      // in this file ([0.16, 1, 0.3, 1]) is deliberately front-loaded, which is
+      // right for UI that should feel instant and wrong for paper: it spent 80%
+      // of the travel in the first third and the scroll read as snapping open.
+      ease: [0.4, 0, 0.2, 1],
+      onComplete: () => {
+        unrollControls.current = null;
+        setUnrolled(true);
+      },
+    });
+    unrollControls.current = controls;
+    return () => {
+      unrollControls.current = null;
+      controls.stop();
+    };
+  }, [armed, reduced, unroll]);
+
+  /** Flicking past mid-unroll pauses the paper where it is rather than letting
+      it finish - and then start writing - somewhere she cannot see.
+
+      Both observers cross their threshold in the same commit, so on arrival
+      this runs right after the effect above and calls `play()` on an animation
+      that is already playing. That is a no-op by design and it is the only
+      ordering that works: the alternative, latching `armed` in state, costs a
+      render before the unroll can even start. */
+  useEffect(() => {
+    const controls = unrollControls.current;
+    if (!controls) return;
+    if (inView) controls.play();
+    else controls.pause();
+  }, [inView]);
+
+  /** Both layers off the one value. At `unroll` 0 the roll sits `ROLL_TRAVEL_PCT`
+      high and the paper is clipped to meet it; at 1 the roll is home and the
+      paper is clipped to its resting edge. The two expressions are the same
+      number read from opposite ends, so they cannot drift apart. */
+  const rollY = useTransform(unroll, [0, 1], [`${-ROLL_TRAVEL_PCT}%`, "0%"]);
+  const paperClip = useTransform(
+    unroll,
+    (u) => `inset(0 0 ${PAPER_REST_INSET_PCT + (1 - u) * ROLL_TRAVEL_PCT}% 0)`
+  );
+
+  const playing = inView && opened;
 
   /** The one clock. Resumes from wherever it was paused rather than restarting,
       so scrolling the scroll out of view and back doesn't replay an act.
@@ -172,20 +289,26 @@ export function PlanStage({
         aria-hidden
         className="pointer-events-none relative mx-auto w-full max-w-[340px] select-none"
       >
-        <Image
-          src="/illustrations/offer.webp"
-          alt=""
-          width={1024}
-          height={1536}
-          sizes={SCROLL_SIZES}
-          className="w-full h-auto"
-          draggable={false}
-          priority
-        />
+        {/* The paper, clipped to wherever the bottom roll has got to. This is
+            also the element that gives the stage its height, so it stays in
+            normal flow - clipping is what moves, never layout. */}
+        <motion.div style={{ clipPath: paperClip }}>
+          <Image
+            src="/illustrations/offer.webp"
+            alt=""
+            width={1024}
+            height={1536}
+            sizes={SCROLL_SIZES}
+            className="w-full h-auto"
+            draggable={false}
+            priority
+          />
+        </motion.div>
 
-        {/* Act 1 - written on the paper itself. */}
+        {/* Act 1 - written on the paper itself, and only once there is paper to
+            write on. */}
         <AnimatePresence>
-          {act.id === "plan" && (
+          {opened && act.id === "plan" && (
             <SealedScroll key="sealed" firstName={firstName} goalLabel={goalLabel} reduced={reduced} />
           )}
         </AnimatePresence>
@@ -195,7 +318,7 @@ export function PlanStage({
             time the loop comes back around. */}
         <div className="absolute inset-x-0 top-[18%] z-10 flex justify-center">
           <AnimatePresence>
-            {act.id !== "plan" && (
+            {opened && act.id !== "plan" && (
               <PhoneMock
                 key="phone"
                 screen={act.id}
@@ -212,8 +335,16 @@ export function PlanStage({
             the base image, so it's the same cached file, not a second download.
             `loading="eager"` rather than `priority` - it must not lazy-load
             (the phone would float over unpainted paper for a frame) but it
-            must not add a second preload link for a file already preloaded. */}
-        <div className="absolute inset-0 z-20" style={{ clipPath: BOTTOM_ROLL_CLIP }}>
+            must not add a second preload link for a file already preloaded.
+
+            It is also the roll that travels during the unroll. `clipPath` is
+            applied in the element's own box and the transform on top of it, so
+            the clip keeps naming the same slice of the illustration however far
+            down the layer has moved. */}
+        <motion.div
+          className="absolute inset-0 z-20"
+          style={{ clipPath: BOTTOM_ROLL_CLIP, y: rollY }}
+        >
           <Image
             src="/illustrations/offer.webp"
             alt=""
@@ -224,7 +355,7 @@ export function PlanStage({
             draggable={false}
             loading="eager"
           />
-        </div>
+        </motion.div>
       </div>
 
       {/* Progress. A read-out, not a control - it tells her the scroll is

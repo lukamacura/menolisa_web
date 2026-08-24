@@ -922,6 +922,32 @@ again also works — that calls `sync-session`.
 ## 7. CURRENT STATUS
 
 Recent work:
+- **The scroll opens when she gets to it (2026-08-24)** — her name being written
+  onto the parchment is the made-for-you moment of the funnel, and it was
+  playing to an empty room. `<PlanStage />` mounts with the plan block at the
+  top of the `diagnosis` screen, but the scroll itself lands roughly a viewport
+  lower; the act *clock* was gated on `useInView` while the act *contents* were
+  not, so act 1 drew itself below the fold and she scrolled onto a still with
+  the ink already dry.
+  The scroll now starts rolled shut and unrolls on arrival. One motion value
+  drives two layers off the same number — the bottom roll travels down from just
+  under the top roll, and the paper is clipped to exactly the roll's top edge
+  the whole way, so no un-unrolled paper is ever visible. Nothing is written
+  until that finishes, which is what puts the name on an open scroll. Once per
+  mount: scrolling away never re-seals it, and flicking past *during* the unroll
+  pauses the paper where it is rather than letting it finish unseen.
+  The unroll uses `[0.4, 0, 0.2, 1]`, not the `[0.16, 1, 0.3, 1]` the rest of
+  the file uses — that one is front-loaded, which is right for UI that should
+  feel instant and wrong for paper; it spent 80% of the travel in the first
+  third and read as snapping open.
+  **Blocks 2, 5 and the trust strip moved to `whileInView` in the same pass.**
+  Everything below block 1 on that screen starts a clear viewport below the
+  fold, and only blocks 3 and 4 were scroll-triggered — the other three animated
+  on mount and were finished before she arrived, so the page went from arriving
+  to already-arrived halfway down. The cards inside block 2's carousel keep
+  their own mount stagger deliberately: per-card `whileInView` would leave the
+  horizontally off-screen cards invisible, including the sliver that is the only
+  thing saying it *is* a carousel.
 - **Purchase reports what Stripe already knew (2026-08-20)** — three fixes to
   the event the campaign is actually optimized against, prompted by Events
   Manager's "send more parameters" prompt.

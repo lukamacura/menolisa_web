@@ -4882,10 +4882,25 @@ function RegisterPageContent() {
             {diagnosisTransforms.length > 0 && (() => {
               const transforms = diagnosisTransforms;
               return (
+                // On scroll, not on mount. Everything from here down starts a
+                // clear viewport below the fold - block 1 alone is the headline,
+                // the hero phone and the scroll - so a mount animation finished
+                // playing long before she arrived, and she scrolled onto a still.
+                // Blocks 3 and 4 already worked this way; 2, 5 and the trust
+                // strip did not, which is why the page went from arriving to
+                // already-arrived halfway down. The cards inside keep their own
+                // mount stagger: they are behind this fade until it runs, and
+                // per-card `whileInView` would leave the off-screen carousel
+                // cards - including the sliver that says it *is* a carousel -
+                // invisible.
                 <motion.div
                   initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, amount: 0.15 }}
+                  transition={{
+                    duration: prefersReducedMotion ? 0 : 0.5,
+                    ease: [0.16, 1, 0.3, 1],
+                  }}
                   className="mb-5"
                 >
                   <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] leading-tight mb-3">
@@ -5068,8 +5083,12 @@ function RegisterPageContent() {
               return (
                 <motion.div
                   initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.22 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, amount: 0.15 }}
+                  transition={{
+                    duration: prefersReducedMotion ? 0 : 0.5,
+                    ease: [0.16, 1, 0.3, 1],
+                  }}
                   className="mb-5"
                 >
                   <div className="px-1 mb-3">
@@ -5091,11 +5110,11 @@ function RegisterPageContent() {
             {/* ── Trust strip ───────────────────────────────────────────────── */}
             <motion.div
               initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.25 }}
+              whileInView={{ opacity: 1 }}
+              viewport={{ once: true, amount: 0.4 }}
+              transition={{ duration: prefersReducedMotion ? 0 : 0.4 }}
               className="mb-4"
             >
-             
               {/* Pricing reassurance ("no charge today", "cancel anytime") lives on
                   the paywall, not here - this page's job is belief, and naming the
                   charge two screens early just raises her guard. */}
