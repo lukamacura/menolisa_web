@@ -42,7 +42,20 @@ import {
   Lock,
   Sparkles,
   ChevronRight,
+  Users,
+  CalendarCheck,
+  Flame,
+  MoonStar,
+  Brain,
+  Waves,
+  BatteryLow,
+  Bone,
+  Droplets,
+  HeartPulse,
+  Dumbbell,
+  Utensils,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { HighlightSweep } from "@/components/HighlightSweep";
 import { SHOT_W, SHOT_H } from "@/components/PhoneShots";
 
@@ -302,10 +315,26 @@ const PROBLEM_OPTIONS = [
   { id: "bloating", label: "Bloating", image: "/quiz/symptoms/bloating.webp" },
 ];
 
-// id -> tile image, so results can show her actual selected symptoms as visual chips.
-const SYMPTOM_IMAGE: Record<string, string> = Object.fromEntries(
-  PROBLEM_OPTIONS.map((o) => [o.id, o.image])
-);
+// id -> icon, for the reward screens.
+//
+// The tiles above are the right thing on the *question* - she is choosing, and a
+// photograph is what makes nine options scannable at a glance. On the rewards
+// they were the wrong thing twice over: a 460x460 illustration cropped into a
+// 48px circle is an unreadable smudge, and it makes the payoff screen look like
+// a brochure. The app renders her symptoms as icons on a dark tile, so icons
+// here mean the reward is a first look at the product rather than more funnel
+// art. Same reasoning behind the three medallions - see <RewardMedallion />.
+const SYMPTOM_ICON: Record<string, LucideIcon> = {
+  hot_flashes: Flame,
+  sleep_issues: MoonStar,
+  brain_fog: Brain,
+  mood_swings: Waves,
+  weight_changes: Weight,
+  low_energy: BatteryLow,
+  anxiety: HeartPulse,
+  joint_pain: Bone,
+  bloating: Droplets,
+};
 
 // Its own step, straight after q4_symptoms: one overall rating of how hard her
 // symptoms are hitting, not a rating of any single one. Rating all nine is a
@@ -610,9 +639,8 @@ const STEP_IMAGES: Partial<Record<Step, string[]>> = {
   q2_here_for: HERE_FOR_OPTIONS.map((o) => o.image),
   q4_symptoms: PROBLEM_OPTIONS.map((o) => o.image),
   q3_goals: GOAL_OPTIONS.map((o) => o.image),
-  reward_symptoms: ["/illustrations/reward-1.webp"],
-  reward_plan_shape: ["/illustrations/plan-preview.webp"],
-  reward_progress: ["/illustrations/reward-2.webp"],
+  // The three reward steps preload nothing: they render lucide icons now, which
+  // ship in the JS chunk that is already parsed by the time she reaches them.
   q_fitness: FITNESS_OPTIONS.map((o) => o.image),
   q_nutrition: NUTRITION_STYLE_OPTIONS.map((o) => o.image),
   q_relaxation: RELAXATION_STYLE_OPTIONS.map((o) => o.image),
@@ -2923,6 +2951,113 @@ function CalculatingScreen({ error, onRetry }: { error: string | null; onRetry: 
  * option: a payoff that renders without its number and then pops it in is worse
  * than a beat of stillness.
  */
+/**
+ * The hero of a reward screen: one icon, on a ring, over a pulsing glow.
+ *
+ * It replaces the three `/illustrations/*.webp` drawings (reward-1,
+ * plan-preview, reward-2) that used to sit here. Those were the only thing on
+ * a reward screen that was not derived from her own answers - decoration in the
+ * one slot the funnel spends on proving the opposite, that something is being
+ * computed on what she just told us. A drawing of a woman celebrating is a
+ * stock image whatever the file name is; a lock icon over her movement rules is
+ * the same mark the app puts on the same thing.
+ *
+ * It also earns its place in bytes: 40KB of WebP across three screens, all of
+ * it `priority`, on a phone mid-quiz - for art that carried no information.
+ *
+ * The glow is the dopamine beat, so it survives here and only here; everything
+ * else on these screens is a spring-in. Reduced motion drops the pulse and the
+ * rotation, never the icon.
+ */
+function RewardMedallion({ icon: Icon, tone = "primary" }: { icon: LucideIcon; tone?: "primary" | "green" }) {
+  const prefersReducedMotion = useReducedMotion();
+  const green = tone === "green";
+  return (
+    <motion.div
+      className="relative"
+      initial={prefersReducedMotion ? false : { scale: 0, rotate: -12, opacity: 0 }}
+      animate={{ scale: 1, rotate: 0, opacity: 1 }}
+      transition={
+        prefersReducedMotion
+          ? { duration: 0 }
+          : { type: "spring", stiffness: 220, damping: 13, delay: 0.05 }
+      }
+    >
+      {!prefersReducedMotion && (
+        <motion.div
+          aria-hidden
+          className={cn(
+            "absolute -inset-3 rounded-full blur-2xl",
+            green ? "bg-[#22C55E]/30" : "bg-primary/30"
+          )}
+          animate={{ scale: [0.9, 1.15, 0.9], opacity: [0.4, 0.75, 0.4] }}
+          transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+        />
+      )}
+      <div
+        className={cn(
+          "relative flex h-20 w-20 sm:h-24 sm:w-24 items-center justify-center rounded-full border",
+          green
+            ? "border-[#22C55E]/25 bg-[#22C55E]/10 text-[#16A34A]"
+            : "border-primary/25 bg-primary/10 text-primary"
+        )}
+      >
+        <Icon className="h-9 w-9 sm:h-11 sm:w-11" strokeWidth={1.75} aria-hidden />
+      </div>
+    </motion.div>
+  );
+}
+
+/**
+ * Her training week as seven dots - the app's week view, at reward size.
+ *
+ * The minutes count above it is the argument ("that's the whole ask") and a
+ * number cannot show how thinly it is spread. Seven dots can, and it is the
+ * first thing in the funnel that looks like a screen she would open rather than
+ * a page she would read. Active days are placed evenly rather than sequentially
+ * so four sessions read as Mon/Wed/Fri/Sun, which is what the plan builds.
+ */
+function WeekStrip({ activeDays }: { activeDays: number }) {
+  const prefersReducedMotion = useReducedMotion();
+  const days = ["M", "T", "W", "T", "F", "S", "S"];
+  const n = Math.min(7, Math.max(0, activeDays));
+  // Even spread across seven slots: 2 -> Mon/Thu, 3 -> Mon/Wed/Fri, 4 -> +Sun.
+  const active = new Set(
+    Array.from({ length: n }, (_, i) => Math.round((i * 6) / Math.max(1, n - 1 || 1)))
+  );
+  return (
+    <div className="flex items-end justify-center gap-1.5" aria-hidden>
+      {days.map((d, i) => {
+        const on = active.has(i);
+        return (
+          <motion.div
+            key={i}
+            initial={prefersReducedMotion ? false : { scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={
+              prefersReducedMotion
+                ? { duration: 0 }
+                : { type: "spring", stiffness: 320, damping: 18, delay: 0.75 + i * 0.06 }
+            }
+            className="flex flex-col items-center gap-1"
+          >
+            <span
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-xl border text-[11px] font-bold",
+                on
+                  ? "border-primary bg-primary text-white shadow-sm shadow-primary/30"
+                  : "border-foreground/10 bg-foreground/[0.03] text-[#B4B4B4]"
+              )}
+            >
+              {on ? <Check className="h-4 w-4" strokeWidth={3} /> : d}
+            </span>
+          </motion.div>
+        );
+      })}
+    </div>
+  );
+}
+
 function QuizReward({
   messages,
   initialDone,
@@ -3301,6 +3436,8 @@ function RegisterPageContent() {
       cadence: volume.perDay
         ? `${volume.sessions} x ${volume.minutes} min, spread through the day`
         : `${volume.sessions} x ${volume.minutes} min a week`,
+      // For <WeekStrip />. Snacks happen every day; sessions land on N of the 7.
+      activeDays: volume.perDay ? 7 : volume.sessions,
     };
   }, [planCatalog, fitnessLevel]);
 
@@ -4171,6 +4308,28 @@ function RegisterPageContent() {
                   - and was the third mention of two minutes on one screen. Rose
                   = the load she carries now, green = what closes it, per the
                   funnel's colour rule. */}
+              {/* The two halves are the whole argument of this screen, and the
+                  photograph was not carrying them: same woman, same room, same
+                  light, so "before" and "after" were doing all their work in two
+                  10px labels at the bottom edge. A colour wash per half states
+                  the direction before a word is read - rose = the load she
+                  carries now, green = what the plan closes it with, the funnel's
+                  own colour rule, and the same two dots already used below.
+
+                  Anchored to the outer edges and fading to nothing at the seam,
+                  so it reads as light falling across the photo rather than a
+                  filter laid over it - a flat tint at this opacity greys the
+                  faces, which are the only reason the photo is here. Kept off
+                  `mix-blend` deliberately: it composites against whatever sits
+                  behind the rounded container, which is theme-dependent. */}
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-y-0 left-0 w-1/2 bg-linear-to-l from-transparent to-[#FB7185]/30"
+              />
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-linear-to-r from-transparent to-[#22C55E]/35"
+              />
               <div
                 aria-hidden
                 className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-white/70"
@@ -4262,8 +4421,23 @@ function RegisterPageContent() {
               transition={{ delay: prefersReducedMotion ? 0 : 0.4, duration: 0.4 }}
               className="mt-5 w-full rounded-2xl border border-foreground/10 bg-card px-4 py-4 shadow-sm"
             >
+              {/* Message match with the live creatives, 2026-08-24. Three of the
+                  four ads sell a *mechanism* - cortisol, the nervous system,
+                  hormone-driven inflammation - and all four promise an "8-week
+                  reset plan" off a "60-second audit". The screen said
+                  "personalized 8-week plan" and "a few small steps", which is
+                  the same product described in words the ad never used: the
+                  woman who clicked "It's not a lack of discipline" arrives on a
+                  page that never mentions why. So: "reset plan" in the headline,
+                  and the mechanism folded into check 2 rather than added as a
+                  third row - two checks read as a promise, three read as a list
+                  to skim (see the block above; that call still stands).
+
+                  Check 2 still answers "can I actually do this" with "a few
+                  small daily habits"; it now also names the three pillars, which
+                  is what the ad body promised she would get. */}
               <p className="text-base sm:text-lg font-bold text-[#3D3D3D] leading-snug">
-                Your <HighlightSweep>personalized {PLAN_WEEKS}-week plan</HighlightSweep> to
+                Your <HighlightSweep>personalized {PLAN_WEEKS}-week reset plan</HighlightSweep> to
                 feel like yourself again
               </p>
               <ul className="mt-3 flex flex-col gap-2 text-left">
@@ -4276,7 +4450,8 @@ function RegisterPageContent() {
                 <li className="flex items-start gap-2">
                   <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#16A34A]" strokeWidth={3} />
                   <span className="text-sm text-[#5A5A5A] leading-snug">
-                    A few small steps a day, from week 1 to week {PLAN_WEEKS}
+                    A few small daily habits — movement, food, and a wind-down
+                    that lowers cortisol
                   </span>
                 </li>
               </ul>
@@ -4337,7 +4512,7 @@ function RegisterPageContent() {
               <ArrowRight className="w-4 h-4" />
             </button>
             <p className="text-xs text-[#5A5A5A] text-center mt-2 leading-snug">
-              Free quiz · 2 minutes · no email needed
+              Free 2-minute habit audit · no email needed
             </p>
           </div>
         </motion.div>
@@ -5930,7 +6105,7 @@ function RegisterPageContent() {
                 const prevalence = SYMPTOM_PREVALENCE[topSymptom] ?? 70;
                 const symptomLabel = (SYMPTOM_LABELS[topSymptom] || "these symptoms").toLowerCase();
                 const cohort = COHORT_PHRASE[hereFor] ?? "women your age";
-                const chips = topProblems.filter((id) => SYMPTOM_IMAGE[id]).slice(0, 3);
+                const chips = topProblems.filter((id) => SYMPTOM_ICON[id]).slice(0, 3);
                 // Everything these captions name is a count of her own answers
                 // or a lookup keyed off one - nothing is asserted about her.
                 const messages = [
@@ -5945,30 +6120,7 @@ function RegisterPageContent() {
                     onDone={() => markRewardSeen("reward_symptoms")}
                   >
                   <div className="flex-1 flex flex-col justify-center items-center text-center space-y-4">
-                    {/* Illustration springs in over a soft pulsing glow */}
-                    <motion.div
-                      className="relative"
-                      initial={{ scale: 0, rotate: -12, opacity: 0 }}
-                      animate={{ scale: 1, rotate: 0, opacity: 1 }}
-                      transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 220, damping: 13, delay: 0.05 }}
-                    >
-                      {!prefersReducedMotion && (
-                        <motion.div
-                          aria-hidden
-                          className="absolute inset-0 rounded-full bg-primary/30 blur-2xl"
-                          animate={{ scale: [0.9, 1.15, 0.9], opacity: [0.4, 0.7, 0.4] }}
-                          transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-                        />
-                      )}
-                      <Image
-                        src="/illustrations/reward-1.webp"
-                        alt=""
-                        width={320}
-                        height={320}
-                        priority
-                        className="relative w-36 h-36 sm:w-44 sm:h-44 object-contain"
-                      />
-                    </motion.div>
+                    <RewardMedallion icon={Users} />
 
                     <motion.p
                       initial={{ opacity: 0, y: 8 }}
@@ -5994,30 +6146,34 @@ function RegisterPageContent() {
                       </span>
                     </motion.div>
 
+                    {/* Her symptoms, as the app draws them: icon tile, label
+                        under it, tracked. This is the "taste of the app" beat -
+                        the row she is looking at is the row she will tap every
+                        morning, so the reward previews the product instead of
+                        illustrating a feeling. The label is 11px, not the 9px
+                        it was: it names her own answers back to her, to an
+                        audience that mostly cannot resolve 9px grey. */}
                     {chips.length > 0 && (
                       <div className="flex flex-wrap justify-center gap-2">
-                        {chips.map((id, i) => (
-                          <motion.div
-                            key={id}
-                            initial={{ scale: 0, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 16, delay: 0.7 + i * 0.12 }}
-                            className="flex flex-col items-center gap-1 w-16"
-                          >
-                            <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#E8DDD9] shadow-sm">
-                              <Image
-                                src={SYMPTOM_IMAGE[id]}
-                                alt={SYMPTOM_LABELS[id] || id}
-                                width={48}
-                                height={48}
-                                className="w-full h-full object-cover"
-                              />
-                            </div>
-                            <span className="text-[9px] leading-tight text-[#9A9A9A] text-center">
-                              {SYMPTOM_LABELS[id] || id}
-                            </span>
-                          </motion.div>
-                        ))}
+                        {chips.map((id, i) => {
+                          const Icon = SYMPTOM_ICON[id] ?? Sparkles;
+                          return (
+                            <motion.div
+                              key={id}
+                              initial={prefersReducedMotion ? false : { scale: 0, opacity: 0 }}
+                              animate={{ scale: 1, opacity: 1 }}
+                              transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 16, delay: 0.7 + i * 0.12 }}
+                              className="flex flex-col items-center gap-1.5 w-20"
+                            >
+                              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/5 text-primary">
+                                <Icon className="h-6 w-6" strokeWidth={1.75} aria-hidden />
+                              </div>
+                              <span className="text-[11px] leading-tight text-[#5A5A5A] text-center">
+                                {SYMPTOM_LABELS[id] || id}
+                              </span>
+                            </motion.div>
+                          );
+                        })}
                       </div>
                     )}
 
@@ -6056,29 +6212,7 @@ function RegisterPageContent() {
                     ready={!!weekShape}
                   >
                   <div className="flex-1 flex flex-col justify-center items-center text-center space-y-4">
-                    <motion.div
-                      className="relative"
-                      initial={{ scale: 0, rotate: -8, opacity: 0 }}
-                      animate={{ scale: 1, rotate: 0, opacity: 1 }}
-                      transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 220, damping: 13, delay: 0.05 }}
-                    >
-                      {!prefersReducedMotion && (
-                        <motion.div
-                          aria-hidden
-                          className="absolute inset-0 rounded-full bg-primary/30 blur-2xl"
-                          animate={{ scale: [0.9, 1.15, 0.9], opacity: [0.4, 0.7, 0.4] }}
-                          transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-                        />
-                      )}
-                      <Image
-                        src="/illustrations/plan-preview.webp"
-                        alt=""
-                        width={320}
-                        height={320}
-                        priority
-                        className="relative w-28 h-28 sm:w-36 sm:h-36 object-contain"
-                      />
-                    </motion.div>
+                    <RewardMedallion icon={CalendarCheck} />
 
                     <motion.p
                       initial={{ opacity: 0, y: 8 }}
@@ -6107,6 +6241,8 @@ function RegisterPageContent() {
                       </span>
                     </motion.div>
 
+                    {weekShape && <WeekStrip activeDays={weekShape.activeDays} />}
+
                     {(food || windDown) && (
                       <motion.div
                         initial={{ opacity: 0, y: 10 }}
@@ -6114,15 +6250,25 @@ function RegisterPageContent() {
                         transition={{ delay: 0.75, duration: 0.45 }}
                         className="w-full max-w-xs rounded-xl bg-primary/5 border border-primary/20 divide-y divide-primary/15 text-left"
                       >
+                        {/* Iconed rows, same as the app's pillar list. "Wind-down"
+                            is the nervous-system pillar the ads sell as the
+                            cortisol fix, so it is named on the one pre-paywall
+                            screen that shows the plan's actual shape. */}
                         {food && (
-                          <div className="flex items-baseline justify-between gap-3 px-4 py-2.5">
-                            <span className="shrink-0 text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">Food</span>
+                          <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                            <span className="flex shrink-0 items-center gap-1.5 text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">
+                              <Utensils className="h-3.5 w-3.5" aria-hidden />
+                              Food
+                            </span>
                             <span className="text-right text-sm font-semibold text-[#3D3D3D] leading-snug">{food}</span>
                           </div>
                         )}
                         {windDown && (
-                          <div className="flex items-baseline justify-between gap-3 px-4 py-2.5">
-                            <span className="shrink-0 text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">Wind-down</span>
+                          <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                            <span className="flex shrink-0 items-center gap-1.5 text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">
+                              <Wind className="h-3.5 w-3.5" aria-hidden />
+                              Wind-down
+                            </span>
                             <span className="text-right text-sm font-semibold text-[#3D3D3D] leading-snug">{windDown}</span>
                           </div>
                         )}
@@ -6168,29 +6314,12 @@ function RegisterPageContent() {
                     ready={!!exercisePool}
                   >
                   <div className="flex-1 flex flex-col justify-center items-center text-center space-y-4">
-                    <motion.div
-                      className="relative"
-                      initial={{ scale: 0, rotate: 12, opacity: 0 }}
-                      animate={{ scale: 1, rotate: 0, opacity: 1 }}
-                      transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 220, damping: 13, delay: 0.05 }}
-                    >
-                      {!prefersReducedMotion && (
-                        <motion.div
-                          aria-hidden
-                          className="absolute inset-0 rounded-full bg-primary/30 blur-2xl"
-                          animate={{ scale: [0.9, 1.15, 0.9], opacity: [0.4, 0.7, 0.4] }}
-                          transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-                        />
-                      )}
-                      <Image
-                        src="/illustrations/reward-2.webp"
-                        alt=""
-                        width={320}
-                        height={320}
-                        priority
-                        className="relative w-36 h-36 sm:w-44 sm:h-44 object-contain"
-                      />
-                    </motion.div>
+                    {/* Shield when her limitations removed something (the screen
+                        is about what was kept away from her), dumbbell when
+                        nothing was removed and the number is the pool she got.
+                        Green on the shield: it is the plan protecting her, which
+                        is the funnel's green, not its pink. */}
+                    <RewardMedallion icon={filtered ? ShieldCheck : Dumbbell} tone={filtered ? "green" : "primary"} />
 
                     <motion.p
                       initial={{ opacity: 0, y: 8 }}
