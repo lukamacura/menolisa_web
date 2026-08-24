@@ -648,23 +648,38 @@ const STEP_IMAGES: Partial<Record<Step, string[]>> = {
   q8_name: [`/quiz/${QUIZ_ILLUSTRATION.q8_name}`],
 };
 
-// Screenshots of the plan itself. `day` is the hero and is treated differently
-// from every other shot on the page: full width, no tilt, no crop, no fade. It
-// is the only image in the funnel that has to be *read* rather than glanced at -
-// it carries "Day 1 · Week 1", the phase name, and all four pillars with real
-// progress on them, which is the entire offer in one frame. The supporting three
-// are allowed to be decorative because they only have to prove the app is real.
+// Screenshots of the plan itself. Every one of these has to be *read* rather
+// than glanced at - they all run at hero size through one bezel, so none of them
+// is decoration. `day` still leads: it carries "Day 1 · Week 1", the phase name,
+// and all four pillars with real progress on them, which is the entire offer in
+// one frame. The rest each answer one question that frame raises.
 const PLAN_SHOTS = {
   day: "/screenshots/screen1.webp",
+  movement: "/screenshots/movement.webp",
   nutrition: "/screenshots/screen2.webp",
   habits: "/screenshots/screen3.webp",
+  progress: "/screenshots/progress.webp",
   rewards: "/screenshots/screen4.webp",
 };
 
+// Three masters in /screenshots are deliberately not in the list above, so that
+// staying out stays a decision rather than an oversight:
+//
+// - `achievement.webp` - the "Achievement unlocked" modal, confetti and all. The
+//   best-looking frame in the set and the one argument already made: it says
+//   "you get rewarded for showing up", which is `rewards` with a party over it.
+//   A seventh slide costs three more seconds of a loop she is unlikely to finish
+//   as it is, and it would be spent restating slide six.
+// - `day-week2.webp` / `nutrition-empty.webp` - newer captures of the two
+//   screens `screen1` / `screen2` already cover, both caught with the day's
+//   tasks untouched (0/4, 0/10, 0/1). They are the same screens showing nothing
+//   done, and this carousel is proof that the plan runs. `screen1` also happens
+//   to read "Day 1 - Week 1", which is what the caption under it claims.
+
 // SHOT_W / SHOT_H (the intrinsic size of the /screenshots masters) live in
 // components/PhoneShots.tsx alongside <PhoneShot /> and <ShotStage />, which the
-// paywall still uses - this screen shows all four shots at hero size now, so it
-// no longer renders either.
+// paywall still uses - this screen shows every shot at hero size now, so it no
+// longer renders either.
 
 // The hero's `sizes`, hoisted out of <PlanHeroCarousel /> because the preloader
 // below has to pass the *identical* string. A preload that declares a different
@@ -674,19 +689,32 @@ const PLAN_SHOTS = {
 const PLAN_HERO_SIZES = "(max-width: 480px) 56vw, 208px";
 
 // The screens <PlanHeroCarousel /> walks through, in the order she needs them:
-// the day she gets, then the three surfaces that run it. All four are shown at
-// hero size inside one static bezel - see the component for why they are no
-// longer a hero plus a tilted trio.
+// the day she gets, then the surfaces that run it. All are shown at hero size
+// inside one static bezel - see the component for why they are no longer a hero
+// plus a tilted trio.
 //
-// Order is the argument, so it is worth stating: `day` first because it is the
-// only frame that contains the whole offer, and `rewards` last because it is the
-// one that answers "but will I keep doing it" - the objection she arrives at
-// after she has believed the other three.
+// Order is the argument, so it is worth stating. It runs outward from one day to
+// eight weeks, and each slide answers the objection the one before it raises:
+//
+//   day       the whole offer in one frame - four pillars, real progress
+//   movement  "what is a session, actually?" - three moves, about five minutes,
+//             which is the answer to the fear that this needs a gym and an hour
+//   nutrition "so what do I eat?" - a list, with a reason on every row
+//   habits    "and the rest of my life?" - one small thing, her pick
+//   progress  "where does this go?" - the eight weeks the headline promises,
+//             drawn, with the three pillars tracked separately
+//   rewards   "but will I keep doing it?" - the objection she only arrives at
+//             once she has believed all of the above, which is why it is last
 const PLAN_HERO_SLIDES: ReadonlyArray<{ src: string; caption: string; alt: string }> = [
   {
     src: PLAN_SHOTS.day,
     caption: "Day 1, already built",
     alt: `Day 1 of your personalized ${PLAN_WEEKS}-week plan in the MenoLisa app, showing movement, nutrition, relaxation and habit tasks`,
+  },
+  {
+    src: PLAN_SHOTS.movement,
+    caption: "Five minutes, not an hour",
+    alt: "A movement session in the MenoLisa app: three exercises, about five minutes, with a start button",
   },
   {
     src: PLAN_SHOTS.nutrition,
@@ -697,6 +725,11 @@ const PLAN_HERO_SLIDES: ReadonlyArray<{ src: string; caption: string; alt: strin
     src: PLAN_SHOTS.habits,
     caption: "One small habit at a time",
     alt: "Your habits in the MenoLisa app, with suggestions you can add",
+  },
+  {
+    src: PLAN_SHOTS.progress,
+    caption: `All ${PLAN_WEEKS} weeks, tracked`,
+    alt: `Progress across all ${PLAN_WEEKS} weeks in the MenoLisa app, with movement, nutrition and relaxation tracked separately`,
   },
   {
     src: PLAN_SHOTS.rewards,
@@ -2345,16 +2378,16 @@ const HERO_SWIPE_PX = 40;
 
 /**
  * The hero: her actual app, at a size where it can be read, walking through the
- * four screens that make up the plan.
+ * screens that make up the plan.
  *
- * It used to be one still (`day`) with the other three shots repeated 300px
+ * It used to be one still (`day`) with three more shots repeated 300px
  * below as a tilted, cropped, faded-out trio - the treatment that is right for
  * evidence which only has to prove the app exists. That split spent the screen's
  * best real estate on one frame and then showed the remaining three at ~30%
  * width behind a gradient, where the thing they each contain (a checklist with
  * reasons, a habit she picks, a streak she keeps) is unreadable. Same three
  * images, twice, and neither instance legible. They are one element now: one
- * phone, four screens.
+ * phone, every screen.
  *
  * Design rules this has to keep, all of them earned:
  *
@@ -2486,9 +2519,9 @@ function PlanHeroCarousel({ slides }: { slides: ReadonlyArray<{ src: string; cap
                 sizes={PLAN_HERO_SIZES}
                 className="w-full h-auto"
                 draggable={false}
-                // Only the first screen is a page-load priority: the other three
-                // are already warm from the loader's preload, and marking four
-                // tall images high-priority just makes them compete.
+                // Only the first screen is a page-load priority: the rest are
+                // already warm from the loader's preload, and marking every tall
+                // image high-priority just makes them compete.
                 priority={index === 0}
                 // Synchronous decode: the bitmap is already warm (preloaded and
                 // decoded back on the calculating loader), so blocking the paint
@@ -4774,10 +4807,12 @@ function RegisterPageContent() {
                 movement demoted to the subline where a proof point belongs.
 
                 The screenshots are also no longer decoration, and no longer
-                split. All four run through one static bezel as
+                split. They all run through one static bezel as
                 <PlanHeroCarousel />: `day` first, because "Day 1 · Week 1" plus
                 four pillars with real progress is the whole offer in one frame,
-                then the three surfaces that run it. They used to be a hero plus
+                then the surfaces that run it - a session, the food list, a
+                habit, the eight weeks, the streak. See PLAN_HERO_SLIDES for why
+                that order, and which masters are deliberately left out of it. They used to be a hero plus
                 a tilted, cropped, faded trio of the same three shots 300px
                 lower, where nothing in them could be read - see the component
                 for why one legible phone beats one legible phone and three

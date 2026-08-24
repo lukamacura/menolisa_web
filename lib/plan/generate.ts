@@ -1192,6 +1192,23 @@ function wantsBookends(task: PlanTask): boolean {
 }
 
 /**
+ * An empty phase is an absent phase.
+ *
+ * `hydrateList` drops ids the catalog does not hold, so a bookend can hydrate to
+ * nothing at all — which is exactly what happens today: the mobility family the
+ * defaults are built from (`M01`-`M04`) is commented out of the catalog, so both
+ * generic bookends currently resolve to zero exercises.
+ *
+ * The contract the app is built against says draw no section when the field is
+ * absent, and `[]` is not absent — it is a warm-up heading with nothing under
+ * it. Collapse the empty case here so a thin catalog degrades to "no warm-up"
+ * rather than to an empty one.
+ */
+function orAbsent<T>(list: T[] | undefined) {
+  return list?.length ? list : undefined;
+}
+
+/**
  * The session's warm-up: hers if the plan wrote one, the generic one otherwise.
  *
  * Resolved at read time rather than stamped into the stored plan on purpose.
@@ -1200,14 +1217,16 @@ function wantsBookends(task: PlanTask): boolean {
  * should her stored plan be rewritten underneath her to give her one.
  */
 export function sessionWarmup(task: PlanTask, includeMedia = false) {
-  if (task.warmup?.length) return hydrateList(task.warmup, includeMedia);
-  return wantsBookends(task) ? hydrateList(DEFAULT_WARMUP, includeMedia) : undefined;
+  if (task.warmup?.length) return orAbsent(hydrateList(task.warmup, includeMedia));
+  if (!wantsBookends(task)) return undefined;
+  return orAbsent(hydrateList(DEFAULT_WARMUP, includeMedia));
 }
 
 /** The session's cool-down, on the same terms as `sessionWarmup`. */
 export function sessionCooldown(task: PlanTask, includeMedia = false) {
-  if (task.cooldown?.length) return hydrateList(task.cooldown, includeMedia);
-  return wantsBookends(task) ? hydrateList(DEFAULT_COOLDOWN, includeMedia) : undefined;
+  if (task.cooldown?.length) return orAbsent(hydrateList(task.cooldown, includeMedia));
+  if (!wantsBookends(task)) return undefined;
+  return orAbsent(hydrateList(DEFAULT_COOLDOWN, includeMedia));
 }
 
 /** Attaches the breathing pattern (or practice length) to a relaxation task. */
