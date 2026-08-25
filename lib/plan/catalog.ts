@@ -500,7 +500,10 @@ const MEDIA_BASE =
  */
 const MEDIA_READY = new Set<string>([
   "L01",
+  "L02",
+  "L03",
   "M02",
+  "P01",
 ]);
 
 export type ExerciseMedia = { video: string; poster: string };
