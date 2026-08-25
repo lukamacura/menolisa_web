@@ -537,9 +537,15 @@ request time:
 
 Resolved at read time rather than stamped into stored plans, so every plan
 already in the database has bookends today with no migration and no rewrite
-underneath a woman mid-cycle. Nothing writes the stored `warmup` / `cooldown`
-yet — the plan-building LLM has not been taught to. When it is, step 1 takes
-over silently.
+underneath a woman mid-cycle.
+
+**Since 2026-08-25 the plan-building LLM writes them** (step 1), so a new plan
+carries a warm-up chosen for what that session actually loads rather than the
+same three moves for everyone. It picks ids only — 2-4 per bookend, from the
+`W` family, filtered by her `q_limitations` answers — and the dose comes off the
+catalog, because a warm-up is not progressed across the eight weeks. Plans
+generated before that date still resolve through step 2, which is why both paths
+stay. Nothing about the response shape changed.
 
 **What the app should do:** build the session as warm-up → work → cool-down, and
 never read the three arrays separately. Phase is not a label on a card; it

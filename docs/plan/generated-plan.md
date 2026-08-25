@@ -355,8 +355,8 @@ ten written for her.
 The raw row is ids and keys. The endpoint is the same plan **hydrated and
 scored**, and it is the only thing that knows what today looks like:
 
-- exercise `name` and `props` joined from the catalog, plus `video`/`poster`
-  when the app sends `?media=1`
+- exercise `name` and `props` joined from the catalog, plus a `video` URL
+  when the app sends `?media=1` (there are no poster images — video only)
 - the breathing `phases`, `rounds`, `cycleSeconds` and `breathsPerMinute` for a
   relaxation task
 - `currentWeek`, and per-week `state` — `past` \| `current` \| `locked`. A

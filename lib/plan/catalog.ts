@@ -47,9 +47,11 @@ export type Exercise = {
   seconds?: number;
 };
 
-// Source: docs/plan/exercises.md — all 42 exercises.
+// Source: docs/plan/exercises.md — 41 prescribable exercises, plus the 14
+// warm-up / cool-down movements at the bottom of the table.
 //
-// The list narrowed from 59 to these 42 on 2026-08-24, and it is not a subset:
+// The list narrowed from 59 to 42 on 2026-08-24 — 41 since 2026-08-25, when U06
+// turned out to be a mobility flow and moved to WARMUPS. It is not a subset:
 // cardio (`K`), balance (`B`) and mobility (`M`) left the plan entirely, and a
 // number of `L`/`U`/`C`/`I` ids were REUSED for different movements. Everything
 // that went is preserved, commented out, in RETIRED below — nothing was deleted,
@@ -76,13 +78,12 @@ const E: [string, string, string, 1 | 2 | 3, Impact, boolean][] = [
   ["P01", "Glute bridge", "Mat", 1, "none", true],
   ["P02", "Glute bridge, weighted", "Mat, 1 dumbbell", 2, "none", false],
   ["P03", "Romanian deadlift", "2 dumbbells", 2, "none", false],
-  // Upper body — push (6)
+  // Upper body — push (5)
   ["U01", "Wall push-up", "Wall", 1, "none", true],
   ["U02", "Counter push-up", "Kitchen counter", 1, "none", true],
   ["U03", "Incline push-up", "Sturdy table or bench", 2, "none", true],
   ["U04", "Floor push-up", "Mat", 3, "none", false],
   ["U05", "Dumbbell floor press", "2 dumbbells, floor", 2, "none", false],
-  ["U06", "Bodyweight triceps extension", "Mat", 2, "none", true],
   // Upper body — press & pull (6)
   ["U07", "Seated overhead press", "2 dumbbells, chair", 2, "none", false],
   ["U08", "Standing overhead press", "2 dumbbells", 2, "none", false],
@@ -110,8 +111,35 @@ const E: [string, string, string, 1 | 2 | 3, Impact, boolean][] = [
   ["I03", "Low hop", "None", 2, "high", true],
   ["I04", "Plyometric skip", "None", 3, "high", false],
   ["I05", "Pogo jump", "None", 2, "high", true],
-  ["I06", "Lateral step-and-stick", "None", 2, "high", true],
+  ["I06", "Forward fall landing", "None", 2, "high", true],
   ["I07", "Low step-off landing", "Bottom stair or low step", 3, "high", false],
+  // Warm-up & cool-down (14)
+  //
+  // Ordinary catalog rows, so `getExercise()` resolves them and a bookend
+  // hydrates into a name, a dose and a clip exactly like a squat does. What
+  // keeps them out of the main work is the `W` prefix, which
+  // `allowedExercises()` drops — see `isWarmupId`. That is the whole mechanism:
+  // one table, one lookup, one prefix rule.
+  //
+  // W11 is deliberately absent — the Y-T-W shoulder warm-up is U11, one clip
+  // with one id rather than two files of the same footage that can drift apart.
+  ["W01", "Leg swings, linear & lateral", "Wall or counter", 1, "none", false],
+  ["W02", "Hip circles", "None", 1, "none", false],
+  ["W03", "Spider-Man lunge with rotation", "Mat", 1, "none", false],
+  ["W04", "Half-kneeling hip flexor rockback", "Mat", 1, "none", false],
+  ["W05", "Deep squat with reach", "None", 1, "none", false],
+  ["W06", "Open book cross", "Mat", 1, "none", false],
+  ["W07", "Hamstring rocker", "Mat", 1, "none", false],
+  ["W08", "Cross-arm abduction", "None", 1, "none", false],
+  ["W09", "Shoulder mobility", "None", 1, "none", false],
+  ["W10", "PVC around the world", "Broomstick or PVC pipe", 1, "none", false],
+  ["W12", "World's greatest stretch", "Mat", 1, "none", false],
+  ["W13", "Lateral hamstring rocker", "Mat", 1, "none", false],
+  ["W14", "Calf raise", "None", 1, "none", false],
+  // Filmed as a push-up variation ("U06") and re-filed here on 2026-08-25: she
+  // flows through the positions and never presses, so it is mobility, not a
+  // set. The clip in the bucket was renamed U06.mp4 -> W15.mp4 to match.
+  ["W15", "Yoga flow", "Mat", 1, "none", false],
 ];
 
 /**
@@ -211,6 +239,22 @@ const DOSE: Record<string, [DoseUnit, boolean, number?]> = {
   L07: ["timed", true],
   L09: ["timed", true],
   L10: ["timed", true],
+  // Warm-ups. Uniform on purpose — a warm-up is not progressed across the eight
+  // weeks; it is the same two minutes in week 8 as in week 1.
+  W01: ["timed", true, 40],
+  W03: ["timed", true, 40],
+  W04: ["timed", true, 40],
+  W06: ["timed", true, 40],
+  W07: ["timed", true, 40],
+  W12: ["timed", true, 40],
+  W13: ["timed", true, 40],
+  W02: ["timed", false, 40],
+  W05: ["timed", false, 40],
+  W08: ["timed", false, 40],
+  W09: ["timed", false, 40],
+  W10: ["timed", false, 40],
+  W14: ["timed", false, 40],
+  W15: ["timed", false, 90],
   // No `duration` id is currently in the catalog — cardio and the mobility flow
   // are both retired. The unit and everything that runs it stay wired; see the
   // RETIRED block above.
@@ -239,6 +283,15 @@ export function isCardioId(id: string) {
 /** Mobility work. Short, unloaded, and it does not want a minute of rest after it. */
 const isMobilityId = (id: string) => id.startsWith("M");
 
+/**
+ * Warm-up and cool-down movements.
+ *
+ * They are in the catalog so the app can draw them, and out of the prescribable
+ * pool so the generator cannot spend a strength slot on a hip circle. `W` is the
+ * marker, and `allowedExercises()` is the only place it gates anything.
+ */
+export const isWarmupId = (id: string) => id.startsWith("W");
+
 // ─── Warm-up and cool-down ──────────────────────────────────────────────────
 
 /** An exercise reference exactly as a plan stores one. */
@@ -264,9 +317,9 @@ export type StoredExercise = {
  * these stop being read (see `sessionWarmup`).
  */
 export const DEFAULT_WARMUP: readonly StoredExercise[] = [
-  { id: "M02", sets: 1, seconds: 40 },
-  { id: "M04", sets: 1, seconds: 40 },
-  { id: "M03", sets: 1, seconds: 40 },
+  { id: "W02", sets: 1, seconds: 40 },
+  { id: "W01", sets: 1, seconds: 40 },
+  { id: "W06", sets: 1, seconds: 40 },
 ];
 
 /**
@@ -282,8 +335,8 @@ export const DEFAULT_WARMUP: readonly StoredExercise[] = [
  * just keep moving until the clock stops.
  */
 export const DEFAULT_COOLDOWN: readonly StoredExercise[] = [
-  { id: "M01", minutes: 2 },
-  { id: "M02", sets: 1, seconds: 60 },
+  { id: "W15", sets: 1, seconds: 90 },
+  { id: "W09", sets: 1, seconds: 60 },
 ];
 
 // ─── Dose, rest and session length ──────────────────────────────────────────
@@ -303,7 +356,7 @@ const REST_BY_UNIT: Record<DoseUnit, [number, number, number]> = {
 };
 
 export function restSeconds(exercise: Exercise): number {
-  if (isMobilityId(exercise.id)) return 15;
+  if (isMobilityId(exercise.id) || isWarmupId(exercise.id)) return 15;
   return REST_BY_UNIT[exercise.dose][exercise.level - 1];
 }
 
@@ -460,14 +513,22 @@ export function cardioMinutes(sessionMinutes: number, exerciseCount: number): nu
 // ─── Exercise video ─────────────────────────────────────────────────────────
 
 /**
- * Clips are NOT bundled with the Expo app. 42 of them would add tens of MB to
- * every binary and force an App Store release to re-cut a single one. They live
- * in a public Supabase Storage bucket behind its CDN, named after the exercise
+ * Clips are NOT bundled with the Expo app. Fifty-odd of them would add tens of
+ * MB to every binary and force an App Store release to re-cut a single one.
+ * They live in a public Supabase Storage bucket behind its CDN, named after the
  * id, and the app caches each one on first play.
  *
- * Bucket layout (`exercise-clips`, public read):
+ * Bucket layout (`exercise-clips`, public read) — one flat namespace, so a
+ * warm-up clip is uploaded exactly like an exercise one:
  *   L01.mp4   H.264, no audio track, 6-10s silent loop, 9:16 1080×1920, ≤800KB
- *   L01.webp  poster frame, 9:16 1080×1920, ≤60KB
+ *   W01.mp4   same spec, warm-up
+ *
+ * **There are no poster images.** The shoot produced video only, so the app
+ * shows the clip's own first frame rather than a separate `.webp` — a poster
+ * that 404s is a broken image box where the movement should be, which is worse
+ * than the quarter-second of blank the first frame costs. If posters are ever
+ * cut, they come back as a field on `ExerciseMedia` and a second gate; do not
+ * assume `<id>.webp` exists because `<id>.mp4` does.
  *
  * **9:16, and frame the movement inside the central 76% of width.** The mobile
  * session runner is a full-bleed stage — the clip is the whole screen — so it
@@ -478,8 +539,12 @@ export function cardioMinutes(sessionMinutes: number, exerciseCount: number): nu
  * full lunge stride) and 5% clear top and bottom.
  *
  * It was 4:5 until 2026-08-23. A 4:5 clip covering a modern phone loses 42% of
- * its width — on a lateral raise that is both arms. `L01` below was cut to the
- * old spec and needs re-exporting from its master before any more are shot.
+ * its width — on a lateral raise that is both arms. The 2026-08-25 batch is
+ * correctly 9:16 but was exported at **607×1080**, not 1080×1920: the aspect is
+ * right and nothing is cropped, but a 607-wide frame is upscaled on every phone
+ * it plays on. They are 30-215KB against an 800KB budget, so the resolution was
+ * given away for nothing — re-export from the masters at 1080×1920 when there is
+ * a reason to touch them, and shoot the remaining ids at full size.
  *
  * Only the API builds these URLs. If the bucket ever moves to another CDN, this
  * constant is the only thing that changes — no client ships a hardcoded path.
@@ -490,27 +555,33 @@ const MEDIA_BASE =
 
 /**
  * Which clips have actually been **uploaded to the bucket**, not which ones are
- * planned. All 42 are being filmed; an id lands here when its `.mp4` and
- * `.webp` are actually in `exercise-clips`.
+ * planned. An id lands here when its `.mp4` is actually in `exercise-clips`.
  *
  * The gate stays because the mobile app is live: an id listed here with nothing
  * behind it is a 404 in her player mid-session, while an id left out falls back
- * to name + props and looks deliberate. When the whole shoot is uploaded, this
- * whole set becomes `EXERCISES.map((e) => e.id)` and the gate can go.
+ * to name + props and looks deliberate.
+ *
+ * Holds both catalog ids and `W` warm-up ids — one bucket, one gate, so a
+ * warm-up clip is added the same way an exercise one is.
  */
 const MEDIA_READY = new Set<string>([
-  "L01",
-  "L02",
-  "L03",
-  "M02",
-  "P01",
+  // Exercises (28 of 41)
+  "L01", "L02", "L03", "L05", "L07", "L08", "L09", "L11", "L12", "L13",
+  "P01", "P02", "P03",
+  "U01", "U03", "U05", "U07", "U08", "U09", "U10", "U11", "U12",
+  "C01", "C02", "C03", "C06",
+  "I01", "I05",
+  // Warm-ups (12 of 14; U11 above serves both)
+  "W01", "W02", "W05", "W06", "W07", "W08", "W09", "W10", "W12", "W13", "W14",
+  "W15",
 ]);
 
-export type ExerciseMedia = { video: string; poster: string };
+export type ExerciseMedia = { video: string };
 
+/** The clip for any id in the bucket — catalog exercise or warm-up. */
 export function exerciseMedia(id: string): ExerciseMedia | undefined {
   if (!MEDIA_READY.has(id) || !MEDIA_BASE) return undefined;
-  return { video: `${MEDIA_BASE}/${id}.mp4`, poster: `${MEDIA_BASE}/${id}.webp` };
+  return { video: `${MEDIA_BASE}/${id}.mp4` };
 }
 
 /**
@@ -537,19 +608,19 @@ const LIMITATION_EXCLUDES: Record<string, { impact: boolean; ids: string[] }> = 
   // with her back on the floor.
   back: {
     impact: true,
-    ids: ["L07", "L13", "P03", "U09", "C03"],
+    ids: ["L07", "L13", "P03", "U09", "C03", "W03", "W12"],
   },
   // Lunges, split positions, step-ups and long loaded knee flexion. L01, L02,
   // L11 and L12 stay — sitting to a chair is the knee-friendly pattern and
   // dropping it would leave her no lower-body strength work at all.
   knee: {
     impact: true,
-    ids: ["L04", "L05", "L06", "L07", "L09", "L10", "C01"],
+    ids: ["L04", "L05", "L06", "L07", "L09", "L10", "C01", "W03", "W05", "W12"],
   },
   // Deep hip flexion under load and the wide-stance loaded hinge.
   hip: {
     impact: true,
-    ids: ["L06", "L07", "L09", "L10", "L13"],
+    ids: ["L06", "L07", "L09", "L10", "L13", "W03", "W05", "W12"],
   },
   // Overhead, abduction and pressing from the floor. No impact rule — a sore
   // shoulder is not a reason to drop bone loading. U01-U03 stay (that graded
@@ -557,7 +628,7 @@ const LIMITATION_EXCLUDES: Record<string, { impact: boolean; ids: string[] }> = 
   // U10 and U11, which are what a sore shoulder usually needs more of.
   shoulder: {
     impact: false,
-    ids: ["U04", "U05", "U06", "U07", "U08", "U12"],
+    ids: ["U04", "U05", "U07", "U08", "U12", "W10", "W15"],
   },
   // Anything that spikes intra-abdominal pressure: the heavy carry, the front
   // plank, and the loaded hinges, alongside the jumping. C05 side plank, C06
@@ -565,7 +636,7 @@ const LIMITATION_EXCLUDES: Record<string, { impact: boolean; ids: string[] }> = 
   // that is routinely prescribed *for* this, at a fraction of the pressure.
   pelvic_floor: {
     impact: true,
-    ids: ["C03", "C04", "L13", "P03"],
+    ids: ["C03", "C04", "L13", "P03", "W05", "W15"],
   },
   // Anything she could fall from or during — the single-leg stances. The
   // *supported* reverse lunge (L06) stays: a hand on the counter is the training
@@ -576,7 +647,7 @@ const LIMITATION_EXCLUDES: Record<string, { impact: boolean; ids: string[] }> = 
   // what remains is exclusion only — worth remembering if `B` ever comes back.
   balance: {
     impact: true,
-    ids: ["L07", "L09", "L10"],
+    ids: ["L07", "L09", "L10", "W12"],
   },
 };
 
@@ -613,12 +684,35 @@ export function allowedExercises(
   const noImpact = rules.some((r) => r.impact);
 
   return EXERCISES.filter((e) => {
+    // Bookends are drawable, never prescribable as the main work.
+    if (isWarmupId(e.id)) return false;
     if (snacksOnly ? !e.snack : e.level > maxLevel) return false;
     if (topProblems.includes("joint_pain") && e.impact === "high") return false;
     if (noImpact && e.impact === "high") return false;
     if (excludedIds.has(e.id)) return false;
     return true;
   });
+}
+
+/**
+ * The warm-up / cool-down movements this user may be given.
+ *
+ * The mirror of `allowedExercises()` and deliberately built from the same
+ * `LIMITATION_EXCLUDES` lists: a knee that rules out a lunge in the session
+ * rules out the lunge she does to warm up for it. What it does NOT apply is
+ * fitness level or the snack rule — a bookend is level 1 by construction, and
+ * two minutes of hip circles is not something an advanced user graduates past.
+ *
+ * A woman ticking all six limitations keeps 9 of the 14, with hips, spine,
+ * shoulders and calves all still represented. Re-check that when adding a
+ * limitation: a starved bookend pool sends the model back to the same three
+ * moves every week, which is the generic warm-up it is replacing.
+ */
+export function allowedWarmups(physicalLimits: string[] = []): Exercise[] {
+  const excluded = new Set(
+    physicalLimits.flatMap((l) => LIMITATION_EXCLUDES[l]?.ids ?? [])
+  );
+  return EXERCISES.filter((e) => isWarmupId(e.id) && !excluded.has(e.id));
 }
 
 /** Her limitations as a readable list, for the plan prompt. Null when none apply. */

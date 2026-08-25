@@ -63,7 +63,7 @@
 | **U05** | Upper Body — Push | Dumbbell Floor Press | Dumbbells + Floor/Mat
 
  |
-| **U06** | Upper Body — Push | Bodyweight Triceps Extension | Bodyweight / Mat
+| ~~**U06**~~ | — | Yoga flow (no press) | Moved to WARMUPS as **W15** on 2026-08-25 — it is a mobility flow, not a push
 
  |
 | **U07** | Upper Body — Press & Pull | Seated Overhead Shoulder Press | Dumbbells + Standard Chair
@@ -120,7 +120,7 @@
 | **I05** | Impact & Bone-Loading | Pogo Jumps | Bodyweight (Moderate Impact)
 
  |
-| **I06** | Impact & Bone-Loading | Lateral Step-and-Stick / Low Lateral Hop | Bodyweight (Moderate Impact)
+| **I06** | Impact & Bone-Loading | Forward Fall Landing (stand, fall forward, land on both feet) | Bodyweight (Moderate Impact)
 
  |
 | **I07** | Impact & Bone-Loading | Low Step-Off Landing Drill | Bottom Stair / Low Step (Moderate Impact)

@@ -7,6 +7,8 @@ import type { Adherence } from "@/lib/plan/cycles";
 import {
   DEFAULT_COOLDOWN,
   DEFAULT_WARMUP,
+  EXERCISES,
+  allowedWarmups,
   MOVEMENT_VOLUME,
   NUTRITION,
   RELAXATION,
@@ -19,6 +21,7 @@ import {
   isCardioId,
   isNutritionId,
   isRelaxationId,
+  isWarmupId,
   limitationLine,
   relaxationDetail,
   relaxationForSymptom,
@@ -185,6 +188,13 @@ const TaskSchema = z.object({
     )
     .max(8)
     .nullish(),
+  // Bookends carry ids only. The model chooses WHICH movement warms her up; it
+  // does not get to dose it, because a warm-up is not progressed across the
+  // eight weeks — it is the same two minutes in week 8 as in week 1. The dose
+  // comes off the catalog in sanitize(), which deletes a whole class of error
+  // (a 90-second "hip circle" set) at the cost of nothing anyone wanted.
+  warmup: z.array(z.string()).max(6).nullish(),
+  cooldown: z.array(z.string()).max(6).nullish(),
 });
 
 const ResistSchema = z.object({
@@ -234,8 +244,18 @@ const PlanSchema = z.object({
  *  - bounds keywords (minItems, maximum, …) are not supported here, so the
  *    counts and lengths stay in PlanSchema, which clamps rather than rejects.
  */
-function planJsonSchema(pool: Exercise[]) {
+function planJsonSchema(pool: Exercise[], warmupPool: Exercise[]) {
   const nullableInt = { type: ["integer", "null"] };
+  // An empty `enum` is not valid JSON Schema, and OpenAI rejects the whole
+  // request over it — which would cost the entire personalized plan because one
+  // future limitation happened to exclude every bookend. So the enum falls back
+  // to the full family; `bookendFrom()` filters against her real pool anyway, so
+  // the safety gate is unmoved and the worst case is a dropped id.
+  const bookendIds = warmupPool.length ? warmupPool : EXERCISES.filter((e) => isWarmupId(e.id));
+  const bookend = {
+    type: ["array", "null"],
+    items: { type: "string", enum: bookendIds.map((e) => e.id) },
+  };
 
   return {
     type: "object",
@@ -261,7 +281,7 @@ function planJsonSchema(pool: Exercise[]) {
               items: {
                 type: "object",
                 additionalProperties: false,
-                required: ["pillar", "title", "why", "cadence", "target", "item_id", "exercises"],
+                required: ["pillar", "title", "why", "cadence", "target", "item_id", "exercises", "warmup", "cooldown"],
                 properties: {
                   pillar: { type: "string", enum: ["movement", "relaxation", "habit"] },
                   title: { type: "string" },
@@ -293,6 +313,8 @@ function planJsonSchema(pool: Exercise[]) {
                       },
                     },
                   },
+                  warmup: bookend,
+                  cooldown: bookend,
                 },
               },
             },
@@ -380,7 +402,8 @@ function adherenceBlock(a: Adherence | null): string[] {
 export function buildPrompt(
   profile: Profile,
   pool: Exercise[],
-  adherence: Adherence | null = null
+  adherence: Adherence | null = null,
+  warmupPool: Exercise[] = []
 ): string {
   const vol = MOVEMENT_VOLUME[profile.fitness_level ?? "beginner"] ?? MOVEMENT_VOLUME.beginner;
   const movement = vol.perDay
@@ -413,6 +436,14 @@ export function buildPrompt(
     ...adherenceBlock(adherence),
     `MOVEMENT — pick only these exercise ids, and give ${movement}:`,
     pool.map((e) => `${e.id} ${e.name}`).join(" | "),
+    ``,
+    ...(warmupPool.length && !vol.perDay
+      ? [
+          ``,
+          `WARM-UP / COOL-DOWN — pick only these ids, and send them as plain id strings (no sets, no seconds — the app doses them):`,
+          warmupPool.map((e) => `${e.id} ${e.name}`).join(" | "),
+        ]
+      : []),
     ``,
     `RELAXATION — pick only these item_ids, and use their label as the title:`,
     RELAXATION.map((r) => `${r.id} = ${r.label} (${r.use})`).join(" | "),
@@ -448,6 +479,14 @@ export function buildPrompt(
     `- Never write a habit or movement task that repeats a nutrition row — no walks after meals, no water, no protein, no meal timing. She already ticks those every day; put the id in nutrition_focus instead.`,
     `- Relaxation tasks need item_id and cadence "daily" (or "per_day" with a target). Match the item to her worst symptom: hot flashes get breath_hotflash, night waking gets breath_sleep, anxiety or palpitations get breath_sigh.`,
     `- Movement tasks need an exercises array of ${minEx}-${maxEx} DIFFERENT ids — a session, not one move. Fewer than ${minEx} is a failed week.`,
+    ...(warmupPool.length && !vol.perDay
+      ? [
+          `- Every movement task also gets "warmup" (${BOOKEND_MIN}-${BOOKEND_MAX} ids) and "cooldown" (${BOOKEND_MIN}-${BOOKEND_MAX} ids), chosen for what that session actually does: warm the joints it is about to load. A squat session opens the hips and ankles; a pressing session opens the shoulders and mid-back.`,
+          `- An id may not appear in both "warmup" and "cooldown" in the same session, and neither may repeat an id from "exercises".`,
+          `- The cool-down is the slower end of the same list — the held, floor-based ones. Never put a swinging or springy movement in a cool-down.`,
+          `- These are the only two arrays of bare strings in the plan. Send them as ["W02","W01"], never as objects.`,
+        ]
+      : []),
     ``,
     `DOSE — every exercise is measured in TIME. There are no repetitions anywhere in this plan: she works for the seconds you prescribe and the app counts them down. Never write a rep count in a title or a "why". Every exercise gets one of these two shapes, with null for the fields that don't apply:`,
     // Not simply "ids starting with K": M01 is a continuous flow, so it is
@@ -496,7 +535,7 @@ export function buildPrompt(
     `- Add difficulty gradually. Never introduce more than one new thing per week.`,
     `- "why" is one short sentence to her, in second person, tied to her symptoms. No medical claims, no dosages.`,
     `- Never write "can help", "helps with", "supports", "improves", "boosts", "promotes", "is important", "is essential", "overall health" or "overall well-being" in any "why". Those say nothing. Name what actually happens instead.`,
-    `- Every task carries every field. Send "item_id": null on movement and habit tasks, and "exercises": null on anything that is not movement. Inside an exercise, send null for every dose field its shape does not use, per DOSE above.`,
+    `- Every task carries every field. Send "item_id": null on movement and habit tasks, and "exercises": null, "warmup": null and "cooldown": null on anything that is not movement. Inside an exercise, send null for every dose field its shape does not use, per DOSE above.`,
     ``,
     `RESIST — separately, write 4 "resist_suggestions": specific temptations SHE`,
     `is likely to face given her symptoms, each one she gets credit for resisting`,
@@ -507,7 +546,7 @@ export function buildPrompt(
     `quitting a medication or HRT. "why" is one warm sentence, no shame, and the`,
     `banned phrases above apply to it too.`,
     ``,
-    `Return JSON: {"weeks":[{"number":1,"title":"...","focus":"...","nutrition_focus":["protein_25_30g"],"tasks":[{"pillar":"movement","title":"...","why":"...","cadence":"weekly","target":2,"item_id":null,"exercises":[{"id":"...","sets":3,"seconds":40,"minutes":null},{"id":"C01","sets":3,"seconds":45,"minutes":null}]},{"pillar":"relaxation","title":"...","why":"...","cadence":"daily","target":1,"item_id":"breath_sleep","exercises":null},{"pillar":"habit","title":"...","why":"...","cadence":"daily","target":1,"item_id":null,"exercises":null}]}],"resist_suggestions":[{"title":"...","why":"..."}]}`,
+    `Return JSON: {"weeks":[{"number":1,"title":"...","focus":"...","nutrition_focus":["protein_25_30g"],"tasks":[{"pillar":"movement","title":"...","why":"...","cadence":"weekly","target":2,"item_id":null,"exercises":[{"id":"...","sets":3,"seconds":40,"minutes":null},{"id":"C01","sets":3,"seconds":45,"minutes":null}],"warmup":["W02","W01"],"cooldown":["W07","W09"]},{"pillar":"relaxation","title":"...","why":"...","cadence":"daily","target":1,"item_id":"breath_sleep","exercises":null,"warmup":null,"cooldown":null},{"pillar":"habit","title":"...","why":"...","cadence":"daily","target":1,"item_id":null,"exercises":null,"warmup":null,"cooldown":null}]}],"resist_suggestions":[{"title":"...","why":"..."}]}`,
   ].join("\n");
 }
 
@@ -528,6 +567,16 @@ const MAX_EXERCISES = 6;
 const MAX_SNACK_EXERCISES = 3;
 
 /**
+ * How many movements a bookend may hold.
+ *
+ * Two to four. One is not a warm-up, and five is a second workout in front of
+ * the workout — the thing that makes a 28-minute session quietly run 40 and
+ * stops being done at all by week three.
+ */
+const BOOKEND_MIN = 2;
+const BOOKEND_MAX = 4;
+
+/**
  * Habit titles that restate a nutrition row.
  *
  * The prompt forbids these in as many words and the model writes them anyway —
@@ -545,13 +594,44 @@ const NUTRITION_ECHO =
 const rotate = <T>(items: T[], n: number): T[] =>
   items.length ? [...items.slice(n % items.length), ...items.slice(0, n % items.length)] : items;
 
+/**
+ * Turns the model's bookend id list into stored exercises, dosed from the
+ * catalog.
+ *
+ * `taken` carries every id already spent in this session — the main work, then
+ * the warm-up — so a cool-down cannot repeat what she has just done and the two
+ * bookends cannot be the same two moves. Returns undefined rather than `[]` on
+ * an empty result, because `sessionWarmup()` reads absence as "use the generic
+ * one" and an empty array as "she has a warm-up with nothing in it".
+ */
+function bookendFrom(
+  ids: readonly string[] | null | undefined,
+  allowedWarm: Set<string>,
+  taken: Set<string>
+): StoredExercise[] | undefined {
+  const out: StoredExercise[] = [];
+  for (const raw of ids ?? []) {
+    if (out.length >= BOOKEND_MAX) break;
+    const id = raw.trim().toUpperCase();
+    if (!allowedWarm.has(id) || taken.has(id)) continue;
+    const ex = getExercise(id);
+    if (!ex) continue;
+    taken.add(id);
+    // Dose from the catalog, never from the model — see TaskSchema.
+    out.push({ id, sets: 1, seconds: ex.seconds });
+  }
+  return out.length ? out : undefined;
+}
+
 function sanitize(
   raw: z.infer<typeof PlanSchema>,
   pool: Exercise[],
   vol: (typeof MOVEMENT_VOLUME)[string],
-  profile: Profile
+  profile: Profile,
+  warmupPool: Exercise[] = []
 ): Plan {
   const allowed = new Set(pool.map((e) => e.id));
+  const allowedWarm = new Set(warmupPool.map((e) => e.id));
   const topProblems = profile.top_problems ?? [];
 
   const weeks: PlanWeek[] = [];
@@ -618,13 +698,29 @@ function sanitize(
         }
         if (!exercises.length) continue;
 
+        const work = exercises.slice(0, vol.perDay ? MAX_SNACK_EXERCISES : MAX_EXERCISES);
+
+        // Bookends, and only on a session that wants them. `wantsBookends()`
+        // already refuses to draw a generic warm-up onto a movement snack —
+        // four five-minute bursts a day with two minutes of hip circles in
+        // front of each is a 40% tax on the thing she agreed to do four times.
+        // Writing one into the stored plan would route straight past that
+        // check, so the same rule is applied here at the source.
+        const taken = new Set(work.map((e) => e.id));
+        const warmup = vol.perDay ? undefined : bookendFrom(t.warmup, allowedWarm, taken);
+        const cooldown = vol.perDay ? undefined : bookendFrom(t.cooldown, allowedWarm, taken);
+
         // Volume is a rule keyed off her fitness level, not something the model
         // gets a vote on — it kept sending "daily x7" and "per_day x1".
         tasks.push({
           ...base,
           cadence: vol.perDay ? "per_day" : "weekly",
           target: vol.sessions,
-          exercises: exercises.slice(0, vol.perDay ? MAX_SNACK_EXERCISES : MAX_EXERCISES),
+          exercises: work,
+          // Below the floor is not a bookend, and an absent one falls back to
+          // the generic pair rather than showing her a one-move warm-up.
+          ...(warmup && warmup.length >= BOOKEND_MIN ? { warmup } : {}),
+          ...(cooldown && cooldown.length >= BOOKEND_MIN ? { cooldown } : {}),
         });
         continue;
       }
@@ -945,6 +1041,9 @@ export async function buildPlan(
     p.top_problems ?? [],
     p.physical_limits ?? []
   );
+  // Bookends ignore her fitness level and follow only her limitations — see
+  // allowedWarmups(). An advanced user does not graduate past hip circles.
+  const warmupPool = allowedWarmups(p.physical_limits ?? []);
   const vol = MOVEMENT_VOLUME[p.fitness_level ?? "beginner"] ?? MOVEMENT_VOLUME.beginner;
 
   const fallback = fallbackPlan(p, pool);
@@ -973,7 +1072,7 @@ export async function buildPlan(
       temperature: 0.5,
       response_format: {
         type: "json_schema",
-        json_schema: { name: "eight_week_plan", strict: true, schema: planJsonSchema(pool) },
+        json_schema: { name: "eight_week_plan", strict: true, schema: planJsonSchema(pool, warmupPool) },
       },
       messages: [
         {
@@ -981,7 +1080,7 @@ export async function buildPlan(
           content:
             "You are Lisa, a warm, evidence-informed menopause companion. You build practical 8-week plans by selecting from an approved list. Never invent exercises or supplements. Return JSON only.",
         },
-        { role: "user", content: buildPrompt(p, pool, adherence) },
+        { role: "user", content: buildPrompt(p, pool, adherence, warmupPool) },
       ],
     });
 
@@ -1005,7 +1104,7 @@ export async function buildPlan(
     const raw = message?.content;
     const parsed = raw ? PlanSchema.safeParse(JSON.parse(raw)) : null;
     if (parsed?.success) {
-      const cleaned = sanitize(parsed.data, pool, vol, p);
+      const cleaned = sanitize(parsed.data, pool, vol, p, warmupPool);
       // A thin plan means the model drifted off the catalog; the deterministic
       // fallback is better than handing her a week with two things in it.
       const complete =
@@ -1137,7 +1236,7 @@ export async function markPlanGenerating(
  * pay egress for. Defaulting to off means a new client that forgets to ask gets
  * no video, rather than silently pulling megabytes it can't render.
  *
- * Even with it on, `video`/`poster` are absent until that exercise's clip has
+ * Even with it on, `video` is absent until that exercise's clip has
  * actually been produced (see MEDIA_READY) — the app shows name + props and no
  * player.
  */

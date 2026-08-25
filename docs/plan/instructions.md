@@ -35,7 +35,7 @@ the app, cookie for the web dashboard.
 
 The one difference between them is `?media=1`, which the Expo app passes and the
 web dashboard does not: exercise clips are mobile-only, so only that caller gets
-`video`/`poster` URLs. See [exercises.md](exercises.md).
+`video` URLs. See [exercises.md](exercises.md).
 
 **5. Week timing.** `started_at` is set the **first time she opens the plan**, not
 when she paid — she buys on web and may not install the app for days. Week number
