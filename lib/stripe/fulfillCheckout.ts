@@ -263,7 +263,7 @@ async function sendFulfillmentEmails(supabaseAdmin: SupabaseClient, userId: stri
     await Promise.all([
       sendWelcomeEmail(email, profile?.name ?? null),
       sendAdminNotification(
-        `New subscriber — ${email}`,
+        "NEW PURCHASE",
         `<p>New subscriber: <strong>${email}</strong>${profile?.name ? ` (${profile.name})` : ""}</p><p>Started: ${new Date().toUTCString()}</p>`
       ),
     ]);

@@ -363,7 +363,7 @@ async function handleInvoicePaymentSucceeded(
         await Promise.all([
           sendChargeConfirmedEmail(email, profile?.name ?? null),
           sendAdminNotification(
-            `New payment — ${email}`,
+            "NEW PURCHASE",
             `<p>Payment received: <strong>${email}</strong>${profile?.name ? ` (${profile.name})` : ""}</p><p>Amount: $${((invoice.amount_paid ?? 0) / 100).toFixed(2)}</p><p>At: ${new Date().toUTCString()}</p>`
           ),
         ]);
