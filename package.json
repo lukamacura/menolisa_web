@@ -9,7 +9,8 @@
     "lint": "eslint",
     "ingest": "tsx scripts/ingest-documents.ts",
     "cleanup-docs": "tsx scripts/cleanup-oversized-documents.ts",
-    "verify-plan-dose": "tsx scripts/verify-plan-dose.ts"
+    "verify-plan-dose": "tsx scripts/verify-plan-dose.ts",
+    "clips": "tsx scripts/exercise-clips.ts"
   },
   "dependencies": {
     "@langchain/community": "^0.3.0",

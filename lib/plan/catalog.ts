@@ -520,8 +520,32 @@ export function cardioMinutes(sessionMinutes: number, exerciseCount: number): nu
  *
  * Bucket layout (`exercise-clips`, public read) — one flat namespace, so a
  * warm-up clip is uploaded exactly like an exercise one:
- *   L01.mp4   H.264, no audio track, 6-10s silent loop, 9:16 1080×1920, ≤800KB
+ *   L01.mp4   H.264 High, no audio track, 6-10s silent loop, 9:16 1080×1920,
+ *             30fps, faststart, ≤1600 kbps
  *   W01.mp4   same spec, warm-up
+ *
+ * **The budget is a bitrate, not a byte count.** Clips run 1.2s to 16s, so a
+ * flat cap calls a long clip bloated and passes a short overcooked one. The
+ * 2026-08-26 re-export landed at a 3276 kbps median — film-grade for a static
+ * camera on a plain background, and about 2.5x more than a 6-inch screen can
+ * resolve. Above roughly 1200 kbps the extra bits buy grain nobody sees and go
+ * straight onto her cellular bill.
+ *
+ * **Upload with `npm run clips upload <dir>`, never through the Supabase
+ * dashboard.** The script parses each file and refuses anything off-spec, and
+ * it sets a one-year `cacheControl` — the dashboard uploader stamps
+ * `max-age=3600`, which is why the first batch revalidated against origin on
+ * essentially every play. `npm run clips audit` compares the live bucket to
+ * `MEDIA_READY` and is the only thing that catches an id served with no file
+ * behind it.
+ *
+ * **`faststart` is not optional and is invisible if you skip it.** The `moov`
+ * index has to sit before `mdat`, or the player reads the head, finds no index,
+ * range-requests the tail and only then starts decoding — three sequential
+ * round trips before the first frame, on a CDN that already has the bytes. Every
+ * clip in the 2026-08-25 batch shipped with `moov` last (HandBrake's "Web
+ * Optimized" box unchecked) and that, not file size, was why they loaded slowly:
+ * the whole 40-clip library is 3.2MB. In ffmpeg it is `-movflags +faststart`.
  *
  * **There are no poster images.** The shoot produced video only, so the app
  * shows the clip's own first frame rather than a separate `.webp` — a poster
@@ -539,12 +563,25 @@ export function cardioMinutes(sessionMinutes: number, exerciseCount: number): nu
  * full lunge stride) and 5% clear top and bottom.
  *
  * It was 4:5 until 2026-08-23. A 4:5 clip covering a modern phone loses 42% of
- * its width — on a lateral raise that is both arms. The 2026-08-25 batch is
- * correctly 9:16 but was exported at **607×1080**, not 1080×1920: the aspect is
- * right and nothing is cropped, but a 607-wide frame is upscaled on every phone
- * it plays on. They are 30-215KB against an 800KB budget, so the resolution was
- * given away for nothing — re-export from the masters at 1080×1920 when there is
- * a reason to touch them, and shoot the remaining ids at full size.
+ * its width — on a lateral raise that is both arms. The 2026-08-25 batch was
+ * correctly 9:16 but exported at **607×1080**, not 1080×1920: the aspect was
+ * right and nothing was cropped, but a 607-wide frame is upscaled on every phone
+ * it plays on. At 30-215KB against an 800KB budget the resolution had been given
+ * away for nothing. Re-exported at full size on 2026-08-26; shoot the remaining
+ * ids at 1080×1920 and let `npm run clips check` confirm it before upload.
+ *
+ * Encode line, if you are not using HandBrake — from the masters, never from an
+ * already-compressed export:
+ *
+ *   ffmpeg -i master.mov -an -vf "scale=1080:1920:flags=lanczos" \
+ *     -c:v libx264 -preset veryslow -crf 21 -profile:v high -level 4.1 \
+ *     -pix_fmt yuv420p -movflags +faststart out.mp4
+ *
+ * Keep the codec uniformly H.264. HEVC would save a couple of hundred KB per
+ * clip, which is worth nothing here, and mixing `hvc1` into the library risks
+ * playback failures on older Android for no gain — `C01` was the one HEVC file
+ * in the first batch and it is the kind of inconsistency that fails on one
+ * customer's phone and nobody else's.
  *
  * Only the API builds these URLs. If the bucket ever moves to another CDN, this
  * constant is the only thing that changes — no client ships a hardcoded path.

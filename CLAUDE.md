@@ -922,6 +922,41 @@ again also works — that calls `sync-session`.
 ## 7. CURRENT STATUS
 
 Recent work:
+- **Exercise clips got a spec gate (2026-08-26)** — the 2026-08-25 batch shipped
+  with three faults the Supabase dashboard cannot show, because it displays a
+  filename and a size and every one of these looks fine by both.
+  **`moov` was written after `mdat` on all 40** — HandBrake's "Web Optimized"
+  box unchecked. Without that index in front, the player reads the head, finds
+  nothing, range-requests the tail, and only then starts decoding: three
+  sequential round trips before the first frame. That, not file size, was why
+  clips loaded slowly — the whole 40-clip library was **3.2MB**. Bandwidth was
+  never the problem. They were also **607×1080 instead of 1080×1920** (upscaled
+  ~1.8x on every phone, at a median 137 kbps), one clip was HEVC in an otherwise
+  H.264 library, and one carried an audio track in a player that loops silently.
+  The re-export fixed resolution, codec, faststart and framerate on all 40, and
+  overshot the other way: a **3276 kbps median, 69.5MB total**, roughly 2.5x what
+  a 6-inch screen resolves.
+  `scripts/exercise-clips.ts` (`npm run clips`) is the gate. It parses the MP4
+  boxes directly — no ffprobe, nothing to install — and `upload` refuses a file
+  that fails, so a bad export is caught on the machine that made it instead of
+  mid-session on hers. `audit` compares the live bucket to `MEDIA_READY`; it
+  immediately caught **`W15.mp4` missing and `U06.mp4` in its place** (the
+  re-export lost the 2026-08-25 rename), which was a live 404 in her player.
+  Renamed in the bucket; nothing else to do.
+  **Upload through the script, never the dashboard.** The dashboard uploader
+  stamps `cacheControl: max-age=3600`; the script sets a year. Supabase serves
+  `cache-control: no-cache` and Cloudflare reports `REVALIDATED` on essentially
+  every request, so each play costs an origin round trip for bytes the edge
+  already has.
+  The budget is now a **bitrate (≤1600 kbps), not a byte count** — clips run
+  1.2s to 16s, so a flat 800KB cap called a long clip bloated and waved a short
+  overcooked one through.
+  **Still open:** `I05` carries an audio track and the batch is over the bitrate
+  budget; both need a re-export, then one `npm run clips upload <dir>` fixes
+  those and the stale `cacheControl` in the same pass. The other real win is
+  app-side — at ~25MB for the whole library it should be downloaded to the
+  device once and played from `file://`, which also makes clips work in a gym
+  with no signal. Nothing about the API contract changes for that.
 - **The scroll opens when she gets to it (2026-08-24)** — her name being written
   onto the parchment is the made-for-you moment of the funnel, and it was
   playing to an empty room. `<PlanStage />` mounts with the plan block at the
