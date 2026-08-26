@@ -47,8 +47,16 @@ export type Exercise = {
   seconds?: number;
 };
 
-// Source: docs/plan/exercises.md — 41 prescribable exercises, plus the 14
-// warm-up / cool-down movements at the bottom of the table.
+// 42 prescribable exercises (`L`/`P`/`U`/`C`/`I`), plus 24 bookend movements:
+// 14 warm-ups (`W`) and 10 stretches (`S`). Both bookend families are ordinary
+// rows here so `getExercise()` resolves them; the prefix is what keeps them out
+// of the main work. docs/plan/exercises.md covers the 41 original prescribable
+// ids only — the `W`, `S` and `U13` rows were added after it was written and
+// this table is the source of truth for them.
+//
+// Every id below has a clip in the `exercise-clips` bucket except the eight
+// named in the `MEDIA_READY` comment; the catalog and the bucket were squared
+// off against each other on 2026-08-26.
 //
 // The list narrowed from 59 to 42 on 2026-08-24 — 41 since 2026-08-25, when U06
 // turned out to be a mobility flow and moved to WARMUPS. It is not a subset:
@@ -91,6 +99,11 @@ const E: [string, string, string, 1 | 2 | 3, Impact, boolean][] = [
   ["U10", "Rear-delt fly", "2 dumbbells", 2, "none", false],
   ["U11", "Prone Y-T-W raise", "Mat", 1, "none", false],
   ["U12", "Dumbbell lateral raise", "2 dumbbells", 2, "none", false],
+  // Filmed in the stretch series as "S09" and renamed on 2026-08-26: she is
+  // pressing a dumbbell, so it is a strength set, not a release. The clip in
+  // the bucket was renamed S09.mp4 -> U13.mp4 to match. The id was free — the
+  // retired U13 below was a different movement that never shipped.
+  ["U13", "Seated overhead triceps extension", "1 dumbbell, chair", 2, "none", false],
   // Core, stability & carries (7)
   ["C01", "Wall sit", "Wall", 1, "none", true],
   ["C02", "Bird-dog", "Mat", 1, "none", true],
@@ -140,6 +153,31 @@ const E: [string, string, string, 1 | 2 | 3, Impact, boolean][] = [
   // flows through the positions and never presses, so it is mobility, not a
   // set. The clip in the bucket was renamed U06.mp4 -> W15.mp4 to match.
   ["W15", "Yoga flow", "Mat", 1, "none", false],
+  // Stretch & release — the cool-down (10)
+  //
+  // Static holds, filmed 2026-08-26. They are bookends like the `W` rows above,
+  // not main work: `allowedExercises()` drops them by prefix, so the generator
+  // can never spend a strength slot on a child's pose. The difference from `W`
+  // is *which* end they belong on — a dynamic leg swing warms a joint up, a
+  // 40-second butterfly hold does the opposite — so they are the cool-down pool
+  // and `W` is the warm-up pool. See `allowedCooldowns()`.
+  //
+  // This is the family the DEFAULT_COOLDOWN comment has been asking for since
+  // the mobility rows were retired: before these there was no static-stretch
+  // content in the catalog at all, and the cool-down had to reuse a warm-up.
+  //
+  // The shoot numbered them S01-S19 and ten made the cut; the gaps are takes
+  // that were not used, not missing files. S09 became U13 (see above).
+  ["S05", "Thread the needle", "Mat", 1, "none", true],
+  ["S07", "Seated side bend", "Mat", 1, "none", true],
+  ["S10", "Wall chest stretch", "Wall", 1, "none", true],
+  ["S12", "Lying figure-4 stretch", "Mat", 1, "none", true],
+  ["S13", "Kneeling hip flexor stretch", "Mat", 1, "none", true],
+  ["S14", "Kneeling hamstring stretch", "Mat", 1, "none", true],
+  ["S15", "Butterfly stretch", "Mat", 1, "none", true],
+  ["S17", "Cobra stretch", "Mat", 1, "none", true],
+  ["S18", "Child's pose", "Mat", 1, "none", true],
+  ["S19", "Seated 90/90 hip stretch", "Mat", 1, "none", true],
 ];
 
 /**
@@ -175,7 +213,7 @@ const E: [string, string, string, 1 | 2 | 3, Impact, boolean][] = [
 // ["U10", "Band pull-apart", "Flat loop band", 1, "none", true],
 // ["U11", "Lat pulldown", "Cable machine", 3, "none", false],
 // ["U12", "Weighted pull-up", "Bar, dip belt", 3, "none", false],
-// ["U13", "Incline dumbbell row", "2 dumbbells, incline bench", 3, "none", false],
+// ["U13", "Incline dumbbell row", "2 dumbbells, incline bench", 3, "none", false],   // id REUSED 2026-08-26 — U13 is now the seated triceps extension
 // Core, stability & carries
 // ["C03", "Hanging knee raise", "Pull-up bar", 3, "none", false],
 // ["C05", "Household heavy carry", "Detergent jug, hugged to chest", 1, "none", true],
@@ -255,6 +293,21 @@ const DOSE: Record<string, [DoseUnit, boolean, number?]> = {
   W10: ["timed", false, 40],
   W14: ["timed", false, 40],
   W15: ["timed", false, 90],
+  // Stretches. Every one is a `hold` — the hold IS the stretch — and uniform for
+  // the same reason the warm-ups are: a cool-down is not progressed across the
+  // eight weeks. 40 seconds is long enough for tissue to give and short enough
+  // that she stays for it; the per-side ones run twice, so those sit at 30 to
+  // keep the whole cool-down inside two minutes.
+  S05: ["hold", true, 30],
+  S07: ["hold", true, 30],
+  S10: ["hold", true, 30],
+  S12: ["hold", true, 30],
+  S13: ["hold", true, 30],
+  S14: ["hold", true, 30],
+  S19: ["hold", true, 30],
+  S15: ["hold", false, 40],
+  S17: ["hold", false, 40],
+  S18: ["hold", false, 40],
   // No `duration` id is currently in the catalog — cardio and the mobility flow
   // are both retired. The unit and everything that runs it stay wired; see the
   // RETIRED block above.
@@ -284,13 +337,31 @@ export function isCardioId(id: string) {
 const isMobilityId = (id: string) => id.startsWith("M");
 
 /**
- * Warm-up and cool-down movements.
+ * Warm-up movements — dynamic, done before the work.
  *
  * They are in the catalog so the app can draw them, and out of the prescribable
  * pool so the generator cannot spend a strength slot on a hip circle. `W` is the
- * marker, and `allowedExercises()` is the only place it gates anything.
+ * marker.
  */
 export const isWarmupId = (id: string) => id.startsWith("W");
+
+/**
+ * Stretches — static, done after the work.
+ *
+ * Split from `W` rather than folded into it because the two are not
+ * interchangeable: a leg swing prepares a joint for load and a 40-second
+ * butterfly hold does the opposite of that. One prefix per end of the session
+ * means the generator picks from the right pool without being asked to know the
+ * difference, which is exactly the kind of fact it gets wrong.
+ */
+export const isStretchId = (id: string) => id.startsWith("S");
+
+/**
+ * Either bookend. This is the line `allowedExercises()` gates on — anything
+ * drawable-but-not-prescribable goes here, and adding a third bookend family
+ * means adding it to this one function.
+ */
+export const isBookendId = (id: string) => isWarmupId(id) || isStretchId(id);
 
 // ─── Warm-up and cool-down ──────────────────────────────────────────────────
 
@@ -323,20 +394,21 @@ export const DEFAULT_WARMUP: readonly StoredExercise[] = [
 ];
 
 /**
- * The matching cool-down. Two minutes on the floor, then the neck and shoulders.
+ * The matching cool-down. Hips, then the front of the hip, then the spine.
  *
- * It reuses `M02` from the warm-up at a longer, slower dose, and that is a
- * limitation of the catalog rather than a choice: there are four mobility
- * entries and no static-stretch family at all, so there is nothing else gentle
- * to reach for. Adding one is the content work this default is standing in for.
+ * Three static holds off the floor, in the order a session tends to have
+ * tightened them: the glutes take the squatting, the hip flexors take the
+ * standing, and child's pose is the one that ends it lying down. About two
+ * minutes all in.
  *
- * `M01` is the catalog's only `duration` mobility item — one continuous flow
- * rather than sets — which is the right shape for a cool-down: nothing to count,
- * just keep moving until the clock stops.
+ * It used to be a yoga flow and a shoulder mobility drill — both warm-up
+ * movements, reused at a slower dose because the catalog held no static
+ * stretches at all. It does now (`S`), so the cool-down is finally cooling down.
  */
 export const DEFAULT_COOLDOWN: readonly StoredExercise[] = [
-  { id: "W15", sets: 1, seconds: 90 },
-  { id: "W09", sets: 1, seconds: 60 },
+  { id: "S12", sets: 1, seconds: 30 },
+  { id: "S13", sets: 1, seconds: 30 },
+  { id: "S18", sets: 1, seconds: 40 },
 ];
 
 // ─── Dose, rest and session length ──────────────────────────────────────────
@@ -356,7 +428,7 @@ const REST_BY_UNIT: Record<DoseUnit, [number, number, number]> = {
 };
 
 export function restSeconds(exercise: Exercise): number {
-  if (isMobilityId(exercise.id) || isWarmupId(exercise.id)) return 15;
+  if (isMobilityId(exercise.id) || isBookendId(exercise.id)) return 15;
   return REST_BY_UNIT[exercise.dose][exercise.level - 1];
 }
 
@@ -497,6 +569,84 @@ export function defaultDoseForWeek(
   return { sets, seconds: clamp(ladder[band], range.min, range.max) };
 }
 
+/** What one exercise's stored dose actually costs, in seconds, rest included. */
+export function storedSeconds(stored: StoredExercise): number {
+  const ex = getExercise(stored.id);
+  return ex ? hydrateDose(ex, stored).estimatedSeconds : 0;
+}
+
+/** What a list of them costs. */
+export const listSeconds = (list: readonly StoredExercise[] | undefined) =>
+  (list ?? []).reduce((total, e) => total + storedSeconds(e), 0);
+
+/**
+ * Trims a session until it fits the time she was actually promised.
+ *
+ * The quiz screen that sets her fitness level states the deal in minutes —
+ * "About 20 min, 2 days a week" — so `MOVEMENT_VOLUME.minutes` is not an
+ * internal target, it is the sentence she read before she paid. Nothing used to
+ * check it. The model wrote the sets and the seconds, `hydrateDose` clamped each
+ * number into a safe band on its own, and nobody ever added them up: a
+ * five-minute movement snack was reaching fourteen minutes by week 8, and an
+ * eighteen-minute beginner session twenty-five.
+ *
+ * The order of the cuts is the whole design, because all three cost something
+ * different and only the last one changes what the session *is*:
+ *
+ *  1. **Seconds first.** A shorter set is the same session, slightly easier. It
+ *     stops at the unit's floor — below that the set is not worth standing up
+ *     for.
+ *  2. **Then a set.** Losing the third set costs some volume and no variety.
+ *     Never below two: one set of anything is a rehearsal.
+ *  3. **Then an exercise, last.** This is the only cut she would notice as a
+ *     different workout, so it happens only when the first two have run out, and
+ *     never below the floor the prompt asked for.
+ *
+ * Bookend seconds are passed in rather than trimmed: two minutes of warm-up is
+ * the safety margin on everything above it, and taking that back to make room
+ * for another set has the priority exactly backwards.
+ */
+export function fitSessionToMinutes(
+  work: readonly StoredExercise[],
+  bookendSeconds: number,
+  budgetMinutes: number,
+  floor: number
+): StoredExercise[] {
+  const out = work.map((e) => ({ ...e }));
+  if (!out.length) return out;
+  const budget = budgetMinutes * 60;
+  const over = () => listSeconds(out) + bookendSeconds > budget;
+  const unitOf = (e: StoredExercise) => getExercise(e.id)?.dose;
+
+  // 1. Seconds, five at a time, off whichever set is currently longest.
+  for (let guard = 0; guard < 200 && over(); guard++) {
+    const trimmable = out
+      .filter((e) => {
+        const unit = unitOf(e);
+        if (!unit || unit === "duration") return false;
+        return (e.seconds ?? 0) > SECONDS_RANGE[unit].min;
+      })
+      .sort((a, b) => (b.seconds ?? 0) - (a.seconds ?? 0))[0];
+    if (!trimmable) break;
+    const min = SECONDS_RANGE[unitOf(trimmable) as "timed" | "hold" | "carry"].min;
+    trimmable.seconds = Math.max(min, (trimmable.seconds ?? min) - 5);
+  }
+
+  // 2. A set, off whichever exercise still has the most.
+  for (let guard = 0; guard < 20 && over(); guard++) {
+    const heaviest = out
+      .filter((e) => (e.sets ?? DEFAULT_SETS) > 2)
+      .sort((a, b) => (b.sets ?? DEFAULT_SETS) - (a.sets ?? DEFAULT_SETS))[0];
+    if (!heaviest) break;
+    heaviest.sets = (heaviest.sets ?? DEFAULT_SETS) - 1;
+  }
+
+  // 3. An exercise, from the end, never below the floor.
+  while (over() && out.length > floor) out.pop();
+
+  return out;
+}
+
 /**
  * How many minutes a cardio block gets inside a session that also has other work.
  *
@@ -519,10 +669,11 @@ export function cardioMinutes(sessionMinutes: number, exerciseCount: number): nu
  * id, and the app caches each one on first play.
  *
  * Bucket layout (`exercise-clips`, public read) — one flat namespace, so a
- * warm-up clip is uploaded exactly like an exercise one:
+ * bookend clip is uploaded exactly like an exercise one:
  *   L01.mp4   H.264 High, no audio track, 6-10s silent loop, 9:16 1080×1920,
  *             30fps, faststart, ≤1600 kbps
  *   W01.mp4   same spec, warm-up
+ *   S05.mp4   same spec, stretch
  *
  * **The budget is a bitrate, not a byte count.** Clips run 1.2s to 16s, so a
  * flat cap calls a long clip bloated and passes a short overcooked one. The
@@ -602,16 +753,28 @@ const MEDIA_BASE =
  * warm-up clip is added the same way an exercise one is.
  */
 const MEDIA_READY = new Set<string>([
-  // Exercises (28 of 41)
-  "L01", "L02", "L03", "L05", "L07", "L08", "L09", "L11", "L12", "L13",
+  // Exercises (36 of 42)
+  "L01", "L02", "L03", "L04", "L05", "L06", "L07", "L08", "L09", "L10", "L11",
+  "L12", "L13",
   "P01", "P02", "P03",
-  "U01", "U03", "U05", "U07", "U08", "U09", "U10", "U11", "U12",
-  "C01", "C02", "C03", "C06",
-  "I01", "I05",
+  "U01", "U02", "U03", "U05", "U07", "U08", "U09", "U10", "U11", "U12", "U13",
+  "C01", "C02", "C03", "C04", "C05", "C06",
+  "I01", "I02", "I05",
   // Warm-ups (12 of 14; U11 above serves both)
   "W01", "W02", "W05", "W06", "W07", "W08", "W09", "W10", "W12", "W13", "W14",
   "W15",
+  // Stretches (10 of 10)
+  "S05", "S07", "S10", "S12", "S13", "S14", "S15", "S17", "S18", "S19",
 ]);
+
+/**
+ * Still to shoot, so the gap is a list rather than a subtraction:
+ * `U04` floor push-up, `C07` pallof press, `I03` low hop, `I04` plyometric skip,
+ * `I06` forward fall landing, `I07` low step-off landing, and the two warm-ups
+ * `W03` Spider-Man lunge and `W04` half-kneeling rockback. All eight are level 2+
+ * or moderate-impact except the warm-ups, so no beginner is affected: every id a
+ * beginner can be given has a clip.
+ */
 
 export type ExerciseMedia = { video: string };
 
@@ -645,19 +808,31 @@ const LIMITATION_EXCLUDES: Record<string, { impact: boolean; ids: string[] }> = 
   // with her back on the floor.
   back: {
     impact: true,
-    ids: ["L07", "L13", "P03", "U09", "C03", "W03", "W12"],
+    ids: ["L07", "L13", "P03", "U09", "C03", "W03", "W12", "S14"],
   },
   // Lunges, split positions, step-ups and long loaded knee flexion. L01, L02,
   // L11 and L12 stay — sitting to a chair is the knee-friendly pattern and
   // dropping it would leave her no lower-body strength work at all.
   knee: {
     impact: true,
-    ids: ["L04", "L05", "L06", "L07", "L09", "L10", "C01", "W03", "W05", "W12"],
+    ids: [
+      "L04", "L05", "L06", "L07", "L09", "L10", "C01", "W03", "W05", "W12",
+      // Kneeling and deep knee flexion. The floor stretches that leave the knee
+      // straight or loosely bent (S12, S14, S15) stay — a sore knee usually
+      // wants more of those, not less.
+      "S13", "S18", "S19",
+    ],
   },
   // Deep hip flexion under load and the wide-stance loaded hinge.
   hip: {
     impact: true,
-    ids: ["L06", "L07", "L09", "L10", "L13", "W03", "W05", "W12"],
+    ids: [
+      "L06", "L07", "L09", "L10", "L13", "W03", "W05", "W12",
+      // End-range hip abduction and rotation. S12's figure-4 stays: it is the
+      // gentle version of the same stretch, done lying down with the leg
+      // supported.
+      "S15", "S19",
+    ],
   },
   // Overhead, abduction and pressing from the floor. No impact rule — a sore
   // shoulder is not a reason to drop bone loading. U01-U03 stay (that graded
@@ -665,7 +840,11 @@ const LIMITATION_EXCLUDES: Record<string, { impact: boolean; ids: string[] }> = 
   // U10 and U11, which are what a sore shoulder usually needs more of.
   shoulder: {
     impact: false,
-    ids: ["U04", "U05", "U07", "U08", "U12", "W10", "W15"],
+    // U13 presses overhead too. S10 pins the arm on a wall and rotates away from
+    // it, which is the position an irritable shoulder is most often irritable
+    // in; S05's thread-the-needle stays, because it moves the shoulder blade
+    // rather than the joint.
+    ids: ["U04", "U05", "U07", "U08", "U12", "U13", "W10", "W15", "S10"],
   },
   // Anything that spikes intra-abdominal pressure: the heavy carry, the front
   // plank, and the loaded hinges, alongside the jumping. C05 side plank, C06
@@ -722,7 +901,7 @@ export function allowedExercises(
 
   return EXERCISES.filter((e) => {
     // Bookends are drawable, never prescribable as the main work.
-    if (isWarmupId(e.id)) return false;
+    if (isBookendId(e.id)) return false;
     if (snacksOnly ? !e.snack : e.level > maxLevel) return false;
     if (topProblems.includes("joint_pain") && e.impact === "high") return false;
     if (noImpact && e.impact === "high") return false;
@@ -732,24 +911,40 @@ export function allowedExercises(
 }
 
 /**
- * The warm-up / cool-down movements this user may be given.
+ * The bookend movements this user may be given, one end of the session at a time.
  *
  * The mirror of `allowedExercises()` and deliberately built from the same
  * `LIMITATION_EXCLUDES` lists: a knee that rules out a lunge in the session
- * rules out the lunge she does to warm up for it. What it does NOT apply is
- * fitness level or the snack rule — a bookend is level 1 by construction, and
- * two minutes of hip circles is not something an advanced user graduates past.
+ * rules out the lunge she does to warm up for it, and the kneeling stretch she
+ * would have done afterwards. What it does NOT apply is fitness level or the
+ * snack rule — a bookend is level 1 by construction, and two minutes of hip
+ * circles is not something an advanced user graduates past.
  *
- * A woman ticking all six limitations keeps 9 of the 14, with hips, spine,
- * shoulders and calves all still represented. Re-check that when adding a
- * limitation: a starved bookend pool sends the model back to the same three
- * moves every week, which is the generic warm-up it is replacing.
+ * A woman ticking all six limitations keeps 9 of the 14 warm-ups and 4 of the 10
+ * stretches (S05, S07, S12, S17 — shoulder, side, glute, spine). The cool-down
+ * is the tight one, and deliberately so: six limitations rule out every kneeling
+ * and every end-range hip position, which is most of what a stretch is. Four
+ * against a 2-4 item cool-down means she sees the same ones each week, and a
+ * repeated safe stretch beats a varied one on a knee she told us hurts.
+ *
+ * Re-check both numbers when adding a limitation. Below four the cool-down stops
+ * being a choice at all.
  */
-export function allowedWarmups(physicalLimits: string[] = []): Exercise[] {
+const bookendPool = (test: (id: string) => boolean, physicalLimits: string[]) => {
   const excluded = new Set(
     physicalLimits.flatMap((l) => LIMITATION_EXCLUDES[l]?.ids ?? [])
   );
-  return EXERCISES.filter((e) => isWarmupId(e.id) && !excluded.has(e.id));
+  return EXERCISES.filter((e) => test(e.id) && !excluded.has(e.id));
+};
+
+/** Dynamic prep, for the front of a session. */
+export function allowedWarmups(physicalLimits: string[] = []): Exercise[] {
+  return bookendPool(isWarmupId, physicalLimits);
+}
+
+/** Static holds, for the end of one. */
+export function allowedCooldowns(physicalLimits: string[] = []): Exercise[] {
+  return bookendPool(isStretchId, physicalLimits);
 }
 
 /** Her limitations as a readable list, for the plan prompt. Null when none apply. */

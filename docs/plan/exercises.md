@@ -125,4 +125,45 @@
  |
 | **I07** | Impact & Bone-Loading | Low Step-Off Landing Drill | Bottom Stair / Low Step (Moderate Impact)
 
- |
+ || **U13** | Upper Body — Press & Pull | Seated Overhead Triceps Extension | Dumbbell + Standard Chair |
+| ~~**S09**~~ | — | — | Renamed to **U13** on 2026-08-26 — she presses a dumbbell, so it is a strength set, not a stretch. Clip renamed `S09.mp4` → `U13.mp4` in the bucket |
+| **W01** | Warm-Up | Leg Swings, Linear & Lateral | Wall or Counter |
+| **W02** | Warm-Up | Hip Circles | Bodyweight |
+| **W03** | Warm-Up | Spider-Man Lunge with Rotation | Mat — *not shot yet* |
+| **W04** | Warm-Up | Half-Kneeling Hip Flexor Rockback | Mat — *not shot yet* |
+| **W05** | Warm-Up | Deep Squat with Reach | Bodyweight |
+| **W06** | Warm-Up | Open Book Cross | Mat |
+| **W07** | Warm-Up | Hamstring Rocker | Mat |
+| **W08** | Warm-Up | Cross-Arm Abduction | Bodyweight |
+| **W09** | Warm-Up | Shoulder Mobility | Bodyweight |
+| **W10** | Warm-Up | PVC Around the World | Broomstick or PVC Pipe |
+| ~~**W11**~~ | — | — | Deliberately absent — the Y-T-W shoulder warm-up is **U11**, one clip with one id |
+| **W12** | Warm-Up | World's Greatest Stretch | Mat |
+| **W13** | Warm-Up | Lateral Hamstring Rocker | Mat |
+| **W14** | Warm-Up | Calf Raise | Bodyweight |
+| **W15** | Warm-Up | Yoga Flow | Mat — filmed as U06, see above |
+| **S05** | Cool-Down — Stretch | Thread the Needle | Mat |
+| **S07** | Cool-Down — Stretch | Seated Side Bend | Mat |
+| **S10** | Cool-Down — Stretch | Wall Chest Stretch | Wall |
+| **S12** | Cool-Down — Stretch | Lying Figure-4 Stretch | Mat |
+| **S13** | Cool-Down — Stretch | Kneeling Hip Flexor Stretch | Mat |
+| **S14** | Cool-Down — Stretch | Kneeling Hamstring Stretch | Mat |
+| **S15** | Cool-Down — Stretch | Butterfly Stretch | Mat |
+| **S17** | Cool-Down — Stretch | Cobra Stretch | Mat |
+| **S18** | Cool-Down — Stretch | Child's Pose | Mat |
+| **S19** | Cool-Down — Stretch | Seated 90/90 Hip Stretch | Mat |
+
+**Warm-ups (`W`) and stretches (`S`) are bookends, not main work.** They are
+ordinary catalog rows so the app can draw them with a name, a dose and a clip,
+and the prefix is what keeps the plan generator from spending a strength slot on
+a hip circle. `W` is the warm-up pool, `S` is the cool-down pool, and the two do
+not mix — a leg swing prepares a joint for load and a 40-second butterfly hold
+does the opposite.
+
+The `S` shoot numbered its takes S01–S19; ten made the cut and the gaps are
+unused takes, not missing files. S09 became U13 (above).
+
+**Still to shoot (8):** U04, C07, I03, I04, I06, I07, W03, W04. Everything else
+in this table has a clip in the `exercise-clips` bucket. None of the eight is
+reachable at the beginner or movement-snack level, so every exercise those two
+can be given has video behind it.

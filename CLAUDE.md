@@ -922,6 +922,54 @@ again also works — that calls `sync-session`.
 ## 7. CURRENT STATUS
 
 Recent work:
+- **Catalog squared off against the bucket, and the session got a clock
+  (2026-08-26)** — the bucket held 18 clips nothing served, 11 of them under a
+  prefix (`S`) that appeared nowhere in the code. They are the stretch shoot:
+  `S05`-`S19`, ten static holds, now a real family. One of them, `S09`, is a
+  seated dumbbell triceps extension — a strength set, not a release — so it was
+  renamed to **`U13`** in the bucket and filed under upper body. Every clip was
+  identified from its own frames before being named; the other seven (`C04`,
+  `C05`, `I02`, `L04`, `L06`, `L10`, `U02`) were catalog ids whose files were
+  live but missing from `MEDIA_READY`. Bucket and catalog now match exactly:
+  58 files, 58 served, no orphans, no ghosts.
+  **`W` and `S` are two pools, not one.** A leg swing prepares a joint for load
+  and a 40-second butterfly hold does the opposite, so warm-up and cool-down get
+  separate enums in the response schema — under `strict: true` a stretch in the
+  warm-up slot is not a rule the model can break, it is a token it cannot emit.
+  The prose version of that rule was being ignored. `DEFAULT_COOLDOWN` is finally
+  three real stretches instead of two warm-ups reused at a slower dose.
+  **Sessions now fit the time she was sold.** `MOVEMENT_VOLUME.minutes` is the
+  sentence on the quiz screen — "About 20 min, 2 days a week" — and nothing
+  checked it: `hydrateDose` clamped each number and nobody added them up. A
+  5-minute movement snack was reaching **14 minutes by week 8** (four times a
+  day), because the prompt's dose ladder was a constant that ignored session
+  length. `doseLadder()` now sizes the three bands to her minutes, and
+  `fitSessionToMinutes()` is the hard backstop — seconds first, then a set, then
+  an exercise last, because only the last cut changes what the session *is*.
+  The same clamp runs on the deterministic fallback. Measured over 40 live
+  sessions: **0 over budget**, against 7 of 8 before.
+  It fills as well as trims. `MIN_EXERCISES` was 3 while the prompt asked for 4,
+  so 28-minute sessions were arriving with three exercises and running eighteen;
+  the two numbers are one number now, and the top-up keeps adding from her pool
+  while a whole exercise still fits. Medium now runs 15m → 28m across the eight
+  weeks instead of 10m → 18m.
+  **Bone loading is guaranteed, not requested.** The model wrote plans with no
+  `I` id at all in two of four generations — an eight-week menopause plan
+  missing the one thing exercise does for bone density that nothing else does.
+  `ensureBoneLoading()` swaps one into the shortest sessions until four of eight
+  weeks have it, and the prompt asks for upper body every week too (one plan had
+  none in eight weeks).
+  Also: `PlanSchema` no longer rejects a whole plan for having a ninth week —
+  same mistake as dropping a task for a bad id, one level up — and where the
+  *code* picks an exercise it now prefers one that has a clip (`filmedFirst`),
+  so the six unshot ids are a last resort rather than a coin toss. The model may
+  still pick them; she gets name + props, which looks deliberate.
+  **Still open:** all 58 clips are over the 1600 kbps budget (median ~2400, 70MB
+  total) and all 58 still carry the dashboard's `max-age=3600`. One re-export at
+  CRF 23 plus one `npm run clips upload` fixes both in the same pass. Eight ids
+  remain unshot (`U04`, `C07`, `I03`, `I04`, `I06`, `I07`, `W03`, `W04`); none
+  is reachable at beginner or movement-snack level, so those two have 100% clip
+  coverage. `I05`'s audio track is gone — that item is closed.
 - **Exercise clips got a spec gate (2026-08-26)** — the 2026-08-25 batch shipped
   with three faults the Supabase dashboard cannot show, because it displays a
   filename and a size and every one of these looks fine by both.
