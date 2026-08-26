@@ -126,3 +126,32 @@
 | **I07** | Impact & Bone-Loading | Low Step-Off Landing Drill | Bottom Stair / Low Step (Moderate Impact)
 
  |
+
+| **L14** | Lower Body — Strength | Barbell Back Squat | Barbell + Rack |
+| **U13** | Upper Body — Press & Pull | Single-Arm Dumbbell Row | Dumbbell + Chair or Bench |
+| **C08** | Core, Stability & Carries | Mountain Climber | Mat |
+| **C09** | Core, Stability & Carries | Oblique Twist | Mat |
+| **I08** | Impact & Bone-Loading | Pogo Jumps, Forward & Back | Bodyweight (Moderate Impact) |
+| **I09** | Impact & Bone-Loading | Pogo Jumps, Lateral | Bodyweight (Moderate Impact) |
+| **I10** | Impact & Bone-Loading | Pogo Jumps, Multi-Directional | Bodyweight (Moderate Impact) |
+| **I11** | Impact & Bone-Loading | Single-Leg Pogo | Bodyweight (Moderate Impact) |
+| **I12** | Impact & Bone-Loading | Soft-Surface Heel Drop | Cushion / Folded Towel (Low Impact) |
+
+## Bookends
+
+The warm-up (`W01`-`W16`) and cool-down (`S01`-`S19`) families are not listed
+here — `lib/plan/catalog.ts` is their table, and it is the one the clip
+filenames follow. They are ordinary catalog rows; the prefix is the only thing
+that keeps them out of the prescribable pool.
+
+## A warning about ids
+
+The ids in this file are the ones the app and the clip bucket use. The 2026-08
+shoot list numbers from an older revision and is offset by one from `L04` down.
+The mapping is in `docs/plan/recording-list.md`; read it before naming a file.
+
+## What is filmed
+
+`MEDIA_READY` in `lib/plan/catalog.ts` is the live list, and
+`npm run clips audit` checks it against the bucket. What is still unfilmed, and
+in what order it is worth shooting, is `docs/plan/recording-list.md`.

@@ -9,6 +9,7 @@ import {
   DEFAULT_WARMUP,
   EXERCISES,
   allowedWarmups,
+  allowedCooldowns,
   MOVEMENT_VOLUME,
   NUTRITION,
   RELAXATION,
@@ -22,6 +23,7 @@ import {
   isNutritionId,
   isRelaxationId,
   isWarmupId,
+  isCooldownId,
   limitationLine,
   relaxationDetail,
   relaxationForSymptom,
@@ -244,18 +246,27 @@ const PlanSchema = z.object({
  *  - bounds keywords (minItems, maximum, …) are not supported here, so the
  *    counts and lengths stay in PlanSchema, which clamps rather than rejects.
  */
-function planJsonSchema(pool: Exercise[], warmupPool: Exercise[]) {
+function planJsonSchema(pool: Exercise[], warmupPool: Exercise[], cooldownPool: Exercise[]) {
   const nullableInt = { type: ["integer", "null"] };
   // An empty `enum` is not valid JSON Schema, and OpenAI rejects the whole
   // request over it — which would cost the entire personalized plan because one
   // future limitation happened to exclude every bookend. So the enum falls back
   // to the full family; `bookendFrom()` filters against her real pool anyway, so
   // the safety gate is unmoved and the worst case is a dropped id.
-  const bookendIds = warmupPool.length ? warmupPool : EXERCISES.filter((e) => isWarmupId(e.id));
-  const bookend = {
+  //
+  // Two enums, not one, since 2026-08-26: warm-ups come from `W`, cool-downs
+  // from the `S` stretches. Under `strict: true` that makes "finish the session
+  // on leg swings" unrepresentable rather than merely discouraged, which is the
+  // whole reason the prefixes were kept apart.
+  const enumOf = (chosen: Exercise[], fallback: (id: string) => boolean) => ({
     type: ["array", "null"],
-    items: { type: "string", enum: bookendIds.map((e) => e.id) },
-  };
+    items: {
+      type: "string",
+      enum: (chosen.length ? chosen : EXERCISES.filter((e) => fallback(e.id))).map((e) => e.id),
+    },
+  });
+  const warmupEnum = enumOf(warmupPool, isWarmupId);
+  const cooldownEnum = enumOf(cooldownPool, isCooldownId);
 
   return {
     type: "object",
@@ -313,8 +324,8 @@ function planJsonSchema(pool: Exercise[], warmupPool: Exercise[]) {
                       },
                     },
                   },
-                  warmup: bookend,
-                  cooldown: bookend,
+                  warmup: warmupEnum,
+                  cooldown: cooldownEnum,
                 },
               },
             },
@@ -403,7 +414,8 @@ export function buildPrompt(
   profile: Profile,
   pool: Exercise[],
   adherence: Adherence | null = null,
-  warmupPool: Exercise[] = []
+  warmupPool: Exercise[] = [],
+  cooldownPool: Exercise[] = []
 ): string {
   const vol = MOVEMENT_VOLUME[profile.fitness_level ?? "beginner"] ?? MOVEMENT_VOLUME.beginner;
   const movement = vol.perDay
@@ -437,11 +449,14 @@ export function buildPrompt(
     `MOVEMENT — pick only these exercise ids, and give ${movement}:`,
     pool.map((e) => `${e.id} ${e.name}`).join(" | "),
     ``,
-    ...(warmupPool.length && !vol.perDay
+    ...(warmupPool.length && cooldownPool.length && !vol.perDay
       ? [
           ``,
-          `WARM-UP / COOL-DOWN — pick only these ids, and send them as plain id strings (no sets, no seconds — the app doses them):`,
+          `WARM-UP — pick "warmup" ids only from here, as plain id strings (no sets, no seconds — the app doses them):`,
           warmupPool.map((e) => `${e.id} ${e.name}`).join(" | "),
+          ``,
+          `COOL-DOWN — pick "cooldown" ids only from here, same shape. These are held stretches, not movements:`,
+          cooldownPool.map((e) => `${e.id} ${e.name}`).join(" | "),
         ]
       : []),
     ``,
@@ -479,11 +494,10 @@ export function buildPrompt(
     `- Never write a habit or movement task that repeats a nutrition row — no walks after meals, no water, no protein, no meal timing. She already ticks those every day; put the id in nutrition_focus instead.`,
     `- Relaxation tasks need item_id and cadence "daily" (or "per_day" with a target). Match the item to her worst symptom: hot flashes get breath_hotflash, night waking gets breath_sleep, anxiety or palpitations get breath_sigh.`,
     `- Movement tasks need an exercises array of ${minEx}-${maxEx} DIFFERENT ids — a session, not one move. Fewer than ${minEx} is a failed week.`,
-    ...(warmupPool.length && !vol.perDay
+    ...(warmupPool.length && cooldownPool.length && !vol.perDay
       ? [
-          `- Every movement task also gets "warmup" (${BOOKEND_MIN}-${BOOKEND_MAX} ids) and "cooldown" (${BOOKEND_MIN}-${BOOKEND_MAX} ids), chosen for what that session actually does: warm the joints it is about to load. A squat session opens the hips and ankles; a pressing session opens the shoulders and mid-back.`,
-          `- An id may not appear in both "warmup" and "cooldown" in the same session, and neither may repeat an id from "exercises".`,
-          `- The cool-down is the slower end of the same list — the held, floor-based ones. Never put a swinging or springy movement in a cool-down.`,
+          `- Every movement task also gets "warmup" (${BOOKEND_MIN}-${BOOKEND_MAX} ids) and "cooldown" (${BOOKEND_MIN}-${BOOKEND_MAX} ids), chosen for what that session actually does: warm the joints it is about to load, then stretch what it just loaded. A squat session opens the hips and ankles and finishes on the hips and quads; a pressing session opens the shoulders and mid-back and finishes on the chest and triceps.`,
+          `- Warm-up ids come from the WARM-UP list, cool-down ids from the COOL-DOWN list. Never swap them, and never repeat an id from "exercises".`,
           `- These are the only two arrays of bare strings in the plan. Send them as ["W02","W01"], never as objects.`,
         ]
       : []),
@@ -546,7 +560,7 @@ export function buildPrompt(
     `quitting a medication or HRT. "why" is one warm sentence, no shame, and the`,
     `banned phrases above apply to it too.`,
     ``,
-    `Return JSON: {"weeks":[{"number":1,"title":"...","focus":"...","nutrition_focus":["protein_25_30g"],"tasks":[{"pillar":"movement","title":"...","why":"...","cadence":"weekly","target":2,"item_id":null,"exercises":[{"id":"...","sets":3,"seconds":40,"minutes":null},{"id":"C01","sets":3,"seconds":45,"minutes":null}],"warmup":["W02","W01"],"cooldown":["W07","W09"]},{"pillar":"relaxation","title":"...","why":"...","cadence":"daily","target":1,"item_id":"breath_sleep","exercises":null,"warmup":null,"cooldown":null},{"pillar":"habit","title":"...","why":"...","cadence":"daily","target":1,"item_id":null,"exercises":null,"warmup":null,"cooldown":null}]}],"resist_suggestions":[{"title":"...","why":"..."}]}`,
+    `Return JSON: {"weeks":[{"number":1,"title":"...","focus":"...","nutrition_focus":["protein_25_30g"],"tasks":[{"pillar":"movement","title":"...","why":"...","cadence":"weekly","target":2,"item_id":null,"exercises":[{"id":"...","sets":3,"seconds":40,"minutes":null},{"id":"C01","sets":3,"seconds":45,"minutes":null}],"warmup":["W02","W01"],"cooldown":["S12","S19"]},{"pillar":"relaxation","title":"...","why":"...","cadence":"daily","target":1,"item_id":"breath_sleep","exercises":null,"warmup":null,"cooldown":null},{"pillar":"habit","title":"...","why":"...","cadence":"daily","target":1,"item_id":null,"exercises":null,"warmup":null,"cooldown":null}]}],"resist_suggestions":[{"title":"...","why":"..."}]}`,
   ].join("\n");
 }
 
@@ -606,14 +620,14 @@ const rotate = <T>(items: T[], n: number): T[] =>
  */
 function bookendFrom(
   ids: readonly string[] | null | undefined,
-  allowedWarm: Set<string>,
+  allowedIds: Set<string>,
   taken: Set<string>
 ): StoredExercise[] | undefined {
   const out: StoredExercise[] = [];
   for (const raw of ids ?? []) {
     if (out.length >= BOOKEND_MAX) break;
     const id = raw.trim().toUpperCase();
-    if (!allowedWarm.has(id) || taken.has(id)) continue;
+    if (!allowedIds.has(id) || taken.has(id)) continue;
     const ex = getExercise(id);
     if (!ex) continue;
     taken.add(id);
@@ -628,10 +642,12 @@ function sanitize(
   pool: Exercise[],
   vol: (typeof MOVEMENT_VOLUME)[string],
   profile: Profile,
-  warmupPool: Exercise[] = []
+  warmupPool: Exercise[] = [],
+  cooldownPool: Exercise[] = []
 ): Plan {
   const allowed = new Set(pool.map((e) => e.id));
   const allowedWarm = new Set(warmupPool.map((e) => e.id));
+  const allowedCool = new Set(cooldownPool.map((e) => e.id));
   const topProblems = profile.top_problems ?? [];
 
   const weeks: PlanWeek[] = [];
@@ -708,7 +724,7 @@ function sanitize(
         // check, so the same rule is applied here at the source.
         const taken = new Set(work.map((e) => e.id));
         const warmup = vol.perDay ? undefined : bookendFrom(t.warmup, allowedWarm, taken);
-        const cooldown = vol.perDay ? undefined : bookendFrom(t.cooldown, allowedWarm, taken);
+        const cooldown = vol.perDay ? undefined : bookendFrom(t.cooldown, allowedCool, taken);
 
         // Volume is a rule keyed off her fitness level, not something the model
         // gets a vote on — it kept sending "daily x7" and "per_day x1".
@@ -1044,6 +1060,7 @@ export async function buildPlan(
   // Bookends ignore her fitness level and follow only her limitations — see
   // allowedWarmups(). An advanced user does not graduate past hip circles.
   const warmupPool = allowedWarmups(p.physical_limits ?? []);
+  const cooldownPool = allowedCooldowns(p.physical_limits ?? []);
   const vol = MOVEMENT_VOLUME[p.fitness_level ?? "beginner"] ?? MOVEMENT_VOLUME.beginner;
 
   const fallback = fallbackPlan(p, pool);
@@ -1072,7 +1089,7 @@ export async function buildPlan(
       temperature: 0.5,
       response_format: {
         type: "json_schema",
-        json_schema: { name: "eight_week_plan", strict: true, schema: planJsonSchema(pool, warmupPool) },
+        json_schema: { name: "eight_week_plan", strict: true, schema: planJsonSchema(pool, warmupPool, cooldownPool) },
       },
       messages: [
         {
@@ -1080,7 +1097,7 @@ export async function buildPlan(
           content:
             "You are Lisa, a warm, evidence-informed menopause companion. You build practical 8-week plans by selecting from an approved list. Never invent exercises or supplements. Return JSON only.",
         },
-        { role: "user", content: buildPrompt(p, pool, adherence, warmupPool) },
+        { role: "user", content: buildPrompt(p, pool, adherence, warmupPool, cooldownPool) },
       ],
     });
 
@@ -1104,7 +1121,7 @@ export async function buildPlan(
     const raw = message?.content;
     const parsed = raw ? PlanSchema.safeParse(JSON.parse(raw)) : null;
     if (parsed?.success) {
-      const cleaned = sanitize(parsed.data, pool, vol, p, warmupPool);
+      const cleaned = sanitize(parsed.data, pool, vol, p, warmupPool, cooldownPool);
       // A thin plan means the model drifted off the catalog; the deterministic
       // fallback is better than handing her a week with two things in it.
       const complete =
