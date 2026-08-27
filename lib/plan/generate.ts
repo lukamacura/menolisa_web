@@ -539,7 +539,7 @@ export function buildPrompt(
       ? [
           `- Every movement task also gets "warmup" (${BOOKEND_MIN}-${BOOKEND_MAX} ids from the WARM-UP list) and "cooldown" (${BOOKEND_MIN}-${BOOKEND_MAX} ids from the COOL-DOWN list), chosen for what that session actually does: warm the joints it is about to load, then release the ones it just worked. A squat session opens the hips and ankles and finishes on the glutes and hip flexors; a pressing session opens the shoulders and mid-back and finishes on the chest.`,
           `- The two lists do not overlap and neither may repeat an id from "exercises".`,
-          `- These are the only two arrays of bare strings in the plan. Send them as ["W02","W01"], never as objects.`,
+          `- These are the only two arrays of bare strings in the plan. Send them as ["W06","W09"] and ["S06","S04"], never as objects.`,
         ]
       : []),
     ``,
@@ -597,7 +597,7 @@ export function buildPrompt(
     `quitting a medication or HRT. "why" is one warm sentence, no shame, and the`,
     `banned phrases above apply to it too.`,
     ``,
-    `Return JSON: {"weeks":[{"number":1,"title":"...","focus":"...","nutrition_focus":["protein_25_30g"],"tasks":[{"pillar":"movement","title":"...","why":"...","cadence":"weekly","target":2,"item_id":null,"exercises":[{"id":"...","sets":3,"seconds":40,"minutes":null},{"id":"C01","sets":3,"seconds":45,"minutes":null}],"warmup":["W02","W01"],"cooldown":["W07","W09"]},{"pillar":"relaxation","title":"...","why":"...","cadence":"daily","target":1,"item_id":"breath_sleep","exercises":null,"warmup":null,"cooldown":null},{"pillar":"habit","title":"...","why":"...","cadence":"daily","target":1,"item_id":null,"exercises":null,"warmup":null,"cooldown":null}]}],"resist_suggestions":[{"title":"...","why":"..."}]}`,
+    `Return JSON: {"weeks":[{"number":1,"title":"...","focus":"...","nutrition_focus":["protein_25_30g"],"tasks":[{"pillar":"movement","title":"...","why":"...","cadence":"weekly","target":2,"item_id":null,"exercises":[{"id":"...","sets":3,"seconds":40,"minutes":null},{"id":"...","sets":3,"seconds":45,"minutes":null}],"warmup":["W06","W09"],"cooldown":["S06","S04"]},{"pillar":"relaxation","title":"...","why":"...","cadence":"daily","target":1,"item_id":"breath_sleep","exercises":null,"warmup":null,"cooldown":null},{"pillar":"habit","title":"...","why":"...","cadence":"daily","target":1,"item_id":null,"exercises":null,"warmup":null,"cooldown":null}]}],"resist_suggestions":[{"title":"...","why":"..."}]}`,
   ].join("\n");
 }
 
@@ -1539,7 +1539,7 @@ export async function markPlanGenerating(
  * no video, rather than silently pulling megabytes it can't render.
  *
  * Even with it on, `video` is absent until that exercise's clip has
- * actually been produced (see MEDIA_READY) — the app shows name + props and no
+ * actually been shot (a `clip` on its catalog row) — the app shows name + props and no
  * player.
  */
 export function hydrateExercises(task: PlanTask, includeMedia = false) {

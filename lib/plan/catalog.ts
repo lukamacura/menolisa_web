@@ -45,86 +45,165 @@ export type Exercise = {
    * a given week, and that grows across the eight.
    */
   seconds?: number;
+  /**
+   * The clip's exact filename in the `exercise-clips` bucket, spaces and all.
+   *
+   * Absent means the movement has no clip yet — `exerciseMedia()` returns
+   * undefined and the app shows name + props with no player, which reads as
+   * deliberate. It is never a guessed filename: the previous design derived one
+   * from the id, so a shoot that named its files anything else produced a
+   * library of 404s that nothing but a mid-session player could detect.
+   */
+  clip?: string;
 };
 
-// 42 prescribable exercises (`L`/`P`/`U`/`C`/`I`), plus 24 bookend movements:
-// 14 warm-ups (`W`) and 10 stretches (`S`). Both bookend families are ordinary
-// rows here so `getExercise()` resolves them; the prefix is what keeps them out
-// of the main work. docs/plan/exercises.md covers the 41 original prescribable
-// ids only — the `W`, `S` and `U13` rows were added after it was written and
-// this table is the source of truth for them.
+// 47 prescribable exercises (`L`/`I`/`U`/`C`/`P`), plus 26 bookend movements: 15
+// warm-ups (`W`) and 11 stretches (`S`). Both bookend families are ordinary rows
+// here so `getExercise()` resolves them; the prefix is what keeps them out of
+// the main work.
 //
-// Every id below has a clip in the `exercise-clips` bucket except the eight
-// named in the `MEDIA_READY` comment; the catalog and the bucket were squared
-// off against each other on 2026-08-26.
+// **This table is the bucket.** It was rebuilt on 2026-08-27 against a shoot
+// that replaced the library wholesale — every clip in `exercise-clips` has a row
+// here and every row has a clip, so there is nothing to keep in sync by hand
+// and `npm run clips audit` proves it. Anything you remember from the previous
+// catalog is gone; git history is the record, not a commented-out block.
 //
-// The list narrowed from 59 to 42 on 2026-08-24 — 41 since 2026-08-25, when U06
-// turned out to be a mobility flow and moved to WARMUPS. It is not a subset:
-// cardio (`K`), balance (`B`) and mobility (`M`) left the plan entirely, and a
-// number of `L`/`U`/`C`/`I` ids were REUSED for different movements. Everything
-// that went is preserved, commented out, in RETIRED below — nothing was deleted,
-// so putting any of it back is a decision rather than a rediscovery.
+// The shoot is organized in seven series and the code sees four prefixes. The
+// mapping is deliberate and this is the only place it is written down:
 //
-// Names are house sentence case rather than the doc's title case: the ids are
+//   | Shoot series                          | Prefix    | n  |
+//   |---------------------------------------|-----------|----|
+//   | Lower Body Strength                   | `L01-L16` | 16 |
+//   | Plyometrics & Force Absorption        | `I01-I08` |  8 |
+//   | Upper Body Strength                   | `U01-U12` | 12 |
+//   | Core & Posterior Stability            | `C01-C08` + `P01-P03` | 11 |
+//   | Warm-up & Mobility                    | `W01-W15` | 15 |
+//   | Post-Lower Body Routine               | `S01-S06` |  6 |
+//   | Post-Upper Body Routine               | `S07-S11` |  5 |
+//
+// Two of those renamings are load-bearing, not cosmetic:
+//
+// - **PLYO -> `I`.** `ensureBoneLoading()` and the prompt's bone-coverage rule
+//   both test `startsWith("I")`, and `P` is already spoken for by the posterior
+//   chain — under any prefix rule `PLYO01` and `P01` are the same family. `I`
+//   for impact keeps every existing predicate working untouched.
+// - **Rl/Ru -> one `S` series.** `isStretchId` is `startsWith("S")`, so folding
+//   both post-workout routines into one cool-down pool keeps
+//   `allowedCooldowns()` working. The lower/upper split survives as the S01-S06
+//   / S07-S11 block boundary below rather than as a prefix; if the app should
+//   ever pick the post-upper routine after a pressing session specifically,
+//   that is a second predicate here, not a rename.
+//
+// Core & Posterior Stability is one series and two prefixes: `C` is the trunk
+// work and `P` the hinge, kept apart because they are excluded by different
+// limitations — a pelvic floor rule wants the plank gone and the bridge kept.
+//
+// The seventh tuple element is the clip's **exact filename in the bucket**,
+// spaces and all. Ids are the contract with the app and the model; filenames
+// are the contract with the bucket, and keeping them apart is what lets the
+// shoot stay human-readable where it is managed by hand. A row with no filename
+// is an exercise with no clip — she gets name and props, which looks
+// deliberate. See `exerciseMedia()`.
+//
+// Names are house sentence case rather than the shoot's title case: the ids are
 // the contract, the strings are UI copy.
-const E: [string, string, string, 1 | 2 | 3, Impact, boolean][] = [
-  // Lower body — strength (13)
-  ["L01", "Box squat", "Sturdy chair", 1, "none", true],
-  ["L02", "Bodyweight squat", "None", 1, "none", true],
-  ["L03", "Goblet squat", "1 dumbbell", 2, "none", false],
-  ["L04", "Step-up", "Stair or sturdy chair", 1, "low", true],
-  ["L05", "Step-up, loaded", "Stair, 2 dumbbells", 2, "low", false],
-  ["L06", "Supported reverse lunge", "Wall or counter", 2, "none", false],
-  ["L07", "Walking lunge", "None", 3, "none", false],
-  ["L08", "Calf raise, loaded", "2 dumbbells, bottom stair", 2, "none", false],
-  ["L09", "Bulgarian split squat", "Chair or couch, 2 dumbbells", 3, "none", false],
-  ["L10", "Split squat", "None, or 2 dumbbells", 2, "none", false],
-  ["L11", "Prisoner squat", "None", 1, "none", true],
-  ["L12", "Air squat", "None", 1, "none", true],
-  ["L13", "Dumbbell sumo deadlift", "1 dumbbell", 2, "none", false],
-  // Posterior chain / hinge (3)
-  ["P01", "Glute bridge", "Mat", 1, "none", true],
-  ["P02", "Glute bridge, weighted", "Mat, 1 dumbbell", 2, "none", false],
-  ["P03", "Romanian deadlift", "2 dumbbells", 2, "none", false],
-  // Upper body — push (5)
-  ["U01", "Wall push-up", "Wall", 1, "none", true],
-  ["U02", "Counter push-up", "Kitchen counter", 1, "none", true],
-  ["U03", "Incline push-up", "Sturdy table or bench", 2, "none", true],
-  ["U04", "Floor push-up", "Mat", 3, "none", false],
-  ["U05", "Dumbbell floor press", "2 dumbbells, floor", 2, "none", false],
-  // Upper body — press & pull (6)
-  ["U07", "Seated overhead press", "2 dumbbells, chair", 2, "none", false],
-  ["U08", "Standing overhead press", "2 dumbbells", 2, "none", false],
-  ["U09", "Bent-over dumbbell row", "2 dumbbells", 2, "none", false],
-  ["U10", "Rear-delt fly", "2 dumbbells", 2, "none", false],
-  ["U11", "Prone Y-T-W raise", "Mat", 1, "none", false],
-  ["U12", "Dumbbell lateral raise", "2 dumbbells", 2, "none", false],
-  // Filmed in the stretch series as "S09" and renamed on 2026-08-26: she is
-  // pressing a dumbbell, so it is a strength set, not a release. The clip in
-  // the bucket was renamed S09.mp4 -> U13.mp4 to match. The id was free — the
-  // retired U13 below was a different movement that never shipped.
-  ["U13", "Seated overhead triceps extension", "1 dumbbell, chair", 2, "none", false],
-  // Core, stability & carries (7)
-  ["C01", "Wall sit", "Wall", 1, "none", true],
-  ["C02", "Bird-dog", "Mat", 1, "none", true],
-  ["C03", "Farmer's carry", "2 heavy dumbbells", 2, "none", false],
-  ["C04", "Plank", "Mat", 1, "none", true],
-  ["C05", "Side plank", "Mat", 2, "none", false],
-  ["C06", "Dead bug", "Mat", 1, "none", true],
-  // Impact & bone loading (7)
+const E: [string, string, string, 1 | 2 | 3, Impact, boolean, string?][] = [
+  // ─── Lower Body Strength (16) ─────────────────────────────────────────────
   //
-  // The doc grades I03-I07 "Moderate Impact"; `Impact` has no middle value, so
-  // they map to "high" — the jarring, landing-on-your-joints kind that
-  // `joint_pain` and every limitation rule but `shoulder` drops wholesale.
-  // Grading them "low" to keep them in the pool would put a pogo jump in front
-  // of a woman who has just told us her knee hurts.
-  ["I01", "Stomping march", "None", 1, "low", true],
-  ["I02", "Supported heel drop", "Wall or counter", 1, "low", true],
-  ["I03", "Low hop", "None", 2, "high", true],
-  ["I04", "Plyometric skip", "None", 3, "high", false],
-  ["I05", "Pogo jump", "None", 2, "high", true],
-  ["I07", "Low step-off landing", "Bottom stair or low step", 3, "high", false],
-  // Warm-up & cool-down (14)
+  // Sixteen clips, but around seven distinct movement patterns: the shoot filmed
+  // loaded and bodyweight versions of the same lift as separate clips. That is
+  // right for her — the bodyweight version is the regression she needs in week 1
+  // and the loaded one is week 6 — but it means the pool is shallower than 16
+  // suggests, and the prompt's "use at least N different ids" rule can be
+  // satisfied with four squats. Worth remembering when reading a generated plan.
+  ["L01", "Chair squat", "Sturdy chair", 1, "none", true, "L01 - Chair Squat.mp4"],
+  ["L02", "Bodyweight squat", "None", 1, "none", true, "L02 - Bodyweight Squat.mp4"],
+  ["L03", "Goblet squat", "1 dumbbell", 2, "none", false, "L03 - Goblet Squat.mp4"],
+  ["L04", "Step-up", "Stair or sturdy chair", 1, "low", true, "L04 - Bodyweight Step Up.mp4"],
+  ["L05", "Step-up, loaded", "Stair, 2 dumbbells", 2, "low", false, "L05 - Loaded Step Up.mp4"],
+  ["L06", "Walking lunge", "None", 3, "none", false, "L06 - Walking Lunge.mp4"],
+  ["L07", "Bulgarian split squat, loaded", "Chair or couch, 2 dumbbells", 3, "none", false, "L07 - Loaded Bulgarian Split Squat.mp4"],
+  ["L08", "Bulgarian split squat", "Chair or couch", 2, "none", false, "L08 - Bodyweight Bulgarian Split Squat.mp4"],
+  ["L09", "Split squat, loaded", "2 dumbbells", 2, "none", false, "L09 - Loaded Split Squat.mp4"],
+  ["L10", "Split squat", "None", 2, "none", true, "L10 - Bodyweight Split Squat.mp4"],
+  ["L11", "Prisoner squat", "None", 1, "none", true, "L11 - Prisoner Squat.mp4"],
+  // L02 and L12 are near neighbours — the shoot filmed a bodyweight squat twice,
+  // once with the arms forward and once without. Both are kept because the model
+  // gets more to rotate through and she cannot tell them apart badly; do not
+  // read "two ids" as "two exercises" when counting the beginner pool.
+  ["L12", "Air squat", "None", 1, "none", true, "L12 - Squat.mp4"],
+  // The only hinge in the catalog until the C/P series is filmed. Losing it to a
+  // limitation leaves her with no posterior-chain work at all.
+  ["L13", "Dumbbell sumo deadlift", "1 dumbbell", 2, "none", false, "L13 - Dumbbell Sumo Deadlift.mp4"],
+  ["L14", "Calf raise, loaded", "2 dumbbells", 2, "none", false, "L14 - Loaded Calf Raise.mp4"],
+  ["L15", "Calf raise", "None", 1, "none", true, "L15 - Calf Raise Short.mp4"],
+  ["L16", "Supported reverse lunge", "Wall or counter", 2, "none", false, "L16 - Supported Reverse Lunge.mp4"],
+
+  // ─── Plyometrics & Force Absorption (8) ───────────────────────────────────
+  //
+  // The bone-loading family. `Impact` has no middle value, so everything that
+  // involves leaving the ground or catching a landing is graded "high" and is
+  // dropped wholesale by `joint_pain` and by every limitation except a sore
+  // shoulder. Grading a pogo jump "low" to keep it in the pool would put it in
+  // front of a woman who has just told us her knee hurts.
+  //
+  // That leaves **I01 as the only bone work a limited user can be given**, where
+  // the previous catalog had a low-impact pair. `ensureBoneLoading()` rotates
+  // across whatever it is handed, so for those users four of the eight weeks
+  // load bone with the same movement. It is still the right call — one real
+  // stimulus beats none — but a second low-impact clip (a supported heel drop
+  // was the old one) is the cheapest content fix left in this catalog, and the
+  // only measured gap after the `U` and `C`/`P` series landed.
+  ["I01", "Stomping march", "None", 1, "low", true, "Plyo01 - Stomping March.mp4"],
+  ["I02", "Box drop deceleration", "Low box or bottom stair", 3, "high", false, "Plyo02 - Box Drop Deceleration.mp4"],
+  ["I03", "Pogo jump, vertical", "None", 2, "high", true, "Plyo03 - Vertical Pogo Jumps.mp4"],
+  ["I04", "Pogo jump, lateral", "None", 2, "high", true, "Plyo04 - Lateral Pogo Jumps.mp4"],
+  ["I05", "Pogo jump, linear", "None", 2, "high", true, "Plyo05 - Linear Pogo Jumps.mp4"],
+  ["I06", "Pogo jump, multi-directional", "None", 3, "high", false, "Plyo06 - Multi Directional Pogo Jumps.mp4"],
+  ["I07", "Lateral step and stick", "None", 2, "high", false, "Plyo07 - Lateral Step And Stick.mp4"],
+  ["I08", "Plyometric skip", "None", 3, "high", false, "Plyo08 - Plyometric Skips.mp4"],
+
+  // ─── Upper Body Strength (12) ─────────────────────────────────────────────
+  //
+  // U01-U03 are the graded push-up ramp — wall, then table, then bench. That
+  // ladder IS the way back for a sore shoulder, which is why the `shoulder`
+  // limitation keeps all three and drops the overhead and floor work instead.
+  ["U01", "Wall push-up", "Wall", 1, "none", true, "U01 - Wall Push Up.mp4"],
+  ["U02", "Table push-up", "Kitchen counter or table", 1, "none", true, "U02 - Table Push Up.mp4"],
+  ["U03", "Bench push-up", "Sturdy bench or chair", 2, "none", true, "U03 - Bench Push Up.mp4"],
+  ["U04", "Dumbbell floor press", "2 dumbbells, floor", 2, "none", false, "U04 - Dumbbell Floor Press.mp4"],
+  ["U05", "Seated overhead press", "2 dumbbells, chair", 2, "none", false, "U05 - Seated Overhead Press.mp4"],
+  ["U06", "Standing overhead press", "2 dumbbells", 2, "none", false, "U06 - Standing Overhead Press.mp4"],
+  ["U07", "Bent-over dumbbell row", "2 dumbbells", 2, "none", false, "U07 - Bent Over Dumbbell Row.mp4"],
+  ["U08", "Single-arm dumbbell row", "1 dumbbell, chair or bench", 2, "none", false, "U08 - Single Arm Dumbbell Row.mp4"],
+  ["U09", "Rear-delt fly", "2 dumbbells", 2, "none", false, "U09 - Rear Delt Fly.mp4"],
+  // The scapular work. Kept in for a sore shoulder deliberately — Y-T-W and the
+  // rear-delt fly are usually what an irritable shoulder needs more of, not less.
+  ["U10", "Y-T-W shoulder raise", "Mat", 1, "none", false, "U10 - Ytw Shoulder Protocol.mp4"],
+  ["U11", "Dumbbell lateral raise", "2 dumbbells", 2, "none", false, "U11 - Dumbbell Lateral Raise.mp4"],
+  ["U12", "Seated overhead triceps extension", "1 dumbbell, chair", 2, "none", false, "U12 - Seated Overhead Tricep Extension.mp4"],
+
+  // ─── Core & Posterior Stability (11) ──────────────────────────────────────
+  //
+  // The trunk work and the hinge. `C01`, `C04` and `C05` are isometrics and
+  // `C03` is a loaded carry, so this series is the only reason the `hold` and
+  // `carry` dose units have prescribable members at all — see `DOSE`.
+  ["C01", "Wall sit", "Wall", 1, "none", true, "C01 - Wall Sit.mp4"],
+  ["C02", "Bird-dog", "Mat", 1, "none", true, "C02 - Bird Dog.mp4"],
+  ["C03", "Farmer's carry", "2 heavy dumbbells", 2, "none", false, "C03 - Farmers Carry.mp4"],
+  ["C04", "Forearm plank", "Mat", 1, "none", true, "C04 - Forearm Plank.mp4"],
+  ["C05", "Side plank", "Mat", 2, "none", false, "C05 - Side Plank.mp4"],
+  ["C06", "Dead bug", "Mat", 1, "none", true, "C06 - Dead Bug.mp4"],
+  // Mountain climbers are a fast alternating drill from a plank — graded "low"
+  // rather than "high" because nothing leaves the ground, but it is still the
+  // one `C` row a pelvic floor rule wants gone.
+  ["C07", "Mountain climber", "Mat", 2, "low", true, "C07 - Mountain Climber.mp4"],
+  ["C08", "Oblique twist", "Mat", 2, "none", true, "C08 - Oblique Twist.mp4"],
+  ["P01", "Glute bridge", "Mat", 1, "none", true, "P01 - Bodyweight Glute Bridge.mp4"],
+  ["P02", "Glute bridge, weighted", "Mat, 1 dumbbell", 2, "none", false, "P02 - Weighted Glute Bridge.mp4"],
+  ["P03", "Romanian deadlift", "2 dumbbells", 2, "none", false, "P03 - Romanian Deadlift Pattern.mp4"],
+
+  // ─── Warm-up & Mobility (15) ──────────────────────────────────────────────
   //
   // Ordinary catalog rows, so `getExercise()` resolves them and a bookend
   // hydrates into a name, a dose and a clip exactly like a squat does. What
@@ -132,117 +211,72 @@ const E: [string, string, string, 1 | 2 | 3, Impact, boolean][] = [
   // `allowedExercises()` drops — see `isWarmupId`. That is the whole mechanism:
   // one table, one lookup, one prefix rule.
   //
-  // W11 is deliberately absent — the Y-T-W shoulder warm-up is U11, one clip
-  // with one id rather than two files of the same footage that can drift apart.
-  ["W01", "Leg swings, linear & lateral", "Wall or counter", 1, "none", false],
-  ["W02", "Spider-Man Lunge", "None", 1, "none", false],
-  ["W03", "Spider-Man lunge with rotation", "Mat", 1, "none", false],
-  ["W04", "Half-kneeling hip flexor rockback", "Mat", 1, "none", false],
-  ["W05", "Deep squat with reach", "None", 1, "none", false],
-  ["W06", "Open book cross", "Mat", 1, "none", false],
-  ["W07", "Hamstring rocker", "Mat", 1, "none", false],
-  ["W08", "Cross-arm abduction", "None", 1, "none", false],
-  ["W09", "Shoulder mobility", "None", 1, "none", false],
-  ["W10", "PVC around the world", "Broomstick or PVC pipe", 1, "none", false],
-  ["W12", "World's greatest stretch", "Mat", 1, "none", false],
-  ["W13", "Lateral hamstring rocker", "Mat", 1, "none", false],
-  ["W14", "Heel/Toe", "None", 1, "none", false],
-  // Filmed as a push-up variation ("U06") and re-filed here on 2026-08-25: she
-  // flows through the positions and never presses, so it is mobility, not a
-  // set. The clip in the bucket was renamed U06.mp4 -> W15.mp4 to match.
-  ["W15", "Yoga flow", "Mat", 1, "none", false],
-  // Stretch & release — the cool-down (10)
+  // W02, W12 and W13 are sequences rather than single movements, so they carry
+  // longer doses in `DOSE` below and read as one block on the session screen.
+  ["W01", "Lateral leg swings", "Wall or counter", 1, "none", false, "W01 - Lateral Leg Swings.mp4"],
+  ["W02", "Dynamic movement prep", "None", 1, "none", false, "W02 - Dynamic Movement Prep.mp4"],
+  ["W03", "PVC around the world", "Broomstick or PVC pipe", 1, "none", false, "W03 - Pvc Around The World.mp4"],
+  ["W04", "Shoulder mobility", "None", 1, "none", false, "W04 - Shoulder Mobility Protocol.mp4"],
+  ["W05", "Open book cross", "Mat", 1, "none", false, "W05 - Open Book Cross.mp4"],
+  ["W06", "Hip circles", "None", 1, "none", false, "W06 - Hip Circles.mp4"],
+  ["W07", "Cobra spinal extension", "Mat", 1, "none", false, "W07 - Cobra Spinal Extension Stretch.mp4"],
+  ["W08", "World's greatest stretch", "Mat", 1, "none", false, "W08 - Worlds Greatest Stretch Flow.mp4"],
+  ["W09", "Deep squat with thoracic reach", "None", 1, "none", false, "W09 - Deep Squat With Thoracic Reach.mp4"],
+  ["W10", "Hamstring rocker", "Mat", 1, "none", false, "W10 - Hamstring Rocker Dissociation.mp4"],
+  ["W11", "Thread the needle", "Mat", 1, "none", false, "W11 - Thread The Needle.mp4"],
+  ["W12", "Full warm-up sequence", "None", 1, "none", false, "W12 - Comprehensive Warmup Sequence.mp4"],
+  ["W13", "Integrated mobility flow", "Mat", 1, "none", false, "W13 - Integrated Mobility Flow.mp4"],
+  ["W14", "Inchworm to plank reach", "Mat", 1, "none", false, "W14 - Inchworm To Plank Reach.mp4"],
+  ["W15", "Linear leg swings", "Wall or counter", 1, "none", false, "W15 - Linear Leg Swings.mp4"],
+
+  // ─── Post-Lower Body Routine (6) ──────────────────────────────────────────
   //
-  // Static holds, filmed 2026-08-26. They are bookends like the `W` rows above,
-  // not main work: `allowedExercises()` drops them by prefix, so the generator
-  // can never spend a strength slot on a child's pose. The difference from `W`
-  // is *which* end they belong on — a dynamic leg swing warms a joint up, a
-  // 40-second butterfly hold does the opposite — so they are the cool-down pool
-  // and `W` is the warm-up pool. See `allowedCooldowns()`.
+  // Static holds, the cool-down after a leg session. Bookends like the `W` rows
+  // above, not main work: `allowedExercises()` drops them by prefix, so the
+  // generator can never spend a strength slot on a child's pose. The difference
+  // from `W` is *which* end they belong on — a dynamic leg swing warms a joint
+  // up, a 40-second butterfly hold does the opposite — so `S` is the cool-down
+  // pool and `W` is the warm-up pool. See `allowedCooldowns()`.
+  ["S01", "Toe and heel calf stretch", "Wall or step", 1, "none", true, "Rl01 - Toe And Heel Calf Stretch.mp4"],
+  ["S02", "Kneeling hip flexor stretch", "Mat", 1, "none", true, "Rl02 - Kneeling Low Lunge Hip Flexor Stretch.mp4"],
+  ["S03", "Kneeling hamstring stretch", "Mat", 1, "none", true, "Rl03 - Kneeling Hamstring Stretch.mp4"],
+  ["S04", "Child's pose", "Mat", 1, "none", true, "Rl04 - Childs Pose.mp4"],
+  ["S05", "Butterfly stretch", "Mat", 1, "none", true, "Rl05 - Butterfly Pose.mp4"],
+  ["S06", "Supine figure-4 stretch", "Mat", 1, "none", true, "Rl06 - Supine Figure-4 Stretch.mp4"],
+
+  // ─── Post-Upper Body Routine (5) ──────────────────────────────────────────
   //
-  // This is the family the DEFAULT_COOLDOWN comment has been asking for since
-  // the mobility rows were retired: before these there was no static-stretch
-  // content in the catalog at all, and the cool-down had to reuse a warm-up.
-  //
-  // The shoot numbered them S01-S19 and ten made the cut; the gaps are takes
-  // that were not used, not missing files. S09 became U13 (see above).
-  ["S05", "Thread the needle", "Mat", 1, "none", true],
-  ["S07", "Seated side bend", "Mat", 1, "none", true],
-  ["S10", "Wall chest stretch", "Wall", 1, "none", true],
-  ["S12", "Lying figure-4 stretch", "Mat", 1, "none", true],
-  ["S13", "Kneeling hip flexor stretch", "Mat", 1, "none", true],
-  ["S14", "Kneeling hamstring stretch", "Mat", 1, "none", true],
-  ["S15", "Butterfly stretch", "Mat", 1, "none", true],
-  ["S17", "Cobra stretch", "Mat", 1, "none", true],
-  ["S18", "Child's pose", "Mat", 1, "none", true],
-  ["S19", "Seated 90/90 hip stretch", "Mat", 1, "none", true],
+  // The same pool, filmed for the other end of the body. They are prescribable
+  // today even though there is no upper-body work to follow — which is fine, and
+  // in fact useful: a woman who spends her day at a desk wants the chest and
+  // thoracic work whether or not she just pressed anything. When the `U` series
+  // lands, this block is the natural argument for splitting `allowedCooldowns()`
+  // in two.
+  ["S07", "Cross-arm shoulder stretch", "None", 1, "none", true, "Ru01 - Cross Arm Abduction Stretch.mp4"],
+  ["S08", "Seated side bend", "Mat", 1, "none", true, "Ru02 - Seated Side Bend.mp4"],
+  ["S09", "Seated spinal twist", "Mat", 1, "none", true, "Ru03 - Seated Spinal Twist.mp4"],
+  ["S10", "Chest and shoulder stretch", "Wall or doorway", 1, "none", true, "Ru04 - Chest And Shoulder Stretch.mp4"],
+  ["S11", "Standing shoulder stretch", "None", 1, "none", true, "Ru05 - Standing Combination Shoulder Stretch.mp4"],
 ];
 
-/**
- * RETIRED 2026-08-24. Verbatim, so restoring one is moving a line back into `E`.
+/*
+ * There is no RETIRED block any more, and putting one back would be a trap.
  *
- * Two things to know before doing that:
+ * It used to hold the pre-2026-08-24 movements verbatim so restoring one was
+ * moving a line. That worked while the ids still meant what they said. The
+ * 2026-08-27 shoot replaced the library wholesale and reused every prefix, so a
+ * commented-out `["L04", "Barbell back squat", ...]` sitting under a live
+ * `["L04", "Step-up", ...]` is not a restorable line — it is two movements
+ * claiming one id, waiting for someone to paste the wrong one back.
  *
- * - **The `L`/`P`/`U`/`C`/`I` ids below are taken.** The new list reused them for
- *   different movements — old `C04` was a farmer's carry, new `C04` is a plank.
- *   Restoring one of those means giving it an id nothing else uses (`L14`,
- *   `C08`, `U13`…), never pasting the line back as it stands.
- * - **`B`, `K` and `M` ids are still free, and their machinery is intact.** The
- *   `duration` dose unit, `isCardioId()`, `cardioMinutes()` and the prompt's
- *   continuous-block rule all still work — `duration` simply has no members
- *   right now, and `buildPrompt()` drops that rule on its own when the pool
- *   holds none. Uncommenting the `K` rows is genuinely all cardio needs.
+ * `git log -- lib/plan/catalog.ts` is the record. Bringing a movement back means
+ * filming it, giving it an id nothing else uses, and adding a row above.
  *
- * What their absence costs, so it stays a decision and not a drift: cardio was
- * half the beginner pool and the only unloaded aerobic work in the plan; `B` was
- * the fall-and-fracture training, which is why `LIMITATION_EXCLUDES.balance` has
- * nothing balance-specific left to remove; `M01` was the one mobility flow and
- * the only non-cardio `duration` id.
+ * What is genuinely still wired and simply has no members: the `duration` dose
+ * unit, `isCardioId()` (`K`) and `cardioMinutes()`. `buildPrompt()` drops its
+ * continuous-block rule on its own when the pool holds no `duration` id, so
+ * cardio needs rows and nothing else.
  */
-// Lower body — strength
-// ["L04", "Barbell back squat", "Barbell, rack", 3, "none", false],
-// Posterior chain / hinge
-// ["P03", "Bent-over dumbbell row", "2 dumbbells", 2, "none", false],   // kept, now U09
-// ["P05", "Hex bar deadlift", "Hex bar", 3, "none", false],
-// Upper body — push
-// ["U06", "Dumbbell bench press", "2 dumbbells, flat bench", 3, "none", false],
-// Upper body — press & pull
-// ["U09", "Band row", "Tube band, door anchor", 1, "none", true],
-// ["U10", "Band pull-apart", "Flat loop band", 1, "none", true],
-// ["U11", "Lat pulldown", "Cable machine", 3, "none", false],
-// ["U12", "Weighted pull-up", "Bar, dip belt", 3, "none", false],
-// ["U13", "Incline dumbbell row", "2 dumbbells, incline bench", 3, "none", false],   // id REUSED 2026-08-26 — U13 is now the seated triceps extension
-// Core, stability & carries
-// ["C03", "Hanging knee raise", "Pull-up bar", 3, "none", false],
-// ["C05", "Household heavy carry", "Detergent jug, hugged to chest", 1, "none", true],
-// ["C06", "Farmer's carry, household", "Grocery bags or jugs", 1, "none", true],
-// Balance — ids still free
-// ["B01", "Single-leg balance, supported", "Counter", 1, "none", true],   // DOSE ["hold", true, 30]
-// ["B02", "Single-leg balance, unstable", "Foam pad or cushion", 2, "none", true],  // ["hold", true, 30]
-// ["B03", "Ball-toss balance", "Foam pad, tennis ball, wall", 3, "none", false],    // ["hold", true, 30]
-// ["B04", "Toothbrush single-leg stand", "Sink, toothbrush", 1, "none", true],      // ["hold", true, 60]
-// Bone impact
-// ["I03", "Box drop landing", "8-inch box", 3, "high", false],
-// Cardio — ids still free, the `duration` unit is still wired for them
-// ["K01", "Zone 2 walk", "Outdoor path", 1, "low", false],
-// ["K02", "Fast walk interval", "Outdoor path", 2, "low", false],
-// ["K03", "Recovery stroll / hike", "Path or trail", 1, "low", false],
-// ["K04", "Hill power walk", "Incline", 2, "low", false],
-// ["K05", "Treadmill incline walk", "Treadmill", 2, "low", false],
-// ["K06", "Cycling", "Upright bike", 2, "none", false],
-// ["K07", "Assault / spin bike sprint", "Air bike", 3, "none", false],
-// ["K08", "Elliptical", "Machine", 2, "none", false],
-// ["K09", "Run / sprint", "Outdoor or track", 3, "high", false],
-// ["K10", "Sled push", "Weighted sled", 3, "none", false],
-// ["K11", "Stair climbing", "Flight of stairs", 2, "low", true],
-// ["K12", "Jump rope", "Rope", 3, "high", false],
-// ["K13", "Jumping jacks", "None", 2, "high", true],
-// ["K14", "High knees in place", "None", 2, "high", true],
-// Mobility & flexibility — ids still free
-// ["M01", "Dynamic floor stretching", "Mat", 1, "none", false],   // DOSE ["duration", false, 300]
-// ["M02", "Neck circles & shoulder rolls", "None", 1, "none", true],
-// ["M03", "Torso twist with arm swings", "None", 1, "none", true],
-// ["M04", "Hip circles", "None", 1, "none", true],
 
 /**
  * Every exercise whose dose is NOT a plain both-sides timed set.
@@ -256,6 +290,20 @@ const E: [string, string, string, 1 | 2 | 3, Impact, boolean][] = [
  * They are deliberately conservative; progression is a separate piece of work.
  */
 const DOSE: Record<string, [DoseUnit, boolean, number?]> = {
+  // Unilateral lower-body work — the seconds are per side, so the set runs
+  // twice. Every step-up, lunge and split squat in the catalog is here; the
+  // squats, the hinge and the calf raises are both-sides and need no row.
+  L04: ["timed", true],
+  L05: ["timed", true],
+  L06: ["timed", true],
+  L07: ["timed", true],
+  L08: ["timed", true],
+  L09: ["timed", true],
+  L10: ["timed", true],
+  L16: ["timed", true],
+  // The one plyometric worked a side at a time — she steps out, lands, and
+  // stabilises on that leg before coming back.
+  I07: ["timed", true],
   // Isometrics — the hold IS the exercise. A plank opens shorter than a wall sit
   // because it is the whole trunk holding a line, not a leg holding a chair.
   C01: ["hold", false, 30],
@@ -263,60 +311,62 @@ const DOSE: Record<string, [DoseUnit, boolean, number?]> = {
   C05: ["hold", true, 15],
   // Carries — measured in time because the alternative is measuring hallways.
   C03: ["carry", false, 40],
-  // Unilateral work — the seconds are per side, so the set runs twice. The
-  // alternating floor work (bird-dog, dead bug) is prescribed a side at a time
-  // rather than alternating within the set: one thing to obey per countdown.
+  // Unilateral trunk and upper-body work. The alternating floor work (bird-dog,
+  // dead bug) is prescribed a side at a time rather than alternating within the
+  // set: one thing to obey per countdown.
   C02: ["timed", true],
   C06: ["timed", true],
-  C07: ["timed", true],
-  L04: ["timed", true],
-  L05: ["timed", true],
-  L06: ["timed", true],
-  L07: ["timed", true],
-  L09: ["timed", true],
-  L10: ["timed", true],
+  C08: ["timed", true],
+  U08: ["timed", true],
   // Warm-ups. Uniform on purpose — a warm-up is not progressed across the eight
   // weeks; it is the same two minutes in week 8 as in week 1.
   W01: ["timed", true, 40],
-  W03: ["timed", true, 40],
-  W04: ["timed", true, 40],
+  W05: ["timed", true, 40],
   W06: ["timed", true, 40],
-  W07: ["timed", true, 40],
-  W12: ["timed", true, 40],
-  W13: ["timed", true, 40],
-  W02: ["timed", false, 40],
-  W05: ["timed", false, 40],
-  W08: ["timed", false, 40],
-  W09: ["timed", false, 40],
-  W10: ["timed", false, 40],
+  W08: ["timed", true, 40],
+  W09: ["timed", true, 40],
+  W10: ["timed", true, 40],
+  W11: ["timed", true, 40],
+  W15: ["timed", true, 40],
+  W03: ["timed", false, 40],
+  W04: ["timed", false, 40],
+  W07: ["timed", false, 40],
   W14: ["timed", false, 40],
-  W15: ["timed", false, 90],
+  // The three sequences. They walk through several positions in one clip, so a
+  // 40-second dose would cut the flow off partway; they get a block long enough
+  // to finish once.
+  W02: ["timed", false, 60],
+  W12: ["timed", false, 90],
+  W13: ["timed", false, 90],
   // Stretches. Every one is a `hold` — the hold IS the stretch — and uniform for
   // the same reason the warm-ups are: a cool-down is not progressed across the
   // eight weeks. 40 seconds is long enough for tissue to give and short enough
   // that she stays for it; the per-side ones run twice, so those sit at 30 to
   // keep the whole cool-down inside two minutes.
-  S05: ["hold", true, 30],
+  S01: ["hold", true, 30],
+  S02: ["hold", true, 30],
+  S03: ["hold", true, 30],
+  S06: ["hold", true, 30],
   S07: ["hold", true, 30],
+  S08: ["hold", true, 30],
+  S09: ["hold", true, 30],
   S10: ["hold", true, 30],
-  S12: ["hold", true, 30],
-  S13: ["hold", true, 30],
-  S14: ["hold", true, 30],
-  S19: ["hold", true, 30],
-  S15: ["hold", false, 40],
-  S17: ["hold", false, 40],
-  S18: ["hold", false, 40],
-  // No `duration` id is currently in the catalog — cardio and the mobility flow
-  // are both retired. The unit and everything that runs it stay wired; see the
-  // RETIRED block above.
+  S04: ["hold", false, 40],
+  S05: ["hold", false, 40],
+  S11: ["hold", false, 40],
+  // `duration` is the one unit with no member: cardio and the mobility flow are
+  // retired. It stays fully wired — `isCardioId()`, `cardioMinutes()` and the
+  // prompt's continuous-block rule all still work, and `buildPrompt()` drops
+  // that rule on its own while the pool holds none — so cardio needs rows and
+  // nothing else.
 };
 
 /** Cardio's default block length when nothing else says otherwise. */
 const CARDIO_DEFAULT_SECONDS = 900;
 
-export const EXERCISES: Exercise[] = E.map(([id, name, props, level, impact, snack]) => {
+export const EXERCISES: Exercise[] = E.map(([id, name, props, level, impact, snack, clip]) => {
   const [dose, perSide, seconds] = DOSE[id] ?? (isCardioId(id) ? (["duration", false, CARDIO_DEFAULT_SECONDS] as const) : (["timed", false, undefined] as const));
-  return { id, name, props, level, impact, snack, dose, perSide, seconds };
+  return { id, name, props, level, impact, snack, dose, perSide, seconds, clip };
 });
 
 const BY_ID = new Map(EXERCISES.map((e) => [e.id, e]));
@@ -386,9 +436,9 @@ export type StoredExercise = {
  * these stop being read (see `sessionWarmup`).
  */
 export const DEFAULT_WARMUP: readonly StoredExercise[] = [
-  { id: "W02", sets: 1, seconds: 40 },
-  { id: "W01", sets: 1, seconds: 40 },
+  { id: "W04", sets: 1, seconds: 40 },
   { id: "W06", sets: 1, seconds: 40 },
+  { id: "W09", sets: 1, seconds: 40 },
 ];
 
 /**
@@ -404,9 +454,9 @@ export const DEFAULT_WARMUP: readonly StoredExercise[] = [
  * stretches at all. It does now (`S`), so the cool-down is finally cooling down.
  */
 export const DEFAULT_COOLDOWN: readonly StoredExercise[] = [
-  { id: "S12", sets: 1, seconds: 30 },
-  { id: "S13", sets: 1, seconds: 30 },
-  { id: "S18", sets: 1, seconds: 40 },
+  { id: "S06", sets: 1, seconds: 30 },
+  { id: "S02", sets: 1, seconds: 30 },
+  { id: "S04", sets: 1, seconds: 40 },
 ];
 
 // ─── Dose, rest and session length ──────────────────────────────────────────
@@ -684,9 +734,9 @@ export function cardioMinutes(sessionMinutes: number, exerciseCount: number): nu
  * dashboard.** The script parses each file and refuses anything off-spec, and
  * it sets a one-year `cacheControl` — the dashboard uploader stamps
  * `max-age=3600`, which is why the first batch revalidated against origin on
- * essentially every play. `npm run clips audit` compares the live bucket to
- * `MEDIA_READY` and is the only thing that catches an id served with no file
- * behind it.
+ * essentially every play. `npm run clips audit` compares the live bucket to the
+ * `clip` filenames on the rows above, in both directions, and is the only thing
+ * that catches an id served with no file behind it or a file nothing serves.
  *
  * **`faststart` is not optional and is invisible if you skip it.** The `moov`
  * index has to sit before `mdat`, or the player reads the head, finds no index,
@@ -739,47 +789,30 @@ const MEDIA_BASE =
   process.env.EXERCISE_MEDIA_BASE ??
   `${process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""}/storage/v1/object/public/exercise-clips`;
 
-/**
- * Which clips have actually been **uploaded to the bucket**, not which ones are
- * planned. An id lands here when its `.mp4` is actually in `exercise-clips`.
- *
- * The gate stays because the mobile app is live: an id listed here with nothing
- * behind it is a 404 in her player mid-session, while an id left out falls back
- * to name + props and looks deliberate.
- *
- * Holds both catalog ids and `W` warm-up ids — one bucket, one gate, so a
- * warm-up clip is added the same way an exercise one is.
- */
-const MEDIA_READY = new Set<string>([
-  // Exercises (36 of 42)
-  "L01", "L02", "L03", "L04", "L05", "L06", "L07", "L08", "L09", "L10", "L11",
-  "L12", "L13",
-  "P01", "P02", "P03",
-  "U01", "U02", "U03", "U05", "U07", "U08", "U09", "U10", "U11", "U12", "U13",
-  "C01", "C02", "C03", "C04", "C05", "C06",
-  "I01", "I02", "I05",
-  // Warm-ups (12 of 14; U11 above serves both)
-  "W01", "W02", "W05", "W06", "W07", "W08", "W09", "W10", "W12", "W13", "W14",
-  "W15",
-  // Stretches (10 of 10)
-  "S05", "S07", "S10", "S12", "S13", "S14", "S15", "S17", "S18", "S19",
-]);
-
-/**
- * Still to shoot, so the gap is a list rather than a subtraction:
- * `U04` floor push-up, `C07` pallof press, `I03` low hop, `I04` plyometric skip,
- * `I06` forward fall landing, `I07` low step-off landing, and the two warm-ups
- * `W03` Spider-Man lunge and `W04` half-kneeling rockback. All eight are level 2+
- * or moderate-impact except the warm-ups, so no beginner is affected: every id a
- * beginner can be given has a clip.
- */
-
 export type ExerciseMedia = { video: string };
 
-/** The clip for any id in the bucket — catalog exercise or warm-up. */
+/**
+ * The clip for any id that has one — catalog exercise, warm-up or stretch.
+ *
+ * **The filename comes off the row, not from the id.** This used to be a
+ * `MEDIA_READY` set of ids plus `${MEDIA_BASE}/${id}.mp4`, which quietly assumed
+ * the shoot would name its files after our ids. The 2026-08-27 shoot named them
+ * `L01 - Chair Squat.mp4`, and under the old rule every one of the fifty would
+ * have resolved to a URL with nothing behind it — a 404 in her player mid-session,
+ * invisible from the dashboard, invisible in a build. Two lists that had to agree
+ * are now one field that cannot disagree with itself, and `npm run clips audit`
+ * checks it against what is actually live.
+ *
+ * `encodeURIComponent` is not optional: the filenames carry spaces, and an
+ * unencoded space is a malformed URL rather than a slow one. It encodes the
+ * whole name as a single path segment, which is correct here — no clip lives in
+ * a subfolder, and if one ever does, that is a `dir/` prefix on `MEDIA_BASE`,
+ * never a slash smuggled through this call.
+ */
 export function exerciseMedia(id: string): ExerciseMedia | undefined {
-  if (!MEDIA_READY.has(id) || !MEDIA_BASE) return undefined;
-  return { video: `${MEDIA_BASE}/${id}.mp4` };
+  const clip = BY_ID.get(id)?.clip;
+  if (!clip || !MEDIA_BASE) return undefined;
+  return { video: `${MEDIA_BASE}/${encodeURIComponent(clip)}` };
 }
 
 /**
@@ -801,67 +834,70 @@ export function exerciseMedia(id: string): ExerciseMedia | undefined {
  * "none" is not a key — she is saying nothing applies, so nothing is removed.
  */
 const LIMITATION_EXCLUDES: Record<string, { impact: boolean; ids: string[] }> = {
-  // Loaded spinal flexion and hinging under load. The two hinges (P03, L13) and
-  // the bent-over row go; the bridges stay, because they load the same chain
-  // with her back on the floor.
+  // Loaded hinging and loaded spinal flexion. The two hinges (P03, L13) and the
+  // bent-over rows go; the bridges stay, because they load the same chain with
+  // her back on the floor. W08 and W14 both take her through a deep toe-touch
+  // under her own bodyweight, and S03 is a kneeling hamstring stretch, which is
+  // the same lumbar position held. W07's cobra stays — extension is usually what
+  // a sore back wants more of.
   back: {
     impact: true,
-    ids: ["L07", "L13", "P03", "U09", "C03", "W03", "W12", "S14"],
+    ids: ["L06", "L13", "P03", "U07", "U08", "C03", "C07", "W08", "W14", "S03"],
   },
-  // Lunges, split positions, step-ups and long loaded knee flexion. L01, L02,
-  // L11 and L12 stay — sitting to a chair is the knee-friendly pattern and
-  // dropping it would leave her no lower-body strength work at all.
+  // Lunges, split positions, step-ups and long or deep loaded knee flexion.
+  // L01, L02, L11, L12 and the calf raises stay — sitting to a chair is the
+  // knee-friendly pattern and dropping it would leave her no lower-body strength
+  // work at all.
   knee: {
     impact: true,
     ids: [
-      "L04", "L05", "L06", "L07", "L09", "L10", "C01", "W03", "W05", "W12",
+      "L04", "L05", "L06", "L07", "L08", "L09", "L10", "L16", "C01", "W08",
+      "W09",
       // Kneeling and deep knee flexion. The floor stretches that leave the knee
-      // straight or loosely bent (S12, S14, S15) stay — a sore knee usually
-      // wants more of those, not less.
-      "S13", "S18", "S19",
+      // straight or loosely bent (S05, S06) stay — a sore knee usually wants
+      // more of those, not less.
+      "S02", "S04",
     ],
   },
-  // Deep hip flexion under load and the wide-stance loaded hinge.
+  // Deep hip flexion under load, the split positions, and the wide-stance
+  // loaded hinge.
   hip: {
     impact: true,
     ids: [
-      "L06", "L07", "L09", "L10", "L13", "W03", "W05", "W12",
-      // End-range hip abduction and rotation. S12's figure-4 stays: it is the
-      // gentle version of the same stretch, done lying down with the leg
-      // supported.
-      "S15", "S19",
+      "L06", "L07", "L08", "L09", "L10", "L13", "L16", "W08", "W09",
+      // End-range hip abduction. S06's figure-4 stays: it is the gentle version
+      // of the same stretch, done lying down with the leg supported.
+      "S05",
     ],
   },
-  // Overhead, abduction and pressing from the floor. No impact rule — a sore
-  // shoulder is not a reason to drop bone loading. U01-U03 stay (that graded
-  // wall → counter → table ramp IS the way back), as do the two scapular moves
-  // U10 and U11, which are what a sore shoulder usually needs more of.
+  // Overhead, end-range abduction, and pressing from the floor. No impact rule
+  // — a sore shoulder is not a reason to drop bone loading. U01-U03 stay (that
+  // graded wall → table → bench ramp IS the way back), as do the two scapular
+  // moves U09 and U10, which are what a sore shoulder usually needs more of.
   shoulder: {
     impact: false,
-    // U13 presses overhead too. S10 pins the arm on a wall and rotates away from
-    // it, which is the position an irritable shoulder is most often irritable
-    // in; S05's thread-the-needle stays, because it moves the shoulder blade
+    // U12 presses overhead too. W03 takes a stick through a full overhead arc,
+    // C07 and W14 load the shoulder in a plank, and S10 pins the arm and rotates
+    // away from it — the position an irritable shoulder is most often irritable
+    // in. S07's cross-arm stretch stays, because it moves the shoulder blade
     // rather than the joint.
-    ids: ["U04", "U05", "U07", "U08", "U12", "U13", "W10", "W15", "S10"],
+    ids: ["U04", "U05", "U06", "U11", "U12", "C07", "W03", "W14", "S10"],
   },
   // Anything that spikes intra-abdominal pressure: the heavy carry, the front
-  // plank, and the loaded hinges, alongside the jumping. C05 side plank, C06
-  // dead bug and C07 pallof press stay in deliberately — they are the core work
-  // that is routinely prescribed *for* this, at a fraction of the pressure.
+  // plank and its fast cousin, the deep loaded squat position, and the loaded
+  // hinges, alongside the jumping. C05 side plank, C06 dead bug and C08 oblique
+  // twist stay in deliberately — they are the core work routinely prescribed
+  // *for* this, at a fraction of the pressure.
   pelvic_floor: {
     impact: true,
-    ids: ["C03", "C04", "L13", "P03", "W05", "W15"],
+    ids: ["C03", "C04", "C07", "L13", "P03", "W09", "W14"],
   },
-  // Anything she could fall from or during — the single-leg stances. The
-  // *supported* reverse lunge (L06) stays: a hand on the counter is the training
-  // for this, not a risk of it.
-  //
-  // This rule used to name B02/B03 (the unstable balance holds) as its core.
-  // With the `B` family retired there is no balance training left to grade, so
-  // what remains is exclusion only — worth remembering if `B` ever comes back.
+  // Anything she could fall from or during — the single-leg and travelling
+  // positions. The *supported* reverse lunge (L16) stays: a hand on the counter
+  // is the training for this, not a risk of it.
   balance: {
     impact: true,
-    ids: ["L07", "L09", "L10", "W12"],
+    ids: ["L06", "L07", "L08", "L09", "L10", "W08"],
   },
 };
 
@@ -873,18 +909,29 @@ const LIMITATION_EXCLUDES: Record<string, { impact: boolean; ids: string[] }> = 
  * remove work she shouldn't be given; those filters run in code, never in the
  * prompt, so a model can't opt out of them.
  *
- * The pool is never emptied by this: a beginner ticking every limitation AND
- * reporting joint pain still keeps 12 exercises, with lower body, hinge, upper
- * body, core and low-impact bone loading all represented — enough for the 4-6
- * different ids a session needs. Adding a limitation means re-measuring that
- * (`scripts/verify-plan-dose.ts` prints every pool size): the exclusions are a
- * hard gate, and a gate that starves the generator produces a worse plan than
- * one that lets a step-up through.
+ * The pool is never emptied by this. Measured by `scripts/verify-plan-dose.ts`
+ * against this catalog:
  *
- * That floor was 20 before the 2026-08-24 catalog change and the headroom is
- * genuinely thinner now — cardio was carrying a lot of it, and every `K` id
- * survived every limitation. Twelve is workable across eight weeks; ten would
- * not be.
+ *   | Level            | clean | +joint_pain | + all six limitations |
+ *   |------------------|-------|-------------|-----------------------|
+ *   | beginner         |    15 |          15 |                    12 |
+ *   | medium           |    42 |          38 |                    19 |
+ *   | advanced         |    47 |          40 |                    19 |
+ *   | movement_snacks  |    21 |          18 |                    13 |
+ *
+ * A beginner ticking every limitation AND reporting joint pain still keeps 12,
+ * with lower body, hinge, upper body, core and low-impact bone loading all
+ * represented — enough for the 4-6 different ids a session needs. Adding a
+ * limitation means re-measuring that: the exclusions are a hard gate, and a gate
+ * that starves the generator produces a worse plan than one that lets a step-up
+ * through. Twelve is workable across eight weeks; ten would not be.
+ *
+ * Joint pain and the `q_limitations` answers remove work she shouldn't be given,
+ * in code and never in the prompt, so a model can't opt out of them.
+ *
+ * One gap survives at the far end and it is content, not code: `I01` is the only
+ * bone-loading id left in every worst-case pool, because everything else in the
+ * plyometric series leaves the ground. See the `I` block in the table above.
  */
 export function allowedExercises(
   fitnessLevel: string | null,
@@ -918,12 +965,10 @@ export function allowedExercises(
  * snack rule — a bookend is level 1 by construction, and two minutes of hip
  * circles is not something an advanced user graduates past.
  *
- * A woman ticking all six limitations keeps 9 of the 14 warm-ups and 4 of the 10
- * stretches (S05, S07, S12, S17 — shoulder, side, glute, spine). The cool-down
- * is the tight one, and deliberately so: six limitations rule out every kneeling
- * and every end-range hip position, which is most of what a stretch is. Four
- * against a 2-4 item cool-down means she sees the same ones each week, and a
- * repeated safe stretch beats a varied one on a knee she told us hurts.
+ * A woman ticking all six limitations keeps 11 of the 15 warm-ups and 6 of the
+ * 11 stretches (S01 calf, S06 glute, S07 shoulder, S08 side, S09 spine, S11
+ * shoulder). Both ends got healthier with the 2026-08-27 shoot — the warm-up
+ * floor was 9 and the cool-down floor 4.
  *
  * Re-check both numbers when adding a limitation. Below four the cool-down stops
  * being a choice at all.

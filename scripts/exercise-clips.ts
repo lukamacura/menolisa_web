@@ -24,7 +24,7 @@
  *
  *   npx tsx scripts/exercise-clips.ts check  <dir>   # validate, no network
  *   npx tsx scripts/exercise-clips.ts upload <dir>   # validate, then upload
- *   npx tsx scripts/exercise-clips.ts audit          # what is live vs MEDIA_READY
+ *   npx tsx scripts/exercise-clips.ts audit          # what is live vs the catalog
  *
  * `upload` also sets `cacheControl` to a year. The dashboard uploader stamps
  * `max-age=3600`, which is why every clip currently revalidates against origin
@@ -197,17 +197,32 @@ function probe(buf: Buffer): Probe {
 
 // ─── The spec check ──────────────────────────────────────────────────────────
 
-const VALID_IDS = new Set(EXERCISES.map((e) => e.id));
+/**
+ * Filename -> catalog id, for every row that claims a clip.
+ *
+ * The shoot names its files `L01 - Chair Squat.mp4` and the catalog carries that
+ * string verbatim on the row, so the **filename** is what identifies a clip here
+ * — not a basename that has to parse as an id. That was the previous rule, and
+ * it would have failed all fifty files of the 2026-08-27 batch while telling us
+ * nothing about their contents.
+ */
+const CLIP_TO_ID = new Map(
+  EXERCISES.filter((e) => e.clip).map((e) => [e.clip as string, e.id])
+);
 
-type Report = { id: string; probe: Probe; hard: string[]; soft: string[] };
+type Report = { file: string; id: string | undefined; probe: Probe; hard: string[]; soft: string[] };
 
-function inspect(id: string, buf: Buffer): Report {
+function inspect(file: string, buf: Buffer): Report {
+  const id = CLIP_TO_ID.get(file);
   const p = probe(buf);
   const hard: string[] = [];
   const soft: string[] = [];
 
-  if (!VALID_IDS.has(id)) {
-    hard.push(`"${id}" is not a catalog id — nothing will ever request this file`);
+  if (!id) {
+    hard.push(
+      `no catalog row carries clip "${file}" — nothing will ever request it. ` +
+        `Add the filename to that exercise's row in lib/plan/catalog.ts.`
+    );
   }
   if (!p.faststart) {
     hard.push("moov is after mdat (re-run with -movflags +faststart / HandBrake 'Web Optimized')");
@@ -239,20 +254,21 @@ function inspect(id: string, buf: Buffer): Report {
     soft.push(`${p.fps.toFixed(1)} fps, expected 30`);
   }
 
-  return { id, probe: p, hard, soft };
+  return { file, id, probe: p, hard, soft };
 }
 
 function printReport(reports: Report[]) {
   const kb = (n: number) => String(Math.round(n / 1024)).padStart(5);
+  const label = (r: Report) => `${r.id ?? "??"} ${r.file.replace(/\.mp4$/i, "")}`.slice(0, 34);
   console.log(
-    `\n${"id".padEnd(5)} ${"KB".padStart(5)} ${"sec".padStart(5)} ${"kbps".padStart(5)} ` +
+    `\n${"id / file".padEnd(34)} ${"KB".padStart(5)} ${"sec".padStart(5)} ${"kbps".padStart(5)} ` +
       `${"dims".padStart(10)} ${"codec".padEnd(5)} ${"fps".padStart(5)} fast`
   );
-  for (const r of reports.sort((a, b) => a.id.localeCompare(b.id))) {
+  for (const r of reports.sort((a, b) => a.file.localeCompare(b.file))) {
     const p = r.probe;
     const mark = r.hard.length ? "FAIL" : r.soft.length ? "warn" : "ok";
     console.log(
-      `${r.id.padEnd(5)} ${kb(p.bytes)} ${(p.seconds?.toFixed(2) ?? "?").padStart(5)} ` +
+      `${label(r).padEnd(34)} ${kb(p.bytes)} ${(p.seconds?.toFixed(2) ?? "?").padStart(5)} ` +
         `${(p.seconds ? Math.round((p.bytes * 8) / p.seconds / 1000) : "?").toString().padStart(5)} ` +
         `${`${p.width}x${p.height}`.padStart(10)} ${(p.codec ?? "?").padEnd(5)} ` +
         `${(p.fps?.toFixed(1) ?? "?").padStart(5)} ${p.faststart ? "yes " : "NO  "} ${mark}`
@@ -273,7 +289,7 @@ function printReport(reports: Report[]) {
 function loadDir(dir: string): Report[] {
   const files = readdirSync(dir).filter((f) => extname(f).toLowerCase() === ".mp4");
   if (!files.length) throw new Error(`no .mp4 files in ${dir}`);
-  return files.map((f) => inspect(basename(f, extname(f)), readFileSync(join(dir, f))));
+  return files.map((f) => inspect(basename(f), readFileSync(join(dir, f))));
 }
 
 // ─── Commands ────────────────────────────────────────────────────────────────
@@ -308,18 +324,21 @@ async function cmdUpload(dir: string) {
 
   const uploaded: string[] = [];
   for (const r of reports) {
-    const file = readFileSync(join(dir, `${r.id}.mp4`));
-    const { error } = await bucket.upload(`${r.id}.mp4`, file, {
+    // Uploaded under the name the catalog row carries, which is the name it was
+    // just validated as. Renaming on the way in would put the bucket and the
+    // `clip` field out of step at the one moment we can still see both.
+    const file = readFileSync(join(dir, r.file));
+    const { error } = await bucket.upload(r.file, file, {
       contentType: "video/mp4",
       cacheControl: SPEC.cacheControl,
       upsert: true,
     });
     if (error) {
-      console.error(`  ${r.id}  FAILED  ${error.message}`);
+      console.error(`  ${r.file}  FAILED  ${error.message}`);
       continue;
     }
-    uploaded.push(r.id);
-    console.log(`  ${r.id}  ok`);
+    uploaded.push(r.file);
+    console.log(`  ${r.id}  ${r.file}  ok`);
   }
 
   console.log(`\n${uploaded.length}/${reports.length} uploaded.`);
@@ -335,48 +354,56 @@ async function cmdAudit() {
   for (const o of data ?? []) {
     if (!o.name.endsWith(".mp4")) continue;
     const meta = (o.metadata ?? {}) as Record<string, unknown>;
-    live.set(basename(o.name, ".mp4"), {
+    live.set(o.name, {
       size: Number(meta.size ?? 0),
       cacheControl: String(meta.cacheControl ?? "?"),
     });
   }
 
-  // MEDIA_READY is private to the catalog on purpose — read it back through the
-  // only public door, so this audits what the API actually serves rather than a
-  // copy of the list that can drift from it.
+  // Read the served URLs back through the only public door, so this audits what
+  // the API actually hands the app rather than a second copy of the mapping.
+  // `exerciseMedia()` percent-encodes, so decode to compare against bucket keys.
   const { exerciseMedia } = await import("../lib/plan/catalog");
-  const served = EXERCISES.map((e) => e.id).filter((id) => exerciseMedia(id));
+  const served = new Map<string, string>();
+  for (const e of EXERCISES) {
+    const media = exerciseMedia(e.id);
+    if (media) served.set(decodeURIComponent(media.video.split("/").pop()!), e.id);
+  }
 
   const problems: string[] = [];
 
-  console.log(`\n=== bucket vs MEDIA_READY ===`);
-  console.log(`  ${live.size} files live, ${served.length} ids served by exerciseMedia()`);
+  console.log(`\n=== bucket vs catalog ===`);
+  console.log(`  ${live.size} files live, ${served.size} served by exerciseMedia()`);
 
   // The failure this exists to catch: the API hands the app a URL, the app
   // requests it mid-session, and there is nothing behind it.
-  const ghosts = served.filter((id) => !live.has(id));
+  const ghosts = [...served].filter(([file]) => !live.has(file));
   if (ghosts.length) {
     problems.push(
-      `${ghosts.length} id(s) in MEDIA_READY with no file in the bucket — 404 in her player: ${ghosts.join(", ")}`
+      `${ghosts.length} row(s) whose clip is not in the bucket — 404 in her player: ` +
+        ghosts.map(([file, id]) => `${id} -> "${file}"`).join(", ")
     );
   }
 
-  const unserved = [...live.keys()].filter((id) => !served.includes(id));
+  const unserved = [...live.keys()].filter((file) => !served.has(file));
   if (unserved.length) {
-    console.log(`  uploaded but not in MEDIA_READY (add them to serve them): ${unserved.join(", ")}`);
+    console.log(
+      `  uploaded but no catalog row claims them (add the filename to a row to serve them):\n` +
+        unserved.map((f) => `    ${f}`).join("\n")
+    );
   }
 
   const stale = [...live.entries()].filter(([, v]) => v.cacheControl !== `max-age=${SPEC.cacheControl}`);
   if (stale.length) {
     console.log(
       `  ${stale.length} file(s) with a short cacheControl (re-upload through this script to fix): ` +
-        stale.map(([id, v]) => `${id}=${v.cacheControl}`).slice(0, 8).join(", ") +
-        (stale.length > 8 ? ", ..." : "")
+        stale.map(([f, v]) => `${f}=${v.cacheControl}`).slice(0, 4).join(", ") +
+        (stale.length > 4 ? ", ..." : "")
     );
   }
 
-  const missing = EXERCISES.map((e) => e.id).filter((id) => !live.has(id));
-  console.log(`  ${missing.length} catalog id(s) still unshot: ${missing.join(", ") || "none"}`);
+  const unshot = EXERCISES.filter((e) => !e.clip).map((e) => e.id);
+  console.log(`  ${unshot.length} catalog id(s) with no clip: ${unshot.join(", ") || "none"}`);
 
   if (problems.length) {
     console.error("\n" + problems.map((p) => `FAIL  ${p}`).join("\n"));
@@ -392,7 +419,7 @@ const [cmd, dir] = process.argv.slice(2);
 const usage = `
   npx tsx scripts/exercise-clips.ts check  <dir>   validate local .mp4 files, no network
   npx tsx scripts/exercise-clips.ts upload <dir>   validate, then upload with a 1-year cacheControl
-  npx tsx scripts/exercise-clips.ts audit          compare the live bucket against MEDIA_READY
+  npx tsx scripts/exercise-clips.ts audit          compare the live bucket against the catalog's clip filenames
 `;
 
 async function main() {

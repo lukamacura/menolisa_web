@@ -922,6 +922,69 @@ again also works — that calls `sync-session`.
 ## 7. CURRENT STATUS
 
 Recent work:
+- **The catalog was rebuilt against a new bucket (2026-08-27)** — a re-shoot
+  replaced the exercise library wholesale. Nothing from the previous catalog
+  survives: **73 new clips**, new movements, and every old `L`/`P`/`U`/`C`/`I` id
+  reused for something else. `npm run clips audit` had gone to 58 ids serving a
+  404 and 50 files nothing served.
+  **The shoot has seven series and the code has five prefixes**, and the mapping
+  is the load-bearing part:
+
+  | Shoot series | Ids | n |
+  |---|---|---|
+  | Lower Body Strength | `L01`-`L16` | 16 |
+  | Plyometrics & Force Absorption | `I01`-`I08` | 8 |
+  | Upper Body Strength | `U01`-`U12` | 12 |
+  | Core & Posterior Stability | `C01`-`C08` + `P01`-`P03` | 11 |
+  | Warm-up & Mobility | `W01`-`W15` | 15 |
+  | Post-Lower Body Routine | `S01`-`S06` | 6 |
+  | Post-Upper Body Routine | `S07`-`S11` | 5 |
+
+  Two renamings are decisions, not cosmetics. **PLYO → `I`**, because
+  `ensureBoneLoading()` and the prompt's bone rule test `startsWith("I")` and `P`
+  belongs to the posterior chain — under a prefix rule `PLYO01` and `P01` are one
+  family. **Rl/Ru → one `S` pool**, so `isStretchId()` keeps working; the
+  lower/upper split survives as a block boundary in the table rather than a
+  prefix, and splitting `allowedCooldowns()` in two so a pressing session
+  finishes on the post-upper routine is a change there, not a rename in the
+  bucket. `C` and `P` stay separate prefixes inside one series because different
+  limitations exclude them — pelvic floor wants the plank gone and the bridge
+  kept.
+  **Filenames are no longer derived from ids.** `MEDIA_READY` — a set of ids plus
+  `${MEDIA_BASE}/${id}.mp4` — is gone; each row carries the clip's exact bucket
+  filename (`L01 - Chair Squat.mp4`) in a `clip` field and `exerciseMedia()`
+  percent-encodes it. The old rule silently assumed the shoot would name its
+  files after our ids, and this one didn't: every clip would have resolved to a
+  URL with nothing behind it — a 404 in her player mid-session, invisible from
+  the dashboard and invisible in a build. Two lists that had to agree are one
+  field that cannot disagree with itself. Verified **73 live, 73 served, 73 HTTP
+  200, no orphans, no ghosts**.
+  Rewritten against the new ids because every one of them named movements that no
+  longer exist: the `DOSE` map, `LIMITATION_EXCLUDES` (all six rules),
+  `DEFAULT_WARMUP` (`W04`/`W06`/`W09`, still shoulders → hips → spine, still all
+  props `"None"`) and `DEFAULT_COOLDOWN` (`S06`/`S02`/`S04`). The prompt's JSON
+  example was naming `C01` and putting `W` ids in the cool-down slot;
+  `scripts/exercise-clips.ts` keys on filenames in `check`, `upload` and `audit`;
+  `docs/plan/exercises.md` stopped being a second copy of the table and is now
+  the series→prefix mapping and the pool measurements.
+  The RETIRED block was **deleted rather than updated** — a commented-out
+  `["L04", "Barbell back squat"]` under a live `["L04", "Step-up"]` is not a
+  restorable line, it is two movements claiming one id waiting for someone to
+  paste the wrong one back. `git log` is the record.
+  Pools are healthy: beginner 15 (12 with joint pain and all six limitations),
+  medium 42, advanced 47, snacks 21, every family represented at the floor.
+  Bookends improved too — 15 warm-ups (11 worst case, was 9) and 11 stretches
+  (6, was 4). Verified end to end: `verify-plan-dose` passes, all 12
+  fallback-plan shapes sit inside their minute budget with bookends from the
+  right pools, and a live generation produced a full-body plan (19 ids across all
+  five families, bone loading in 4 of 8 weeks, 0 over budget).
+  **Still open:** `I01` is the only bone-loading movement a limited user can be
+  given — everything else in the series leaves the ground, so `joint_pain` and
+  five of six limitations drop it, and `ensureBoneLoading()` then covers four
+  weeks with the same movement; a second low-impact clip is the cheapest fix.
+  `ensureBoneLoading()` also runs only in `sanitize()`, so a **fallback** plan has
+  no bone guarantee (measured 1 of 8 weeks at medium + joint pain). And every clip
+  still carries the dashboard's `max-age=3600`.
 - **Catalog squared off against the bucket, and the session got a clock
   (2026-08-26)** — the bucket held 18 clips nothing served, 11 of them under a
   prefix (`S`) that appeared nowhere in the code. They are the stretch shoot:

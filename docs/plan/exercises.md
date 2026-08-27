@@ -1,169 +1,96 @@
-| ID | Category | Exercise Name | Equipment / Context |
+# Exercises
+
+**`lib/plan/catalog.ts` is the source of truth.** This file used to be a second
+copy of the table — 41 rows of id, name and equipment — and it drifted the first
+time the shoot renamed anything, which is the only thing a duplicated table
+reliably does. What is left here is the part that is not visible from reading
+the rows.
+
+## The shoot has seven series; the code has four prefixes
+
+The clips in the `exercise-clips` bucket are organized the way they were filmed.
+The catalog groups them the way the generator needs to reason about them. The
+mapping is not one-to-one and both halves are deliberate:
+
+| Shoot series | Catalog ids | n | Role |
 | --- | --- | --- | --- |
-| **L01** | Lower Body — Strength | Box Squat / Chair Squat | Bodyweight / Standard Chair
+| Lower Body Strength | `L01`–`L16` | 16 | Main work |
+| Plyometrics & Force Absorption | `I01`–`I08` | 8 | Main work — bone loading |
+| Upper Body Strength | `U01`–`U12` | 12 | Main work |
+| Core & Posterior Stability | `C01`–`C08` + `P01`–`P03` | 11 | Main work |
+| Warm-up & Mobility | `W01`–`W15` | 15 | Bookend, front |
+| Post-Lower Body Routine | `S01`–`S06` | 6 | Bookend, back |
+| Post-Upper Body Routine | `S07`–`S11` | 5 | Bookend, back |
 
- |
-| **L02** | Lower Body — Strength | Bodyweight Squat | Bodyweight
+73 clips, 73 catalog rows, no orphans either way.
 
- |
-| **L03** | Lower Body — Strength | Goblet Squat | Dumbbell
+Core & Posterior Stability is one series and two prefixes: `C` is the trunk work
+and `P` the hinge. They are kept apart because different limitations exclude
+them — a pelvic floor rule wants the front plank gone and the glute bridge
+kept.
 
- |
-| **L04** | Lower Body — Strength | Step-Up | Bodyweight / Household Step or Sturdy Chair
+Two of those renamings carry weight:
 
- |
-| **L05** | Lower Body — Strength | Step-Up (Loaded) | Dumbbells + Household Step or Sturdy Platform
+- **PLYO → `I`.** `ensureBoneLoading()` and the prompt's bone-coverage rule both
+  test `startsWith("I")`, and `P` belongs to the posterior chain — under a prefix
+  rule `PLYO01` and `P01` are indistinguishable. `I` for impact keeps every
+  existing predicate working without a rewrite.
+- **Rl/Ru → one `S` series.** `isStretchId()` is `startsWith("S")`, so both
+  post-workout routines fold into one cool-down pool and `allowedCooldowns()`
+  needs no change. The lower/upper split survives as the `S01`–`S06` /
+  `S07`–`S11` block boundary in the catalog. Splitting the predicate in two — so
+  a pressing session finishes on the post-upper routine specifically — is a
+  reasonable thing to want once the `U` series exists, and it is a change here,
+  not a rename in the bucket.
 
- |
-| **L06** | Lower Body — Strength | Supported Reverse Lunge | Bodyweight + Wall or Counter Support
+`W` and `S` are two pools, not one. A leg swing prepares a joint for load and a
+40-second butterfly hold does the opposite, so they get separate enums in the
+response schema: under `strict: true` a stretch in the warm-up slot is not a
+rule the model can break, it is a token it cannot emit.
 
- |
-| **L07** | Lower Body — Strength | Walking Lunge (Loaded) | Dumbbells
+## Filenames are not ids
 
- |
-| **L08** | Lower Body — Strength | Calf Raises (Loaded / Deficit) | Dumbbells + Bottom Stair / Step
+A catalog row carries the clip's **exact filename in the bucket**, spaces and
+all (`L01 - Chair Squat.mp4`), in its `clip` field. `exerciseMedia()`
+percent-encodes it.
 
- |
-| **L09** | Lower Body — Strength | Bulgarian Split Squat | Bodyweight / Dumbbells + Standard Chair or Couch
+This used to be a `MEDIA_READY` set of ids plus `${base}/${id}.mp4`, which
+assumed the shoot would name its files after our ids. It didn't, and under the
+old rule every clip in the library would have resolved to a URL with nothing
+behind it — a 404 in her player mid-session, invisible from the Supabase
+dashboard and invisible in a build. Two lists that had to agree are now one
+field that cannot disagree with itself.
 
- |
-| **L10** | Lower Body — Strength | Split Squat | Bodyweight / Dumbbells
+`npm run clips audit` checks it in both directions against what is actually
+live: a row whose clip is missing, and a file no row claims.
 
- |
-| **L11** | Lower Body — Strength | Prisoner Squat | Bodyweight
+## Pool sizes, and the one gap left
 
- |
-| **L12** | Lower Body — Strength | Air Squat | Bodyweight
+What `allowedExercises()` leaves her, measured by
+`npx tsx scripts/verify-plan-dose.ts`:
 
- |
-| **L13** | Lower Body — Strength | Dumbbell Sumo Deadlift | Dumbbell
+| Level | clean | +joint_pain | + all six limitations |
+| --- | --- | --- | --- |
+| beginner | 15 | 15 | 12 |
+| medium | 42 | 38 | 19 |
+| advanced | 47 | 40 | 19 |
+| movement_snacks | 21 | 18 | 13 |
 
- |
-| **P01** | Posterior Chain / Hinge | Glute Bridge | Bodyweight / Mat
+A beginner ticking every limitation *and* reporting joint pain still keeps 12,
+with lower body, hinge, upper body, core and low-impact bone loading all
+represented. Twelve is workable across eight weeks; ten would not be. Re-measure
+when adding a limitation — a gate that starves the generator produces a worse
+plan than one that lets a step-up through.
 
- |
-| **P02** | Posterior Chain / Hinge | Glute Bridge (Weighted) | Dumbbell + Mat
+Bookends: 15 warm-ups (11 under all six limitations) and 11 stretches (6).
 
- |
-| **P03** | Posterior Chain / Hinge | Romanian Deadlift (RDL) | Dumbbells
+**One content gap survives.** `I01` is the only bone-loading movement a limited
+user can be given — everything else in the plyometric series involves leaving
+the ground, so `joint_pain` and five of the six limitations drop it wholesale.
+`ensureBoneLoading()` covers four of the eight weeks with whatever it is handed,
+so for those women that is the same movement four times. A second low-impact
+clip (a supported heel drop was the old one) is the cheapest fix.
 
- |
-| **U01** | Upper Body — Push | Wall Push-Up | Wall
-
- |
-| **U02** | Upper Body — Push | Counter Push-Up | Countertop
-
- |
-| **U03** | Upper Body — Push | Incline Push-Up (Table/Sturdy Surface) | Sturdy Table / Sturdy Surface
-
- |
-| **U04** | Upper Body — Push | Floor Push-Up | Bodyweight / Mat
-
- |
-| **U05** | Upper Body — Push | Dumbbell Floor Press | Dumbbells + Floor/Mat
-
- |
-| ~~**U06**~~ | — | Yoga flow (no press) | Moved to WARMUPS as **W15** on 2026-08-25 — it is a mobility flow, not a push
-
- |
-| **U07** | Upper Body — Press & Pull | Seated Overhead Shoulder Press | Dumbbells + Standard Chair
-
- |
-| **U08** | Upper Body — Press & Pull | Standing Overhead Shoulder Press | Dumbbells
-
- |
-| **U09** | Upper Body — Press & Pull | Bent-Over Dumbbell Row | Dumbbells
-
- |
-| **U10** | Upper Body — Press & Pull | Rear-Delt Fly / Reverse Fly | Dumbbells
-
- |
-| **U11** | Upper Body — Press & Pull | Prone Y-T-W Shoulder Raises | Bodyweight / Mat
-
- |
-| **U12** | Upper Body — Press & Pull | Dumbbell Lateral Raise | Dumbbells
-
- |
-| **C01** | Core, Stability & Carries | Wall Sit | Wall
-
- |
-| **C02** | Core, Stability & Carries | Bird-Dog | Mat
-
- |
-| **C03** | Core, Stability & Carries | Farmer's Carry | Dumbbells
-
- |
-| **C04** | Core, Stability & Carries | Plank | Bodyweight / Mat
-
- |
-| **C05** | Core, Stability & Carries | Side Plank | Bodyweight / Mat
-
- |
-| **C06** | Core, Stability & Carries | Dead Bug | Mat
-
- |
-| **C07** | Core, Stability & Carries | Pallof Press | Resistance Band
-
- |
-| **I01** | Impact & Bone-Loading | Stomping March | Bodyweight (Low Impact)
-
- |
-| **I02** | Impact & Bone-Loading | Supported Heel Drop | Bodyweight + Wall Support (Low Impact)
-
- |
-| **I03** | Impact & Bone-Loading | Low Hop | Bodyweight (Moderate Impact)
-
- |
-| **I04** | Impact & Bone-Loading | Plyometric Skip | Bodyweight (Moderate Impact)
-
- |
-| **I05** | Impact & Bone-Loading | Pogo Jumps | Bodyweight (Moderate Impact)
-
- |
-| **I06** | Impact & Bone-Loading | Forward Fall Landing (stand, fall forward, land on both feet) | Bodyweight (Moderate Impact)
-
- |
-| **I07** | Impact & Bone-Loading | Low Step-Off Landing Drill | Bottom Stair / Low Step (Moderate Impact)
-
- || **U13** | Upper Body — Press & Pull | Seated Overhead Triceps Extension | Dumbbell + Standard Chair |
-| ~~**S09**~~ | — | — | Renamed to **U13** on 2026-08-26 — she presses a dumbbell, so it is a strength set, not a stretch. Clip renamed `S09.mp4` → `U13.mp4` in the bucket |
-| **W01** | Warm-Up | Leg Swings, Linear & Lateral | Wall or Counter |
-| **W02** | Warm-Up | Hip Circles | Bodyweight |
-| **W03** | Warm-Up | Spider-Man Lunge with Rotation | Mat — *not shot yet* |
-| **W04** | Warm-Up | Half-Kneeling Hip Flexor Rockback | Mat — *not shot yet* |
-| **W05** | Warm-Up | Deep Squat with Reach | Bodyweight |
-| **W06** | Warm-Up | Open Book Cross | Mat |
-| **W07** | Warm-Up | Hamstring Rocker | Mat |
-| **W08** | Warm-Up | Cross-Arm Abduction | Bodyweight |
-| **W09** | Warm-Up | Shoulder Mobility | Bodyweight |
-| **W10** | Warm-Up | PVC Around the World | Broomstick or PVC Pipe |
-| ~~**W11**~~ | — | — | Deliberately absent — the Y-T-W shoulder warm-up is **U11**, one clip with one id |
-| **W12** | Warm-Up | World's Greatest Stretch | Mat |
-| **W13** | Warm-Up | Lateral Hamstring Rocker | Mat |
-| **W14** | Warm-Up | Calf Raise | Bodyweight |
-| **W15** | Warm-Up | Yoga Flow | Mat — filmed as U06, see above |
-| **S05** | Cool-Down — Stretch | Thread the Needle | Mat |
-| **S07** | Cool-Down — Stretch | Seated Side Bend | Mat |
-| **S10** | Cool-Down — Stretch | Wall Chest Stretch | Wall |
-| **S12** | Cool-Down — Stretch | Lying Figure-4 Stretch | Mat |
-| **S13** | Cool-Down — Stretch | Kneeling Hip Flexor Stretch | Mat |
-| **S14** | Cool-Down — Stretch | Kneeling Hamstring Stretch | Mat |
-| **S15** | Cool-Down — Stretch | Butterfly Stretch | Mat |
-| **S17** | Cool-Down — Stretch | Cobra Stretch | Mat |
-| **S18** | Cool-Down — Stretch | Child's Pose | Mat |
-| **S19** | Cool-Down — Stretch | Seated 90/90 Hip Stretch | Mat |
-
-**Warm-ups (`W`) and stretches (`S`) are bookends, not main work.** They are
-ordinary catalog rows so the app can draw them with a name, a dose and a clip,
-and the prefix is what keeps the plan generator from spending a strength slot on
-a hip circle. `W` is the warm-up pool, `S` is the cool-down pool, and the two do
-not mix — a leg swing prepares a joint for load and a 40-second butterfly hold
-does the opposite.
-
-The `S` shoot numbered its takes S01–S19; ten made the cut and the gaps are
-unused takes, not missing files. S09 became U13 (above).
-
-**Still to shoot (8):** U04, C07, I03, I04, I06, I07, W03, W04. Everything else
-in this table has a clip in the `exercise-clips` bucket. None of the eight is
-reachable at the beginner or movement-snack level, so every exercise those two
-can be given has video behind it.
+`ensureBoneLoading()` also runs only inside `sanitize()`, which is the LLM path.
+A **fallback** plan gets no bone-coverage guarantee — measured at 1 of 8 weeks
+for a medium user with joint pain.

@@ -45,8 +45,8 @@ console.log("\n=== progression, weeks 1 -> 8 (28-min session, 4 exercises) ===")
 const magnitude = (d: ReturnType<typeof defaultDoseForWeek>) =>
   (d.minutes ?? 0) * 60 + (d.sets ?? 1) * (d.seconds ?? 0);
 
-// One id per dose unit still in the catalog. There is no `duration` id right
-// now — cardio and the mobility flow are retired — so nothing stands in for it.
+// One id per dose unit that has members. `duration` has none — cardio and the
+// mobility flow are retired — so nothing stands in for it.
 for (const id of ["L01", "C01", "C03"]) {
   const ex = getExercise(id)!;
   const weeks = [1, 2, 3, 4, 5, 6, 7, 8].map((w) => defaultDoseForWeek(ex, w, 28, 4));
@@ -65,12 +65,12 @@ for (const id of ["L01", "C01", "C03"]) {
 // ─── 3. The model's numbers are honoured, and bounded ────────────────────────
 
 console.log("\n=== a model-written dose is respected inside the safe band ===");
-const wallSit = getExercise("C01")!;
-const respected = hydrateDose(wallSit, { sets: 3, seconds: 55 });
+const held = getExercise("C01")!;
+const respected = hydrateDose(held, { sets: 3, seconds: 55 });
 check(respected.seconds === 55, "C01: a valid 55s hold was not respected");
 console.log(`  55s hold  -> ${respected.sets} x ${respected.seconds}s`);
 
-const clamped = hydrateDose(wallSit, { sets: 3, seconds: 600 });
+const clamped = hydrateDose(held, { sets: 3, seconds: 600 });
 check(clamped.seconds === 90, `C01: a 600s hold clamped to ${clamped.seconds}s, expected 90`);
 console.log(`  600s hold -> ${clamped.sets} x ${clamped.seconds}s  (clamped)`);
 
