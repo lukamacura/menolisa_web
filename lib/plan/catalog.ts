@@ -75,7 +75,7 @@ const E: [string, string, string, 1 | 2 | 3, Impact, boolean][] = [
   ["L04", "Step-up", "Stair or sturdy chair", 1, "low", true],
   ["L05", "Step-up, loaded", "Stair, 2 dumbbells", 2, "low", false],
   ["L06", "Supported reverse lunge", "Wall or counter", 2, "none", false],
-  ["L07", "Walking lunge, loaded", "2 dumbbells", 3, "none", false],
+  ["L07", "Walking lunge", "None", 3, "none", false],
   ["L08", "Calf raise, loaded", "2 dumbbells, bottom stair", 2, "none", false],
   ["L09", "Bulgarian split squat", "Chair or couch, 2 dumbbells", 3, "none", false],
   ["L10", "Split squat", "None, or 2 dumbbells", 2, "none", false],
@@ -111,7 +111,6 @@ const E: [string, string, string, 1 | 2 | 3, Impact, boolean][] = [
   ["C04", "Plank", "Mat", 1, "none", true],
   ["C05", "Side plank", "Mat", 2, "none", false],
   ["C06", "Dead bug", "Mat", 1, "none", true],
-  ["C07", "Pallof press", "Tube band, door anchor", 2, "none", false],
   // Impact & bone loading (7)
   //
   // The doc grades I03-I07 "Moderate Impact"; `Impact` has no middle value, so
@@ -124,7 +123,6 @@ const E: [string, string, string, 1 | 2 | 3, Impact, boolean][] = [
   ["I03", "Low hop", "None", 2, "high", true],
   ["I04", "Plyometric skip", "None", 3, "high", false],
   ["I05", "Pogo jump", "None", 2, "high", true],
-  ["I06", "Forward fall landing", "None", 2, "high", true],
   ["I07", "Low step-off landing", "Bottom stair or low step", 3, "high", false],
   // Warm-up & cool-down (14)
   //
@@ -137,7 +135,7 @@ const E: [string, string, string, 1 | 2 | 3, Impact, boolean][] = [
   // W11 is deliberately absent — the Y-T-W shoulder warm-up is U11, one clip
   // with one id rather than two files of the same footage that can drift apart.
   ["W01", "Leg swings, linear & lateral", "Wall or counter", 1, "none", false],
-  ["W02", "Hip circles", "None", 1, "none", false],
+  ["W02", "Spider-Man Lunge", "None", 1, "none", false],
   ["W03", "Spider-Man lunge with rotation", "Mat", 1, "none", false],
   ["W04", "Half-kneeling hip flexor rockback", "Mat", 1, "none", false],
   ["W05", "Deep squat with reach", "None", 1, "none", false],
@@ -148,7 +146,7 @@ const E: [string, string, string, 1 | 2 | 3, Impact, boolean][] = [
   ["W10", "PVC around the world", "Broomstick or PVC pipe", 1, "none", false],
   ["W12", "World's greatest stretch", "Mat", 1, "none", false],
   ["W13", "Lateral hamstring rocker", "Mat", 1, "none", false],
-  ["W14", "Calf raise", "None", 1, "none", false],
+  ["W14", "Heel/Toe", "None", 1, "none", false],
   // Filmed as a push-up variation ("U06") and re-filed here on 2026-08-25: she
   // flows through the positions and never presses, so it is mobility, not a
   // set. The clip in the bucket was renamed U06.mp4 -> W15.mp4 to match.

@@ -13,6 +13,14 @@
  * - Say the thing in the notification itself. A body that ends in "tap to see"
  *   promises a destination, and half of these have nowhere better to go.
  * - One line each. A push truncates at roughly 100 characters on iOS.
+ *
+ * **Three of these kinds are retired.** `daily_nudge`, `streak_risk` and
+ * `week_start` are now local notifications scheduled by the phone
+ * (`src/lib/reminders` in the mobile app), because a cron can only fire at one
+ * UTC wall time for everybody and can never cancel itself when she ticks the
+ * box. Their entries stay in `ALERTS` so the rows they already wrote still
+ * render in the Alerts tab with the right icon; their copy builders are gone,
+ * and nothing may send them from here again.
  */
 
 export type AlertKind =
@@ -54,6 +62,7 @@ type AlertSpec = {
 };
 
 export const ALERTS: Record<AlertKind, AlertSpec> = {
+  // Retired — see the header. Kept so historic rows still render.
   daily_nudge: { type: "reminder", screen: "DailyLoop" },
   streak_risk: { type: "reminder", screen: "DailyLoop" },
   week_start: { type: "reminder", screen: "DailyLoop" },
@@ -91,39 +100,10 @@ export function formatAlertDate(date: Date): string {
   return date.toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "UTC" });
 }
 
-/** Morning of a day she has not touched yet. */
-export function dailyNudgeCopy(firstName: string | null): AlertCopy {
-  return {
-    title: "Today's plan is ready",
-    body: firstName
-      ? `${firstName}, your movement, nutrition and one calm moment are waiting.`
-      : "Your movement, nutrition and one calm moment are waiting.",
-  };
-}
-
-/**
- * Evening, when a run of three or more days is about to break.
- *
- * Deliberately not sent at one or two days: a "streak" that short is not yet
- * something she would be sad to lose, and naming it that early teaches her the
- * word means nothing.
- */
-export function streakRiskCopy(streak: number): AlertCopy {
-  return {
-    title: `Your ${streak}-day streak is still going`,
-    body: "One tick before bed keeps it alive.",
-  };
-}
-
-/** Evening before the plan rolls into a new week. */
-export function weekStartCopy(week: number, weekTitle: string | null): AlertCopy {
-  return {
-    title: `Week ${week} starts tomorrow`,
-    body: weekTitle
-      ? `${weekTitle}. Your plan updates in the morning.`
-      : "Your plan updates in the morning.",
-  };
-}
+// The copy for `daily_nudge`, `streak_risk` and `week_start` now lives in
+// `src/lib/reminders/copy.ts` in the mobile app, word for word — she has been
+// reading those sentences since she subscribed, and moving where they are
+// generated was not a reason to change what they say.
 
 /**
  * Sunday evening, on the seven days behind her.

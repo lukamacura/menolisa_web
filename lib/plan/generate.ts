@@ -835,7 +835,7 @@ function sanitize(
       const parsed = TaskSchema.safeParse(rawTask);
       if (!parsed.success) continue;
       const t = parsed.data;
-      const base = { key: "", pillar: t.pillar, title: t.title, why: t.why, cadence: t.cadence, target: t.target };
+      const base = { key: "", pillar: t.pillar, title: t.title, why: taskWhy(t.why, t.pillar, n), cadence: t.cadence, target: t.target };
 
       if (t.pillar === "movement") {
         const exercises: NonNullable<PlanTask["exercises"]> = (t.exercises ?? [])
@@ -974,7 +974,7 @@ function sanitize(
         tasks.push({
           ...daily,
           title: FALLBACK_HABITS[(n - 1) % FALLBACK_HABITS.length],
-          why: "Small, and it holds the rest of the day together.",
+          why: pillarWhy("habit", n),
         });
         continue;
       }
@@ -1075,15 +1075,87 @@ function buildWhyPrompt(profile: Profile): string {
  * by our sentence than by a worse rewrite of it.
  */
 /**
- * Also applied to `resist_suggestions[].why` — see sanitize(). The modal hedge
- * ("can help", "can improve", "may reduce") is the real tell: it is what a model
- * writes when it has been asked for a reason and has none, and it was in half of
- * every resist line the model produced before this gate existed.
+ * Also applied to `resist_suggestions[].why` and, since it was wired to them,
+ * every task `why` — see `taskWhy()`. The modal hedge ("can help", "can
+ * improve", "may reduce") is the real tell: it is what a model writes when it
+ * has been asked for a reason and has none, and it was in half of every resist
+ * line the model produced before this gate existed.
+ *
+ * **The bare verbs are banned too, not just the modal ones.** The first version
+ * of this pattern only caught "can help" and "helps to improve", so "Building
+ * strength helps with energy levels", "A cooler room helps you sleep better"
+ * and "Combining movements enhances overall strength" all walked through it —
+ * 12 of the 22 reasons in one live plan. They fail for exactly the same reason
+ * the modal ones do: "helps" is a claim of direction with the mechanism left
+ * out, and the mechanism is the whole product. `overall` is here on the same
+ * grounds — "overall energy", "overall strength", "overall health" are the
+ * three ways of saying nothing that this voice reaches for first.
+ *
+ * The cost of a false positive is one written sentence instead of a model's, so
+ * the pattern is deliberately blunt. If a genuinely good line is ever caught by
+ * it, rewrite the line — do not loosen the gate.
  */
 const STOCK_PHRASES =
-  /\b(?:(?:can|may|will) (?:help|improve|enhance|reduce|support|boost|prevent|promote)|helps? (?:to )?(?:support|promote|improve|maintain)|supports?\b|is essential|is important|promotes?|boosts?|overall (?:health|well-?being|wellness))/i;
+  /\b(?:(?:can|may|will) (?:help|improve|enhance|reduce|support|boost|prevent|promote)|help(?:s|ing)?\b|enhanc(?:e|es|ed|ing)\b|aids?\b|supports?\b|is (?:essential|important|key|vital|crucial)|promotes?|boosts?|overall\b)/i;
 const MIN_WHY_CHARS = 90;
 const MAX_WHY_CHARS = 240;
+
+/**
+ * What a task's reason falls back to, by pillar, when the model's own is stock.
+ *
+ * **One per week, not one per pillar.** The gate below fires on almost every
+ * reason the model writes — 24 of 24 on the first live run after it was wired
+ * up — so this is not an occasional patch, it is the copy she actually reads.
+ * A three-line rotation made weeks 1, 4 and 7 identical, which reads as a
+ * template rather than a plan. Eight means her eight weeks each say something
+ * different, and a model line that clears the gate is a bonus rather than the
+ * load-bearing case.
+ *
+ * These are also what `fallbackPlan()` writes, so the deterministic plan and a
+ * repaired one speak with one voice.
+ *
+ * Adding a line: run it past STOCK_PHRASES first. The gate does not check its
+ * own fallbacks, so a hedge written in here ships forever and silently.
+ */
+const PILLAR_WHY: Record<Pillar, string[]> = {
+  movement: [
+    "Muscle and bone respond fastest to steady, repeatable work.",
+    "Strength is the one thing falling estrogen takes that you can put back yourself.",
+    "Loading a joint on purpose is what keeps it willing to be loaded by accident.",
+    "Bone rebuilds where it is asked to carry something. This is the asking.",
+    "Muscle is where the sugar from a meal goes. More of it, and the meal lands softer.",
+    "The strength you build now is what makes the next twenty years of stairs unremarkable.",
+    "Two sessions you actually do beat five you plan. That is the whole design.",
+    "Your legs and your back are the two that fade first and come back fastest.",
+  ],
+  relaxation: [
+    "Lowering the background stress softens the symptoms sitting on top of it.",
+    "A slow exhale is the one switch you can reach for from the inside.",
+    "Your nervous system reads your breathing before it reads your day.",
+    "Cortisol and hot flashes share a trigger, and this is where you get between them.",
+    "Two minutes now is cheaper than the hour you lose at 3am.",
+    "You cannot think your way calm, but you can breathe your way there.",
+    "The point is not relaxing. It is teaching your body that it is allowed to.",
+    "Doing it before you need it is what makes it work when you do.",
+  ],
+  habit: [
+    "Small, and it holds the rest of the day together.",
+    "One decision made in the morning, so the evening does not have to make it.",
+    "It costs almost nothing on the day, and it compounds across the eight weeks.",
+    "The you at 10pm has less willpower than the you at 8am. This is the 8am one deciding.",
+    "Nothing here needs motivation — only that it stays easy enough to repeat.",
+    "One thing every day is worth more than five things this week.",
+    "A habit does not have to be impressive. It has to survive a bad Tuesday.",
+    "You are not adding to your day. You are changing one thing already in it.",
+  ],
+};
+
+/** The written reason for this pillar in this week. Wraps past week 8. */
+const pillarWhy = (pillar: Pillar, week: number) =>
+  PILLAR_WHY[pillar][(week - 1) % PILLAR_WHY[pillar].length];
+
+const taskWhy = (why: string, pillar: Pillar, week: number) =>
+  STOCK_PHRASES.test(why) ? pillarWhy(pillar, week) : why;
 
 function usableWhy(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -1234,13 +1306,13 @@ function fallbackPlan(profile: Profile, pool: Exercise[]): Plan {
           key: `w${n}_movement`,
           pillar: "movement",
           title: vol.perDay ? "Movement snack" : `Session ${n}`,
-          why: "Muscle and bone respond fastest to steady, repeatable work.",
+          why: pillarWhy("movement", n),
           cadence: vol.perDay ? "per_day" : "weekly",
           target: vol.sessions,
           exercises,
         },
-        { key: `w${n}_${relaxation.id}`, pillar: "relaxation", title: relaxation.label, why: "Lowering the background stress softens the symptoms on top of it.", cadence: "daily", target: 1 },
-        { key: `w${n}_habit`, pillar: "habit", title: FALLBACK_HABITS[i % FALLBACK_HABITS.length], why: "Small, and it holds the rest of the day together.", cadence: "daily", target: 1 },
+        { key: `w${n}_${relaxation.id}`, pillar: "relaxation", title: relaxation.label, why: pillarWhy("relaxation", n), cadence: "daily", target: 1 },
+        { key: `w${n}_habit`, pillar: "habit", title: FALLBACK_HABITS[i % FALLBACK_HABITS.length], why: pillarWhy("habit", n), cadence: "daily", target: 1 },
       ];
       // Walk the ten in priority order, two a week, so by week 5 she has been
       // pushed on every one of them at least once, and the last three weeks

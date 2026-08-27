@@ -92,15 +92,61 @@ export async function sendPushNotification({
 
     const result = await res.json();
     const receipt = Array.isArray(result) ? result : result?.data ?? result;
-    if (Array.isArray(receipt)) {
-      const errors = receipt.filter(
-        (r: { status?: string }) => r.status === "error"
-      );
-      if (errors.length > 0) {
-        console.warn("sendPushNotification: some push failed", errors);
-      }
-    }
+    if (!Array.isArray(receipt)) return;
+
+    // Expo answers one ticket per message, in the order they were sent, so the
+    // index is what says *which* device failed.
+    const failed = (receipt as PushTicket[])
+      .map((ticket, index) => ({ ticket, token: tokens[index] }))
+      .filter(({ ticket }) => ticket?.status === "error");
+
+    if (failed.length === 0) return;
+    console.warn(
+      "sendPushNotification: some push failed",
+      failed.map(({ ticket }) => ticket)
+    );
+
+    await pruneDeadTokens(
+      failed
+        .filter(({ ticket }) => ticket.details?.error === "DeviceNotRegistered")
+        .map(({ token }) => token)
+    );
   } catch (e) {
     console.error("sendPushNotification: request failed", e);
   }
+}
+
+type PushTicket = {
+  status?: string;
+  details?: { error?: string };
+};
+
+/**
+ * Delete tokens Expo has told us are dead.
+ *
+ * Without this the table only ever grows: every reinstall, every restore onto a
+ * new phone and every dev rebuild mints a token and abandons the old one, and
+ * the account goes on pushing to each of them forever. Worse, Expo recycles
+ * tokens — so one left on a stranger's row is how a woman's alerts eventually
+ * land on somebody else's lock screen.
+ *
+ * `DeviceNotRegistered` is the only error safe to act on. The rest
+ * (`MessageRateExceeded`, `MessageTooBig`, a transient Expo fault) say nothing
+ * about whether the device still exists, and deleting on those would unsubscribe
+ * a live phone over a bad afternoon.
+ */
+async function pruneDeadTokens(tokens: (string | undefined)[]): Promise<void> {
+  const dead = tokens.filter((token): token is string => !!token);
+  if (dead.length === 0) return;
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("user_push_tokens").delete().in("token", dead);
+
+  if (error) {
+    // Best effort: the alert itself already went out, and a token that survives
+    // one prune is deleted by the next send that fails the same way.
+    console.error("sendPushNotification: failed to prune dead tokens", error);
+    return;
+  }
+  console.info(`sendPushNotification: pruned ${dead.length} dead token(s)`);
 }

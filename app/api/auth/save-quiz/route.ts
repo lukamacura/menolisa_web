@@ -76,6 +76,10 @@ const QuizSchema = z.object({
   height_unit: z.enum(["cm", "ft"]).nullable().optional(),
   weight_unit: z.enum(["kg", "lb"]).nullable().optional(),
   fitness_level: z.enum(["beginner", "medium", "advanced", "movement_snacks"]).nullable().optional(),
+  // Which part of the day her movement reminder lands in. The app maps each to
+  // a clock time (`TRAINING_TIMES`) — deliberately not stored as one, so the
+  // hour can be retuned without a migration or a second question.
+  training_time: z.enum(["morning", "midday", "evening"]).nullable().optional(),
 });
 
 const BodySchema = z.object({
@@ -132,6 +136,7 @@ export async function POST(request: NextRequest) {
       height_unit: quizAnswers.height_unit ?? null,
       weight_unit: quizAnswers.weight_unit ?? null,
       fitness_level: quizAnswers.fitness_level ?? null,
+      training_time: quizAnswers.training_time ?? null,
     };
 
     const { data: existingProfile } = await supabaseAdmin

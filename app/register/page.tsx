@@ -150,6 +150,7 @@ type Step =
   | "reward_symptoms"
   | "q_body"
   | "q_fitness"
+  | "q_training_time"
   | "q_nutrition"
   | "q_relaxation"
   | "reward_plan_shape"
@@ -168,6 +169,7 @@ const STEPS: Step[] = [
   "reward_symptoms",
   "q_body",
   "q_fitness",
+  "q_training_time",
   "q_nutrition",
   "q_relaxation",
   "reward_plan_shape",
@@ -190,6 +192,7 @@ const AUTO_ADVANCE_STEPS: Step[] = [
   "q_menopause_type",
   "q_symptom_impact",
   "q_fitness",
+  "q_training_time",
   "q_nutrition",
   "q_relaxation",
   "q5_hrt",
@@ -454,6 +457,29 @@ const FITNESS_OPTIONS = [
   { id: "beginner", label: "About 20 min, 2 days a week", image: "/quiz/fitness/beginner.webp" },
   { id: "medium", label: "About 30 min, 3 days a week", image: "/quiz/fitness/medium.webp" },
   { id: "advanced", label: "35+ min, 4 days a week", image: "/quiz/fitness/advanced.webp" },
+];
+
+// When she actually has room to move, which is a different question from how
+// much room she has (FITNESS_OPTIONS above).
+//
+// One consumer: the app's movement reminder, which is a local notification on
+// her phone and can therefore be given a time of day at all - see
+// `src/lib/reminders` in the mobile repo and docs/mobile-app-changes.md §15.
+// A reminder to train that arrives four hours after the only window she had is
+// worse than no reminder, and the honest way to find that window is to ask.
+//
+// Deliberately not asked as a clock time. She is picking the shape of her day,
+// not scheduling an appointment, and three named parts of a day are answerable
+// in one tap by a woman who does not yet know what her plan asks of her. The
+// exact minute each maps to lives in the app (`TRAINING_TIMES`), where it can be
+// changed without another migration, and she can move it in Settings.
+//
+// The ids are load-bearing: `user_profiles.training_time` constrains them, and
+// the app switches on them.
+const TRAINING_TIME_OPTIONS = [
+  { id: "morning", label: "Morning", hint: "Before the day gets hold of me" },
+  { id: "midday", label: "Midday", hint: "Around lunch, or a break in the afternoon" },
+  { id: "evening", label: "Evening", hint: "Once everything else is done" },
 ];
 
 // Where her eating actually starts, so the plan's nutrition focus opens at her
@@ -886,6 +912,7 @@ type FunnelAnswers = {
   weightKg: string;
   weightLb: string;
   fitnessLevel: string;
+  trainingTime: string;
   hereFor: string;
   menopauseType: string;
   goal: string[];
@@ -954,6 +981,7 @@ function readFunnelResume(): FunnelResume | null {
         weightKg: resumeStr(a.weightKg) || "70",
         weightLb: resumeStr(a.weightLb) || "154",
         fitnessLevel: resumeStr(a.fitnessLevel),
+        trainingTime: resumeStr(a.trainingTime),
         hereFor: resumeStr(a.hereFor),
         menopauseType: resumeStr(a.menopauseType),
         goal: resumeStrArray(a.goal),
@@ -3338,6 +3366,8 @@ function RegisterPageContent() {
   const [weightKg, setWeightKg] = useState<string>("70");
   const [weightLb, setWeightLb] = useState<string>("154");
   const [fitnessLevel, setFitnessLevel] = useState<string>("");
+  /** Which part of the day her movement reminder should land in. */
+  const [trainingTime, setTrainingTime] = useState<string>("");
   const [hereFor, setHereFor] = useState<string>("");
   const [menopauseType, setMenopauseType] = useState<string>("");
   const [goal, setGoal] = useState<string[]>([]);
@@ -3579,6 +3609,8 @@ function RegisterPageContent() {
           return bodyMetrics.height_cm !== null && bodyMetrics.weight_kg !== null;
         case "q_fitness":
           return fitnessLevel !== "";
+        case "q_training_time":
+          return trainingTime !== "";
         case "q2_here_for":
           return hereFor !== "";
         case "q_menopause_type":
@@ -3608,7 +3640,7 @@ function RegisterPageContent() {
           return false;
       }
     },
-    [ageBand, bodyMetrics, fitnessLevel, hereFor, menopauseType, goal, topProblems, symptomImpact, nutritionStyle, relaxationStyle, hrtStatus, firstName]
+    [ageBand, bodyMetrics, fitnessLevel, trainingTime, hereFor, menopauseType, goal, topProblems, symptomImpact, nutritionStyle, relaxationStyle, hrtStatus, firstName]
   );
 
   // One payload, two consumers: the sessionStorage stash below and the
@@ -3634,6 +3666,7 @@ function RegisterPageContent() {
       height_unit: bodyMetrics.height_unit,
       weight_unit: bodyMetrics.weight_unit,
       fitness_level: fitnessLevel || null,
+      training_time: trainingTime || null,
     }),
     [
       ageBand,
@@ -3649,6 +3682,7 @@ function RegisterPageContent() {
       firstName,
       bodyMetrics,
       fitnessLevel,
+      trainingTime,
     ]
   );
 
@@ -3676,6 +3710,7 @@ function RegisterPageContent() {
       weightKg,
       weightLb,
       fitnessLevel,
+      trainingTime,
       hereFor,
       menopauseType,
       goal,
@@ -3697,6 +3732,7 @@ function RegisterPageContent() {
       weightKg,
       weightLb,
       fitnessLevel,
+      trainingTime,
       hereFor,
       menopauseType,
       goal,
@@ -4046,6 +4082,7 @@ function RegisterPageContent() {
     setWeightKg(a.weightKg);
     setWeightLb(a.weightLb);
     setFitnessLevel(a.fitnessLevel);
+    setTrainingTime(a.trainingTime);
     setHereFor(a.hereFor);
     setMenopauseType(a.menopauseType);
     setGoal(a.goal);
@@ -5861,6 +5898,62 @@ function RegisterPageContent() {
                     selected={fitnessLevel}
                     onSelect={(id) => selectAndAdvance(() => setFitnessLevel(id))}
                   />
+                </div>
+              )}
+
+              {/* When she trains, straight after how much time she has. Text rows
+                  rather than an image grid: three parts of a day have no honest
+                  illustration, and each option carries a line of its own that a
+                  tile caption could not hold.
+
+                  The subline names what the answer is for. A quiz question with
+                  no visible consequence is one she answers carelessly, and this
+                  one sets a reminder that will arrive on her phone for the next
+                  eight weeks. */}
+              {currentStep === "q_training_time" && (
+                <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                  <div className="shrink-0">
+                    <h2 className="text-lg sm:text-xl font-bold mb-0.5">
+                      When is the best time for you to exercise?
+                    </h2>
+                    <p className="text-sm text-muted-foreground leading-snug">
+                      Lisa reminds you about your movement in that part of the day - and
+                      nowhere else. You can change it any time.
+                    </p>
+                  </div>
+                  <div className="flex-1 flex flex-col justify-center gap-2 min-h-0">
+                    {TRAINING_TIME_OPTIONS.map((option) => {
+                      const isSelected = trainingTime === option.id;
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => selectAndAdvance(() => setTrainingTime(option.id))}
+                          className={`w-full shrink-0 flex items-center justify-between gap-3 px-4 py-3.5 rounded-2xl border-2 text-left transition-all duration-200 cursor-pointer ${
+                            isSelected
+                              ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
+                              : "border-foreground/15 hover:border-primary/50"
+                          }`}
+                        >
+                          <span className="min-w-0">
+                            <span className="block font-semibold text-sm sm:text-base text-[#3D3D3D]">
+                              {option.label}
+                            </span>
+                            <span className="block text-xs sm:text-sm text-muted-foreground">
+                              {option.hint}
+                            </span>
+                          </span>
+                          {isSelected ? (
+                            <span className="w-5 h-5 shrink-0 rounded-full bg-primary flex items-center justify-center animate-in zoom-in duration-200">
+                              <Check className="w-3 h-3 text-primary-foreground" strokeWidth={3} />
+                            </span>
+                          ) : (
+                            <span className="w-5 h-5 shrink-0 rounded-full border-2 border-foreground/20" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 

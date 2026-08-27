@@ -31,7 +31,11 @@ export async function GET(req: NextRequest) {
       .select(TRIAL_SELECT_COLS)
       .eq("user_id", user.id)
       .maybeSingle(),
-    supabase.from("user_profiles").select("name").eq("user_id", user.id).maybeSingle(),
+    supabase
+      .from("user_profiles")
+      .select("name, training_time")
+      .eq("user_id", user.id)
+      .maybeSingle(),
   ]);
 
   if (error && error.code !== "PGRST116") {
@@ -61,5 +65,10 @@ export async function GET(req: NextRequest) {
     // First name only, already trimmed. Null when the quiz never captured one —
     // every surface that uses it must read fine without it.
     first_name: (profile?.name ?? "").trim().split(" ")[0] || null,
+    // "morning" | "midday" | "evening" — when she said she trains, which is what
+    // the app's local movement reminder is scheduled against. Null for every
+    // account that predates the question; the app falls back to an evening
+    // reminder, which is what everybody got before it existed.
+    training_time: profile?.training_time ?? null,
   });
 }

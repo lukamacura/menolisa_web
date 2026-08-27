@@ -555,6 +555,72 @@ section for a phase that is absent.
 
 ---
 
+## 15. Engagement alerts moved to the device (**breaking**) — 2026-08-27
+
+The server no longer sends the daily plan nudge, the streak warning or the
+week-start note. They are local `expo-notifications` scheduled by the app
+(`src/lib/reminders`), and `/api/cron/alerts` has been deleted.
+
+**Why:** a cron fires at one UTC wall clock for every user on earth. 08:00 UTC
+is 04:00 on the US east coast, which is why none of those alerts could ever be
+given a time of day — and why "time to hydrate" could not be added at all. A
+cron also cannot cancel a reminder the moment she ticks the box; a device can,
+and does.
+
+| alert | before | after |
+|---|---|---|
+| `daily_nudge` | `/api/cron/alerts?slot=morning`, 08:00 UTC | local, at her chosen morning time |
+| `streak_risk` | `/api/cron/alerts?slot=evening`, 19:00 UTC | local, at her chosen evening time |
+| `week_start` | `/api/cron/alerts?slot=evening`, 19:00 UTC | local, at her chosen evening time |
+| — | — | **new:** water check, 15:00 local, only on a day she has started |
+| — | — | **new:** movement, evening, only while the week's sessions are open |
+| `weekly_recap` | `/api/cron/alerts?slot=evening` | `/api/cron/weekly-recap`, Sundays 19:00 UTC |
+| `renewal`, `access_ending`, `payment_failed` | unchanged | unchanged |
+
+- **`/api/cron/alerts` is gone.** `vercel.json` now schedules
+  `/api/cron/weekly-recap` on Sundays only. Money alerts still come from
+  `/api/cron/renewal-notices` and the Stripe webhook, unchanged — a declined card
+  is not something a phone can work out, and it has to arrive whether or not the
+  app is ever opened.
+- The `daily_nudge` / `streak_risk` / `week_start` kinds stay in
+  `lib/alerts/catalog.ts` so rows already written still render in the Alerts tab.
+  Nothing may send them from the server again.
+- Local reminders write **no** `notifications` row — they are not news, they are
+  a nudge about something already on her plan, and a duplicate row in the Alerts
+  tab would be the third place the same sentence appears.
+- The volume ceiling is now structural: **at most one reminder per half-day, so
+  two a day, and none once the day is finished.** See
+  `src/lib/reminders/select.ts` — adding a sixth reminder cannot raise it.
+- `PUT /api/notifications/preferences` is unchanged, but the app now writes
+  `notification_enabled` and `weekly_insights_enabled` to the same value: the
+  recap is the only non-money alert the server still sends, so one visible
+  switch governs it, and the master column can no longer suppress it invisibly.
+- Reminder times live on the device (`@menolisa:reminders_v1`), not on
+  `user_preferences`. There is no server-side consumer for them.
+
+### `GET /api/account/status` gains `training_time`
+
+```jsonc
+{ "has_access": true, "first_name": "Ana", "training_time": "morning", ... }
+```
+
+- `"morning" | "midday" | "evening" | null`, from the new `q_training_time` quiz
+  step ("When is the best time for you to exercise?") → `user_profiles.training_time`.
+  Migration: `scripts/sql/2026-08-27-training-time.sql`.
+- **Null for every account created before the question existed.** Treat that as
+  `evening`, which is when the movement reminder fired for everyone previously.
+- It decides which half of the day the movement reminder lands in — the app maps
+  each window to a clock time (`TRAINING_TIMES`: 8:00 / 12:30 / 18:00) and a time
+  before 14:00 puts the reminder in the morning half. A time she sets herself in
+  Settings overrides it.
+- It rides on this endpoint for the same reason `first_name` does: it is the one
+  call the app already polls, and this is not worth a second round trip.
+
+**What the app should do:** nothing further — this is the app-side change. Any
+second client must not reimplement the three retired alerts against the API.
+
+---
+
 ## Quick checklist
 
 - [ ] Remove `trial_start` / `trial_end` / `trial_days` reads
@@ -583,3 +649,11 @@ section for a phase that is absent.
 - [ ] Keep `exercises` meaning the main work in every count, estimate and score
 - [ ] Draw no warm-up or cool-down section when the field is absent
 - [ ] Let her leave during the cool-down without losing the logged session
+- [ ] Schedule the plan, water, movement, streak and week-start reminders locally
+- [ ] Never send `daily_nudge`, `streak_risk` or `week_start` from the server again
+- [ ] Keep the ceiling at two reminders a day, and none on a finished day
+- [ ] Ask for notification permission after her first finished task, not at launch
+- [ ] Offer a way back into notifications from Settings in every non-granted state
+- [ ] Delete `user_push_tokens` rows Expo reports as `DeviceNotRegistered`
+- [ ] Read `training_time` from `/api/account/status`; treat null as `evening`
+- [ ] Let a time set in Settings override the quiz answer, never the reverse
