@@ -621,6 +621,67 @@ second client must not reimplement the three retired alerts against the API.
 
 ---
 
+## 16. `GET /api/app-version` — update prompts (**new**) — 2026-08-28
+
+A shipped build cannot know a newer one exists, so it has to ask. One public,
+unauthenticated route answers:
+
+```
+GET /api/app-version
+
+{
+  "minimum": "1.3.0",
+  "latest":  "1.4.0",
+  "ios_url":     "https://apps.apple.com/app/id6761130271",
+  "android_url": "https://play.google.com/store/apps/details?id=com.menolisa.app"
+}
+```
+
+**No auth, on purpose.** It has to answer a client that is signed out, expired,
+or running code we no longer support — none of which is a reason to withhold
+"please update". Nothing in the payload is a secret: two version strings and two
+public store listings. Cached five minutes.
+
+**The two numbers.**
+
+- `minimum` — below this the app **blocks**: a full-screen gate above the
+  navigator, no way past it, no sign-in behind it. Reserve it for builds that
+  are genuinely broken against the current API — a contract change that would
+  silently corrupt her data, a security fix. Locking a paying subscriber out of
+  her plan is a real cost, so it is not the default lever.
+- `latest` — below this the app **nudges**: a dismissible card on the daily
+  loop, silenced per version. Dismissing 1.4.0 silences 1.4.0 and nothing else.
+
+Both are read from `MOBILE_MIN_VERSION` / `MOBILE_LATEST_VERSION`, falling back
+to constants in the route. Unset, they resolve to `0.0.0` / the current shipped
+version, which blocks nobody and nags nobody — the feature is inert until it is
+configured. An invalid value is treated as unset rather than as `0`, so a typo
+cannot enforce a block.
+
+`latest` is never allowed to fall behind `minimum`: if it did, the app would
+block her and then send her to a store listing with nothing newer to install.
+Setting only `MOBILE_MIN_VERSION` therefore raises `latest` to match, rather
+than silently dropping the block.
+
+**Comparison is numeric per dotted segment**, missing segments counting as 0 —
+`1.4` equals `1.4.0`, and `1.10.0` is above `1.9.0`. No suffixes, no build
+numbers: this is the store's user-facing version (`CFBundleShortVersionString`
+/ `versionName`), not the build number EAS increments.
+
+**What the app does:** `src/lib/appVersion.ts` reads the running version from
+`expo-application` (the native bundle, not `Constants.expoConfig`, which reports
+what was embedded at build time and can drift from what the store is serving).
+`useAppUpdate()` holds one shared answer per launch, re-checked when the app
+returns to the foreground after 30 minutes. Every failure path — unreachable
+server, unparseable payload, unreadable version — resolves to "carry on". A
+version check that blocks on a bad connection is worse than one that misses an
+update.
+
+**What a second client must not do:** re-derive "out of date" from anything
+else, and in particular must not block on `unknown`.
+
+---
+
 ## Quick checklist
 
 - [ ] Remove `trial_start` / `trial_end` / `trial_days` reads
@@ -657,3 +718,7 @@ second client must not reimplement the three retired alerts against the API.
 - [ ] Delete `user_push_tokens` rows Expo reports as `DeviceNotRegistered`
 - [ ] Read `training_time` from `/api/account/status`; treat null as `evening`
 - [ ] Let a time set in Settings override the quiz answer, never the reverse
+- [ ] Check `GET /api/app-version` on launch and on foreground return
+- [ ] Block below `minimum`; nudge, dismissibly and per version, below `latest`
+- [ ] Read the running version from the native bundle, never from the JS config
+- [ ] Fail open: an unreachable or unparseable check must never block anyone

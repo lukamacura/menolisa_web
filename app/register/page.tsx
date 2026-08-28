@@ -4,6 +4,7 @@
 import React, { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image, { getImageProps } from "next/image";
+import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
   motion,
@@ -122,7 +123,7 @@ import {
   PLAN_ID,
   PLAN_WEEKS,
 } from "@/lib/pricing";
-import { getSymptomTransforms } from "@/lib/testimonials";
+import { SOCIAL_PROOF_WEEKS, getSymptomTransforms } from "@/lib/testimonials";
 import { getOfferPromise } from "@/lib/planTimeline";
 import {
   SYMPTOM_LABELS,
@@ -157,6 +158,7 @@ type Step =
   | "q5_hrt"
   | "q_limitations"
   | "reward_progress"
+  | "reward_social_proof"
   | "q8_name";
 
 const STEPS: Step[] = [
@@ -170,6 +172,7 @@ const STEPS: Step[] = [
   "q_body",
   "q_fitness",
   "q_training_time",
+  "reward_social_proof",
   "q_nutrition",
   "q_relaxation",
   "reward_plan_shape",
@@ -213,12 +216,40 @@ const AUTO_ADVANCE_STEPS: Step[] = [
 // as much as for its content: q_body -> q_fitness -> q_nutrition ->
 // q_relaxation -> q5_hrt -> q_limitations was six screens with no payoff, and
 // it is the least engaging block in the funnel.
-const REWARD_STEPS: Step[] = ["reward_symptoms", "reward_plan_shape", "reward_progress"];
+//
+// `reward_social_proof` is the odd one out and is meant to be: the other three
+// mirror *her* answers back, and this one is the only place in the quiz that
+// says someone else already walked it. It sits between `q_training_time` and
+// `q_nutrition` for two reasons.
+//
+// Content: she has just said how much time she will give this, and the question
+// live at that exact moment is "will that little bit actually do anything". A
+// woman who finished is the only honest answer to it, and it has to land before
+// `reward_plan_shape` puts a number on her week - a minutes figure is an ask
+// until someone has shown it was enough.
+//
+// Pacing: q_body -> q_fitness -> q_training_time -> q_nutrition -> q_relaxation
+// was the longest unbroken run in the quiz and, per the note above, its least
+// engaging block; this splits it 3/2. Every other slot either sits adjacent to
+// an existing reward (two payoffs in a row read as filler) or lands before
+// q4_symptoms, where there are no answers yet to have earned anything.
+//
+// It deliberately does not go last, before `q8_name`: the end of the quiz is
+// already carrying `reward_progress`, and social proof placed immediately
+// before the calculating screen would be the third human-interest beat in a row
+// on the way into results.
+const REWARD_STEPS: Step[] = [
+  "reward_symptoms",
+  "reward_social_proof",
+  "reward_plan_shape",
+  "reward_progress",
+];
 
 // Header label per reward, in place of the numbered "Question X of N". Each one
 // names what she just got rather than repeating "Quick win" three times.
 const REWARD_LABEL: Record<string, string> = {
   reward_symptoms: "Quick win",
+  reward_social_proof: `${SOCIAL_PROOF_WEEKS} weeks from now`,
   reward_plan_shape: "Your week, sized",
   reward_progress: "Your plan rules",
 };
@@ -3479,9 +3510,45 @@ function RegisterPageContent() {
   // recomputing it in front of her. A ref rather than state: nothing renders
   // off it, it only decides <QuizReward />'s initial state at mount.
   const rewardSeen = useRef<Partial<Record<Step, boolean>>>({});
+  // The same transition, in state. The ref alone was enough while nothing
+  // rendered off it, but the fixed Next bar now has to disappear while a
+  // reward's meter runs (see `onRewardMeter` below) and a ref does not
+  // re-render. Both are kept: the ref is read during render on a Back
+  // navigation, before this state has been set for that mount.
+  const [rewardRevealed, setRewardRevealed] = useState<Partial<Record<Step, boolean>>>({});
   const markRewardSeen = useCallback((step: Step) => {
     rewardSeen.current[step] = true;
+    setRewardRevealed((prev) => (prev[step] ? prev : { ...prev, [step]: true }));
   }, []);
+
+  /**
+   * True while a reward step is still showing its <ComputeMeter /> rather than
+   * its payoff.
+   *
+   * The fixed Next/Continue bar is a sibling of the step content and knew
+   * nothing about the meter, so all three reward steps rendered a live
+   * "Continue" over a loader that was, by its own caption, still working. Three
+   * problems, in rising order of cost: it contradicts the screen (a bar saying
+   * the step is finished under a meter saying it is not); the reward screens
+   * are the only place in the quiz that argues something is being computed on
+   * her answers, and a button to leave before it lands is what makes that read
+   * as theatre; and tapping it advances past a payoff that has not rendered, so
+   * the screen the loader exists to set up is one she never sees.
+   *
+   * `rewardSeen.current` is consulted as well as the state so a Back into a
+   * reward she has already watched shows the bar on the first render rather
+   * than a frame later - <QuizReward /> remounts and re-fires `onDone` from an
+   * effect, which is one paint too late to hide the flicker.
+   *
+   * The quiz wrapper's 76px bottom reservation deliberately does *not* follow
+   * this. Releasing it would centre the loader 38px lower and then jump the
+   * payoff upward the moment the button appeared; a button that fades in over
+   * settled content is the cheaper of the two.
+   */
+  const onRewardMeter =
+    REWARD_STEPS.includes(currentStep) &&
+    !rewardRevealed[currentStep] &&
+    !rewardSeen.current[currentStep];
 
   const planCatalog = usePlanCatalog();
 
@@ -3622,6 +3689,7 @@ function RegisterPageContent() {
         case "q_symptom_impact":
           return symptomImpact !== "";
         case "reward_symptoms":
+        case "reward_social_proof":
         case "reward_plan_shape":
         case "reward_progress":
           return true;
@@ -4350,6 +4418,46 @@ function RegisterPageContent() {
             transition={{ duration: prefersReducedMotion ? 0 : 0.4 }}
             className="w-full max-w-md mx-auto my-auto flex flex-col items-center py-2"
           >
+            {/* The only brand mark in the funnel. `ConditionalNavbar` renders
+                nothing on /register (deliberately - the navbar used to sit over
+                the headline, and waking the auth client on the ad landing page
+                buys nothing), which left the screen an ad click lands on with
+                no confirmation of *what she just clicked*. Every other element
+                here argues for the product; none of them said whose it was.
+
+                Same lockup as `LandingFooter` - avatar plus wordmark - at 24px
+                rather than 32px, because this is orientation, not branding: it
+                has to be recognisable and it must not compete with the hero
+                directly under it. `alt=""` on the avatar because the wordmark
+                beside it already carries the name; announcing both reads as
+                "MenoLisa MenoLisa". Eager rather than `priority` - it is ~2KB
+                and above the fold, but a preload hint here would compete with
+                the hero, which is the image that actually has to be there on
+                first paint.
+
+                Start phase only. The quiz screens have their own header and
+                their job is the question in front of her, not the brand. */}
+            <motion.div
+              initial={prefersReducedMotion ? false : { opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: prefersReducedMotion ? 0 : 0.35 }}
+              className="mb-3 flex shrink-0 items-center gap-2"
+            >
+              <span className="relative h-6 w-6 shrink-0 overflow-hidden rounded-full ring-1 ring-black/5">
+                <Image
+                  src="/brand/lisa-profile.webp"
+                  alt=""
+                  fill
+                  sizes="24px"
+                  loading="eager"
+                  className="object-cover"
+                />
+              </span>
+              <span className="text-sm font-bold tracking-tight text-[#3D3D3D]">
+                MenoLisa
+              </span>
+            </motion.div>
+
             <motion.div
               initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -4358,7 +4466,7 @@ function RegisterPageContent() {
             >
               <Image
                 src="/illustrations/start.webp"
-                alt="The same woman twice: alone with her phone, then holding her plan and smiling."
+                alt="The same woman twice: searching on her phone alone, then following her plan in the app."
                 width={900}
                 height={504}
                 priority
@@ -4403,6 +4511,51 @@ function RegisterPageContent() {
                 aria-hidden
                 className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-white/70"
               />
+
+              {/* Her own sentence, inside the picture.
+
+                  The headline below already is that sentence - "You don't feel
+                  like yourself anymore" - but it sat under the photo in grey
+                  ink, so the photograph and the mirror were two separate
+                  arguments and the left half had to be explained by a tint, a
+                  seam and a 10px label before it said anything. A caption in
+                  her voice makes the "before" self-evident at a glance, which
+                  is the one thing four overlay layers were failing to do.
+
+                  Written against what is actually in the frame - daytime, sofa,
+                  phone in hand, flat expression - not against a mood. "Again"
+                  is the load-bearing word: it makes this the *n*th time rather
+                  than a bad afternoon, which is what makes it hers.
+
+                  Left half only. The right half has the app on the screen and a
+                  label naming the plan; a second bubble would turn a
+                  transformation into a comic strip. Clipped by the hero's own
+                  `overflow-hidden`, so the offsets are percentages - the crop
+                  moves with the viewport and a fixed inset would ride off the
+                  photo on a short screen. */}
+              <motion.div
+                initial={
+                  prefersReducedMotion
+                    ? false
+                    : { opacity: 0, y: -8, scale: 0.94, rotate: -3 }
+                }
+                animate={{ opacity: 1, y: 0, scale: 1, rotate: -3 }}
+                transition={{
+                  delay: prefersReducedMotion ? 0 : 0.5,
+                  type: "spring",
+                  stiffness: 260,
+                  damping: 20,
+                }}
+                className="absolute left-[4%] top-[7%] max-w-[46%] rounded-xl bg-[#3D3D3D] px-2.5 py-1.5 text-left shadow-[0_6px_16px_-4px_rgba(0,0,0,0.45)]"
+              >
+                <p className="text-[11px] sm:text-xs font-semibold leading-snug text-white">
+                  &ldquo;Me, googling my symptoms. Again.&rdquo;
+                </p>
+                <span
+                  aria-hidden
+                  className="absolute -bottom-1 left-5 h-3 w-3 rotate-45 rounded-[2px] bg-[#3D3D3D]"
+                />
+              </motion.div>
               <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-black/65 via-black/25 to-transparent px-2 pt-8 pb-2">
                 <div className="grid grid-cols-2 items-center">
                   <span className="flex items-center justify-center gap-1.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wide text-white">
@@ -4582,6 +4735,41 @@ function RegisterPageContent() {
             </button>
             <p className="text-xs text-[#5A5A5A] text-center mt-2 leading-snug">
               Free 2-minute habit audit · no email needed
+            </p>
+            {/* The funnel linked neither, on the one screen that is the entry
+                point for paid traffic ending at a $59 charge - so the two
+                documents Meta's reviewers look for, and the two a cautious
+                45-60 visitor looks for, existed at /terms and /privacy and were
+                reachable from nowhere in the funnel.
+
+                `target="_blank"` so reading them never costs her the funnel;
+                `prefetch={false}` because this is the ad landing page and two
+                speculative page loads is a real cost for a link most visitors
+                never tap. #5A5A5A rather than the #9A9A9A this bar used to use
+                above - 6.9:1 against 2.85:1, and small legal text is exactly
+                where the audience least able to resolve it gets punished. */}
+            <p className="text-[11px] text-[#5A5A5A] text-center mt-1.5 leading-snug">
+              <Link
+                href="/terms"
+                prefetch={false}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-2 hover:text-[#3D3D3D]"
+              >
+                Terms
+              </Link>
+              <span aria-hidden className="mx-1.5">
+                ·
+              </span>
+              <Link
+                href="/privacy"
+                prefetch={false}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-2 hover:text-[#3D3D3D]"
+              >
+                Privacy
+              </Link>
             </p>
           </div>
         </motion.div>
@@ -6337,6 +6525,70 @@ function RegisterPageContent() {
                 );
               })()}
 
+              {/* Reward: someone who already finished it.
+                  The only screen in the quiz that is not her own answers read
+                  back to her - see the note on REWARD_STEPS for why it sits
+                  here rather than anywhere else in the run.
+
+                  <SocialProofPolaroid /> rather than <SymptomOutcomeCards />,
+                  the other export in that file. The cards are the better fit
+                  for the reward contract on paper (they personalize to her
+                  symptoms) and the worse fit in practice: a horizontal carousel
+                  with an "illustrative / not a medical treatment" footnote is
+                  built for a sales page she can scroll, and this is a centred
+                  card at fixed height. One woman's face also does the job the
+                  quiz is missing, which the before/after cards - already shown
+                  on the diagnosis screen and again at the paywall - do not.
+
+                  The meter copy follows the same rule as the other three (see
+                  reward_symptoms): every caption is either a count of her own
+                  answers or a plain statement of what is being shown. It does
+                  *not* claim to search for women like her - there is no such
+                  lookup, and a fabricated one on the single screen whose whole
+                  job is credibility is the most expensive place in the funnel
+                  to be caught.
+
+                  `initialDone` on Back, like the others: re-running the meter in
+                  front of a payoff she has already seen reads as the funnel
+                  changing its mind. Scrollable rather than clipped - the
+                  polaroid pair is the tallest reward payoff, and a short
+                  viewport must cut off nothing.
+
+                  The framed line under it is her progress, not a second telling
+                  of Zoe's story - the polaroid's own caption already says she
+                  took this quiz, and restating it 40px lower is the duplicate
+                  payoff the results screen's count-up was fixed for. The count
+                  is `activeQuestionIndex + 1`, i.e. questions actually
+                  answered; `stepIndex` would bill her for the reward screens
+                  too, which is exactly the kind of invented number the meter
+                  copy above is careful not to print. */}
+              {currentStep === "reward_social_proof" && (
+                <QuizReward
+                  messages={[
+                    "Marking where you are today...",
+                    `Looking ${SOCIAL_PROOF_WEEKS} weeks ahead...`,
+                    "Opening someone who finished...",
+                  ]}
+                  initialDone={!!rewardSeen.current.reward_social_proof}
+                  onDone={() => markRewardSeen("reward_social_proof")}
+                >
+                  <div className="flex-1 min-h-0 overflow-y-auto flex flex-col justify-center">
+                    <div className="w-full max-w-md mx-auto px-1 pt-1">
+                      <SocialProofPolaroid reduced={!!prefersReducedMotion} />
+                      <motion.p
+                        initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: prefersReducedMotion ? 0 : 0.5, duration: 0.45 }}
+                        className="-mt-2 rounded-xl bg-primary/5 border border-primary/20 px-4 py-3 text-center text-sm sm:text-base font-semibold text-[#3D3D3D] leading-snug"
+                      >
+                        You&apos;re {activeQuestionIndex + 1} questions in. A few
+                        more and your {PLAN_WEEKS}-week plan is ready.
+                      </motion.p>
+                    </div>
+                  </div>
+                </QuizReward>
+              )}
+
               {/* Reward 2: her week, sized. Breaks the six-question run through
                   body/fitness/nutrition/relaxation/HRT/limitations in half, and
                   it is the only screen before the paywall that shows her the
@@ -6612,8 +6864,9 @@ function RegisterPageContent() {
           </div>
 
           {/* Navigation Buttons - fixed to bottom of viewport, safe-area aware.
-              Absent on single-choice steps, which advance themselves. */}
-          {!autoAdvances && (
+              Absent on single-choice steps, which advance themselves, and while
+              a reward step's meter is still running - see `onRewardMeter`. */}
+          {!autoAdvances && !onRewardMeter && (
             <div className="fixed bottom-0 inset-x-0 z-30 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 pb-[env(safe-area-inset-bottom)]">
               <div className="mx-auto max-w-4xl px-4 sm:px-6 py-3">
                 <button
