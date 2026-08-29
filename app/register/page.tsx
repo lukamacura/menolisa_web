@@ -51,6 +51,16 @@ import {
   Bone,
   Droplets,
   HeartPulse,
+  Hourglass,
+  Stethoscope,
+  Ribbon,
+  CircleQuestionMark,
+  CloudSun,
+  CloudRain,
+  CloudLightning,
+  Sunrise,
+  Sun,
+  Sunset,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { HighlightSweep } from "@/components/HighlightSweep";
@@ -303,36 +313,64 @@ const MENOPAUSE_TYPE_OPTIONS = [
   { id: "not_sure", label: "I'm not sure", hint: "That's completely fine — we'll work with it" },
 ];
 
-// One accent per option so the list reads as four distinct choices at a glance.
+// ─── The imageless questions ────────────────────────────────────────────────
+// Three of the twelve carry no tile art - how menopause began, how hard the
+// symptoms hit, and when she trains - because none of the three has an honest
+// illustration (see each list for the reasoning). Left plain they were three
+// identical grey rows, which is the one shape in the quiz that reads as a form
+// rather than a conversation, so each option gets its own accent and its own
+// Lucide icon. That is decoration doing real work: the colour ramp on the
+// severity list is legible as a *scale* before she has read a word, and the
+// icon is what tells her at a glance that these four answers are different
+// kinds of thing rather than four lines of text.
+//
 // Full class strings, never interpolated - Tailwind only ships classes it can
-// find as literal text in the source.
-const MENOPAUSE_TYPE_TONE: Record<
-  string,
-  { idle: string; selected: string; dot: string; label: string }
-> = {
+// find as literal text in the source. `chip` is the idle icon well; the
+// selected state reuses `dot` so a row only ever carries one accent value.
+type ChoiceTone = {
+  idle: string;
+  selected: string;
+  dot: string;
+  label: string;
+  chip: string;
+  Icon: LucideIcon;
+};
+
+// Natural is the calm green; surgical and medical are clinical blue and violet
+// rather than a warning colour, because neither is a worse answer - and the
+// icons stay at that distance too. Nothing here shows a scalpel.
+const MENOPAUSE_TYPE_TONE: Record<string, ChoiceTone> = {
   natural: {
     idle: "border-[#2E9E6B]/30 hover:border-[#2E9E6B]/70 hover:bg-[#2E9E6B]/5",
     selected: "border-[#2E9E6B] bg-[#2E9E6B]/10 shadow-md shadow-[#2E9E6B]/20",
     dot: "bg-[#2E9E6B]",
     label: "text-[#1F7A50]",
+    chip: "bg-[#2E9E6B]/10 text-[#2E9E6B]",
+    Icon: Hourglass,
   },
   surgical: {
     idle: "border-[#3E8FD0]/30 hover:border-[#3E8FD0]/70 hover:bg-[#3E8FD0]/5",
     selected: "border-[#3E8FD0] bg-[#3E8FD0]/10 shadow-md shadow-[#3E8FD0]/20",
     dot: "bg-[#3E8FD0]",
     label: "text-[#2A6DA9]",
+    chip: "bg-[#3E8FD0]/10 text-[#3E8FD0]",
+    Icon: Stethoscope,
   },
   medical: {
     idle: "border-[#8B6BC7]/30 hover:border-[#8B6BC7]/70 hover:bg-[#8B6BC7]/5",
     selected: "border-[#8B6BC7] bg-[#8B6BC7]/10 shadow-md shadow-[#8B6BC7]/20",
     dot: "bg-[#8B6BC7]",
     label: "text-[#6A4BA3]",
+    chip: "bg-[#8B6BC7]/10 text-[#8B6BC7]",
+    Icon: Ribbon,
   },
   not_sure: {
     idle: "border-[#8A8A8A]/30 hover:border-[#8A8A8A]/70 hover:bg-[#8A8A8A]/5",
     selected: "border-[#8A8A8A] bg-[#8A8A8A]/10 shadow-md shadow-[#8A8A8A]/20",
     dot: "bg-[#8A8A8A]",
     label: "text-[#5F5F5F]",
+    chip: "bg-[#8A8A8A]/10 text-[#8A8A8A]",
+    Icon: CircleQuestionMark,
   },
 };
 
@@ -388,30 +426,36 @@ const SYMPTOM_IMPACT_OPTIONS = [
   { id: "severe", label: "They run my life", hint: "I plan my days around them" },
 ];
 
-// Green/amber/red so the three levels read as a scale before she reads a word.
-// Full class strings, never interpolated - Tailwind only ships classes it can
-// find as literal text in the source.
-const IMPACT_TONE: Record<
-  string,
-  { idle: string; selected: string; dot: string; label: string }
-> = {
+// Green/amber/red so the three levels read as a scale before she reads a word,
+// and a weather ramp on top of it - sun behind cloud, rain, storm. Weather is
+// the one escalating metaphor here that describes the *day* rather than the
+// woman: a storm is something that happens to you and passes, which is the
+// whole claim the next eight weeks make. Faces or warning triangles would have
+// graded her instead, on the screen where she has just admitted how bad it is.
+const IMPACT_TONE: Record<string, ChoiceTone> = {
   mild: {
     idle: "border-[#2E9E6B]/30 hover:border-[#2E9E6B]/70 hover:bg-[#2E9E6B]/5",
     selected: "border-[#2E9E6B] bg-[#2E9E6B]/10 shadow-md shadow-[#2E9E6B]/20",
     dot: "bg-[#2E9E6B]",
     label: "text-[#1F7A50]",
+    chip: "bg-[#2E9E6B]/10 text-[#2E9E6B]",
+    Icon: CloudSun,
   },
   moderate: {
     idle: "border-[#E0A32E]/30 hover:border-[#E0A32E]/70 hover:bg-[#E0A32E]/5",
     selected: "border-[#E0A32E] bg-[#E0A32E]/10 shadow-md shadow-[#E0A32E]/20",
     dot: "bg-[#E0A32E]",
     label: "text-[#A9741A]",
+    chip: "bg-[#E0A32E]/10 text-[#E0A32E]",
+    Icon: CloudRain,
   },
   severe: {
     idle: "border-[#DB4F45]/30 hover:border-[#DB4F45]/70 hover:bg-[#DB4F45]/5",
     selected: "border-[#DB4F45] bg-[#DB4F45]/10 shadow-md shadow-[#DB4F45]/20",
     dot: "bg-[#DB4F45]",
     label: "text-[#B23A31]",
+    chip: "bg-[#DB4F45]/10 text-[#DB4F45]",
+    Icon: CloudLightning,
   },
 };
 
@@ -523,6 +567,36 @@ const TRAINING_TIME_OPTIONS = [
   { id: "midday", label: "Midday", hint: "Around lunch, or a break in the afternoon" },
   { id: "evening", label: "Evening", hint: "Once everything else is done" },
 ];
+
+// Sunrise gold, midday blue, dusk violet - the light at that hour, so the three
+// rows read as one day passing. She is picking the shape of her day (see the
+// note above), and this is the fastest way to say so without a photograph.
+const TRAINING_TIME_TONE: Record<string, ChoiceTone> = {
+  morning: {
+    idle: "border-[#E8A33D]/30 hover:border-[#E8A33D]/70 hover:bg-[#E8A33D]/5",
+    selected: "border-[#E8A33D] bg-[#E8A33D]/10 shadow-md shadow-[#E8A33D]/20",
+    dot: "bg-[#E8A33D]",
+    label: "text-[#A9741A]",
+    chip: "bg-[#E8A33D]/10 text-[#E8A33D]",
+    Icon: Sunrise,
+  },
+  midday: {
+    idle: "border-[#3E8FD0]/30 hover:border-[#3E8FD0]/70 hover:bg-[#3E8FD0]/5",
+    selected: "border-[#3E8FD0] bg-[#3E8FD0]/10 shadow-md shadow-[#3E8FD0]/20",
+    dot: "bg-[#3E8FD0]",
+    label: "text-[#2A6DA9]",
+    chip: "bg-[#3E8FD0]/10 text-[#3E8FD0]",
+    Icon: Sun,
+  },
+  evening: {
+    idle: "border-[#7B5FC7]/30 hover:border-[#7B5FC7]/70 hover:bg-[#7B5FC7]/5",
+    selected: "border-[#7B5FC7] bg-[#7B5FC7]/10 shadow-md shadow-[#7B5FC7]/20",
+    dot: "bg-[#7B5FC7]",
+    label: "text-[#5C449F]",
+    chip: "bg-[#7B5FC7]/10 text-[#7B5FC7]",
+    Icon: Sunset,
+  },
+};
 
 // Where her eating actually starts, so the plan's nutrition focus opens at her
 // level instead of at week one of a textbook. Deliberately blame-free wording -
@@ -2707,6 +2781,83 @@ function ImageChoiceGrid({
               <span className={TILE_LABEL}>{option.label}</span>
               <ArrowRight className="w-3.5 h-3.5 shrink-0 text-white/70" />
             </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+type ToneOption = { id: string; label: string; hint: string };
+
+/** The single-choice list behind the three questions with no tile art - how
+ *  menopause began, how hard the symptoms hit, and when she trains. Same
+ *  contract as ImageChoiceGrid: tap a row to answer, the step advances itself
+ *  (see AUTO_ADVANCE_STEPS).
+ *
+ *  Every visual comes out of the tone record whole (see ChoiceTone) rather than
+ *  being assembled from an accent value here - Tailwind only ships classes it
+ *  can find as literal text, so a colour built at runtime renders as nothing at
+ *  all. Adding an option means adding its tone in the same commit; a missing
+ *  entry is a blank row, not a fallback.
+ */
+function ToneChoiceList({
+  options,
+  tones,
+  selected,
+  onSelect,
+}: {
+  options: readonly ToneOption[];
+  tones: Record<string, ChoiceTone>;
+  selected: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div className="flex-1 flex flex-col justify-center gap-2.5 min-h-0 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
+      {options.map((option) => {
+        const isSelected = selected === option.id;
+        const tone = tones[option.id];
+        const Icon = tone.Icon;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => onSelect(option.id)}
+            className={`w-full shrink-0 flex items-center justify-between gap-3 px-4 py-3.5 rounded-2xl border-2 text-left transition-all duration-200 cursor-pointer ${
+              isSelected ? tone.selected : tone.idle
+            }`}
+          >
+            <span className="flex items-center gap-3 min-w-0">
+              <span
+                aria-hidden
+                className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center transition-colors duration-200 ${
+                  isSelected ? `${tone.dot} text-white` : tone.chip
+                }`}
+              >
+                <Icon className="w-[18px] h-[18px]" strokeWidth={2} />
+              </span>
+              <span className="min-w-0">
+                <span
+                  className={`block font-semibold text-sm sm:text-base ${
+                    isSelected ? tone.label : "text-[#3D3D3D]"
+                  }`}
+                >
+                  {option.label}
+                </span>
+                <span className="block text-xs text-[#8A8A8A] leading-tight mt-0.5">
+                  {option.hint}
+                </span>
+              </span>
+            </span>
+            {isSelected ? (
+              <span
+                className={`w-5 h-5 shrink-0 rounded-full flex items-center justify-center animate-in zoom-in duration-200 ${tone.dot}`}
+              >
+                <Check className="w-3 h-3 text-white" strokeWidth={3} />
+              </span>
+            ) : (
+              <span className="w-5 h-5 shrink-0 rounded-full border-2 border-foreground/20" />
+            )}
           </button>
         );
       })}
@@ -6120,39 +6271,12 @@ function RegisterPageContent() {
                       nowhere else. You can change it any time.
                     </p>
                   </div>
-                  <div className="flex-1 flex flex-col justify-center gap-2 min-h-0">
-                    {TRAINING_TIME_OPTIONS.map((option) => {
-                      const isSelected = trainingTime === option.id;
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => selectAndAdvance(() => setTrainingTime(option.id))}
-                          className={`w-full shrink-0 flex items-center justify-between gap-3 px-4 py-3.5 rounded-2xl border-2 text-left transition-all duration-200 cursor-pointer ${
-                            isSelected
-                              ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
-                              : "border-foreground/15 hover:border-primary/50"
-                          }`}
-                        >
-                          <span className="min-w-0">
-                            <span className="block font-semibold text-sm sm:text-base text-[#3D3D3D]">
-                              {option.label}
-                            </span>
-                            <span className="block text-xs sm:text-sm text-muted-foreground">
-                              {option.hint}
-                            </span>
-                          </span>
-                          {isSelected ? (
-                            <span className="w-5 h-5 shrink-0 rounded-full bg-primary flex items-center justify-center animate-in zoom-in duration-200">
-                              <Check className="w-3 h-3 text-primary-foreground" strokeWidth={3} />
-                            </span>
-                          ) : (
-                            <span className="w-5 h-5 shrink-0 rounded-full border-2 border-foreground/20" />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <ToneChoiceList
+                    options={TRAINING_TIME_OPTIONS}
+                    tones={TRAINING_TIME_TONE}
+                    selected={trainingTime}
+                    onSelect={(id) => selectAndAdvance(() => setTrainingTime(id))}
+                  />
                 </div>
               )}
 
@@ -6219,50 +6343,12 @@ function RegisterPageContent() {
                       It changes what your plan can safely suggest
                     </p>
                   </div>
-                  <div className="flex-1 flex flex-col justify-center gap-2.5 min-h-0 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
-                    {MENOPAUSE_TYPE_OPTIONS.map((option) => {
-                      const isSelected = menopauseType === option.id;
-                      const tone = MENOPAUSE_TYPE_TONE[option.id];
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => selectAndAdvance(() => setMenopauseType(option.id))}
-                          className={`w-full shrink-0 flex items-center justify-between gap-3 px-4 py-3.5 rounded-2xl border-2 text-left transition-all duration-200 cursor-pointer ${
-                            isSelected ? tone.selected : tone.idle
-                          }`}
-                        >
-                          <span className="flex items-center gap-3 min-w-0">
-                            <span
-                              aria-hidden
-                              className={`w-2.5 h-2.5 shrink-0 rounded-full ${tone.dot}`}
-                            />
-                            <span className="min-w-0">
-                              <span
-                                className={`block font-semibold text-sm sm:text-base ${
-                                  isSelected ? tone.label : "text-[#3D3D3D]"
-                                }`}
-                              >
-                                {option.label}
-                              </span>
-                              <span className="block text-xs text-[#8A8A8A] leading-tight mt-0.5">
-                                {option.hint}
-                              </span>
-                            </span>
-                          </span>
-                          {isSelected ? (
-                            <span
-                              className={`w-5 h-5 shrink-0 rounded-full flex items-center justify-center animate-in zoom-in duration-200 ${tone.dot}`}
-                            >
-                              <Check className="w-3 h-3 text-white" strokeWidth={3} />
-                            </span>
-                          ) : (
-                            <span className="w-5 h-5 shrink-0 rounded-full border-2 border-foreground/20" />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <ToneChoiceList
+                    options={MENOPAUSE_TYPE_OPTIONS}
+                    tones={MENOPAUSE_TYPE_TONE}
+                    selected={menopauseType}
+                    onSelect={(id) => selectAndAdvance(() => setMenopauseType(id))}
+                  />
                 </div>
               )}
 
@@ -6397,50 +6483,12 @@ function RegisterPageContent() {
                       No wrong answer — it shapes the plan we build for you
                     </p>
                   </div>
-                  <div className="flex-1 flex flex-col justify-center gap-2.5 min-h-0 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
-                    {SYMPTOM_IMPACT_OPTIONS.map((level) => {
-                      const isSelected = symptomImpact === level.id;
-                      const tone = IMPACT_TONE[level.id];
-                      return (
-                        <button
-                          key={level.id}
-                          type="button"
-                          onClick={() => selectAndAdvance(() => setSymptomImpact(level.id))}
-                          className={`w-full shrink-0 flex items-center justify-between gap-3 px-4 py-3.5 rounded-2xl border-2 text-left transition-all duration-200 cursor-pointer ${
-                            isSelected ? tone.selected : tone.idle
-                          }`}
-                        >
-                          <span className="flex items-center gap-3 min-w-0">
-                            <span
-                              aria-hidden
-                              className={`w-2.5 h-2.5 shrink-0 rounded-full ${tone.dot}`}
-                            />
-                            <span className="min-w-0">
-                              <span
-                                className={`block font-semibold text-sm sm:text-base ${
-                                  isSelected ? tone.label : "text-[#3D3D3D]"
-                                }`}
-                              >
-                                {level.label}
-                              </span>
-                              <span className="block text-xs text-[#8A8A8A] leading-tight mt-0.5">
-                                {level.hint}
-                              </span>
-                            </span>
-                          </span>
-                          {isSelected ? (
-                            <span
-                              className={`w-5 h-5 shrink-0 rounded-full flex items-center justify-center animate-in zoom-in duration-200 ${tone.dot}`}
-                            >
-                              <Check className="w-3 h-3 text-white" strokeWidth={3} />
-                            </span>
-                          ) : (
-                            <span className="w-5 h-5 shrink-0 rounded-full border-2 border-foreground/20" />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <ToneChoiceList
+                    options={SYMPTOM_IMPACT_OPTIONS}
+                    tones={IMPACT_TONE}
+                    selected={symptomImpact}
+                    onSelect={(id) => selectAndAdvance(() => setSymptomImpact(id))}
+                  />
                 </div>
               )}
 
