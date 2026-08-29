@@ -10,11 +10,18 @@
  */
 
 import {
+  DEFAULT_COOLDOWN,
+  DEFAULT_WARMUP,
   EXERCISES,
+  MOVEMENT_VOLUME,
   allowedExercises,
+  allowedPower,
+  buildPowerBlock,
   defaultDoseForWeek,
   getExercise,
   hydrateDose,
+  listSeconds,
+  powerMinutes,
 } from "../lib/plan/catalog";
 import { buildPrompt, type Profile } from "../lib/plan/generate";
 
@@ -101,8 +108,78 @@ for (const level of ["beginner", "medium", "advanced", "movement_snacks"]) {
   // There is no reps field left to fill in. Naming one — even in an example —
   // is how a rep count sneaks back into a dose the timer then cannot run.
   check(!prompt.includes('"reps"'), `${level}: prompt still names a "reps" field`);
-  console.log(`  ${level.padEnd(16)} ${pool.length} in pool · ${named.length} special ids named`);
+  const power = allowedPower(level, []);
+  console.log(
+    `  ${level.padEnd(16)} ${String(pool.length).padStart(2)} in pool · ${named.length} special ids named · ${power.length} power ids`
+  );
+  // The `I` family is reserved for the power block on every cadence that has
+  // one. A prompt that names them is a prompt inviting the model to spend a
+  // strength slot on a plyometric it was supposed to get in its own segment.
+  if (level !== "movement_snacks") {
+    for (const ex of power) {
+      check(!prompt.includes(`${ex.id} `), `${level}: prompt offers reserved power id ${ex.id}`);
+    }
+  }
 }
+
+// ─── 5. The power block fits its budget and grows across the eight weeks ─────
+
+console.log("\n=== power block: budget, progression, coverage ===");
+
+const BOOKEND_SECONDS = listSeconds(DEFAULT_WARMUP) + listSeconds(DEFAULT_COOLDOWN);
+
+for (const level of ["beginner", "medium", "advanced", "movement_snacks"]) {
+  const vol = MOVEMENT_VOLUME[level];
+  const budget = powerMinutes(vol);
+
+  // Both the clean pool and the one a woman reporting joint pain actually gets
+  // — that filter collapses every level to the two low-impact rows, so it is
+  // the case most likely to produce an empty or overlong block.
+  for (const problems of [[], ["joint_pain"]]) {
+    const pool = allowedPower(level, problems);
+    const label = `${level}${problems.length ? " +joint_pain" : ""}`;
+
+    if (vol.perDay) {
+      check(pool.length === 0, `${label}: snacks must have no power pool`);
+      check(budget === 0, `${label}: snacks must have no power budget`);
+      continue;
+    }
+
+    check(pool.length > 0, `${label}: no bone loading available at all`);
+
+    const lengths: number[] = [];
+    for (let week = 1; week <= 8; week++) {
+      const block = buildPowerBlock(pool, week, budget);
+      check(Boolean(block?.length), `${label} week ${week}: no power block`);
+      if (!block) continue;
+
+      const seconds = listSeconds(block);
+      lengths.push(seconds);
+      // The band is the promise. A block over its budget is a session over the
+      // longer number on the quiz label, which is the failure the band exists
+      // to prevent.
+      check(
+        seconds <= budget * 60,
+        `${label} week ${week}: block runs ${seconds}s against a ${budget * 60}s budget`
+      );
+      // And the whole session has to sit inside maxMinutes: the ordinary
+      // session she was sold, plus the block, plus the bookends it already had.
+      const session = vol.minutes * 60 + seconds;
+      check(
+        session <= vol.maxMinutes * 60,
+        `${label} week ${week}: session runs ${Math.round(session / 60)}m against a ${vol.maxMinutes}m ceiling`
+      );
+      check(block.every((e) => e.id.startsWith("I")), `${label} week ${week}: non-power id in the block`);
+    }
+
+    // Week 8 has to be harder than week 1 or it is not an eight-week plan.
+    check(lengths[7] > lengths[0], `${label}: the power block does not progress`);
+    const shown = lengths.map((n) => `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`);
+    console.log(`  ${label.padEnd(26)} budget ${String(budget).padStart(2)}m · ${shown.join(" ")}`);
+  }
+}
+
+console.log(`  generic bookends ${BOOKEND_SECONDS}s on every session above`);
 
 // ─── Result ──────────────────────────────────────────────────────────────────
 

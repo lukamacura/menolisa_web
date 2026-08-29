@@ -542,8 +542,10 @@ underneath a woman mid-cycle.
 **Since 2026-08-25 the plan-building LLM writes them** (step 1), so a new plan
 carries a warm-up chosen for what that session actually loads rather than the
 same three moves for everyone. It picks ids only — 2-4 per bookend, from the
-`W` family, filtered by her `q_limitations` answers — and the dose comes off the
-catalog, because a warm-up is not progressed across the eight weeks. Plans
+`W` family — and the dose comes off the catalog, because a warm-up is not
+progressed across the eight weeks. (Until 2026-08-29 the `W` pool was also
+filtered by her `q_limitations` answers; that question and its filter are gone,
+so every warm-up is available to everyone.) Plans
 generated before that date still resolve through step 2, which is why both paths
 stay. Nothing about the response shape changed.
 
@@ -682,6 +684,199 @@ else, and in particular must not block on `unknown`.
 
 ---
 
+## 17. `GET /api/plan` — sessions gained a power block (**additive**) — 2026-08-29
+
+A movement task now carries a **fourth** phase, between the work and the
+cool-down, plus a number saying how often it runs:
+
+```jsonc
+{
+  "key": "w1_movement0",
+  "pillar": "movement",
+  "target": 3,               // sessions this week — UNCHANGED
+  "warmup":    [ /* PlanExercise[] */ ],
+  "exercises": [ /* PlanExercise[] — the work itself, UNCHANGED */ ],
+  "power":     [ /* PlanExercise[] — NEW: bone loading, after the work */ ],
+  "powerSessions": 2,        // NEW: how many of this week's sessions include it
+  "cooldown":  [ /* PlanExercise[] */ ]
+}
+```
+
+`power` has the same element shape as the other three — `dose` object, clip and
+all — so it needs no second renderer and no second player. Run the session as
+**warm-up → work → power → cool-down**.
+
+### What it is
+
+Plyometric and force-absorption work: hops, drops and marching landings, from
+the `I` family. Bone density falls with estrogen and impact loading is the one
+thing exercise does about that which nothing else does, so this is not a bonus
+round — it is the pillar the plan is named after.
+
+It used to be one exercise the LLM was *asked* to include and often didn't.
+Measured over four generations, two plans had none at all. It is now a segment
+built in code, on its own time budget, in every session of every plan.
+
+### `exercises` still means the main work only
+
+Same rule as the bookends, and it matters more here because a power block is
+real work. Every read that asks "how much did she train" — session length, the
+exercise count, adherence, the volume the next cycle is sized from — goes
+through `exercises`. **Do not fold `power` into it.** If a screen needs the
+whole session, it adds the arrays up itself and says so.
+
+### `powerSessions` — the part that needs app logic
+
+This is the one field that is not just "draw another section".
+
+A movement task holds **one** session that she repeats `target` times a week, so
+the plan physically cannot say "plyo on Tuesday and Friday". It says *do this
+block on 2 of your 3 sessions this week* and the app decides which two.
+
+**Show the power block on the first `powerSessions` completions of the week, and
+hide it on the rest.** With `target: 3` and `powerSessions: 2`, her first two
+sessions of the week run warm-up → work → power → cool-down and her third runs
+warm-up → work → cool-down. Beginners have `target: 2` and `powerSessions: 2`,
+so every session carries it.
+
+The week boundary is the same one `doneThisWeek` already uses, and that counter
+is what to drive this from — no new state, no new endpoint.
+
+If you would rather not gate it in v1, showing it every session is a safe
+fallback: it is more impact than prescribed but nothing in it is unsafe.
+Skipping it entirely is not — that is the plan losing its point.
+
+### Both fields are optional, and absent on purpose
+
+There is **no generic default** for `power`, unlike the two bookends, and that
+asymmetry is deliberate: a hip circle is safe for everyone, a plyometric is not.
+Which ones she may be given depends on her fitness level and on whether she
+reported joint pain, and neither is knowable from a stored task. So `power` is
+absent — draw no section, and don't invent one — on:
+
+- **movement snacks** (`cadence: "per_day"`) — five-minute bursts. Their bone
+  loading is mixed into `exercises` instead.
+- **cardio-only sessions** (every id starts with `K`).
+- **every plan generated before 2026-08-29.** Existing plans finish their eight
+  weeks without one; the next cycle has it.
+
+Treat a missing `powerSessions` beside a present `power` as "every session", and
+a present `powerSessions` beside a missing `power` as nothing to draw.
+
+### Sessions got longer, and the quiz now says so
+
+The time budget used to be one number per fitness level and is now a band: the
+ordinary session, and what a session may reach on the days that carry the power
+block. The block is additive — it never shortens the work she was already sold.
+
+| Level | Ordinary session | With the power block | Power block |
+|---|---|---|---|
+| beginner | 20 min | 25 min | ~5 min |
+| medium | 30 min | 40 min | ~10 min |
+| advanced | 35 min | 45 min | ~10 min |
+| movement snacks | 5 min | 5 min | none |
+
+Two quiz labels changed with them (`medium` read "About 30 min" against a
+28-minute ceiling; `advanced` read "35+ min" against a hard maximum of exactly
+35). **If the app renders session length anywhere from its own table, it now
+needs both numbers, or it will understate every power day.** Prefer summing the
+`dose.estimatedSeconds` the response already carries.
+
+**What the app should do:** run warm-up → work → power → cool-down; gate the
+power section on `powerSessions` against `doneThisWeek`; keep `exercises`
+meaning the main work in every count; draw nothing for an absent phase.
+
+## 18. `GET /api/plan` — a guided meditation beside every relaxation task (**additive**) — 2026-08-29
+
+`GET /api/plan?media=1` gained one top-level field. It is **not** inside `weeks`
+and **not** a task:
+
+```jsonc
+{
+  "status": "ready",
+  // ... weeks, nutrition, habits, resistSuggestions ...
+  "meditation": {
+    "id": "meditation_settle",
+    "title": "Guided meditation",
+    "use": "Lie down, eyes closed, and let the voice do the work.",
+    "seconds": 657,                       // 10:57 — the catalog's stated length
+    "audio": "https://<supabase>/storage/v1/object/public/relaxation-audio/meditation.MP3"
+  }
+}
+```
+
+### Why it is not a catalog item
+
+Every id in `RELAXATION` is in the plan prompt's enum, so anything added there is
+something the model **schedules**. The day it scheduled the meditation as her
+relaxation task, the choice this exists to offer would collapse into meditation
+versus meditation. Keeping it off the plan also means:
+
+- **Every existing plan gets it immediately.** A plan is written once and stored;
+  a new catalog row would only reach women whose next eight weeks are generated
+  after it shipped — seven weeks away for someone on day 3.
+- **Adherence does not move.** Her relaxation task is still one task with one
+  target. She completes it by breathing *or* by lying still with this playing;
+  the tick goes against `task.key` either way and the plan cannot tell which.
+
+### What the app does with it
+
+Offer it as the second option beside whatever `weeks[].tasks[].relaxation` asked
+for, and tick the same `task.key` on completion. **Do not** add a second log key,
+and do not count it separately anywhere.
+
+- **Media-gated.** Absent without `?media=1`, for the same reason as the exercise
+  clips: the web dashboard has no player and should not be handed audio it would
+  only pay egress for.
+- **Optional, always.** Absent on any server that predates it, and absent when
+  `NEXT_PUBLIC_SUPABASE_URL` is unset. Both mean *offer no choice* — never an
+  error, never a player with nothing behind it.
+- **`audio` is the only source of the URL.** Never build one from `id`. Nothing
+  in the app may know the bucket, the filename, or its spelling — the file is
+  `meditation.MP3`, capital extension and all, and that lives on the catalog row.
+- **`seconds` is what to print before playback.** The real duration comes off the
+  file once loaded; this is what the choice card can say while she decides.
+
+### The file
+
+`relaxation-audio`, public read, one flat namespace — the audio sibling of
+`exercise-clips`. Managed by `npm run meditation`:
+
+```
+npm run meditation check  <file>   parse the mp3 against the catalog, no network
+npm run meditation upload <file>   validate, then upload with a 1-year cacheControl
+npm run meditation audit           live bucket vs the catalog
+npm run meditation recache         re-upload live files carrying a short header
+```
+
+The duration check is the blocking one: `Meditation.seconds` is printed in the UI
+before a byte is fetched, so a file whose real length disagrees with the catalog
+is a screen that promises eleven minutes and delivers six.
+
+**Never upload through the Supabase dashboard.** It stamps
+`cacheControl: max-age=3600` — the first upload of `meditation.MP3` did exactly
+that, on a 15MB file. `recache` fixes an object already up without needing the
+master.
+
+### Client-side notes (mobile)
+
+Two things the app has to do that no previous media needed:
+
+- **Download it once.** `expo-audio` has no disk cache of its own (unlike
+  `expo-video`, which is why the clips only needed a flag). Streamed, a nightly
+  meditation would pull 15MB every night. The app downloads to its cache
+  directory on first play and plays the local file after — which also makes it
+  work with no signal, and bed is where signal goes to die.
+- **Switch the audio session, then hand it back.** One session per app: the
+  settings that make a reward chime polite (muted by the mute switch, mixed under
+  other audio, dead in the background) are the ones that make an eleven-minute
+  meditation useless. iOS also needs `UIBackgroundModes: ['audio']`, without
+  which the background-playback flag is silently ignored.
+
+---
+
+---
+
 ## Quick checklist
 
 - [ ] Remove `trial_start` / `trial_end` / `trial_days` reads
@@ -722,3 +917,8 @@ else, and in particular must not block on `unknown`.
 - [ ] Block below `minimum`; nudge, dismissibly and per version, below `latest`
 - [ ] Read the running version from the native bundle, never from the JS config
 - [ ] Fail open: an unreachable or unparseable check must never block anyone
+- [ ] Run a movement session as `warmup` → `exercises` → `power` → `cooldown`
+- [ ] Show `power` on the first `powerSessions` sessions of the week, hide it after
+- [ ] Keep `power` out of `exercises` in every count, estimate and adherence score
+- [ ] Draw no power section when the field is absent (snacks, walks, old plans)
+- [ ] Stop hardcoding session length per level — it is a band now, or sum the doses

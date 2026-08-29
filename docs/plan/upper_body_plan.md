@@ -88,9 +88,13 @@ takes off five minutes without touching the structural work.
 
 ## 4. Variants
 
-**Shoulder limitation.** `physical_limits: shoulder` strips `U04`, `U05`, `U06`,
-`U11`, `U12`, plus `W03`, `W14` and `S10` — the entire Block 2 push, two of three
-accessories, and two of three warm-ups. What remains still makes a session:
+**Sore shoulder (historic).** Until 2026-08-29 a `physical_limits: shoulder`
+answer stripped `U04`, `U05`, `U06`, `U11`, `U12`, plus `W03`, `W14` and `S10` —
+the entire Block 2 push, two of three accessories, and two of three warm-ups.
+That question and its filter are gone, so this is no longer a pool the generator
+can be given. It is kept here as the reference reduction: it is the session this
+template degrades to when the pressing work is unavailable, which is still worth
+knowing when judging whether Block 2 is load-bearing.
 
 - Warm-up: `W04` shoulder mobility · `W05` open book cross · `W11` thread the needle
 - Block 2: `U01` → `U02` → `U03` (wall → table → bench) as the push, one rung
@@ -140,7 +144,10 @@ In rough order of how much they cost the plan.
    (`U10`) is an accessory, means `allowedExercises()` returns a pool too thin
    for a four-block session, and any "use N different ids" rule will fail or
    repeat. Two more level-1 rows — an incline table row, a banded pull-apart —
-   would matter more than anything else on this list.
+   would matter more than anything else on this list. **Still open after the
+   2026-08-29 top-up:** the pull-apart was drafted into the catalog and not
+   shot, so its row was deleted rather than left clipless, and `U13` went to a
+   standing biceps curl, which is level 2 and does not touch this gap.
 
 6. **`ensureBoneLoading()` will not credit this session.** It keys on impact, and
    every upper movement here is `none`. But Block 2's stated goal is bone

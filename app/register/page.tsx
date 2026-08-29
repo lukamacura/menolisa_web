@@ -156,7 +156,6 @@ type Step =
   | "q_relaxation"
   | "reward_plan_shape"
   | "q5_hrt"
-  | "q_limitations"
   | "reward_progress"
   | "reward_social_proof"
   | "q8_name";
@@ -177,7 +176,6 @@ const STEPS: Step[] = [
   "q_relaxation",
   "reward_plan_shape",
   "q5_hrt",
-  "q_limitations",
   "reward_progress",
   "q8_name",
 ];
@@ -214,8 +212,8 @@ const AUTO_ADVANCE_STEPS: Step[] = [
 //
 // They also break up the run of questions. `reward_plan_shape` exists for that
 // as much as for its content: q_body -> q_fitness -> q_nutrition ->
-// q_relaxation -> q5_hrt -> q_limitations was six screens with no payoff, and
-// it is the least engaging block in the funnel.
+// q_relaxation -> q5_hrt was five screens with no payoff, and it is the least
+// engaging block in the funnel.
 //
 // `reward_social_proof` is the odd one out and is meant to be: the other three
 // mirror *her* answers back, and this one is the only place in the quiz that
@@ -476,8 +474,16 @@ const HRT_OPTIONS = [
 // `allowedExercises()` and `MOVEMENT_VOLUME` in `lib/plan/catalog.ts`), so plan
 // generation is untouched. The relabel is honest rather than cosmetic because
 // each label states that id's real `MOVEMENT_VOLUME` entry:
-//   movement_snacks 4x5min/day · beginner 2x18 · medium 3x28 · advanced 4x35.
+//   movement_snacks 4x5min/day · beginner 2x20-25 · medium 3x30-40 · advanced 4x35-45.
 // Change a number here only if you change it there too.
+//
+// **They became ranges on 2026-08-29**, because the session did: `minutes` is
+// the ordinary session and `maxMinutes` the one that also carries the power
+// block, so a single number could only ever have been true half the time. Two
+// of the three were already wrong before that — medium read "About 30" against
+// a 28-minute ceiling, and advanced read "35+" against a hard maximum of
+// exactly 35, which is the one direction the trimmer can never deliver. A range
+// is the only shape that is true on both kinds of day.
 //
 // Ordered by ascending time, so the four read as one ladder. `movement_snacks`
 // leads because it is the smallest ask, and it is the honest home for the woman
@@ -485,9 +491,9 @@ const HRT_OPTIONS = [
 // for.
 const FITNESS_OPTIONS = [
   { id: "movement_snacks", label: "A few minutes, spread out", image: "/quiz/fitness/movement-snacks.webp" },
-  { id: "beginner", label: "About 20 min, 2 days a week", image: "/quiz/fitness/beginner.webp" },
-  { id: "medium", label: "About 30 min, 3 days a week", image: "/quiz/fitness/medium.webp" },
-  { id: "advanced", label: "35+ min, 4 days a week", image: "/quiz/fitness/advanced.webp" },
+  { id: "beginner", label: "20-25 min, 2 days a week", image: "/quiz/fitness/beginner.webp" },
+  { id: "medium", label: "30-40 min, 3 days a week", image: "/quiz/fitness/medium.webp" },
+  { id: "advanced", label: "35-45 min, 4 days a week", image: "/quiz/fitness/advanced.webp" },
 ];
 
 // When she actually has room to move, which is a different question from how
@@ -533,29 +539,18 @@ const RELAXATION_STYLE_OPTIONS = [
   { id: "want_to", label: "I want to start", image: "/quiz/relaxation/wanttostart.webp" },
 ];
 
-// What hurts when she moves. Text rows, no illustrations - these are body parts,
-// and a watercolor tile per joint would be noise. Plain multi-select: she ticks
-// what applies and nothing is ticked for her.
+// `q_limitations` - "Does anything hurt or hold you back when you move?" - was
+// removed from the funnel on 2026-08-29, along with the exercise-pool filter it
+// fed (`LIMITATION_EXCLUDES` in `lib/plan/catalog.ts`).
 //
-// There is deliberately no "nothing holds me back" row. It used to be here, and
-// pre-selected, so the step opened with one row lit up that she had not chosen -
-// which reads as a mistake to undo rather than a default to accept, and the tap
-// it invited (the row was already right) advanced the quiz. Saying nothing is
-// the answer now: an empty array means no limitations, which is exactly what the
-// old "none" meant downstream anyway.
+// The reason is scope, not friction. A woman who tells us her knee hurts needs a
+// clinician, and an unsupervised eight-week plan generated from six checkboxes
+// is not one. Asking the question implies we can serve her safely; the product
+// is not built to, so she is out of scope rather than accommodated.
 //
-// The ids are load-bearing twice over: `LIMITATION_EXCLUDES` in
-// `lib/plan/catalog.ts` filters the exercise pool on them in code, and
-// `limitationLine()` names them in the plan prompt. Renaming one here without
-// the other silently stops the filter.
-const LIMITATION_OPTIONS = [
-  { id: "back", label: "Lower back pain" },
-  { id: "knee", label: "Knee pain" },
-  { id: "hip", label: "Hip pain" },
-  { id: "shoulder", label: "Neck or shoulder pain" },
-  { id: "pelvic_floor", label: "Pelvic floor / leaking" },
-  { id: "balance", label: "Balance problems or dizziness" },
-];
+// Restoring it is a three-ended change - the options here, `PHYSICAL_LIMITS` in
+// `app/api/auth/save-quiz/route.ts` and the rules in the catalog - and all three
+// have to come back together. `git log` has the lists.
 
 // Shared option-tile footer styles - every quiz label is the same size, aligned,
 // and readable. The fixed min-height keeps footer bars level across a row even
@@ -952,7 +947,6 @@ type FunnelAnswers = {
   hrtStatus: string;
   nutritionStyle: string;
   relaxationStyle: string;
-  physicalLimits: string[];
   firstName: string;
 };
 
@@ -1021,7 +1015,6 @@ function readFunnelResume(): FunnelResume | null {
         hrtStatus: resumeStr(a.hrtStatus),
         nutritionStyle: resumeStr(a.nutritionStyle),
         relaxationStyle: resumeStr(a.relaxationStyle),
-        physicalLimits: resumeStrArray(a.physicalLimits),
         firstName: resumeStr(a.firstName),
       },
     };
@@ -3411,10 +3404,6 @@ function RegisterPageContent() {
   const [hrtStatus, setHrtStatus] = useState<string>("");
   const [nutritionStyle, setNutritionStyle] = useState<string>("");
   const [relaxationStyle, setRelaxationStyle] = useState<string>("");
-  // Starts empty, and empty is a valid answer - q_limitations is the one step
-  // whose honest answer for most women is "none of these", so Next is live from
-  // the moment she lands (see canProceed) and she can pass it without a tap.
-  const [physicalLimits, setPhysicalLimits] = useState<string[]>([]);
   const [firstName, setFirstName] = useState<string>("");
 
   // Derived for funnel compatibility: save-quiz / user_profiles still consume top_problems[].
@@ -3558,39 +3547,42 @@ function RegisterPageContent() {
   const weekShape = useMemo(() => {
     const volume = planCatalog?.MOVEMENT_VOLUME[fitnessLevel];
     if (!volume) return null;
+    // The band, wherever there is one. `minutes` alone would understate the
+    // week by the whole power block and contradict the range on the label she
+    // tapped one screen ago; `maxMinutes` alone would overstate every session
+    // that does not carry it.
+    const span =
+      volume.maxMinutes > volume.minutes
+        ? `${volume.minutes}-${volume.maxMinutes}`
+        : `${volume.minutes}`;
     return {
       weeklyMinutes: volume.perDay
         ? volume.sessions * volume.minutes * 7
         : volume.sessions * volume.minutes,
       cadence: volume.perDay
-        ? `${volume.sessions} x ${volume.minutes} min, spread through the day`
-        : `${volume.sessions} x ${volume.minutes} min a week`,
+        ? `${volume.sessions} x ${span} min, spread through the day`
+        : `${volume.sessions} x ${span} min a week`,
       // For <WeekStrip />. Snacks happen every day; sessions land on N of the 7.
       activeDays: volume.perDay ? 7 : volume.sessions,
     };
   }, [planCatalog, fitnessLevel]);
 
-  // Loader C: the exercise pool, before and after her limitations.
-  //
-  // `removed` is deliberately the difference the *limitations* make, not the
-  // difference from the full catalog - `allowedExercises` also filters on her
-  // fitness level and on joint pain, and attributing those to her knee would be
-  // a number that says something untrue about why it moved.
+  // Loader C: the size of the exercise pool her two movement answers just
+  // produced. It is the one number in the quiz she can verify against the plan
+  // she buys - `allowedExercises` really does filter on her fitness level and on
+  // joint pain before the model sees the list.
   const exercisePool = useMemo(() => {
     if (!planCatalog) return null;
-    const withoutLimits = planCatalog.allowedExercises(fitnessLevel || null, topProblems, []);
-    const allowed = planCatalog.allowedExercises(fitnessLevel || null, topProblems, physicalLimits);
-    return { allowed: allowed.length, removed: withoutLimits.length - allowed.length };
-  }, [planCatalog, fitnessLevel, topProblems, physicalLimits]);
-
-  const limitPhrase = useMemo(() => {
-    const names = physicalLimits
-      .map((id) => LIMITATION_OPTIONS.find((o) => o.id === id)?.label.toLowerCase())
-      .filter(Boolean) as string[];
-    if (names.length === 0) return null;
-    if (names.length <= 2) return names.join(" and ");
-    return `the ${names.length} things you told us about`;
-  }, [physicalLimits]);
+    // Both pools. Since 2026-08-29 the `I` family is reserved for the power
+    // block and is no longer in `allowedExercises()`, so counting that alone
+    // would drop the number she is shown by the very movements the plan then
+    // puts in front of her twice a week.
+    return {
+      allowed:
+        planCatalog.allowedExercises(fitnessLevel || null, topProblems).length +
+        planCatalog.allowedPower(fitnessLevel || null, topProblems).length,
+    };
+  }, [planCatalog, fitnessLevel, topProblems]);
 
   // There used to be an `estrogenPct` here: `80 + (burden/maxBurden) * 15`,
   // rendered at 5xl as "{n}% of your symptoms trace back to shifting estrogen".
@@ -3699,9 +3691,6 @@ function RegisterPageContent() {
           return relaxationStyle !== "";
         case "q5_hrt":
           return hrtStatus !== "";
-        // No answer required: an empty array means nothing holds her back.
-        case "q_limitations":
-          return true;
         case "q8_name":
           return firstName.trim().length > 0;
         default:
@@ -3727,7 +3716,6 @@ function RegisterPageContent() {
       menopause_type: menopauseType || null,
       nutrition_style: nutritionStyle || null,
       relaxation_style: relaxationStyle || null,
-      physical_limits: physicalLimits,
       name: firstName.trim() || null,
       height_cm: bodyMetrics.height_cm,
       weight_kg: bodyMetrics.weight_kg,
@@ -3746,7 +3734,6 @@ function RegisterPageContent() {
       menopauseType,
       nutritionStyle,
       relaxationStyle,
-      physicalLimits,
       firstName,
       bodyMetrics,
       fitnessLevel,
@@ -3787,7 +3774,6 @@ function RegisterPageContent() {
       hrtStatus,
       nutritionStyle,
       relaxationStyle,
-      physicalLimits,
       firstName,
     }),
     [
@@ -3809,7 +3795,6 @@ function RegisterPageContent() {
       hrtStatus,
       nutritionStyle,
       relaxationStyle,
-      physicalLimits,
       firstName,
     ]
   );
@@ -3995,15 +3980,6 @@ function RegisterPageContent() {
     });
   };
 
-  // Plain multi-select toggle - she may well have more than one pain to tick, so
-  // nothing here auto-advances, and un-ticking her last one leaves the step empty
-  // rather than dead: empty is the "nothing holds me back" answer.
-  const toggleLimitation = (limitId: string) => {
-    setPhysicalLimits((prev) =>
-      prev.includes(limitId) ? prev.filter((id) => id !== limitId) : [...prev, limitId]
-    );
-  };
-
   const toggleGoal = (goalId: string) => {
     setGoal((prev) => {
       if (prev.includes(goalId)) {
@@ -4159,7 +4135,6 @@ function RegisterPageContent() {
     setHrtStatus(a.hrtStatus);
     setNutritionStyle(a.nutritionStyle);
     setRelaxationStyle(a.relaxationStyle);
-    setPhysicalLimits(a.physicalLimits);
     setFirstName(a.firstName);
     setUserId(saved.userId);
     identifyMetaUser(saved.userId);
@@ -6682,42 +6657,31 @@ function RegisterPageContent() {
 
                   This used to lead on "6 years is how long the average woman
                   waits for support" - a generic factoid, and a regret argument
-                  aimed at a woman who has just answered fourteen questions.
+                  aimed at a woman who has just answered thirteen questions.
                   What replaces it is the one number in the funnel she can
-                  verify against the plan she buys: `LIMITATION_EXCLUDES` really
-                  does strip these exercises out of the pool before the model
-                  sees it. See lib/plan/catalog.ts. */}
+                  verify against the plan she buys: `allowedExercises()` really
+                  does cut the pool to her level and her symptoms before the
+                  model sees it. See lib/plan/catalog.ts.
+
+                  It had a second branch until 2026-08-29, counting what her
+                  `q_limitations` answers took *out*. That screen is gone, so
+                  there is no subtraction to name and the number is the pool she
+                  got rather than the one she was spared. */}
               {currentStep === "reward_progress" && (() => {
                 const pride = STAGE_PRIDE_LINE[hereFor] ?? "You're finally putting yourself first - that takes strength.";
-                // Two honest branches. With limitations we can name what came
-                // out and why; without them there is nothing removed to count,
-                // so we count what is left instead of inventing a subtraction.
-                const filtered = !!limitPhrase && !!exercisePool && exercisePool.removed > 0;
-                const messages = filtered
-                  ? [
-                      "Checking what hurts...",
-                      "Removing what would aggravate it...",
-                      "Locking your movement rules...",
-                    ]
-                  : [
+                return (
+                  <QuizReward
+                    messages={[
                       "Checking your history...",
                       "Matching moves to your level...",
                       "Locking your movement rules...",
-                    ];
-                return (
-                  <QuizReward
-                    messages={messages}
+                    ]}
                     initialDone={!!rewardSeen.current.reward_progress}
                     onDone={() => markRewardSeen("reward_progress")}
                     ready={!!exercisePool}
                   >
                   <div className="flex-1 flex flex-col justify-center items-center text-center space-y-4">
-                    {/* Shield when her limitations removed something (the screen
-                        is about what was kept away from her), dumbbell when
-                        nothing was removed and the number is the pool she got.
-                        Green on the shield: it is the plan protecting her, which
-                        is the funnel's green, not its pink. */}
-                    <RewardMedallion icon={filtered ? ShieldCheck : Dumbbell} tone={filtered ? "green" : "primary"} />
+                    <RewardMedallion icon={Dumbbell} tone="primary" />
 
                     <motion.p
                       initial={{ opacity: 0, y: 8 }}
@@ -6725,7 +6689,7 @@ function RegisterPageContent() {
                       transition={{ delay: 0.25, duration: 0.4 }}
                       className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground"
                     >
-                      {filtered ? "What your plan just dropped" : "What your plan just locked"}
+                      What your plan just locked
                     </motion.p>
 
                     <motion.div
@@ -6734,20 +6698,12 @@ function RegisterPageContent() {
                       transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 260, damping: 14, delay: 0.4 }}
                     >
                       <CountUpNumber
-                        value={filtered ? exercisePool!.removed : exercisePool?.allowed ?? 0}
+                        value={exercisePool?.allowed ?? 0}
                         suffix=" moves"
                         className="block text-6xl font-black text-primary leading-none"
                       />
                       <span className="block text-sm sm:text-base font-normal text-[#5A5A5A] mt-3 max-w-xs mx-auto leading-snug">
-                        {filtered ? (
-                          <>
-                            taken out because of your <span className="font-bold text-[#3D3D3D]">{limitPhrase}</span>. {exercisePool!.allowed} left that won&apos;t aggravate it.
-                          </>
-                        ) : (
-                          <>
-                            matched to <span className="font-bold text-[#3D3D3D]">your level and your symptoms</span> - nothing generic.
-                          </>
-                        )}
+                        matched to <span className="font-bold text-[#3D3D3D]">your level and your symptoms</span> - nothing generic.
                       </span>
                     </motion.div>
 
@@ -6777,57 +6733,6 @@ function RegisterPageContent() {
                     selected={hrtStatus}
                     onSelect={(id) => selectAndAdvance(() => setHrtStatus(id))}
                   />
-                </div>
-              )}
-
-              {/* Physical limitations. Text rows, not tiles - see
-                  LIMITATION_OPTIONS. The subline names the payoff rather than
-                  reassuring her about privacy: nothing here is sensitive, and
-                  what she needs to know is that ticking a box changes the
-                  exercises she is about to be sold. */}
-              {currentStep === "q_limitations" && (
-                <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
-                  <div className="shrink-0">
-                    <h2 className="text-lg sm:text-xl font-bold mb-0.5">
-                      Does anything hurt or hold you back when you move?
-                    </h2>
-                    <p className="text-sm text-muted-foreground leading-snug">
-                      Your plan leaves out the exercises that would aggravate it, and swaps
-                      in ones that don&apos;t.
-                    </p>
-                  </div>
-                  <div className="flex-1 flex flex-col justify-center gap-2 min-h-0 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
-                    {LIMITATION_OPTIONS.map((option) => {
-                      const isSelected = physicalLimits.includes(option.id);
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => toggleLimitation(option.id)}
-                          className={`w-full shrink-0 flex items-center justify-between gap-3 px-4 py-3.5 rounded-2xl border-2 text-left transition-all duration-200 cursor-pointer ${
-                            isSelected
-                              ? "border-primary bg-primary/10 shadow-md shadow-primary/20"
-                              : "border-foreground/15 hover:border-primary/50"
-                          }`}
-                        >
-                          <span className="font-semibold text-sm sm:text-base text-[#3D3D3D]">
-                            {option.label}
-                          </span>
-                          {isSelected ? (
-                            <span className="w-5 h-5 shrink-0 rounded-md bg-primary flex items-center justify-center animate-in zoom-in duration-200">
-                              <Check className="w-3 h-3 text-primary-foreground" strokeWidth={3} />
-                            </span>
-                          ) : (
-                            <span className="w-5 h-5 shrink-0 rounded-md border-2 border-foreground/20" />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="shrink-0 flex items-center justify-center gap-1.5 text-[11px] text-[#9A9A9A]">
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    Tick everything that applies - or just continue.
-                  </p>
                 </div>
               )}
 

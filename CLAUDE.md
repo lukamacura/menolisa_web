@@ -922,6 +922,272 @@ again also works — that calls `sync-session`.
 ## 7. CURRENT STATUS
 
 Recent work:
+- **The session got a power block, and its minutes became a band (2026-08-29)** —
+  bone loading stopped being an exercise the model might forget and became a
+  segment of the workout, and the time she was sold stopped being a single
+  number the trimmer cut down to.
+  **The session is now warm-up → work → power → cool-down.** `PlanTask` gained
+  `power` (the `I` family: hops, drops, marching landings) and `powerSessions`
+  (2), both additive on `GET /api/plan` — see §17 of
+  `docs/mobile-app-changes.md`. `exercises` still means the main work alone,
+  the same rule the bookends follow and for the same reason: every adherence and
+  volume read measures that array.
+  **`ensureBoneLoading()` is gone**, and it is worth knowing what it was
+  covering for. The prompt asked for bone work in as many words; measured over
+  four generations the model wrote plans with none at all in two of them, and
+  that function went round afterwards swapping an `I` id into the last slot of
+  the shortest sessions until four of eight weeks had one. Three faults, one
+  cause: it **cost a strength exercise** every time it fired (it replaced rather
+  than added), it **covered four weeks with one movement** on a thin pool, and
+  it **never ran on the fallback path** — so a woman generating a plan while
+  OpenAI was down got between 1 and 4 of 8 weeks of bone loading and no
+  guarantee of any. All three were the same fault: bone loading was competing
+  for a slot instead of having one. Measured after: **8 of 8 weeks on both
+  paths, at every level.**
+  **The `I` family is out of the pool the model picks from** (`allowedPower()`
+  beside `allowedExercises()`), the same mechanism that keeps `W` and `S` out of
+  the main work. So there is nothing left for the model to forget, nothing to
+  duplicate, and no repair pass to run afterwards — and the prompt now tells it
+  in as many words never to write jumping into a title or a "why", because the
+  hops are already there and it cannot see them. The one exception is
+  `movement_snacks`, which gets no block, keeps its `I` rows as ordinary work,
+  and keeps a small guaranteed swap on half the weeks.
+  **`MOVEMENT_VOLUME` is a band: `minutes` and `maxMinutes`.** The gap between
+  them IS the power block's budget, so the block is purely additive — adding
+  bone loading never shortens the work she was already sold. beginner 20-25,
+  medium 30-40, advanced 35-45, snacks 5. That fixed two label lies of the same
+  kind: `medium` read "About 30 min" against a 28-minute ceiling, and
+  `advanced` read "**35+ min**" against a hard maximum of exactly 35 — a "+" the
+  trimmer made structurally impossible to deliver. `FITNESS_OPTIONS` now reads
+  as ranges, which is the only shape true on both kinds of day. **Nothing cuts
+  her off mid-session and nothing ever did** — `fitSessionToMinutes()` trims at
+  generation, and the visible symptom was a plan built down to the ceiling, not
+  a player that stops.
+  **The fallback fills toward the length she was sold**, not just down to it.
+  `picks` was a flat four at every level, which trims fine on a short session and
+  under-delivers badly on a long one: an advanced week 8 measured **32:55 against
+  a 35-minute session**. The model path has had both halves of that promise since
+  2026-08-28; this path had neither.
+  Verified: `npx tsc --noEmit` clean, `npm run lint` clean on every touched file,
+  `npm run build` passes, `npm run verify-plan-dose` passes with a new power
+  section — pools 16/42/44/23 main and 2/6/9/0 power, every block inside its
+  budget and progressing weeks 1-8. Measured across all eight profile shapes:
+  every session inside its band (longest: beginner 24:40 of 25, medium 37:25 of
+  40, advanced 43:25 of 45), power block in 8 of 8 weeks.
+  **Still open, and it is content rather than code:** a woman who reported
+  `joint_pain` has a power pool of exactly two — `I01` and `I09`, the only `low`
+  impact rows — at *every* level, so her block alternates two movements for
+  eight weeks and runs ~6 minutes against ~10. Three or four more low-impact
+  bone-loading clips close it; grade anything new `low` if it can honestly be
+  graded there, because a shoot that adds only `high` rows widens this gap
+  instead. Separately, early weeks run well under the band by design (an
+  advanced week 1 is ~20 minutes against a 35-45 label) — that is the
+  progression ladder, not a bug, but the label describes weeks 5-8 and nobody
+  has decided whether that is the honest way to sell it.
+- **The limitations question is gone, and so is the filter (2026-08-29)** — the
+  `/register` quiz no longer asks "Does anything hurt or hold you back when you
+  move?", and `LIMITATION_EXCLUDES` no longer strips exercises out of her pool.
+  The quiz is 13 questions, down from 14.
+  **The reason is scope, not friction.** A woman who tells us her knee hurts
+  needs a clinician, and an unsupervised eight-week plan generated from six
+  checkboxes is not one. Asking the question implies we can serve her safely,
+  and the product is not built to, so she is out of scope rather than
+  accommodated. Deferred to a later version.
+  **Know what this trades.** The exclusions were a hard gate the model could not
+  opt out of, and removing them does not remove the women who would have ticked
+  a box — it removes what we knew about them. A medium-fitness pool goes from 24
+  exercises to 48, and the lunges, step-ups and box drops a knee answer used to
+  strip are back in it. The exposure is concentrated at medium and advanced;
+  beginner barely moves (15 → 18) because nothing at level 1 is high impact.
+  **One filter survives and is now the only one:** `joint_pain` on `q4_symptoms`
+  still drops every `high` impact row wholesale in `allowedExercises()`. It does
+  nothing for a shoulder, a pelvic floor or poor balance, which is the gap this
+  change opens. If the intent later becomes "screen her out" rather than "don't
+  ask", that is a severity gate on the quiz plus a refusal to take her money —
+  a different change from this one, and the one that actually reduces risk.
+  Removed across the stack: the `q_limitations` step and `LIMITATION_OPTIONS`,
+  `physicalLimits` state, the resume-ticket field and `toggleLimitation`
+  (`app/register/page.tsx`); `PHYSICAL_LIMITS` and the `physical_limits` write
+  (save-quiz); `LIMITATION_EXCLUDES`, `limitationLine()`, `LIMITATION_LABEL` and
+  the `physicalLimits` parameter on `allowedExercises()` / `allowedWarmups()` /
+  `allowedCooldowns()` (`lib/plan/catalog.ts`); the profile field and both prompt
+  lines (`lib/plan/generate.ts`).
+  **The `reward_progress` screen kept its number by losing a branch.** It used to
+  count what her limitations took *out* ("14 moves taken out because of your knee
+  pain"), falling back to counting the pool when nothing was removed. Only the
+  fallback is left, so it now always reads "N moves matched to your level and
+  your symptoms". Bookends are no longer filtered either: 15 warm-ups and 11
+  stretches, the same for everyone.
+  **`user_profiles.physical_limits` is dropped** —
+  `scripts/sql/2026-08-29-drop-physical-limits.sql`, **applied**, along with its
+  check constraint. Zod strips unknown keys, so an older Expo client still
+  sending the field is ignored rather than rejected.
+  It was applied *before* the code deploy, which is backwards and was only safe
+  because there are no real users yet: until the deploy lands, the live build
+  still writes that column and every `user_profiles` insert against production
+  fails — silently, because save-quiz only `console.error`s it, carrying her to
+  Stripe with no profile behind her. Never drop a column ahead of the deploy that
+  stops writing it once there is real traffic.
+  Verified: `npx tsc --noEmit` clean, `npm run lint` clean on every touched file,
+  `npm run build` passes, `npm run verify-plan-dose` passes with pools of 18 /
+  48 / 53 / 23 (beginner / medium / advanced / snacks) and 18 / 44 / 46 / 20
+  under `joint_pain`.
+- **Four clips closed the catalog's content gaps (2026-08-29)** — a top-up shoot
+  added `L17` supported lateral lunge, `I09` supported heel drop, `U13` standing
+  dumbbell biceps curl and `C09` supported single-leg stand. **No code changed**
+  — the pool, the prompt, the schema enum and the fallback rotation are all
+  derived from the table, which is the property the catalog was rebuilt for.
+  **The bone-loading gap is closed.** `I01` was the only `I` id surviving a
+  worst-case pool, so `ensureBoneLoading()` covered four of eight weeks with one
+  movement; `I09` is graded `low` on the same reasoning as the stomping march —
+  the heel meets the floor under control with a hand on the counter, nothing
+  leaves the ground — so the pair survives `joint_pain` and all six limitations
+  together and the rotation alternates. `C09` is the first balance row, and the
+  `balance` limitation deliberately does **not** drop it: a hand on the counter
+  is the training for a poor single-leg stand, not a risk of it, and dropping it
+  for the woman who ticked that box removes the one thing in the catalog that
+  answers what she told us. Same call as `L16`/`L17`, which go out on the knee
+  and hip rules instead.
+  **A fifth row was deleted rather than left clipless.** A band pull-apart had
+  been drafted into `U13`; it was not shot, so the row went and the id went to
+  the curl. That is the line between an unfilmed strength row and the `K` cardio
+  rows: "walk at a pace where you could talk but not sing" is a complete
+  instruction on its own, "band pull-apart" in front of a woman who has never
+  held a band is not. Shoot it first, then add the row.
+  **Two bucket faults the dashboard cannot show**, both caught by
+  `npm run clips audit` rather than by reading: the heel drop was uploaded as
+  `Plyo09 - Supported Heel Drop.Mp4.mp4` (doubled extension — renamed in the
+  bucket), and the shoot numbered the other two `L17`/`U13` against a catalog
+  drafted at `L20`/`U14`, which would have been three live 404s in her player.
+  Ids follow the shoot now, so both series are contiguous again.
+  Measured after: **77 files live, 77 served, no orphans, no ghosts**; pools
+  beginner 18/18/15, medium 48/44/24, advanced 53/46/24, snacks 23/20/15
+  (clean / +joint_pain / + all six limitations); all twelve fallback shapes
+  inside their minute budget with every new id reachable; three live generations
+  personalized, 8 weeks each, bone coverage 4 of 8, 0 sessions over budget.
+  **Still open:** the four new clips were dashboard-uploaded, so they carry the
+  `max-age=3600` the whole 77-file library still carries, and the heel drop is
+  1792 kbps against the 1600 budget. `ensureBoneLoading()` also still runs only
+  in `sanitize()`, so a **fallback** plan has no bone guarantee — measured 1 to 4
+  of 8 weeks across the twelve shapes.
+- **The plan stopped throwing itself away (2026-08-28)** — measured across five
+  live generations, **two of five customers were getting the deterministic
+  "Session 1 … Session 8" plan** they did not pay for. Both beginner archetypes,
+  which is the modal customer. Four faults, all the same shape: a repairable
+  detail rejecting something far larger than itself.
+  - **A week numbered `0` or with an empty title rejected all eight weeks.**
+    Strict mode does not support bounds keywords, so `number` reaches the model
+    as a bare integer and `title` as a bare string — nothing stops either being
+    invalid. `PlanSchema` parsed weeks inline with `.min(1)` on both, so one bad
+    week cost the plan. Weeks are `z.unknown()` now and parsed one at a time in
+    `sanitize()` (the pattern the tasks below them already used, and which the
+    file's own comment said was the mistake to avoid one level up): an unusable
+    number falls back to the week's array position, an empty title to the
+    written one.
+  - **An empty task title dropped the task**, leaving the week with two, and a
+    week with two discards the plan in `buildPlan()`. `TaskSchema.title` is
+    nullish now and repaired per pillar in `sanitize()` — a movement task with
+    no title is named after the two movements in it (`movementTitle()`), a habit
+    takes the next written one.
+  - **A thin week is topped up, not sunk.** `MIN_TASKS_PER_WEEK` is one constant
+    shared by the top-up and the completeness gate, so the number that decides
+    to discard a plan is the same number that first tries to fix it.
+  - **The session was fitted against a warm-up it would never run.**
+    `bookendSeconds` measured `warmup ?? DEFAULT_WARMUP`, but the task only
+    *stored* the warm-up at `>= BOOKEND_MIN`. A model-written warm-up with one
+    usable id was budgeted at 40s and then shown as the 120s generic pair at read
+    time, because `sessionWarmup()` reads an absent field as "use the default".
+    The fallback is resolved once now, before anything is measured.
+  After: **5 of 5 personalized, 0 of 40 sessions over budget.**
+  **Two cardio regressions from the rows added the same day**, both found by
+  measuring rather than reading:
+  - **Two continuous blocks landed in one session** — `fallbackPlan()`'s strided
+    rotation drew two cardio ids side by side at 10 minutes each, giving a
+    beginner a 26.2-minute session against a 20-minute budget that
+    `fitSessionToMinutes()` could not fix: no seconds lever on a `duration` row,
+    and popping one would go under the exercise floor. `capCardio()` now keeps
+    at most one, applied where the list is assembled because it is a fact about
+    what a session *is*.
+  - **A cardio row with `minutes` absent was untrimmable and fifteen minutes
+    long.** `hydrateDose()` falls through to `CARDIO_DEFAULT_SECONDS`, and the
+    trimmer's cardio lever tests `e.minutes`, so a block the model sent as null
+    was invisible to both. `sanitize()` always writes the minutes now rather
+    than only clamping the ones it was given.
+  `fitSessionToMinutes()` also gained step 1a: trim cardio minutes to a
+  `CARDIO_MIN_MINUTES` floor of 3 before touching seconds or sets. Minutes are
+  the same category of cut as seconds — less of the same session — and without
+  it step 3 would sooner drop a strength exercise than shorten a walk.
+  **Coverage, measured:** no prescribable id is unreachable across all 512
+  profile combinations, but reachability is very uneven — `L01`/`L02`/`I01`/
+  `U01`/`C02`/`P01` and the other level-1 rows sit in 100% of pools while the
+  level-3 plyometrics (`I02`/`I06`/`I08`) reach only the single cleanest advanced
+  profile. Live plans use 60-100% of the pool they are given.
+  **Still open at the time:** the beginner pool was 17 and six of them squat
+  variants, so a beginner plan was safe and personalized but repetitive — a
+  content gap, not a code one. Closed by the 2026-08-29 shoot above.
+- **The session got its minutes back, and cardio got rows (2026-08-28)** — three
+  changes, no shoot, and they compound: a **beginner session went from 12.0 to
+  16.3 minutes of actual work**.
+  **The generic bookends cost six minutes flat on every session** — a third of an
+  eighteen-minute beginner session spent getting ready for it. Two causes. Eight
+  of the twelve ordinary warm-up rows read `40` in `DOSE` under a comment
+  claiming the family was uniform, and a per-side set runs twice, so those eight
+  cost 80 seconds while the four beside them cost 40; they read `20` now, which
+  makes every ordinary warm-up movement cost the same 40 seconds whichever column
+  it is in. And `DEFAULT_WARMUP`/`DEFAULT_COOLDOWN` **restated `seconds: 40`**,
+  a second copy of a number already in `DOSE` — which behaved exactly the way a
+  second copy does: the per-side cut landed in `DOSE` and the generic warm-up
+  kept running at the old dose until the numbers were deleted from the defaults.
+  They take the catalog's dose now, by the same path `bookendFrom()` uses. **Do
+  not put the seconds back.**
+  The stretches were **not** shortened — 30s a side is the floor for tissue to
+  give, so trimming the hold would have bought the session back by making the
+  cool-down stop working. The cool-down got shorter by holding one fewer position
+  (`S02` went: the only one of the three a knee rules out). 220s all in.
+  `BOOKEND_MINUTES` is now **derived** from those two lists instead of asserted.
+  It was the literal `4` against a real cost of 6, so the prompt sized its dose
+  ladder for 14 work-minutes a beginner did not have and `fitSessionToMinutes()`
+  quietly trimmed the result on essentially every beginner session — the model
+  was being set up to fail and the trim was hiding it. And the per-end cap scales
+  with the session (`bookendMax()`: 2 under 20 min, 3 above); at a flat 4 a model
+  could spend **580 seconds — 54% — of an 18-minute session** on bookends.
+  **`beginner` is 20 minutes, not 18.** Its quiz label has always read "About 20
+  min, 2 days a week", and the label is the promise, so the code moved to meet it
+  rather than the other way round. `MOVEMENT_VOLUME` now says in as many words
+  that its four numbers are the sentence she read before she paid; change one
+  there and change `FITNESS_OPTIONS` in `app/register/page.tsx` in the same
+  commit, both directions.
+  **Cardio exists.** The `K` prefix was wired and empty from the day the plan was
+  written: `isCardioId()`, `cardioMinutes()`, the `duration` dose unit and the
+  prompt's continuous-block rule all had nothing to apply to, so an eight-week
+  menopause plan contained no aerobic work at all — a missing pillar, not a
+  missing exercise, in the population whose cardiovascular risk climbs as
+  estrogen falls. (The 10-minute post-meal walk is in `NUTRITION`, where it is a
+  glucose habit and is counted as one.) Closing it cost two rows and **no
+  code**, exactly as the catalog's own note predicted. `K01` Zone 2 cardio is a
+  dose, not a movement, and modality being hers is why no separate indoor row
+  survived; `K02` Sprint intervals is the one protocol
+  row (30s at ~90%, 2 min easy, x3, inside a 5-10 min warm-up and 5 min
+  cool-down) at level 2, so a beginner never sees it.
+  **These carry no `clip` and never will** — `clip` is optional,
+  `exerciseMedia()` returns undefined without one, and the app draws name + props
+  and no player, which for "walk at a pace where you could talk but not sing" is
+  the correct presentation rather than a degraded one. So the catalog is now a
+  **superset** of the bucket: every clip has a row, but not every row has a clip.
+  `npm run clips audit` lists them under "catalog ids with no clip" and passes.
+  Do not shoot them to make the library look uniform.
+  No limitation excludes a `K` row and impact is `none` on both, so cardio
+  is the only family that survives every worst-case pool intact — which is the
+  point: the woman whose knees hurt, whose balance is poor and who leaks is the
+  one who most needs the pillar that is not jumping.
+  Pools after the pass: beginner 17 (14 with joint pain and all six
+  limitations), medium 45, advanced 50, snacks 21 (unchanged — cardio is
+  `snack: false`).
+  **Still open:** the aerobic pillar has rows but no *weekly volume* — 150
+  min/week of zone 2 and a once-or-twice-weekly hard day are a cadence the
+  one-movement-task-per-week model cannot express, and `sanitize()` stamps
+  `target = vol.sessions` onto every movement task, so a second one would double
+  her sold week. That is the blocker to fix before cardio is really prescribed.
 - **The catalog was rebuilt against a new bucket (2026-08-27)** — a re-shoot
   replaced the exercise library wholesale. Nothing from the previous catalog
   survives: **73 new clips**, new movements, and every old `L`/`P`/`U`/`C`/`I` id
@@ -1466,7 +1732,11 @@ Recent work:
   One gap is deliberate and unchanged: `adoptQuizProfile()` keeps the *older*
   profile on an email collision, so a returning customer's re-take is discarded
   in favour of what that account already had.
-- **`q_safety` → `q_limitations` (2026-08-16)** — the `/register` screen that
+- **`q_safety` → `q_limitations` (2026-08-16, removed 2026-08-29)** — superseded
+  by the entry at the top of this list; the screen and every rule below are gone.
+  Kept as the record of what the ids meant and why the exclusions were drawn
+  where they were, in case a later version brings them back.
+  The `/register` screen that
   read "Do any of these apply to you?" and collected clinical contraindications
   now asks "Does anything hurt or hold you back when you move?" and collects
   physical obstacles (`back`, `knee`, `hip`, `shoulder`, `pelvic_floor`,
@@ -1489,7 +1759,8 @@ Recent work:
   hormone-therapy/phytoestrogen/herbal rule all stay, because the Expo app still
   asks and every profile written since 2026-08-12 carries a value. Web signups
   just write an empty array now, so that rule no longer fires for them.
-  Migration `scripts/sql/2026-08-16-physical-limits.sql` — **not applied yet**.
+  Migration `scripts/sql/2026-08-16-physical-limits.sql` — **applied** (verified
+  against the live database 2026-08-28; the column exists).
 - **Funnel audit fixes (2026-08-16)** — sixteen changes to `/register`, in three
   groups.
   **Measurement first**: six new Meta events plus parameterized `QuizStep` and
@@ -1584,7 +1855,9 @@ Recent work:
   supplements, so **any new plan-prompt work must keep that rule intact**.
   (`q_safety` itself was replaced by `q_limitations` on 2026-08-16 — see the
   entry above. The rule and its column survive for the Expo app.)
-  Migration `scripts/sql/2026-08-12-quiz-v2-columns.sql` — **not applied yet**.
+  Migration `scripts/sql/2026-08-12-quiz-v2-columns.sql` — **applied** (verified
+  2026-08-28: `menopause_type`, `nutrition_style`, `relaxation_style` and
+  `symptom_impact` all exist).
   Images for the three new tile questions do not exist yet
   (`public/quiz/menopause-type/`, `nutrition/`, `relaxation/`).
 - **Admin panel rebuilt on real numbers (2026-08-11)** — `/admin` now shows
@@ -1602,7 +1875,9 @@ Recent work:
   `STRIPE_REFERRAL_COUPON_ID` and email step `3-3` are all gone. Schema drop
   (the `referrals` table, `user_profiles.referral_code`,
   `user_trials.referral_discount_used_at`) is
-  `scripts/sql/2026-08-10-drop-referral-system.sql` — **not applied yet**. The
+  `scripts/sql/2026-08-10-drop-referral-system.sql` — **still not applied**
+  (verified 2026-08-28: `user_profiles.referral_code` is still there). Harmless —
+  nothing reads it — but it is the one outstanding migration. The
   Expo app calls these endpoints too; see §7 of `docs/mobile-app-changes.md`.
 - **Checkout fulfillment made webhook-independent (2026-08-10)** — the email
   bind, plan generation and welcome email moved out of the webhook into

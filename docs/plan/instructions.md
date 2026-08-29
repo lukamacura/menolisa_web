@@ -44,6 +44,15 @@ is `floor(days since started_at / 7) + 1`, capped at 8.
 **6. Locking.** Past and current weeks return their full task list. Future weeks
 return their **title only**, so she sees the whole map but can't jump ahead.
 
+**7. The shape of a session.** Warm-up → work → **power block** → cool-down. The
+first, third and fourth are separate arrays from `exercises`, which still means
+the main work alone and is what every adherence and volume read measures. The
+power block is bone loading (`I` ids), written in code rather than by the model
+because a rule the model can opt out of is not a rule — it skipped bone work in
+two of four measured generations. It runs on `powerSessions` of her weekly
+sessions (2), and its time comes from the gap between `MOVEMENT_VOLUME.minutes`
+and `.maxMinutes`, so it never shortens the session she was sold.
+
 ---
 
 ## The four pillars are not four of the same thing
@@ -52,7 +61,7 @@ This is the shape of the whole feature, and it is deliberately uneven:
 
 | Pillar | Where it lives | Who chooses | Cadence |
 |---|---|---|---|
-| **Movement** | A weekly task with 3-6 exercise ids and a clip each | LLM picks ids from her filtered pool | `weekly` × her level, or `per_day` for snacks |
+| **Movement** | A weekly task with 3-6 exercise ids and a clip each, plus a warm-up, a bone-loading power block and a cool-down | LLM picks the main-work ids from her filtered pool; code writes the power block | `weekly` × her level, or `per_day` for snacks |
 | **Nutrition** | **Not a task.** All 9 items, every day, for everyone | Nobody — fixed list. The week only *highlights* 1-2 | Daily, always |
 | **Relaxation** | A weekly task pointing at one catalog practice | LLM picks the item_id | Daily |
 | **Habits** | Two kinds — see below | She does. LLM only suggests | Daily |
@@ -74,6 +83,7 @@ This is the shape of the whole feature, and it is deliberately uneven:
 | Decided by the LLM | Decided by code (the model gets no vote) |
 |---|---|
 | Which exercises, from her filtered list | Which exercises she's *allowed* — level + injury filters |
+| — | **The power block** — which plyometrics, how many sets, how often. The `I` family is not in the pool the model is shown |
 | — | Which clip plays, and whether one is sent at all — the model only ever emits ids |
 | How the 8 weeks progress | How often she trains — set by fitness level |
 | Which relaxation item, and when | The wording of that item — taken from the catalog |
@@ -182,7 +192,7 @@ The `{movement volume}` line above is filled from her quiz answer:
 
 | Fitness level | What the prompt asks for | Cadence |
 |---|---|---|
-| `beginner` | 2 sessions per week, ~18 min | `weekly`, target 2 |
+| `beginner` | 2 sessions per week, ~20 min | `weekly`, target 2 |
 | `medium` | 3 sessions per week, ~28 min | `weekly`, target 3 |
 | `advanced` | 4 sessions per week, ~35 min | `weekly`, target 4 |
 | `movement_snacks` | 4 short bursts **per day**, ~5 min | `per_day`, target 4 |

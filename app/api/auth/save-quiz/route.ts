@@ -22,9 +22,9 @@ const VALID_GOALS = [
 // would be silently ignored by the generator's safety rule.
 //
 // The web funnel stopped asking for these on 2026-08-16 (the screen became
-// `q_limitations`), so web signups now send an empty array. Kept because the
-// Expo app still asks and every profile written before that date carries values
-// the plan generator reads.
+// `q_limitations`, itself removed on 2026-08-29), so web signups now send an
+// empty array. Kept because the Expo app still asks and every profile written
+// before that date carries values the plan generator reads.
 const SAFETY_FLAGS = [
   "breast_cancer",
   "clots_stroke",
@@ -33,20 +33,17 @@ const SAFETY_FLAGS = [
   "prefer_not",
 ] as const;
 
-// Multi-select on the quiz's `q_limitations` screen — what hurts when she moves.
-// Enumerated for the same reason as SAFETY_FLAGS, and more strictly: these ids
-// drive a code-level filter on the exercise pool (`LIMITATION_EXCLUDES` in
-// `lib/plan/catalog.ts`), so a value that doesn't match one there is a knee that
-// silently gets lunges.
-const PHYSICAL_LIMITS = [
-  "back",
-  "knee",
-  "hip",
-  "shoulder",
-  "pelvic_floor",
-  "balance",
-  "none",
-] as const;
+// `physical_limits` was a multi-select on the quiz's `q_limitations` screen —
+// what hurts when she moves — and it drove a hard filter on the exercise pool.
+// Both the screen and the filter were removed on 2026-08-29: a woman in pain
+// needs a clinician rather than an unsupervised eight-week plan, so she is out
+// of scope rather than accommodated. See the note above `allowedExercises()` in
+// `lib/plan/catalog.ts`.
+//
+// The field is no longer accepted here and no longer written. Zod strips unknown
+// keys, so an older mobile client still sending it is ignored, not rejected. The
+// `user_profiles.physical_limits` column still exists and holds what was
+// collected between 2026-08-16 and 2026-08-29; nothing reads it.
 
 const QuizSchema = z.object({
   name: z.string().min(1).max(100).nullable().optional(),
@@ -64,7 +61,6 @@ const QuizSchema = z.object({
     .optional(),
   relaxation_style: z.enum(["none", "occasional", "routine", "want_to"]).nullable().optional(),
   safety_flags: z.array(z.enum(SAFETY_FLAGS)).max(SAFETY_FLAGS.length).optional(),
-  physical_limits: z.array(z.enum(PHYSICAL_LIMITS)).max(PHYSICAL_LIMITS.length).optional(),
   tried_options: z.array(z.string().max(50)).max(20).optional(),
   hrt_status: z.string().max(50).nullable().optional(),
   doctor_status: z.string().max(50).nullable().optional(),
@@ -124,7 +120,6 @@ export async function POST(request: NextRequest) {
       nutrition_style: quizAnswers.nutrition_style ?? null,
       relaxation_style: quizAnswers.relaxation_style ?? null,
       safety_flags: quizAnswers.safety_flags ?? [],
-      physical_limits: quizAnswers.physical_limits ?? [],
       tried_options: quizAnswers.tried_options ?? [],
       hrt_status: quizAnswers.hrt_status ?? null,
       doctor_status: quizAnswers.doctor_status ?? null,

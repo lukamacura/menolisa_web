@@ -9,6 +9,7 @@ import {
   hydrateRelaxation,
   markPlanGenerating,
   sessionCooldown,
+  sessionPower,
   sessionWarmup,
   type Plan,
 } from "@/lib/plan/generate";
@@ -22,6 +23,7 @@ import {
   NUTRITION,
   NUTRITION_GROUP_ORDER,
   SUPPLEMENT_OPTIONS,
+  meditationMedia,
   nutritionKey,
 } from "@/lib/plan/catalog";
 
@@ -252,6 +254,14 @@ export async function GET(req: NextRequest) {
           // The bookends around it. Undefined on a session that wants none (a
           // snack, a walk), so the app draws no empty section.
           warmup: sessionWarmup(t, includeMedia),
+          // Bone loading, between the work and the cool-down. Undefined on the
+          // same sessions the bookends skip, and on every plan generated before
+          // it existed — the app draws the section only when it is present.
+          power: sessionPower(t, includeMedia),
+          // How many of the week's sessions that block belongs to. The plan
+          // holds one session repeated `target` times, so this is the only way
+          // "twice a week" can be said; the app counts completions against it.
+          powerSessions: t.powerSessions,
           cooldown: sessionCooldown(t, includeMedia),
           // Breathing pattern and round count, so the app can run the timer
           // without shipping its own copy of the protocol.
@@ -329,5 +339,11 @@ export async function GET(req: NextRequest) {
     nutrition,
     habits: habitRows,
     resistSuggestions,
+    // The guided meditation, offered beside whatever relaxation the plan asked
+    // for. Not part of any week, and not something the model schedules — see
+    // `meditationMedia()`. Media-gated with the clips, for the same reason: the
+    // web dashboard has no player and must not be handed audio it would only
+    // pay egress for.
+    meditation: includeMedia ? meditationMedia() : undefined,
   });
 }
