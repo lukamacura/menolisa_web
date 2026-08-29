@@ -954,16 +954,29 @@ generated from today, on the fallback path too:
 
 The aerobic pillar. `K01` is a dose, not a movement — minutes at a pace where
 she could talk but not sing, on whatever she has. `K02` is a fixed 19-minute
-protocol (5-10 min easy, 3 × 30s hard / 2 min easy, 5 min easy). From
-`intervalsFromWeek` one Zone 2 session **becomes** the intervals session; the
-number of cardio sessions in a week never changes mid-plan.
+protocol: **5 min easy, then 3-4 × (30s all-out + 2 min complete rest), then
+5 min easy.** Hard sessions **replace** Zone 2 sessions rather than adding to
+them; the number of cardio sessions in a week never changes mid-plan.
 
-| Level | Zone 2 | Minutes wk 1-2 / 3-5 / 6-8 | Intervals |
+| Level | Weeks 1-2 | Weeks 3-8 | Zone 2 minutes wk 1-2 / 3-5 / 6-8 |
 |---|---|---|---|
-| beginner | 2 / week | 15 / 20 / 25 | never |
-| medium | 2 / week | 20 / 25 / 30 | from week 5, replacing one Zone 2 |
-| advanced | 3 / week | 25 / 30 / 35 | from week 3, replacing one Zone 2 |
-| movement snacks | 2 / week | 10 / 12 / 15 | never |
+| beginner | 7 × Zone 2 | 7 × Zone 2 | 15 / 20 / 25 |
+| medium | 6 × Zone 2 + **1 × intervals** | 5 × Zone 2 + **2 × intervals** | 20 / 25 / 30 |
+| advanced | 4 × Zone 2 + **2 × intervals** | 4 × Zone 2 + **2 × intervals** | 25 / 30 / 35 |
+| movement snacks | 7 × walk | 7 × walk | 20 / 20 / 20 |
+
+**`w{n}_intervals` can carry `target: 2` (2026-08-29).** It used to be `1`
+always, so an app that hardcoded one tick will under-count a medium user from
+week 3 and every advanced user from week 1. Read `target`, like any other
+weekly task — one task, two ticks, same 19-minute protocol both times.
+
+**beginner and movement snacks are daily.** Their `w{n}_cardio` task is titled
+"Daily walk" and written `cadence: "daily", target: 1` — one `K01` a day — not
+`weekly` with `target: 7`. Render and score it the way every other `daily` task
+(relaxation, habit) already is: a tick per day, against every day. Beginner's
+minutes still climb across the bands (15 → 25); the snack walk is flat by
+design. Everything else in this section still applies to both: one `K01`
+exercise, `duration` dose, no bookends, no power, no video.
 
 ### How to render it
 
@@ -996,8 +1009,124 @@ no longer carry an `impact` grade. Nothing in the API exposed either.
 tasks with a single-timer exercise and no bookends, power or video; count them
 against `target` with `doneThisWeek`; nothing else changes.
 
+## 21. `GET /api/plan` — movement snacks: a different 3-move burst every day (**additive**) — 2026-08-29
+
+The snack task (`cadence: "per_day"`) now carries **`days`**: seven lists,
+one per day of the plan week, index 0 = the day the week starts (the same
+`weekStart` the `doneThisWeek` window uses). `exercises` is still there and is
+always identical to `days[0]`, so a build that ignores `days` keeps working
+exactly as before — it just shows Monday's list all week.
+
+**A burst is one exercise, and `target` is bursts a day — now 3, was 4.** So a
+day's list has exactly `target` entries and each entry is its own burst: she
+does one move (its `dose`, 2 sets with rest, ~1½ minutes), ticks it, and comes
+back later for the next. `doneToday` counts bursts, 0-3. The three together are
+fitted to about five minutes.
+
+```jsonc
+{
+  "key": "w1_movement",
+  "pillar": "movement",
+  "cadence": "per_day",
+  "target": 3,                       // bursts a day == entries per day
+  "exercises": [ /* == days[0] */ ],
+  "days": [                          // NEW — 7 entries, snack tasks only
+    [ { "id": "L01", /* … */ }, { "id": "L02", /* … */ }, { "id": "I01", /* … */ } ],
+    [ { "id": "U01", /* … */ }, { "id": "C04", /* … */ }, { "id": "I03", /* … */ } ],
+    // … 5 more
+  ]
+}
+```
+
+Every day is **exactly three moves, in the order of her day**: the
+bone-loading `I` move **first** (while she is fresh and furthest from bed), a
+strength move second, and a **calm move last** — a hold, bird-dog, dead bug,
+bridge, balance stand or calf raise (`CALM_SNACK_IDS` in the catalog), never a
+jump, march or mountain climber, because the third burst is the evening one
+and must not raise her heart rate or cortisol. At most one of the three is
+per-side. No non-bone move repeats inside a week, no two consecutive days
+share the bone move, and each day's three are fitted to the five minutes at
+the week's dose. **Render them in array order** — it is the order she should
+do them. Each entry is hydrated the same
+way `exercises` is (name, props, `dose`, `video` when asked for).
+
+**What the app should do:** for a task with `days`, render
+`days[daysSince(weekStart) % 7]` (clamp to `days.length - 1` if a client's clock
+runs past the week) instead of `exercises`, as **three separate bursts** — one
+exercise, one timer, one tick each — rather than one session. `key`, logging
+and the movement ring are unchanged; a tick is a burst, up to `target` (3) a
+day. `days` is absent on every other task and on every snack plan
+generated before today; those keep showing `exercises`.
+
+The daily walk (§20) is unchanged by this: it is its own `w{n}_cardio` task.
+
+## 22. `GET /api/plan` — every exercise says why she is doing it (**additive**) — 2026-08-29
+
+Every hydrated exercise object now carries a **`why`**: one or two plain
+sentences telling her why *this* movement is on her list. It is on **all five
+places an exercise appears** — `exercises`, each list inside `days`, `warmup`,
+`power` and `cooldown` — because they all hydrate through the same function.
+
+```jsonc
+{
+  "id": "L04",
+  "name": "Step-up",
+  "props": "Stair or sturdy chair",
+  "dose": { "sets": 3, "seconds": 40, "unit": "timed", "perSide": true, "estimatedSeconds": 240 },
+  "why": "Stairs are one leg at a time, so train them one leg at a time. This is the move that stops your thighs burning halfway up.",   // NEW
+  "video": "https://…/L04%20-%20Bodyweight%20Step%20Up.mp4"
+}
+```
+
+### It is on every plan, including the ones already generated
+
+`why` is resolved from the catalog at **read time**, exactly like `name`,
+`props` and `video`. Nothing is stored in `user_plans`, no migration runs and no
+plan is regenerated — a woman who is in week 6 of a plan built last week opens
+the app and the reasons are there.
+
+### It is not the task's `why`, and both should be shown
+
+The two are different things and the app already receives the other one:
+
+| Field | Scope | Written by | Changes per user |
+|---|---|---|---|
+| `task.why` | the whole week's session/habit | the model, at generation | **yes** — tied to her symptoms |
+| `exercise.why` | one movement | the catalog, once | no — a fact about the movement |
+
+So `task.why` belongs at the top of the session screen ("why this week looks
+like this") and `exercise.why` belongs on the movement itself. Do not replace
+one with the other.
+
+### How to render it
+
+Put it **where she reads it before she starts the set** — under the exercise
+name on the session screen, or on the exercise detail sheet beside the clip. It
+is 92-184 characters, two lines on a phone at body size, and it is written to be
+read at a glance rather than tapped into. If the design has no room, an
+expandable "Why this one?" row is fine; a tooltip is not, because the whole
+point is that she sees it without going looking.
+
+Ordinary body text, not a callout — the reason should read as part of the
+exercise, not as an ad for it.
+
+### It is optional, and absent means absent
+
+`why` is missing when nobody has written copy for that row yet (there are none
+today — all 79 catalog rows have one, and `npm run verify-plan-dose` fails the
+build if one is missing). Treat it exactly like `video`: **draw nothing** when
+the field is absent, never a placeholder or an empty paragraph.
+
+### Nothing else changed
+
+No new endpoint, no query parameter, no logging, no key change, no effect on
+`doneToday` / `doneThisWeek` / adherence. `?media=1` is unrelated — `why` is
+text and is sent to every client either way. An app build that ignores the field
+behaves exactly as it does today.
+
 ## Quick checklist
 
+- [ ] Render `exercise.why` on the session screen (§22)
 - [ ] Remove `trial_start` / `trial_end` / `trial_days` reads
 - [ ] Remove the `trialing` case from every `state` branch
 - [ ] Treat `403` from paid routes as "show paywall", not "show error"
@@ -1040,6 +1169,8 @@ against `target` with `doneThisWeek`; nothing else changes.
 - [ ] Show `power` on the first `powerSessions` sessions of the week, hide it after
 - [ ] Keep `power` out of `exercises` in every count, estimate and adherence score
 - [ ] Draw no power section when the field is absent (snacks, walks, old plans)
+- [ ] Snack task with `days`: show `days[daysSince(weekStart) % 7]`, not `exercises`, as 3 one-move bursts in array order — impact, strength, calm (§21)
+- [ ] Snack `w{n}_cardio` is `cadence: "daily"` — a tick a day, like relaxation (§20)
 - [ ] Stop hardcoding session length per level — it is a band now, or sum the doses
 - [ ] Optional: render the new `habit` pillar from `/api/plan/history`
 - [ ] Keep reading `score` as the three rings — `habit` is not in it yet

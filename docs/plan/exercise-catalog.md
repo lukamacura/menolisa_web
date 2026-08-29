@@ -161,9 +161,9 @@ their own weekly tasks (`CARDIO_VOLUME`), never picked by the model.
 | `K01` | Zone 2 cardio | Any activity — walk, bike, swim, row, elliptical | 1 | — | duration · 15 min | — |
 | `K02` | Sprint intervals | Bike, elliptical, rower, or brisk incline walk | 2 | — | duration · 19 min | — |
 
-`K02` is the only protocol row: 30s at ~90% effort, 2 min easy, 3 rounds, inside
-a 5–10 min warm-up and a 5 min cool-down on the same activity. Level 2, so a
-beginner never sees it.
+`K02` is the only protocol row: 5 min easy, then **30s all-out** and **2 min of
+complete rest**, 3–4 rounds, then 5 min easy on the same activity — about 19
+minutes. Level 2, so a beginner never sees it.
 
 ---
 
@@ -214,10 +214,10 @@ level is the only thing that moves these numbers.
 
 | Fitness answer | Strength pool | Power pool | Cardio |
 |---|---|---|---|
-| `beginner` (level 1) | 15 | 2 | 2 × Zone 2 a week |
-| `medium` (level ≤2) | 40 | 6 | 2 × Zone 2, intervals from week 5 |
-| `advanced` (level ≤3) | 42 | 9 | 3 × Zone 2, intervals from week 3 |
-| `movement_snacks` | 23 | 0 | 2 × short Zone 2 |
+| `beginner` (level 1) | 15 | 2 | 7 × Zone 2 a week (daily) |
+| `medium` (level ≤2) | 40 | 6 | 6 × Zone 2 + 1 SIIT, 5 + 2 from week 3 |
+| `advanced` (level ≤3) | 42 | 9 | 4 × Zone 2 + 2 SIIT |
+| `movement_snacks` | 23 | 0 | 7 × 20-min walk (daily) |
 
 `I` is the power block's pool and `K` is scheduled as its own tasks, so neither
 is in the strength pool (`movement_snacks` keeps `I` as main work — it has no

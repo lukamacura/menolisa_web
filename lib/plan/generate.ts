@@ -26,6 +26,7 @@ import {
   getExercise,
   hydrateDose,
   intervalsMinutes,
+  isCalmSnackId,
   isCardioId,
   isNutritionId,
   isPowerId,
@@ -110,6 +111,18 @@ export type PlanTask = {
    * week" and the app counts. See `POWER_SESSIONS_PER_WEEK`.
    */
   powerSessions?: number;
+  /**
+   * Movement snacks only (`cadence: "per_day"`): a different list for each day
+   * of the plan week, index 0 = the day the week starts. Seven entries, each
+   * exactly `target` moves — **one move is one burst**, so `target` bursts a
+   * day is `target` exercises in the day's list — with one bone-loading id,
+   * the whole day fitted to the five minutes. `exercises` is always `days[0]`,
+   * so an app build that has never heard of this field keeps showing one
+   * day's list for the week.
+   * Written by code on both paths (`snackWeek()`); absent on every other task
+   * and on every snack plan generated before 2026-08-29.
+   */
+  days?: StoredExercise[][];
 };
 
 export type PlanWeek = {
@@ -471,7 +484,7 @@ export function buildPrompt(
   const level = profile.fitness_level ?? "beginner";
   const vol = MOVEMENT_VOLUME[level] ?? MOVEMENT_VOLUME.beginner;
   const movement = vol.perDay
-    ? `${vol.sessions} short bursts per day of about ${vol.minutes} minutes (cadence "per_day")`
+    ? `${vol.sessions} short bursts per day, ONE exercise each, about ${vol.minutes} minutes a day all together (cadence "per_day")`
     : `${vol.sessions} sessions per week of about ${vol.minutes} minutes (cadence "weekly", target ${vol.sessions})`;
   // A 5-minute snack cannot hold six exercises; a 30-minute session should not
   // hold one. sanitize() tops up to this same floor when the model under-delivers.
@@ -558,11 +571,17 @@ export function buildPrompt(
           `- Her menopause was ${profile.menopause_type === "surgical" ? "surgical" : "brought on by cancer treatment"}, so it arrived at once rather than over years. Do not write "as your hormones gradually shift" or anything that assumes a slow transition, and open movement one step gentler than her stated fitness level.`,
         ]
       : []),
-    `- She also gets ${cardio.zone2.sessions + (cardio.intervals ? 1 : 0)} cardio sessions a week — walks, bike, swim, whatever she has — that the app schedules beside your sessions. You do not write them. Never put walking, cardio, running, cycling or intervals into an exercises array, a title, a "why" or a habit; it is already there.`,
+    `- She also gets ${cardio.daily ? `a ${cardio.zone2.minutes}-minute walk every day` : `${cardio.zone2.sessions + cardio.intervals} cardio sessions a week — walks, bike, swim, whatever she has —`} that the app schedules beside your sessions. You do not write them. Never put walking, cardio, running, cycling or intervals into an exercises array, a title, a "why" or a habit; it is already there.`,
     `- Habit tasks are yours to write: one small, concrete daily action she starts doing (e.g. "Cool the room before bed"). Cadence "daily". Name the action itself — never begin the title with "Add". Never write a habit about quitting something — that is what resist_suggestions is for.`,
     `- Never write a habit or movement task that repeats a nutrition row — no walks after meals, no water, no protein, no meal timing. She already ticks those every day; put the id in nutrition_focus instead.`,
     `- Relaxation tasks need item_id and cadence "daily" (or "per_day" with a target). Match the item to her worst symptom: hot flashes get breath_hotflash, night waking gets breath_sleep, anxiety or palpitations get breath_sigh.`,
-    `- Movement tasks need an exercises array of ${minEx}-${maxEx} DIFFERENT ids — a session, not one move. Fewer than ${minEx} is a failed week.`,
+    `- Movement tasks need an exercises array of ${minEx === maxEx ? `exactly ${minEx}` : `${minEx}-${maxEx}`} DIFFERENT ids — a session, not one move. Fewer than ${minEx} is a failed week.`,
+    ...(vol.perDay
+      ? [
+          `- Her three moves are different every day of the week: the app builds six more days from the same pool around the one you write, so write ONE day per week and never say "today" or name a weekday in a title or a "why".`,
+          `- The day's order is fixed by the app: the bone-loading move first, a strength move second, and a CALM move last (a hold, bird-dog, dead bug, bridge, balance stand or calf raise — never a jump, march or mountain climber; the last burst is the evening one and must not raise her heart rate). Write your three in that order.`,
+        ]
+      : []),
     // Left to itself the model builds eight leg-and-core weeks. Measured over
     // four generations it used ZERO upper-body ids in one plan and zero
     // bone-loading ids in two — and bone is the reason a menopause plan lifts at
@@ -660,15 +679,21 @@ const MIN_EXERCISES = 4;
  * a thin week up to it rather than letting one cost the other seven.
  */
 const MIN_TASKS_PER_WEEK = 3;
-/** A 5-minute burst done four times a day is two or three moves, not six. */
-const MIN_SNACK_EXERCISES = 2;
-const MAX_EXERCISES = 6;
 /**
- * …and the ceiling has to agree with that comment. It didn't: the prompt asks a
- * snack for 2-3 ids and this file then trimmed every session to 6, so a model
- * that sent six put six exercises into five minutes and nothing caught it.
+ * A snack day is exactly `MOVEMENT_VOLUME.movement_snacks.sessions` moves
+ * (2026-08-29): one exercise per burst, three bursts a day — two strength or
+ * core movements and one bone-loading one, different every day of the week.
+ * Floor and ceiling are the same number on purpose — `fitSessionToMinutes()`
+ * never drops below the floor and `snackWeek()` never writes above the
+ * ceiling, so a day with two or four moves in it cannot be stored. The day's
+ * five minutes hold three at the snack ladder's dose in every week;
+ * `npm run verify-plan-dose` measures it.
  */
-const MAX_SNACK_EXERCISES = 3;
+const MIN_SNACK_EXERCISES = MOVEMENT_VOLUME.movement_snacks.sessions;
+const MAX_EXERCISES = 6;
+const MAX_SNACK_EXERCISES = MOVEMENT_VOLUME.movement_snacks.sessions;
+/** Days in a plan week, and the length of a snack task's `days`. */
+const DAYS_PER_WEEK = 7;
 
 /**
  * How many movements a bookend may hold.
@@ -766,7 +791,7 @@ function doseLadder(workMinutes: number, exerciseCount: number, maxExercises: nu
     // which is the one that decides whether she believes the product. Say the
     // length is a target to fill, and let fitSessionToMinutes() be the ceiling
     // — that is what it is for, and it cannot be argued with.
-    `- Her session is ${workMinutes} minutes of work. FILL it: with ${exerciseCount}-${maxExercises} exercises at the week's dose above it should come out close to ${workMinutes} minutes, in week 1 as much as in week 8. A week 1 that runs half the length she chose is a failed week, not a gentle one — week 1 is gentler because the sets are shorter, never because the session is.`,
+    `- Her session is ${workMinutes} minutes of work. FILL it: with ${exerciseCount === maxExercises ? exerciseCount : `${exerciseCount}-${maxExercises}`} exercises at the week's dose above it should come out close to ${workMinutes} minutes, in week 1 as much as in week 8. A week 1 that runs half the length she chose is a failed week, not a gentle one — week 1 is gentler because the sets are shorter, never because the session is.`,
     `- Do not go under the doses above to be cautious, and do not go over them to be ambitious. Anything larger is trimmed back before she sees it.`,
   ];
 }
@@ -896,6 +921,133 @@ function ensureSnackBone(
   work.splice(0, work.length, ...fitSessionToMinutes(work, 0, vol.minutes, floor));
 }
 
+/**
+ * The seven bursts of one snack week, one per day (2026-08-29).
+ *
+ * A movement task holds one session repeated `target` times, which for a snack
+ * user meant the same three moves every day for seven days — and then a
+ * new three. She trains more often than anyone and saw the least variety. So
+ * the snack task carries a burst per day (`PlanTask.days`), written by code
+ * from her pool rather than asked of the model: seven bursts a week for eight
+ * weeks is 56 sessions, and the model already struggles to write eight
+ * different titles.
+ *
+ * `day0` is the burst the model (or the fallback rotation) wrote, repaired to
+ * exactly three moves and returned as `days[0]`, so `exercises` and `days[0]`
+ * are always the same list. Days 1-6 are drawn so that:
+ *
+ * - every burst is exactly three moves: two from the strength/core rows and one
+ *   bone-loading `I` row, last, the way `ensureSnackBone()` places it;
+ * - no strength/core move repeats within the week (the pool has 18 of them
+ *   and a week needs 14), so seven days are seven different bursts;
+ * - the five bone-loading moves cycle, so no two consecutive days share one;
+ * - the starting point rotates by week, so week 2's Monday is not week 1's;
+ * - each burst is fitted to the five minutes at the week's dose.
+ */
+function snackWeek(
+  day0: StoredExercise[],
+  n: number,
+  pool: Exercise[],
+  vol: (typeof MOVEMENT_VOLUME)[string],
+  workMinutes: number
+): StoredExercise[][] {
+  const count = MAX_SNACK_EXERCISES;
+  const dosed = (e: Exercise) => ({ id: e.id, ...defaultDoseForWeek(e, n, workMinutes, count) });
+  const fit = (list: StoredExercise[]) => fitSessionToMinutes(list, 0, vol.minutes, count);
+  const isSide = (id: string) => getExercise(id)?.perSide === true;
+
+  // Three pools for three bursts, in the order of her day: the impact move
+  // first while she is fresh and furthest from bedtime, a strength move in
+  // the middle, and a calm move last — see CALM_SNACK_IDS for why the evening
+  // burst never jumps.
+  const bone = filmedFirst(pool.filter((e) => isPowerId(e.id)));
+  const calm = filmedFirst(pool.filter((e) => isCalmSnackId(e.id)));
+  const strength = filmedFirst(pool.filter((e) => !isPowerId(e.id) && !isCalmSnackId(e.id)));
+
+  // Queues of what is not yet used this week, rotated so consecutive weeks
+  // start from a different place. Bursts draw from the front and remove what
+  // they take, so nothing repeats inside a week while a queue lasts.
+  const strengthQueue = rotate(strength, (n - 1) * 2);
+  const calmQueue = rotate(calm, (n - 1) * 2);
+  const take = (queue: Exercise[], avoid: Set<string>, noSide: boolean): Exercise | undefined => {
+    const i = queue.findIndex((e) => !avoid.has(e.id) && !(noSide && e.perSide));
+    if (i < 0) return undefined;
+    return queue.splice(i, 1)[0];
+  };
+  const drop = (queue: Exercise[], id: string) => {
+    const i = queue.findIndex((q) => q.id === id);
+    if (i >= 0) queue.splice(i, 1);
+  };
+
+  /**
+   * One day: [bone, strength, calm]. At most one of the two non-bone moves is
+   * per-side — two per-side moves beside a hop measure 5:15 at the FLOOR
+   * dose (a per-side set runs twice and rests the same), so that pairing is a
+   * day the fitter cannot rescue, and the rule lives here rather than there.
+   * `keep` is what the model wrote; each of its moves is kept in the slot it
+   * belongs to, and the slots it did not fill are drawn from the queues.
+   */
+  const burst = (keep: StoredExercise[], boneIndex: number): StoredExercise[] => {
+    const keptBone = keep.find((e) => isPowerId(e.id));
+    const keptCalm = keep.find((e) => isCalmSnackId(e.id));
+    const keptStrength = keep.find(
+      (e) => !isPowerId(e.id) && !isCalmSnackId(e.id) && !(keptCalm && isSide(keptCalm.id) && isSide(e.id))
+    );
+    const avoid = new Set([keptBone, keptCalm, keptStrength].flatMap((e) => (e ? [e.id] : [])));
+
+    const b = keptBone ?? (bone.length ? dosed(bone[boneIndex % bone.length]) : undefined);
+
+    // Strength and calm are chosen together so the pair never holds two
+    // per-side moves. Take a strength move; if it is per-side and no
+    // both-sides calm move is left this week, hand it back and take a
+    // both-sides strength move instead. Only if BOTH queues are down to
+    // per-side rows does the pair go through anyway — the fitter then does
+    // what it can, and the verify script would report it.
+    let stEx = keptStrength ? undefined : take(strengthQueue, avoid, Boolean(keptCalm && isSide(keptCalm.id))) ?? take(strengthQueue, avoid, false);
+    let st = keptStrength ?? (stEx ? dosed(stEx) : undefined);
+    if (st) avoid.add(st.id);
+    let caEx = keptCalm ? undefined : take(calmQueue, avoid, Boolean(st && isSide(st.id)));
+    if (!keptCalm && !caEx && st && isSide(st.id) && stEx) {
+      avoid.delete(st.id);
+      const swap = take(strengthQueue, avoid, true);
+      if (swap) {
+        strengthQueue.push(stEx);
+        stEx = swap;
+        st = dosed(swap);
+        avoid.add(st.id);
+        caEx = take(calmQueue, avoid, false);
+      }
+    }
+    if (!keptCalm && !caEx) caEx = take(calmQueue, avoid, false);
+    const ca = keptCalm ?? (caEx ? dosed(caEx) : undefined);
+
+    const picks = [b, st, ca].flatMap((e) => (e ? [e] : []));
+    // Only reachable with a pool too small to fill three slots — never today.
+    for (const cand of [...strength, ...calm, ...bone]) {
+      if (picks.length >= count) break;
+      if (!picks.some((p) => p.id === cand.id)) picks.push(dosed(cand));
+    }
+    return fit(picks);
+  };
+
+  // Day 0 keeps what the model wrote where the rules allow, and is repaired to
+  // the same shape as every other day — its extra bone moves (the fallback's
+  // rotation walks straight through the `I` block) become other slots.
+  const first = burst(day0, n - 1);
+  for (const e of first) {
+    drop(strengthQueue, e.id);
+    drop(calmQueue, e.id);
+  }
+  const days = [first];
+
+  // Days 1-6: the bone moves cycle from wherever day 0 left off, so no two
+  // consecutive days share one.
+  const firstBone = first.find((e) => isPowerId(e.id))?.id;
+  const boneStart = Math.max(0, bone.findIndex((e) => e.id === firstBone));
+  for (let d = 1; d < DAYS_PER_WEEK; d++) days.push(burst([], boneStart + d));
+  return days;
+}
+
 
 /**
  * The cardio sessions for one week, written the same way on both paths.
@@ -917,27 +1069,37 @@ function ensureSnackBone(
  * walk for the first five minutes.
  */
 function cardioTasks(fitnessLevel: string | null, n: number): PlanTask[] {
-  const { zone2, intervals } = cardioForWeek(fitnessLevel, n);
+  const { zone2, intervals, daily } = cardioForWeek(fitnessLevel, n);
   const out: PlanTask[] = [];
   if (zone2.sessions > 0) {
     out.push({
       key: "cardio",
       pillar: "movement",
-      title: getExercise(ZONE2_ID)?.name ?? "Zone 2 cardio",
+      // "Daily walk" wherever cardio is a seven-day task — the snack level and,
+      // since 2026-08-29, beginner. The row's props still say any activity, so
+      // the woman who owns a bike is not being told to walk; the title is the
+      // cadence, which is the part that has to read at a glance in a list.
+      title: daily ? "Daily walk" : getExercise(ZONE2_ID)?.name ?? "Zone 2 cardio",
       why: CARDIO_WHY[(n - 1) % CARDIO_WHY.length],
-      cadence: "weekly",
-      target: zone2.sessions,
+      // A daily walk is scored the way the app scores every daily task — one
+      // tick a day, against every day — rather than as "weekly x7", which
+      // would let a week absorb a missed day and never say which one.
+      cadence: daily ? "daily" : "weekly",
+      target: daily ? 1 : zone2.sessions,
       exercises: [{ id: ZONE2_ID, minutes: zone2.minutes }],
     });
   }
-  if (intervals) {
+  if (intervals > 0) {
     out.push({
       key: "intervals",
       pillar: "movement",
       title: getExercise(INTERVALS_ID)?.name ?? "Sprint intervals",
       why: INTERVALS_WHY[(n - 1) % INTERVALS_WHY.length],
       cadence: "weekly",
-      target: 1,
+      // One task holding the week's hard days, not one task per day: the
+      // protocol is identical each time and `target` is what the app counts
+      // ticks against, the same way the Zone 2 task carries its own count.
+      target: intervals,
       exercises: [{ id: INTERVALS_ID, minutes: intervalsMinutes() }],
     });
   }
@@ -1062,6 +1224,25 @@ function sanitize(
     return work;
   }
 
+  /** The task `sessionFromPool()` becomes, with the snack's seven days on it. */
+  function movementTaskFromPool(n: number, title: string, why: string): PlanTask {
+    const work = sessionFromPool(n);
+    const days = vol.perDay ? snackWeek(work, n, pool, vol, workMinutes) : undefined;
+    const exercises = days ? days[0] : work;
+    const power = powerFor(exercises, n);
+    return {
+      key: "movement",
+      pillar: "movement",
+      title,
+      why,
+      cadence: vol.perDay ? "per_day" : "weekly",
+      target: vol.sessions,
+      exercises,
+      ...(days ? { days } : {}),
+      ...(power ? { power, powerSessions: Math.min(POWER_SESSIONS_PER_WEEK, vol.sessions) } : {}),
+    };
+  }
+
   for (let n = 1; n <= PLAN_WEEKS; n++) {
     const w = parsedWeeks.find((x) => x.number === n);
     if (!w) continue;
@@ -1141,8 +1322,8 @@ function sanitize(
 
         // Bookends, and only on a session that wants them. `wantsBookends()`
         // already refuses to draw a generic warm-up onto a movement snack —
-        // four five-minute bursts a day with two minutes of hip circles in
-        // front of each is a 40% tax on the thing she agreed to do four times.
+        // three one-move bursts a day with two minutes of hip circles in
+        // front of each is a tax bigger than the thing she agreed to do.
         // Writing one into the stored plan would route straight past that
         // check, so the same rule is applied here at the source.
         const taken = new Set(capped.map((e) => e.id));
@@ -1200,10 +1381,14 @@ function sanitize(
         // nothing it costs can take a set or an exercise away from the session
         // she was sold. That is the whole reason the volume became a band.
         //
-        // Skipped on a snack, as the bookends are — four five-minute bursts a
-        // day do not each get plyometrics bolted on.
+        // Skipped on a snack, as the bookends are — a one-move burst does not
+        // get plyometrics bolted on; its bone move is one of the day's three.
         ensureSnackBone(work, n, pool, vol, workMinutes);
         const power = powerFor(work, n);
+        // A burst for every day of the week. The model's burst is day 0, so
+        // `exercises` and `days[0]` are the same list.
+        const days = vol.perDay ? snackWeek(work, n, pool, vol, workMinutes) : undefined;
+        if (days) work.splice(0, work.length, ...days[0]);
 
         // Volume is a rule keyed off her fitness level, not something the model
         // gets a vote on — it kept sending "daily x7" and "per_day x1".
@@ -1216,6 +1401,7 @@ function sanitize(
           cadence: vol.perDay ? "per_day" : "weekly",
           target: vol.sessions,
           exercises: work,
+          ...(days ? { days } : {}),
           // Already filtered by atLeastMin() above, so what was measured is
           // exactly what is stored.
           ...(warmup ? { warmup } : {}),
@@ -1281,19 +1467,11 @@ function sanitize(
     // No movement task at all — build her one. This runs before the top-up
     // below, so the week is counted with its workout already in it.
     if (tasks.length && !movementPlaced) {
-      const work = sessionFromPool(n);
-      if (work.length) {
-        const power = powerFor(work, n);
-        tasks.unshift({
-          key: "movement",
-          pillar: "movement",
-          title: uniqueTitle(movementTitle(work, n), FALLBACK_WEEKS[(n - 1) % FALLBACK_WEEKS.length][0]),
-          why: pillarWhy("movement", n),
-          cadence: vol.perDay ? "per_day" : "weekly",
-          target: vol.sessions,
-          exercises: work,
-          ...(power ? { power, powerSessions: Math.min(POWER_SESSIONS_PER_WEEK, vol.sessions) } : {}),
-        });
+      const built = movementTaskFromPool(n, "", pillarWhy("movement", n));
+      if (built.exercises?.length) {
+        const work = built.exercises;
+        built.title = uniqueTitle(movementTitle(work, n), FALLBACK_WEEKS[(n - 1) % FALLBACK_WEEKS.length][0]);
+        tasks.unshift(built);
         movementPlaced = true;
       }
     }
@@ -1434,7 +1612,7 @@ function buildWhyPrompt(profile: Profile): string {
  * the pattern is deliberately blunt. If a genuinely good line is ever caught by
  * it, rewrite the line — do not loosen the gate.
  */
-const STOCK_PHRASES =
+export const STOCK_PHRASES =
   /\b(?:(?:can|may|will) (?:help|improve|enhance|reduce|support|boost|prevent|promote)|help(?:s|ing)?\b|enhanc(?:e|es|ed|ing)\b|aids?\b|supports?\b|is (?:essential|important|key|vital|crucial)|promotes?|boosts?|overall\b)/i;
 const MIN_WHY_CHARS = 90;
 const MAX_WHY_CHARS = 240;
@@ -1695,6 +1873,8 @@ function fallbackPlan(profile: Profile, pool: Exercise[], powerPool: Exercise[])
       // eight. The fallback is meant to be the same plan minus the personalized
       // copy, never minus a pillar.
       ensureSnackBone(exercises, n, pool, vol, workMinutes);
+      const days = vol.perDay ? snackWeek(exercises, n, pool, vol, workMinutes) : undefined;
+      if (days) exercises.splice(0, exercises.length, ...days[0]);
 
       const power =
         vol.perDay || !exercises.length ? undefined : buildPowerBlock(powerPool, n, powerMinutes(vol));
@@ -1712,6 +1892,7 @@ function fallbackPlan(profile: Profile, pool: Exercise[], powerPool: Exercise[])
           cadence: vol.perDay ? "per_day" : "weekly",
           target: vol.sessions,
           exercises,
+          ...(days ? { days } : {}),
           ...(power ? { power, powerSessions: Math.min(POWER_SESSIONS_PER_WEEK, vol.sessions) } : {}),
         },
         { key: `w${n}_${relaxation.id}`, pillar: "relaxation", title: relaxation.label, why: pillarWhy("relaxation", n), cadence: "daily", target: 1 },
@@ -1733,6 +1914,15 @@ function fallbackPlan(profile: Profile, pool: Exercise[], powerPool: Exercise[])
  * Builds the plan from her answers. Never throws — falls back to the
  * deterministic plan so she always gets something usable.
  */
+/**
+ * The deterministic plan, exactly as `buildPlan()` falls back to it. Exported
+ * for `scripts/verify-plan-dose.ts`, which measures the snack week's seven
+ * bursts against the five minutes without spending a model call.
+ */
+export function deterministicPlan(p: Profile): Plan {
+  return fallbackPlan(p, allowedExercises(p.fitness_level ?? null), allowedPower(p.fitness_level ?? null));
+}
+
 export async function buildPlan(
   p: Profile,
   userId?: string | null,
@@ -1952,9 +2142,18 @@ export async function markPlanGenerating(
  * Even with it on, `video` is absent until that exercise's clip has
  * actually been shot (a `clip` on its catalog row) — the app shows name + props and no
  * player.
+ *
+ * `why` rides along unconditionally — it is text, it costs nothing to send, and
+ * the web dashboard has as much use for it as the app does.
  */
 export function hydrateExercises(task: PlanTask, includeMedia = false) {
   return hydrateList(task.exercises, includeMedia);
+}
+
+/** The snack task's seven daily bursts, hydrated like `exercises`. Undefined elsewhere. */
+export function hydrateDays(task: PlanTask, includeMedia = false) {
+  if (!task.days?.length) return undefined;
+  return task.days.map((d) => hydrateList(d, includeMedia) ?? []);
 }
 
 /** Hydrates any stored exercise list. Unknown ids are dropped, never faked. */
@@ -1972,6 +2171,11 @@ function hydrateList(list: readonly StoredExercise[] | undefined, includeMedia: 
         name: ex.name,
         props: ex.props,
         dose: hydrateDose(ex, e),
+        // Why this movement, in her words. Written in the catalog, identical
+        // for everyone doing it, and absent only on a row whose copy has not
+        // been written — the app draws no reason rather than an empty one.
+        // The personalised line is the task's own `why`, one level up.
+        ...(ex.why ? { why: ex.why } : undefined),
         ...(includeMedia ? exerciseMedia(e.id) : undefined),
       },
     ];
@@ -1990,7 +2194,7 @@ export const isCardioTask = (task: PlanTask) =>
  * Two sessions are left alone, both because a generic bookend would make them
  * worse rather than safer:
  *
- * - **Movement snacks** (`per_day`). Four five-minute bursts a day is the whole
+ * - **Movement snacks** (`per_day`). Three one-move bursts a day is the whole
  *   design. Two minutes of hip circles in front of each of them is not a
  *   warm-up, it is a 40% tax on the thing she agreed to do four times.
  * - **Cardio tasks.** A Zone 2 walk warms up by being a walk for the first five

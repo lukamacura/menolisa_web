@@ -474,7 +474,7 @@ const HRT_OPTIONS = [
 // `allowedExercises()` and `MOVEMENT_VOLUME` in `lib/plan/catalog.ts`), so plan
 // generation is untouched. The relabel is honest rather than cosmetic because
 // each label states that id's real `MOVEMENT_VOLUME` entry:
-//   movement_snacks 4x5min/day · beginner 2x20-25 · medium 3x30-40 · advanced 4x35-45.
+//   movement_snacks 3 one-move bursts, ~5 min/day · beginner 2x20-25 · medium 3x30-40 · advanced 4x35-45.
 // Change a number here only if you change it there too. The label names the
 // strength sessions; the cardio the plan schedules on top (`CARDIO_VOLUME`) is
 // spelled out on the `reward_plan_shape` screen a few taps later.
@@ -3559,16 +3559,23 @@ function RegisterPageContent() {
         ? `${volume.minutes}-${volume.maxMinutes}`
         : `${volume.minutes}`;
     // Cardio is scheduled on top of the strength sessions, every week, so the
-    // headline minutes include it - at its week-1 length, which is the week she
-    // is about to be asked for. See `cardioForWeek()` in the catalog.
-    const cardioMinutes = cardio.sessions * cardio.minutes[0];
+    // headline minutes include it - at its week-1 shape, which is the week she
+    // is about to be asked for. Read through `cardioForWeek()` rather than off
+    // `sessions x minutes`: from 2026-08-29 some of those sessions are the
+    // 19-minute interval protocol, and counting a hard day as a 25-minute walk
+    // overstates her week by the difference.
+    const week1 = planCatalog.cardioForWeek(fitnessLevel || null, 1);
+    const cardioMinutes =
+      week1.zone2.sessions * week1.zone2.minutes + week1.intervals * planCatalog.intervalsMinutes();
+    const easy = `${week1.zone2.sessions} x ${week1.zone2.minutes} min of easy cardio`;
     return {
       weeklyMinutes:
-        (volume.perDay ? volume.sessions * volume.minutes * 7 : volume.sessions * volume.minutes) +
+        // For snacks `minutes` is already the whole day (all bursts together).
+        (volume.perDay ? volume.minutes * 7 : volume.sessions * volume.minutes) +
         cardioMinutes,
       cadence: volume.perDay
-        ? `${volume.sessions} x ${span} min, spread through the day, plus ${cardio.sessions} short walks`
-        : `${volume.sessions} x ${span} min a week, plus ${cardio.sessions} x ${cardio.minutes[0]} min of easy cardio`,
+        ? `${volume.sessions} one-move bursts a day, about ${span} min all in, plus a ${cardio.minutes[0]} min walk every day`
+        : `${volume.sessions} x ${span} min a week, plus ${easy}${week1.intervals ? ` and ${week1.intervals} short interval session${week1.intervals > 1 ? "s" : ""}` : ""}`,
       // For <WeekStrip />. Snacks happen every day; sessions land on N of the 7.
       activeDays: volume.perDay ? 7 : Math.min(7, volume.sessions + cardio.sessions),
     };

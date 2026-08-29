@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import {
   PLAN_WEEKS,
   generatePlan,
+  hydrateDays,
   hydrateExercises,
   hydrateRelaxation,
   markPlanGenerating,
@@ -256,6 +257,10 @@ export async function GET(req: NextRequest) {
           // The main work, and only the main work — every adherence and volume
           // read in this app measures this array.
           exercises: hydrateExercises(t, includeMedia),
+          // Movement snacks only: a burst per day of the plan week, index 0 =
+          // the day the week starts, `exercises` being days[0]. Undefined on
+          // every other task, so the app draws nothing new elsewhere.
+          days: hydrateDays(t, includeMedia),
           // The bookends around it. Undefined on a session that wants none (a
           // snack, a walk), so the app draws no empty section.
           warmup: sessionWarmup(t, includeMedia),

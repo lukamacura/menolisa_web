@@ -21,15 +21,17 @@ import {
   allowedExercises,
   allowedPower,
   buildPowerBlock,
+  bandForWeek,
   cardioForWeek,
   defaultDoseForWeek,
   getExercise,
   hydrateDose,
+  isCalmSnackId,
   isCardioId,
   listSeconds,
   powerMinutes,
 } from "../lib/plan/catalog";
-import { buildPrompt, type Profile } from "../lib/plan/generate";
+import { STOCK_PHRASES, buildPrompt, deterministicPlan, isCardioTask, type Profile } from "../lib/plan/generate";
 
 const LEVELS = ["beginner", "medium", "advanced", "movement_snacks"];
 
@@ -53,6 +55,36 @@ for (const ex of EXERCISES) {
   }
 }
 console.log(`  ${EXERCISES.length} exercises x 3 weeks checked`);
+
+// ─── 1b. Every exercise explains itself ──────────────────────────────────────
+//
+// `why` is what she reads before she does the movement, and it is the only
+// field in the catalog with no default — a missing one is a blank space on the
+// session screen, and there is nothing at runtime that can notice. So it is
+// checked here: present on every row, long enough to carry a mechanism, short
+// enough to read on a phone, and written in the same voice the plan prompt
+// already enforces on everything else she reads.
+
+console.log("\n=== every catalog id explains why she is doing it ===");
+const WHY_MIN = 60;
+const WHY_MAX = 230;
+for (const ex of EXERCISES) {
+  const why = ex.why;
+  if (!why) {
+    problems.push(`${ex.id} (${ex.name}): no why`);
+    continue;
+  }
+  check(why.length >= WHY_MIN, `${ex.id}: why is ${why.length} chars, under ${WHY_MIN}`);
+  check(why.length <= WHY_MAX, `${ex.id}: why is ${why.length} chars, over ${WHY_MAX}`);
+  // The same gate the model's own copy has to pass. A stock phrase here is
+  // worse than one in a generated line: this one ships to every user forever.
+  check(!STOCK_PHRASES.test(why), `${ex.id}: why uses stock health copy — "${why}"`);
+}
+const whyLengths = EXERCISES.flatMap((e) => (e.why ? [e.why.length] : []));
+console.log(
+  `  ${whyLengths.length}/${EXERCISES.length} written, ` +
+    `${Math.min(...whyLengths)}-${Math.max(...whyLengths)} chars`
+);
 
 // ─── 2. The ladder actually goes up ──────────────────────────────────────────
 
@@ -169,6 +201,51 @@ console.log(`  generic bookends ${BOOKEND_SECONDS}s on every session above`);
 
 // ─── 6. Cardio: every week, growing, and the session count never moves ───────
 
+console.log("\n=== movement snacks: seven bursts a week, three moves each, inside five minutes ===");
+
+{
+  const level = "movement_snacks";
+  const vol = MOVEMENT_VOLUME[level];
+  const plan = deterministicPlan({ fitness_level: level } as Profile);
+  for (const week of plan.weeks) {
+    const task = week.tasks.find((t) => t.pillar === "movement" && !isCardioTask(t));
+    check(Boolean(task?.days), `${level} week ${week.number}: snack task has no days`);
+    if (!task?.days) continue;
+    check(task.days.length === 7, `${level} week ${week.number}: ${task.days.length} days, not 7`);
+    check(
+      JSON.stringify(task.days[0]) === JSON.stringify(task.exercises),
+      `${level} week ${week.number}: exercises is not days[0]`
+    );
+    const strengthSeen = new Set<string>();
+    const shapes: string[] = [];
+    let lastBone = "";
+    task.days.forEach((burst, d) => {
+      check(burst.length === 3, `${level} week ${week.number} day ${d}: ${burst.length} moves, not 3`);
+      const ids = burst.map((e) => e.id);
+      check(new Set(ids).size === ids.length, `${level} week ${week.number} day ${d}: repeated id in one burst`);
+      const bones = ids.filter((id) => id.startsWith("I"));
+      check(bones.length === 1, `${level} week ${week.number} day ${d}: ${bones.length} bone-loading moves, not 1`);
+      // The order of her day: impact first, strength, then a calm move last.
+      check(ids[0]?.startsWith("I") === true, `${level} week ${week.number} day ${d}: first burst ${ids[0]} is not the bone move`);
+      check(isCalmSnackId(ids[2] ?? ""), `${level} week ${week.number} day ${d}: last burst ${ids[2]} is not a calm move`);
+      check(bones[0] !== lastBone, `${level} week ${week.number} day ${d}: same bone move as the day before`);
+      lastBone = bones[0] ?? "";
+      for (const id of ids.filter((x) => !x.startsWith("I"))) {
+        check(!strengthSeen.has(id), `${level} week ${week.number} day ${d}: ${id} already used this week`);
+        strengthSeen.add(id);
+      }
+      // Calm rows are the evening slot; they never appear as the strength burst.
+      check(!isCalmSnackId(ids[1] ?? ""), `${level} week ${week.number} day ${d}: calm move ${ids[1]} in the strength slot`);
+      const secs = listSeconds(burst);
+      check(secs <= vol.minutes * 60, `${level} week ${week.number} day ${d}: ${secs}s against ${vol.minutes} min`);
+      shapes.push(`${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`);
+    });
+    const distinct = new Set(task.days.map((b) => b.map((e) => e.id).join("+"))).size;
+    check(distinct === 7, `${level} week ${week.number}: only ${distinct} distinct bursts across 7 days`);
+    console.log(`  week ${week.number}  ${shapes.join(" ")}`);
+  }
+}
+
 console.log("\n=== cardio: every week, progressing, constant session count ===");
 
 check(Boolean(getExercise(ZONE2_ID)), `no catalog row for ${ZONE2_ID}`);
@@ -183,7 +260,7 @@ for (const level of LEVELS) {
   let minutesLast = 0;
   for (let week = 1; week <= 8; week++) {
     const c = cardioForWeek(level, week);
-    const total = c.zone2.sessions + (c.intervals ? 1 : 0);
+    const total = c.zone2.sessions + c.intervals;
     // The number of times a week she laces up is the promise; the hard day is
     // a change of what one of them is, never an extra one.
     check(total === vol.sessions, `${level} week ${week}: ${total} cardio sessions against ${vol.sessions} promised`);
@@ -194,12 +271,25 @@ for (const level of LEVELS) {
     // the route uses.
     const dose = hydrateDose(getExercise(ZONE2_ID)!, { minutes: c.zone2.minutes });
     check(dose.seconds === c.zone2.minutes * 60, `${level} week ${week}: zone 2 minutes do not hydrate`);
-    shown.push(`${c.zone2.sessions}x${c.zone2.minutes}${c.intervals ? "+I" : ""}`);
+    shown.push(`${c.zone2.sessions}x${c.zone2.minutes}${c.intervals ? `+${c.intervals}I` : ""}`);
   }
-  check(cardioForWeek(level, 8).zone2.minutes > cardioForWeek(level, 1).zone2.minutes, `${level}: cardio does not progress`);
-  if (vol.intervalsFromWeek !== undefined) {
-    check(cardioForWeek(level, vol.intervalsFromWeek - 1).intervals === false, `${level}: intervals start early`);
-    check(cardioForWeek(level, vol.intervalsFromWeek).intervals === true, `${level}: intervals never start`);
+  // A daily task carries one exercise, so a level cannot be both daily and
+  // handed a hard day out of the same seven.
+  if (vol.daily) {
+    check(vol.sessions === 7, `${level}: daily cardio must be 7 sessions, got ${vol.sessions}`);
+    check(vol.intervals === undefined, `${level}: daily cardio cannot also schedule intervals`);
+  }
+  // Flat minutes are a deliberate choice (the snack walk); anything that is not
+  // flat has to actually climb.
+  if (vol.minutes[0] !== vol.minutes[2]) {
+    check(cardioForWeek(level, 8).zone2.minutes > cardioForWeek(level, 1).zone2.minutes, `${level}: cardio does not progress`);
+  }
+  if (vol.intervals) {
+    for (let week = 1; week <= 8; week++) {
+      const want = vol.intervals[bandForWeek(week)];
+      check(cardioForWeek(level, week).intervals === want, `${level} week ${week}: ${cardioForWeek(level, week).intervals} interval sessions against ${want} scheduled`);
+    }
+    check(vol.intervals[2] >= vol.intervals[0], `${level}: interval sessions go backwards`);
   }
   console.log(`  ${level.padEnd(16)} ${shown.join("  ")}`);
 }

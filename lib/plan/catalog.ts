@@ -52,6 +52,16 @@ export type Exercise = {
    * library of 404s that nothing but a mid-session player could detect.
    */
   clip?: string;
+  /**
+   * One or two plain sentences telling her why THIS movement is on her list.
+   *
+   * Absent means nobody has written it yet — the app draws the name, the props
+   * and no reason, exactly as it degrades with a missing `clip`. Every
+   * prescribable row has one and `npm run verify-plan-dose` proves it; the
+   * field stays optional so a row added without copy fails a check rather than
+   * shipping an empty paragraph. See `WHY` for the voice and the rules.
+   */
+  why?: string;
 };
 
 // 79 rows in five roles, all told apart by id prefix: the strength work the
@@ -297,12 +307,20 @@ const E: [string, string, string, 1 | 2 | 3, boolean, string?][] = [
   // the elliptical, a bike, the rower. Naming one in the row would read as a
   // rule to a woman who owns a bike and hates walking.
   //
-  // `K02` is the one hard day, and the only protocol row: 30 seconds at about
-  // 90% effort, two minutes easy, three rounds, inside a 5-10 minute warm-up
-  // and a 5 minute cool-down on the same activity — about nineteen minutes,
-  // fixed. Its props lead with the low-impact modalities on purpose: prescribing
-  // running sprints to a 52-year-old is the failure mode this row is one bad
-  // word away from. Beginners and snack users never get it (`CARDIO_VOLUME`).
+  // `K02` is the hard day, and the only protocol row. Five minutes easy on
+  // whatever she is using, then **30 seconds all-out** — not 90%, everything she
+  // has — then **two minutes of complete rest**: standing, sitting, coasting,
+  // genuinely nothing. Three to four rounds, then five minutes easy to bring the
+  // heart rate down on the same activity. About nineteen minutes, fixed.
+  //
+  // The two halves of that are what make it work and are the two a plan quietly
+  // erodes: the effort has to be maximal, which it can only be if the recovery
+  // is passive and long enough to buy it. A "hard" interval with 45 seconds of
+  // jogging between rounds is a tempo session with a different name — it costs
+  // her more and gives her less. Its props lead with the low-impact modalities
+  // on purpose: prescribing running sprints to a 52-year-old is the failure mode
+  // this row is one bad word away from. Beginners and snack users never get it
+  // (`CARDIO_VOLUME`).
   ["K01", "Zone 2 cardio", "Any activity — walk, bike, swim, row, elliptical", 1, false],
   ["K02", "Sprint intervals", "Bike, elliptical, rower, or brisk incline walk", 2, false],
 ];
@@ -417,15 +435,145 @@ const DOSE: Record<string, [DoseUnit, boolean, number?]> = {
   S05: ["hold", false, 40],
   S11: ["hold", false, 40],
   // Cardio. `K01`'s seconds are a floor only — `cardioForWeek()` writes the real
-  // minutes into the task. `K02` is a fixed protocol: 5-10 min warm-up + 3 x
-  // (30s hard + 2 min easy) + 5 min cool-down, about nineteen minutes.
+  // minutes into the task. `K02` is a fixed protocol: 5 min easy warm-up + 3-4 x
+  // (30s all-out + 2 min complete rest) + 5 min easy cool-down. That is 17.5
+  // minutes at three rounds and 20 at four, so the stored dose is the 19 in the
+  // middle: the clock is the session, and how many rounds fit inside it on the
+  // day is hers.
   K01: ["duration", false, 15 * 60],
   K02: ["duration", false, 19 * 60],
 };
 
+
+/**
+ * Why she is being asked to do this specific movement, in her words.
+ *
+ * **Written here, once, and never by the model.** The task `why` above it is
+ * hers — it ties the week's session to the symptoms she reported, and it is the
+ * one line in a plan that changes from woman to woman. This one is a fact about
+ * the movement, identical for everyone doing it, so asking gpt-4o-mini for 79 of
+ * them per plan would buy variance, latency and cost against zero
+ * personalisation — and the deterministic fallback plan, which runs when OpenAI
+ * is down, would have none at all.
+ *
+ * Listed as a separate record rather than a seventh column on `E` for the same
+ * reason `DOSE` is: the table above stays a readable index of what exists, and
+ * this stays a block of copy that can be edited as copy. Unlike `DOSE` there is
+ * no sensible default, so **every prescribable row needs a line** —
+ * `npm run verify-plan-dose` fails if one is missing, too short, or written in
+ * the stock-health-copy voice the plan prompt already bans.
+ *
+ * The voice, which is the whole point of the feature:
+ *
+ * - **Name the mechanism, never the benefit.** "Strengthens your legs" tells her
+ *   nothing she did not already assume. "Every stair you climb is one leg at a
+ *   time" tells her what the movement IS, and that is what makes her do it.
+ * - **Land it in her day.** Off the sofa, out of the bath, the shopping, the top
+ *   shelf, the grandchild. A woman of 52 does not train for a number.
+ * - **Menopause where it is honest, and only there.** Bone, muscle, blood sugar
+ *   and balance are the real reasons this catalog is shaped the way it is. Do
+ *   not bolt a hormone sentence onto a calf stretch to make it sound clinical.
+ * - **No hedging and no claims.** Same gate as everything else she reads: no
+ *   "helps with", no "supports", no dosages, no promises about symptoms.
+ */
+const WHY: Record<string, string> = {
+  // ─── Lower body ───────────────────────────────────────────────────────────
+  L01: "Standing up out of a chair is the move you make most and think about least. Train it now and it stays easy — off the sofa, out of the car, up from the floor.",
+  L02: "Your thighs and glutes are the biggest muscles you own and the hungriest for sugar. Keeping them is a large part of why weight sits differently after 45.",
+  L03: "Holding the weight at your chest lets your legs work harder while your back stays upright. This is where legs start to feel solid under you again.",
+  L04: "Stairs are one leg at a time, so train them one leg at a time. This is the move that stops your thighs burning halfway up.",
+  L05: "Weight in your hands turns a step into real life: the shopping, the suitcase, the stairs at home. Your body relearns how to carry things.",
+  L06: "Long steps on a body that has to stay steady while it moves. This is the one that takes the wobble out of uneven ground and kerbs.",
+  L07: "One leg takes nearly all of it, so each side has to get strong on its own instead of your good side quietly doing the work.",
+  L08: "Your back foot is only there for balance — the front leg does the job. It shows you quickly which side has been coasting.",
+  L09: "A short stance, one leg loaded, nothing to hide behind. Strength here is what makes getting up off the floor stop being a project.",
+  L10: "Standing on one leg with weight through it is how your hips and knees stay steady. Every step you take is a smaller version of this.",
+  L11: "Hands behind your head keeps your chest open, so your legs work while your upper back learns to stop rounding. Two things at once.",
+  L12: "The plainest strength move there is, and the one your legs answer to fastest. No equipment, nowhere you cannot do it, twenty seconds at a time.",
+  L13: "Picking something heavy off the floor with your legs instead of your lower back. Do it here on purpose and your body does it that way in the kitchen.",
+  L14: "Your calves are the brakes and the springs of every step. Loaded, they hold your ankle steady on the pavement you did not see.",
+  L15: "Ankles that give way are behind a lot of stumbles later on. Two sets at the kitchen counter is the cheapest work in this plan.",
+  L16: "Stepping backwards with a hand on the counter is the gentlest way into split-leg work. Your balance catches up before the load does.",
+  L17: "Almost nothing you do trains sideways, and sideways is how you step out of the bath or catch yourself off a kerb. This is the one that does.",
+
+  // ─── Bone loading ─────────────────────────────────────────────────────────
+  I01: "Each stomp sends a small jolt up through your leg bones, and bone only rebuilds when something jolts it. Nothing you do sitting down asks it to.",
+  I02: "Landing loads bone harder than lifting does, and falling estrogen takes bone density with it. Ten seconds of controlled landings goes a long way.",
+  I03: "Quick, springy little hops. Your bones read the impact as a reason to rebuild, and your tendons get their bounce back.",
+  I04: "Side-to-side hops load your hips from an angle nothing else in the plan reaches — and the hip is where a break at 70 costs the most.",
+  I05: "Small hops forward and back, landing soft. The impact is the point: it is the signal your skeleton needs to stay dense.",
+  I06: "Hopping in every direction, so your bones and your balance are loaded from every angle instead of only straight down.",
+  I07: "Step out, land, and freeze. Catching yourself on one leg is exactly what you would need to do on ice — practised here, on your terms.",
+  I08: "Skipping like a child, because your bones cannot tell the difference and it loads them beautifully. It also makes you laugh, which is not nothing.",
+  I09: "Rise onto your toes, then let your heels drop to the floor. A hand on the counter, nothing leaves the ground, and your leg bones still get the message.",
+
+  // ─── Upper body ───────────────────────────────────────────────────────────
+  U01: "Pushing against a wall is a push-up your shoulders can do today. Everything above it starts here, including the floor one day.",
+  U02: "One step steeper than the wall. Chest, shoulders and arms all work, and your kitchen counter is the only equipment you need.",
+  U03: "The angle is low enough now to feel like the real thing. Pushing strength is what puts a stuck window or a jar lid back within reach.",
+  U04: "Pressing from the floor keeps your shoulders in a range they like while your chest and arms do real work. Kind to shoulders that ache in the morning.",
+  U05: "Reaching the top shelf is a strength move, and this is it. Sitting down takes your lower back out of the equation entirely.",
+  U06: "Pressing weight overhead with your whole body braced underneath. Top shelves, a bag into the locker, a grandchild in the air.",
+  U07: "The muscles across your upper back are the ones that pull your shoulders out of the rounded shape a desk puts them in.",
+  U08: "One arm at a time, so your stronger side cannot cover for the other. Your back gets even, and your posture follows it.",
+  U09: "The small muscles behind your shoulders hold them open. They fade first at a laptop and they answer quickest once you use them.",
+  U10: "Three positions, no weight, all of them waking the muscles between your shoulder blades. This is what stops your upper back rounding over.",
+  U11: "Raising your arms out to the side is the shoulder work you see in the mirror, and the strength that makes a bag in each hand feel light.",
+  U12: "The back of your arm is what pushes you up out of a bath or a low chair. It is also the part that changes fastest once you load it.",
+  U13: "Every bag, box and grandchild you lift is a curl. Train it and your elbows and forearms stop being the weak link in the chain.",
+
+  // ─── Trunk and hinge ──────────────────────────────────────────────────────
+  C01: "Sitting against a wall with no chair under you. Your thighs burn quickly, and that burn is the muscle you will want on the stairs at 75.",
+  C02: "Opposite arm and leg out, back perfectly still. Your deep trunk muscles learn to hold your spine steady while your limbs move — which is what walking is.",
+  C03: "Walking with something heavy in each hand. It is the shopping, and it builds grip, trunk and shoulders at once — grip strength tracks how well you age.",
+  C04: "Holding one straight line from head to heels. Your deep abdominals learn to brace, which is what saves your lower back when you lift something awkward.",
+  C05: "The side of your trunk is what stops you listing sideways when you carry a bag on one arm. Nothing else in this plan trains it.",
+  C06: "Slow and controlled, on your back — the gentlest way there is to make your deep abdominals work. Good on days your back feels fragile.",
+  C07: "Fast knees under a plank. Your heart rate climbs while your trunk has to hold on, so you get conditioning and core in the same twenty seconds.",
+  C08: "Turning through your middle is how you reach into the back seat or look behind you. Train it and turning stops catching.",
+  C09: "Balance fades quietly from your fifties, and faster if you never stand on one leg. A hand on the counter, thirty seconds — that is the whole intervention.",
+  P01: "Sitting all day switches your glutes off. This turns them back on, and strong glutes take the load your lower back has been carrying for them.",
+  P02: "The same movement with real load. This is where your glutes start holding your hips steady while you walk, instead of your back doing it.",
+  P03: "Hinging at the hips with a flat back is the safe way to reach the floor. Your hamstrings and glutes take over the bending your spine has been doing.",
+
+  // ─── Warm-ups ─────────────────────────────────────────────────────────────
+  W01: "Swinging your leg across your body opens your hips before you load them. Warm hips squat deeper and complain less the next day.",
+  W02: "A short sequence that wakes up everything you are about to use. Two minutes here is why the session feels good instead of stiff.",
+  W03: "Taking a broomstick around your shoulders finds the range you will need overhead — before there is any weight in your hands.",
+  W04: "Shoulders stiffen from sitting, not from age. A minute of this gives you back the range that pressing and reaching ask for.",
+  W05: "Opening your chest and turning through your upper back. This is the direct antidote to a day spent facing a screen.",
+  W06: "Big slow circles move warm fluid through the hip joint. It is the difference between a squat that glides and one that grinds.",
+  W07: "Gently arching backwards after hours of curling forward. Your lower back finds its natural curve again before you ask it to work.",
+  W08: "One position that opens hips, groin and upper back at the same time. That is how it got the name.",
+  W09: "Sitting into a deep squat and reaching up teaches your ankles, hips and upper back to work together before any load arrives.",
+  W10: "Rocking back over a straight leg wakes your hamstrings gradually, instead of surprising them under a weight.",
+  W11: "A rotation through your upper back that undoes hours of driving and typing. Your shoulders move better for the rest of the session.",
+  W12: "The whole body, top to bottom, in one run-through. When there is time for only one thing before a session, this is the one.",
+  W13: "Moving through joint after joint without stopping. Your body gets warm and your head arrives in the session at the same time.",
+  W14: "Walking your hands out to a plank and back lengthens the whole back of you and switches your trunk on. Two jobs, one movement.",
+  W15: "Swinging your leg forward and back opens your hips and hamstrings in the direction you actually walk.",
+
+  // ─── Cool-down ────────────────────────────────────────────────────────────
+  S01: "Calves shorten from years in shoes with a heel. Thirty seconds a side is what keeps your ankles moving freely.",
+  S02: "The front of your hip shortens from sitting, and a short hip flexor tugs on your lower back all day. This is where you give that back.",
+  S03: "Long hamstrings are why bending to the floor stays comfortable. Hold it long enough for the tissue to give.",
+  S04: "Your back lengthens, your breathing slows, and the session ends with your nervous system on the way down instead of up.",
+  S05: "Opening the inside of your thighs and hips, sitting still. It is the one that feels good exactly where you have been tight for years.",
+  S06: "Deep into the back of the hip, which is where sitting locks up hardest. Lie down for it and let the hold do the work.",
+  S07: "The back of your shoulder, after pressing or carrying. Thirty seconds a side is what keeps the joint moving freely tomorrow.",
+  S08: "Reaching over to one side lengthens everything down your ribs and waist — the part nothing else you do stretches.",
+  S09: "Turning through your spine gives back the rotation that a day in a chair quietly takes away.",
+  S10: "Your chest tightens from rounding forward. Open it against a doorway and your shoulders sit back where they belong.",
+  S11: "A last pass through your shoulders and arms while you are still warm. Standing, no mat, thirty seconds.",
+
+  // ─── Cardio ───────────────────────────────────────────────────────────────
+  K01: "Easy, steady minutes at a pace where you could talk but not sing. Your heart adapts to this pace more than to hard days, and you can do it most days without needing to recover from it.",
+  K02: "Thirty seconds of everything you have, then two whole minutes of doing nothing at all, three or four times through. The rest is what makes the hard part possible — and then you are done.",
+};
+
 export const EXERCISES: Exercise[] = E.map(([id, name, props, level, snack, clip]) => {
   const [dose, perSide, seconds] = DOSE[id] ?? ["timed", false, undefined];
-  return { id, name, props, level, snack, dose, perSide, seconds, clip };
+  return { id, name, props, level, snack, dose, perSide, seconds, clip, why: WHY[id] };
 });
 
 const BY_ID = new Map(EXERCISES.map((e) => [e.id, e]));
@@ -698,7 +846,7 @@ export function doseBands(
 }
 
 /** Which band a week falls in. 0 = weeks 1-2, 1 = weeks 3-5, 2 = weeks 6-8. */
-const bandForWeek = (week: number) => (week <= 2 ? 0 : week <= 5 ? 1 : 2);
+export const bandForWeek = (week: number) => (week <= 2 ? 0 : week <= 5 ? 1 : 2);
 
 /**
  * The dose an exercise gets in a given week when the model did not supply one.
@@ -828,12 +976,28 @@ export function fitSessionToMinutes(
  * told it exists and told not to write it.
  *
  * `minutes` is one session in weeks 1-2, 3-5 and 6-8, so the walk grows on the
- * same ladder as the sets do. `intervalsFromWeek` is where one of the easy
- * sessions turns into the `K02` interval protocol — REPLACING a Zone 2 session,
- * never adding to the count, because the number of times a week she laces up is
- * the promise and the hard day is a change of what one of them is. Beginners and
- * snack users never get it: "once a week and build to two" is advice for a
- * woman already training.
+ * same ladder as the sets do. `intervals` is read on those same three bands and
+ * says how many of that week's sessions are the `K02` protocol instead —
+ * REPLACING Zone 2 sessions, never adding to the count, because the number of
+ * times a week she laces up is the promise and the hard day is a change of what
+ * one of them is.
+ *
+ * The shape as of 2026-08-29: **cardio is nearly every day, and the hard days
+ * come out of that total rather than on top of it.**
+ *
+ * | Level | Weeks 1-2 | Weeks 3-8 |
+ * |---|---|---|
+ * | beginner | 7 x Zone 2 | 7 x Zone 2 |
+ * | medium | 6 x Zone 2 + 1 x SIIT | 5 x Zone 2 + 2 x SIIT |
+ * | advanced | 4 x Zone 2 + 2 x SIIT | 4 x Zone 2 + 2 x SIIT |
+ * | movement snacks | 7 x 20-min walk | 7 x 20-min walk |
+ *
+ * Beginners and snack users still never get `K02`: a 30-second all-out effort
+ * is not a first fortnight of training, and their whole cardio prescription is
+ * the daily walk. Medium starts on one hard day and steps to two once the two
+ * easy weeks are behind her; advanced carries two from week 1 and takes its
+ * rest day out of the easy sessions instead — six days, not seven, because two
+ * genuinely maximal days a week need one day that asks for nothing.
  *
  * These sit on top of `MOVEMENT_VOLUME`, and the funnel says so — the
  * `reward_plan_shape` screen reads both tables. Change a number here and
@@ -841,16 +1005,58 @@ export function fitSessionToMinutes(
  */
 export const CARDIO_VOLUME: Record<
   string,
-  { sessions: number; minutes: readonly [number, number, number]; intervalsFromWeek?: number }
+  {
+    /** Cardio sessions a week, easy and hard together. Never changes mid-plan. */
+    sessions: number;
+    minutes: readonly [number, number, number];
+    /**
+     * How many of those sessions are `K02` instead of `K01`, on the same three
+     * bands as `minutes` (weeks 1-2, 3-5, 6-8). Absent means none, ever.
+     */
+    intervals?: readonly [number, number, number];
+    /**
+     * Every session is its own day and the task is written `cadence: "daily"`
+     * — so `sessions` must be 7 and there can be no `intervals`, because a
+     * daily task carries one exercise. Minutes may still climb across the
+     * bands; the snack level's are flat because a habit does not get longer
+     * every fortnight.
+     */
+    daily?: boolean;
+  }
 > = {
-  beginner: { sessions: 2, minutes: [15, 20, 25] },
-  medium: { sessions: 2, minutes: [20, 25, 30], intervalsFromWeek: 5 },
-  advanced: { sessions: 3, minutes: [25, 30, 35], intervalsFromWeek: 3 },
-  // Two short walks. She chose "a few minutes, spread out" for her strength
-  // work, and a ten-minute walk is a few minutes — it is the one thing in her
-  // week that is not a five-minute burst beside the desk.
-  movement_snacks: { sessions: 2, minutes: [10, 12, 15] },
+  // Seven easy days, no hard one. Her cardio is the thing she can do every day
+  // without needing to recover from it, and at level 1 that is the whole
+  // prescription — the intensity in her week comes from the strength sessions.
+  beginner: { sessions: 7, minutes: [15, 20, 25], daily: true },
+  medium: { sessions: 7, minutes: [20, 25, 30], intervals: [1, 2, 2] },
+  advanced: { sessions: 6, minutes: [25, 30, 35], intervals: [2, 2, 2] },
+  // A 20-minute walk every day (2026-08-29). She chose "a few minutes, spread
+  // out" for her strength work; the walk is the one steady thing in a week of
+  // five-minute bursts, and it is the same length on day 56 as on day 1.
+  movement_snacks: { sessions: 7, minutes: [20, 20, 20], daily: true },
 };
+
+/**
+ * Moves allowed as the LAST burst of a snack day (2026-08-29). The third burst
+ * is the evening one, and it should settle her rather than spike her: no
+ * impact, no conditioning, nothing that sends the heart rate and cortisol up
+ * — so no `I` row, no mountain climber, no squat variant. Core holds, the
+ * bird-dog and dead bug, the bridge, the balance stand and the calf raise are
+ * the rows that load something and still read as winding down. Eight rows for
+ * seven days, so a week never repeats one. Add a row here only if it can
+ * honestly be done at 9pm without being awake at 11.
+ */
+export const CALM_SNACK_IDS: ReadonlySet<string> = new Set([
+  "C01", // Wall sit
+  "C02", // Bird-dog
+  "C04", // Forearm plank
+  "C06", // Dead bug
+  "C08", // Oblique twist
+  "C09", // Supported single-leg stand
+  "P01", // Glute bridge
+  "L15", // Calf raise
+]);
+export const isCalmSnackId = (id: string) => CALM_SNACK_IDS.has(id);
 
 /** The two cardio rows, by role. The ids are the contract with the app. */
 export const ZONE2_ID = "K01";
@@ -859,17 +1065,26 @@ export const INTERVALS_ID = "K02";
 export type CardioWeek = {
   /** Easy sessions this week, and how long each one runs. */
   zone2: { sessions: number; minutes: number };
-  /** Whether one session this week is the interval protocol instead. */
-  intervals: boolean;
+  /**
+   * How many of this week's sessions are the `K02` protocol instead — 0, 1 or
+   * 2. A count rather than a flag since 2026-08-29: advanced carries two hard
+   * days from week 1 and medium steps from one to two, and "is there a hard
+   * day" cannot say either.
+   */
+  intervals: number;
+  /** One walk every day — the task is written `cadence: "daily"`, not weekly x7. */
+  daily: boolean;
 };
 
 /** What cardio a given week of her plan holds. Total sessions never change mid-plan. */
 export function cardioForWeek(fitnessLevel: string | null, week: number): CardioWeek {
   const vol = CARDIO_VOLUME[fitnessLevel ?? "beginner"] ?? CARDIO_VOLUME.beginner;
-  const intervals = vol.intervalsFromWeek !== undefined && week >= vol.intervalsFromWeek;
+  const band = bandForWeek(week);
+  const intervals = vol.intervals?.[band] ?? 0;
   return {
-    zone2: { sessions: vol.sessions - (intervals ? 1 : 0), minutes: vol.minutes[bandForWeek(week)] },
+    zone2: { sessions: vol.sessions - intervals, minutes: vol.minutes[band] },
     intervals,
+    daily: vol.daily === true,
   };
 }
 
@@ -1242,8 +1457,12 @@ export const MOVEMENT_VOLUME: Record<
   beginner: { sessions: 2, minutes: 20, maxMinutes: 25, perDay: false },
   medium: { sessions: 3, minutes: 30, maxMinutes: 40, perDay: false },
   advanced: { sessions: 4, minutes: 35, maxMinutes: 45, perDay: false },
-  // A snack has no bookends and no power block, so its band is a point.
-  movement_snacks: { sessions: 4, minutes: 5, maxMinutes: 5, perDay: true },
+  // Snacks read differently (2026-08-29): `sessions` is BURSTS A DAY, and a
+  // burst is ONE exercise — so it is also the number of exercises in a day's
+  // list. `minutes` is all of a day's bursts together, not one of them; the
+  // three moves are fitted to it as one list. No bookends, no power block, so
+  // the band is a point.
+  movement_snacks: { sessions: 3, minutes: 5, maxMinutes: 5, perDay: true },
 };
 
 // ─── Nutrition: the daily checklist ─────────────────────────────────────────

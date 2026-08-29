@@ -931,6 +931,123 @@ again also works — that calls `sync-session`.
 ## 7. CURRENT STATUS
 
 Recent work:
+- **Cardio is nearly daily, and the hard day is genuinely hard (2026-08-29)** —
+  the SIIT protocol and the cardio schedule were rewritten to what the coach
+  actually prescribes. **`K02` is 5 min easy → 30 seconds ALL-OUT → 2 minutes of
+  COMPLETE rest, 3-4 rounds → 5 min easy.** It used to read "about 90% effort,
+  two minutes easy, three rounds"; the two edits that matter are *all-out* and
+  *complete rest*, because they buy each other — a maximal 30 seconds is only
+  possible if the recovery is passive, and jogging the two minutes turns the
+  session into a tempo effort that costs more and gives less. The stored dose
+  stays `19 * 60`: three rounds is 17.5 minutes and four is 20, so the clock is
+  the session and how many rounds fit inside it on the day is hers.
+  **`CARDIO_VOLUME` is a new shape.** `intervalsFromWeek?: number` (one hard day,
+  from a week) is now `intervals?: [n, n, n]` — how many of that week's sessions
+  are `K02`, read on the same three bands as `minutes`. Hard days still REPLACE
+  easy ones, so the number of times a week she laces up never changes mid-plan.
+
+  | Level | Weeks 1-2 | Weeks 3-8 |
+  |---|---|---|
+  | beginner | 7 x Zone 2 (`daily`) | 7 x Zone 2 |
+  | medium | 6 x Zone 2 + 1 x SIIT | 5 x Zone 2 + 2 x SIIT |
+  | advanced | 4 x Zone 2 + 2 x SIIT | 4 x Zone 2 + 2 x SIIT |
+  | movement snacks | 7 x 20-min walk (`daily`) | unchanged |
+
+  Beginner joins the snack level on `cadence: "daily"` — seven easy days, no hard
+  one, because a conversational pace is the thing a body repeats daily without
+  needing to recover from it and at level 1 the intensity comes from the strength
+  sessions. Its minutes still climb 15 → 25 (the snack walk stays flat), so
+  `verify-plan-dose` checks progression on flat-vs-climbing minutes rather than
+  on the `daily` flag, and asserts a `daily` level schedules no intervals — a
+  daily task carries one exercise, so the two cannot both be true.
+  Advanced runs **six** cardio days, not seven: two genuinely maximal days a week
+  need one day that asks for nothing.
+  **`CardioWeek.intervals` is a count now, not a boolean**, and `w{n}_intervals`
+  can carry `target: 2` — an app that hardcoded one tick under-counts a medium
+  user from week 3 and every advanced user from week 1. See §20 of
+  `docs/mobile-app-changes.md`.
+  The funnel's `reward_plan_shape` loader reads `cardioForWeek()` +
+  `intervalsMinutes()` instead of `sessions x minutes[0]`, because counting a
+  19-minute hard day as a 25-minute walk overstated her week; `bandForWeek()` is
+  exported for the verify script.
+  Verified: `npx tsc --noEmit` clean, `npm run lint` clean on every touched file,
+  `npm run build` passes, `npm run verify-plan-dose` passes with the table above,
+  and a fallback probe at all four levels writes the right tasks (medium wk3
+  `w3_cardio` weekly x5 + `w3_intervals` weekly x2; beginner `w1_cardio` daily x1).
+  **Not done, deliberately:** Lisa's chat spec (`lib/rag/personas/
+  exercisePersonaSpec.ts`, still "SIT: 20-30 sec all-out, 2x/week") was left
+  alone — this pass is the catalog only.
+- **Every exercise says why she is doing it (2026-08-29)** — each hydrated
+  exercise now carries a `why`: one or two plain sentences naming what the
+  movement *is* in her life ("Stairs are one leg at a time, so train them one
+  leg at a time"), not what it is good for. It rides `hydrateList()`, so it
+  lands on all five segments at once — `exercises`, every list in `days`,
+  `warmup`, `power`, `cooldown` — and is resolved at read time like `name` and
+  `video`, so **every plan already in the database has it with no migration and
+  no regeneration**.
+  **The copy is a `WHY` record in `catalog.ts`, not a model call**, on the same
+  terms as `DOSE`: it is a fact about the movement, identical for everyone doing
+  it, so 79 generated lines per plan would buy variance, latency and cost
+  against zero personalization — and the deterministic fallback plan, which runs
+  when OpenAI is down, would have none at all. The personalized line is the
+  task's own `why` and both are shown; see §22 of `docs/mobile-app-changes.md`
+  for which goes where.
+  `Exercise.why` is optional so a row added without copy degrades to name +
+  props the way a missing `clip` does, and `verify-plan-dose` is what makes that
+  a build failure rather than a blank space: it checks all 79 are present,
+  60-230 chars, and pass `STOCK_PHRASES` — now exported from `generate.ts` so
+  the catalog copy and the model's copy are held to one gate. Measured 79/79 at
+  92-184 chars.
+  Verified: `npx tsc --noEmit` clean, `npm run lint` clean on every touched
+  file, `npm run build` passes, `npm run verify-plan-dose` passes with a new
+  section, and a hydration probe confirmed `why` on all five segments at
+  beginner and snack level.
+- **Movement snacks: a 20-minute walk every day, and three one-move bursts a
+  day, different every day (2026-08-29)** — changes to the snack cadence only.
+  **A burst is one exercise, and there are three a day, not four.**
+  `MOVEMENT_VOLUME.movement_snacks` is `{ sessions: 3, minutes: 5 }` and the
+  two fields read differently there from every other level: `sessions` is
+  bursts a day AND the number of exercises in a day's list (one move per
+  burst), `minutes` is the whole day's bursts together, not one of them.
+  `MIN_/MAX_SNACK_EXERCISES` derive from it, so the day's list, the prompt, the
+  fitter and `target` cannot disagree. A day measures ~4:15-5:00 all in,
+  ~1½ minutes a burst. If a burst is ever meant to be five minutes on its own,
+  `minutes` becomes per-burst and the funnel's `weeklyMinutes` multiplies by
+  `sessions` again — one number and one line, both marked.
+  **The walk** — `CARDIO_VOLUME.movement_snacks` is `{ sessions: 7, minutes:
+  [20,20,20], daily: true }`; `cardioTasks()` writes it as `"Daily walk"`,
+  `cadence: "daily", target: 1` (a tick per day, scored the way relaxation and
+  habits already are — not `weekly x7`, which lets a week absorb a missed day).
+  Flat minutes are by design; `verify-plan-dose` skips the progression check
+  when `daily` and requires 7 sessions instead.
+  **The days** — `PlanTask.days`: seven lists per snack week, index 0 = the
+  day the week starts, `exercises` always `=== days[0]`, so an older app build
+  shows one burst all week and nothing breaks. `snackWeek()` writes them on
+  both paths (sanitize, fallback and the no-movement-week repair, via
+  `movementTaskFromPool()`), from her pool, not the model — 56 bursts a plan
+  is not something to ask gpt-4o-mini for. Every day is **exactly three, in
+  the order of her day** (`MIN_SNACK_EXERCISES === MAX_SNACK_EXERCISES ===
+  sessions`): the `I` move **first** (fresh, furthest from bed), a strength
+  move second, and a **calm move last** — `CALM_SNACK_IDS` in the catalog
+  (core holds, bird-dog, dead bug, bridge, balance stand, calf raise; eight
+  rows for seven days). The third burst is the evening one and nothing in it
+  may raise heart rate or cortisol: no jump, no stomping march, no mountain
+  climber. The prompt tells the model the order; `snackWeek()` enforces it
+  whatever the model wrote, and `verify-plan-dose` checks slot 0 is `I` and
+  slot 2 is calm on all 56 days. Two rules found by measuring rather than
+  reading: **at most one per-side move per burst** (two per-side moves beside a
+  hop are 5:15 at the floor dose — the fitter cannot rescue that pairing, so
+  composition forbids it), and **day 0 is repaired to the same shape** (the
+  fallback's rotation walks straight through the contiguous `I` block and was
+  handing week 4 three bone moves and no strength). No strength move repeats
+  within a week (18 in the pool, 14 needed), bone moves cycle so consecutive
+  days differ, the queue rotates by week. `GET /api/plan` sends `days`
+  hydrated like `exercises` (`hydrateDays()`); see §21 of
+  `docs/mobile-app-changes.md` — the app must pick `days[daysSince(weekStart)
+  % 7]`. `deterministicPlan()` is exported so the verify script can measure
+  the fallback without a model call. Measured: 56 of 56 bursts inside 5:00 on
+  the fallback path, 3 moves each, one bone move each, 7 distinct bursts every
+  week.
 - **Cardio became a segment, joint pain stopped being a filter, and the
   generator lost its dead weight (2026-08-29)** — an audit of the whole LLM
   plan flow, measured across four live generations and four fallback plans
@@ -947,8 +1064,10 @@ Recent work:
   same three bands as the sets) and, from `intervalsFromWeek`, `w5_intervals`
   (`K02`, once a week, **replacing** an easy session so the count she laces up
   for never changes). beginner 2x15→25, medium 2x20→30 with intervals from
-  week 5, advanced 3x25→35 with intervals from week 3, snacks 2x10→15 (two
-  short walks — a few minutes is what she asked for). `K` is out of
+  week 5, advanced 3x25→35 with intervals from week 3, snacks a flat
+  20-minute walk **every day** (`daily: true` on `CARDIO_VOLUME`, written as
+  `cadence: "daily"`, title "Daily walk" — changed from 2x10→15 later the same
+  day). `K` is out of
   `allowedExercises()` the way `I` is, the prompt tells the model the cardio
   exists and forbids it from writing any, and the completeness gate now asks
   for a *strength* session per week (`isCardioTask()`), since cardio is

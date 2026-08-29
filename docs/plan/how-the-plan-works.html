@@ -235,10 +235,10 @@
   <table>
     <thead><tr><th>She chose</th><th>Strength sessions</th><th>Easy cardio</th><th>Hard cardio</th></tr></thead>
     <tbody>
-      <tr><td>A few minutes, spread out</td><td>4 × 5 min a day</td><td>2 × 10–15 min a week</td><td>—</td></tr>
-      <tr><td>20–25 min, 2 days a week</td><td>2 × 20 min (25 with the bone block)</td><td>2 × 15–25 min</td><td>—</td></tr>
-      <tr><td>30–40 min, 3 days a week</td><td>3 × 30 min (40 with the bone block)</td><td>2 × 20–30 min</td><td>one of them, from week 5</td></tr>
-      <tr><td>35–45 min, 4 days a week</td><td>4 × 35 min (45 with the bone block)</td><td>3 × 25–35 min</td><td>one of them, from week 3</td></tr>
+      <tr><td>A few minutes, spread out</td><td>3 × 1 move a day</td><td>a 20 min walk every day</td><td>—</td></tr>
+      <tr><td>20–25 min, 2 days a week</td><td>2 × 20 min (25 with the bone block)</td><td>15–25 min every day</td><td>—</td></tr>
+      <tr><td>30–40 min, 3 days a week</td><td>3 × 30 min (40 with the bone block)</td><td>6 × 20–30 min, then 5</td><td>1 a week, 2 from week 3</td></tr>
+      <tr><td>35–45 min, 4 days a week</td><td>4 × 35 min (45 with the bone block)</td><td>4 × 25–35 min</td><td>2 a week, from week 1</td></tr>
     </tbody>
   </table>
   </div>
@@ -247,27 +247,27 @@
   <div class="key"><span class="c-strength">Strength session</span><span class="c-power">with bone-loading block</span><span class="c-cardio">Cardio</span></div>
   <div class="weekwrap">
   <div class="week" aria-label="An example week for the 30 to 40 minute option">
-    <div class="day"><span class="d">MON</span><span class="chip s">Strength 30 min<span class="p">+ bone block</span></span></div>
-    <div class="day"><span class="d">TUE</span><span class="chip c">Zone 2 · 30 min</span></div>
-    <div class="day"><span class="d">WED</span><span class="chip s">Strength 30 min<span class="p">+ bone block</span></span></div>
+    <div class="day"><span class="d">MON</span><span class="chip s">Strength 30 min<span class="p">+ bone block</span></span><span class="chip c">Zone 2 · 30 min</span></div>
+    <div class="day"><span class="d">TUE</span><span class="chip c">Intervals · 19 min</span></div>
+    <div class="day"><span class="d">WED</span><span class="chip s">Strength 30 min<span class="p">+ bone block</span></span><span class="chip c">Zone 2 · 30 min</span></div>
     <div class="day"><span class="d">THU</span><span class="chip c">Intervals · 19 min</span></div>
-    <div class="day"><span class="d">FRI</span><span class="chip s">Strength 30 min</span></div>
-    <div class="day"><span class="d">SAT</span></div>
-    <div class="day"><span class="d">SUN</span></div>
+    <div class="day"><span class="d">FRI</span><span class="chip s">Strength 30 min</span><span class="chip c">Zone 2 · 30 min</span></div>
+    <div class="day"><span class="d">SAT</span><span class="chip c">Zone 2 · 30 min</span></div>
+    <div class="day"><span class="d">SUN</span><span class="chip c">Zone 2 · 30 min</span></div>
   </div>
   </div>
-  <p class="caption">Three strength sessions, the bone-loading block on the first two she completes, one easy cardio session and one interval session. Five active days, two off. Every strength session that week is the same workout — the variety is between weeks, not within one.</p>
+  <p class="caption">Three strength sessions, the bone-loading block on the first two she completes, five easy cardio sessions and two interval sessions — seven cardio days, five of them easy. Every strength session that week is the same workout — the variety is between weeks, not within one. She decides which days pair up; the plan only says how many of each.</p>
 
   <p>Three things are true of every week, at every level:</p>
   <ul>
     <li><strong>The strength session count never moves.</strong> If she is struggling, the next plan makes the session smaller — fewer moves, shorter sets — never fewer sessions. Two sessions she does beat five she plans.</li>
-    <li><strong>The cardio session count never moves either.</strong> When the hard interval day arrives, it replaces an easy session; it does not add one. How many times a week she laces up is fixed on day one.</li>
+    <li><strong>The cardio session count never moves either.</strong> When a hard interval day arrives, it replaces an easy session; it does not add one. How many times a week she laces up is fixed on day one.</li>
     <li><strong>Bone loading is in the session, not on her to-do list.</strong> It is a segment of the workout, on two of her sessions a week, added by code — she cannot forget it and the model cannot skip it.</li>
   </ul>
   <details>
     <summary>Under the hood</summary>
     <div class="inner">
-      <p>Two tables in <code>catalog.ts</code> are the promise: <code>MOVEMENT_VOLUME</code> (strength: sessions, ordinary minutes, and the longer power-day minutes) and <code>CARDIO_VOLUME</code> (sessions, minutes for each of the three progression bands, and the week intervals start). The quiz labels in <code>FITNESS_OPTIONS</code> and the "your week, sized to you" loader read these same tables, so the funnel cannot promise a week the generator does not build.</p>
+      <p>Two tables in <code>catalog.ts</code> are the promise: <code>MOVEMENT_VOLUME</code> (strength: sessions, ordinary minutes, and the longer power-day minutes) and <code>CARDIO_VOLUME</code> (cardio days a week, minutes for each of the three progression bands, and how many of those days are intervals in each band). The quiz labels in <code>FITNESS_OPTIONS</code> and the "your week, sized to you" loader read these same tables, so the funnel cannot promise a week the generator does not build.</p>
       <p>A week in the stored plan holds one strength task (<code>w3_movement</code>, cadence weekly, target = sessions), one Zone 2 task (<code>w3_cardio</code>), an intervals task when scheduled (<code>w5_intervals</code>), one relaxation task and one habit. <code>cardioTasks()</code> writes the cardio on both the model path and the fallback. The model is told the cardio exists and is forbidden from writing walking or intervals into anything. The rule "one strength task per week" exists because the model's cadence and target are overwritten from the volume table — a second one would double her sold week.</p>
     </div>
   </details>
@@ -338,22 +338,23 @@
 
   <div class="tablewrap">
   <table>
-    <thead><tr><th>Option</th><th class="num">Sessions / week</th><th class="num">Weeks 1–2</th><th class="num">Weeks 3–5</th><th class="num">Weeks 6–8</th><th>Interval day</th></tr></thead>
+    <thead><tr><th>Option</th><th class="num">Cardio days / week</th><th class="num">Weeks 1–2</th><th class="num">Weeks 3–5</th><th class="num">Weeks 6–8</th><th>Interval days</th></tr></thead>
     <tbody>
-      <tr><td>A few minutes, spread out</td><td class="num">2</td><td class="num">10</td><td class="num">12</td><td class="num">15</td><td>—</td></tr>
-      <tr><td>20–25 min, 2 days</td><td class="num">2</td><td class="num">15</td><td class="num">20</td><td class="num">25</td><td>—</td></tr>
-      <tr><td>30–40 min, 3 days</td><td class="num">2</td><td class="num">20</td><td class="num">25</td><td class="num">30</td><td>from week 5</td></tr>
-      <tr><td>35–45 min, 4 days</td><td class="num">3</td><td class="num">25</td><td class="num">30</td><td class="num">35</td><td>from week 3</td></tr>
+      <tr><td>A few minutes, spread out</td><td class="num">7</td><td class="num">20</td><td class="num">20</td><td class="num">20</td><td>—</td></tr>
+      <tr><td>20–25 min, 2 days</td><td class="num">7</td><td class="num">15</td><td class="num">20</td><td class="num">25</td><td>—</td></tr>
+      <tr><td>30–40 min, 3 days</td><td class="num">7</td><td class="num">20</td><td class="num">25</td><td class="num">30</td><td>1 a week, 2 from week 3</td></tr>
+      <tr><td>35–45 min, 4 days</td><td class="num">6</td><td class="num">25</td><td class="num">30</td><td class="num">35</td><td>2 a week, from week 1</td></tr>
     </tbody>
   </table>
   </div>
 
-  <p><strong>Intervals</strong> are the one hard day, for the two higher options only. It is a fixed nineteen-minute protocol: five to ten minutes easy, then three rounds of thirty seconds at about ninety percent effort with two minutes easy between them, then five minutes easy. On a bike, an elliptical, a rower or a brisk incline walk — the low-impact ways are named first on purpose. When it starts, it takes the place of one easy session, so her week still has the same number of cardio days it had in week 1.</p>
+  <p><strong>Intervals</strong> are the hard days, for the two higher options only. It is a fixed nineteen-minute protocol: five minutes easy, then three to four rounds of <strong>thirty seconds all-out</strong> with <strong>two minutes of complete rest</strong> between them, then five minutes easy to come down. On a bike, an elliptical, a rower or a brisk incline walk — the low-impact ways are named first on purpose. The effort has to be everything she has, and it can only be that if the two minutes are genuinely rest: jogging them turns the session into a tempo effort that costs her more and gives her less. A hard day always takes the place of an easy one, never sits on top of it, so her week has the same number of cardio days in week 8 as in week 1.</p>
+  <p>The easy option is easy <em>every day</em> — seven walks a week for the two lower options, because a conversational pace is something a body can repeat daily without needing to recover from it. The 30–40 minute option starts on one hard day and moves to two once the first fortnight is behind her; the 35–45 minute option carries two from the start and takes its rest day out of the easy sessions instead, because two genuinely maximal days a week need one day that asks for nothing.</p>
   <p>Cardio sessions have no warm-up, no stretch and no bone block attached: a walk warms up by being a walk for the first five minutes. They have no video either — "walk at a pace where you could talk but not sing" is a complete instruction, and a fifteen-second loop of a woman walking adds nothing to it.</p>
   <details>
     <summary>Under the hood</summary>
     <div class="inner">
-      <p><span class="id">K01</span> Zone 2 and <span class="id">K02</span> Sprint intervals are catalog rows with no clip and a <code>duration</code> dose. <code>cardioForWeek(level, week)</code> returns the sessions and minutes for a week; <code>cardioTasks()</code> turns that into one or two movement-pillar tasks holding exactly one exercise with <code>minutes</code>. The task hydrates to a single countdown (<code>dose.unit: "duration"</code>, no sets, no rest), which the app already renders. Ticks count against <code>target</code> like any weekly task and feed the movement ring: a week she walked and did not lift scores as half a movement week, which is what it was.</p>
+      <p><span class="id">K01</span> Zone 2 and <span class="id">K02</span> Sprint intervals are catalog rows with no clip and a <code>duration</code> dose. <code>cardioForWeek(level, week)</code> returns the easy sessions, their minutes, and how many of that week&rsquo;s sessions are the interval protocol instead (0, 1 or 2, read on the same three bands as the minutes); <code>cardioTasks()</code> turns that into one or two movement-pillar tasks holding exactly one exercise with <code>minutes</code>. The task hydrates to a single countdown (<code>dose.unit: "duration"</code>, no sets, no rest), which the app already renders. Ticks count against <code>target</code> like any weekly task and feed the movement ring: a week she walked and did not lift scores as half a movement week, which is what it was.</p>
       <p>Both <span class="id">K</span> ids are excluded from <code>allowedExercises()</code>, so under the strict schema the model cannot place them inside a strength session even if asked to. That is what let five pieces of policing code be deleted (<code>capCardio</code>, <code>cardioMinutes</code>, the minutes clamp, the trimmer's cardio step and its floor constant).</p>
     </div>
   </details>

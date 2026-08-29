@@ -50,15 +50,20 @@ the session: `CARDIO_VOLUME` in `lib/plan/catalog.ts` is the schedule,
 `generate.ts` writes it into every week on both the model path and the fallback.
 `allowedExercises()` keeps both `K` ids out of the model's pool.
 
-| Level | Zone 2 sessions | Minutes, weeks 1-2 / 3-5 / 6-8 | Intervals (`K02`) |
+| Level | Cardio days a week | Zone 2 minutes, weeks 1-2 / 3-5 / 6-8 | Intervals (`K02`) |
 | --- | --- | --- | --- |
-| beginner | 2 | 15 / 20 / 25 | never |
-| medium | 2 | 20 / 25 / 30 | from week 5, replacing one Zone 2 |
-| advanced | 3 | 25 / 30 / 35 | from week 3, replacing one Zone 2 |
-| movement_snacks | 2 | 10 / 12 / 15 | never |
+| beginner | 7 (`daily`) | 15 / 20 / 25 | never |
+| medium | 7 | 20 / 25 / 30 | 1 a week, then 2 from week 3 |
+| advanced | 6 | 25 / 30 / 35 | 2 a week, from week 1 |
+| movement_snacks | 7 (`daily`) | 20 / 20 / 20 | never |
 
-The interval day **replaces** an easy session rather than adding one, so the
-number of times a week she laces up is fixed for the whole plan.
+The interval days **replace** easy sessions rather than adding to them, so the
+number of times a week she laces up is fixed for the whole plan. `intervals` on
+`CARDIO_VOLUME` is read on the same three bands as `minutes`, which is how
+medium steps from one hard day to two once the first fortnight is behind her.
+Advanced takes its rest day out of the easy sessions instead — six days, not
+seven, because two genuinely maximal days a week need one day that asks for
+nothing. Beginners and snack users never get `K02`.
 
 It cost no shoot: `clip` is optional and `exerciseMedia()` returns undefined
 without one, so the app draws name and props and no player — which for "walk
@@ -67,8 +72,11 @@ a degraded one. **Do not shoot these to make the library look uniform.**
 
 `K01` is a dose, not a movement: minutes at a conversational pace on whatever
 she has, which is also why there is no separate indoor row. `K02` is the only
-protocol row — 30s at ~90% effort, 2 min easy, 3 rounds, inside a 5-10 min
-warm-up and a 5 min cool-down on the same activity, about nineteen minutes.
+protocol row — 5 min easy, then **30 seconds all-out** and **two minutes of
+complete rest**, 3-4 rounds, then 5 min easy to come down, on the same
+activity. About nineteen minutes. The effort has to be maximal, and it can only
+be maximal if the rest is passive and long enough to buy it: jogging the two
+minutes turns it into a tempo session that costs more and gives less.
 
 Core & Posterior Stability is one series and two prefixes: `C` is the trunk work
 and `P` the hinge — two movement patterns the session top-up can tell apart.
@@ -117,10 +125,10 @@ the same day, taking the `impact` grade on every row with it.
 
 | Level | strength pool | power pool | cardio |
 | --- | --- | --- | --- |
-| beginner | 15 | 2 | 2 × Zone 2 |
-| medium | 40 | 6 | 2 × Zone 2, intervals from wk 5 |
-| advanced | 42 | 9 | 3 × Zone 2, intervals from wk 3 |
-| movement_snacks | 23 | 0 | 2 × short Zone 2 |
+| beginner | 15 | 2 | 7 × Zone 2 (daily) |
+| medium | 40 | 6 | 6 × Zone 2 + 1 SIIT, then 5 + 2 |
+| advanced | 42 | 9 | 4 × Zone 2 + 2 SIIT |
+| movement_snacks | 23 | 0 | 7 × 20-min walk (daily) |
 
 Three pools. The `I` family is **reserved for the power block** and the `K`
 family for the cardio tasks — neither is in `allowedExercises()`, so the model
