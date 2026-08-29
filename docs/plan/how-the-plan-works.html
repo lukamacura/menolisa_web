@@ -1,0 +1,458 @@
+<title>How Her Plan Is Built</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ground: #FBF9FA;
+    --panel: #F3EEF1;
+    --ink: #241F28;
+    --muted: #6B6470;
+    --rule: #E3DCE0;
+    --berry: #A8336E;      /* strength — the brand colour, and the work */
+    --teal: #1F7A8C;       /* cardio */
+    --amber: #B5731D;      /* bone loading — the power block */
+    --lilac: #7C74A6;      /* warm-up and cool-down */
+    --berry-soft: #F6E4EC;
+    --teal-soft: #E1F0F3;
+    --amber-soft: #F8EBD7;
+    --lilac-soft: #ECEAF4;
+    --display: "Sora", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    --body: "Source Serif 4", "Iowan Old Style", Georgia, serif;
+    --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #17141A;
+      --panel: #211C25;
+      --ink: #F1ECF0;
+      --muted: #A9A0AE;
+      --rule: #322B37;
+      --berry: #E07AA9;
+      --teal: #63B9CB;
+      --amber: #E0A35A;
+      --lilac: #B1A9DA;
+      --berry-soft: #3A2431;
+      --teal-soft: #1B3138;
+      --amber-soft: #3A2C1B;
+      --lilac-soft: #2A2739;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #17141A;
+    --panel: #211C25;
+    --ink: #F1ECF0;
+    --muted: #A9A0AE;
+    --rule: #322B37;
+    --berry: #E07AA9;
+    --teal: #63B9CB;
+    --amber: #E0A35A;
+    --lilac: #B1A9DA;
+    --berry-soft: #3A2431;
+    --teal-soft: #1B3138;
+    --amber-soft: #3A2C1B;
+    --lilac-soft: #2A2739;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 46rem; margin: 0 auto; padding: 3rem 1.25rem 6rem; }
+
+  h1, h2, h3 { font-family: var(--display); text-wrap: balance; line-height: 1.15; margin: 0; }
+  h1 { font-size: 2.35rem; font-weight: 700; letter-spacing: -0.02em; }
+  h2 { font-size: 1.5rem; font-weight: 600; margin-top: 3.5rem; padding-top: 1.25rem; border-top: 1px solid var(--rule); }
+  h3 { font-size: 1.1rem; font-weight: 600; margin-top: 2rem; }
+  p { margin: 0.9rem 0; max-width: 66ch; }
+  ul, ol { padding-left: 1.3rem; max-width: 66ch; }
+  li { margin: 0.35rem 0; }
+  li::marker { color: var(--muted); }
+  strong { font-weight: 600; }
+  a { color: var(--berry); }
+  a:focus-visible, summary:focus-visible { outline: 2px solid var(--berry); outline-offset: 3px; border-radius: 2px; }
+
+  .eyebrow {
+    font-family: var(--display); font-size: 0.72rem; font-weight: 600;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+  }
+  .lede { font-size: 1.2rem; line-height: 1.5; color: var(--ink); margin-top: 1rem; }
+  .meta { color: var(--muted); font-size: 0.95rem; }
+
+  .audiences { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin: 2rem 0 0; }
+  .audience { background: var(--panel); border-radius: 6px; padding: 0.85rem 1rem; font-size: 0.95rem; }
+  .audience b { font-family: var(--display); font-weight: 600; display: block; margin-bottom: 0.2rem; font-size: 0.9rem; }
+  @media (max-width: 600px) { .audiences { grid-template-columns: 1fr; } }
+
+  nav.toc { margin: 2.5rem 0 0; padding: 1rem 1.25rem; border: 1px solid var(--rule); border-radius: 6px; }
+  nav.toc ol { margin: 0.35rem 0 0; columns: 2; column-gap: 2rem; padding-left: 1.2rem; }
+  nav.toc li { break-inside: avoid; font-size: 0.95rem; margin: 0.2rem 0; }
+  nav.toc a { color: var(--ink); text-decoration: none; }
+  nav.toc a:hover { color: var(--berry); text-decoration: underline; }
+  @media (max-width: 600px) { nav.toc ol { columns: 1; } }
+
+  code, .id {
+    font-family: var(--mono); font-size: 0.86em; background: var(--panel);
+    padding: 0.1em 0.35em; border-radius: 3px;
+  }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 0.95rem; margin: 1rem 0; }
+  .tablewrap { overflow-x: auto; }
+  th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-family: var(--display); font-weight: 600; font-size: 0.8rem; letter-spacing: 0.04em; color: var(--muted); }
+  td.num, th.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  /* ── Pillar colour key ── */
+  .key { display: flex; flex-wrap: wrap; gap: 0.5rem 1.2rem; margin: 1rem 0; font-family: var(--display); font-size: 0.82rem; }
+  .key span::before { content: ""; display: inline-block; width: 0.7em; height: 0.7em; border-radius: 2px; margin-right: 0.45em; vertical-align: -0.05em; background: currentColor; }
+  .c-strength { color: var(--berry); } .c-cardio { color: var(--teal); } .c-power { color: var(--amber); } .c-bookend { color: var(--lilac); }
+
+  /* ── Week strip ── */
+  .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.4rem; margin: 1rem 0 0.4rem; }
+  .day { background: var(--panel); border-radius: 5px; padding: 0.5rem 0.4rem 0.6rem; min-height: 5.6rem; display: flex; flex-direction: column; gap: 0.3rem; }
+  .day .d { font-family: var(--display); font-size: 0.7rem; color: var(--muted); letter-spacing: 0.06em; }
+  .chip { font-family: var(--display); font-size: 0.68rem; font-weight: 600; line-height: 1.2; padding: 0.3rem 0.35rem; border-radius: 3px; border-left: 3px solid; }
+  .chip.s { background: var(--berry-soft); border-color: var(--berry); }
+  .chip.c { background: var(--teal-soft); border-color: var(--teal); }
+  .chip.s .p { display: block; font-weight: 400; color: var(--amber); }
+  .caption { font-size: 0.88rem; color: var(--muted); margin: 0.3rem 0 1.2rem; max-width: 66ch; }
+  @media (max-width: 600px) { .week { grid-template-columns: repeat(7, minmax(3.2rem, 1fr)); } .weekwrap { overflow-x: auto; } }
+
+  /* ── Session bar ── */
+  .session { margin: 1rem 0 0.3rem; }
+  .session .label { font-family: var(--display); font-size: 0.8rem; font-weight: 600; margin: 0.9rem 0 0.35rem; display: flex; justify-content: space-between; }
+  .session .label .num { font-weight: 400; color: var(--muted); }
+  .bar { display: flex; height: 2.2rem; border-radius: 4px; overflow: hidden; gap: 2px; }
+  .seg { display: flex; align-items: center; justify-content: center; font-family: var(--display); font-size: 0.68rem; font-weight: 600; color: var(--ground); white-space: nowrap; overflow: hidden; }
+  .seg.w, .seg.d { background: var(--lilac); }
+  .seg.k { background: var(--berry); }
+  .seg.p { background: var(--amber); }
+  .seg.z { background: var(--teal); }
+
+  /* ── Ladder ── */
+  .ladder { display: grid; grid-template-columns: 6rem 1fr; gap: 0.5rem 1rem; align-items: center; margin: 1rem 0; font-size: 0.92rem; }
+  .ladder .band { font-family: var(--display); font-weight: 600; font-size: 0.8rem; }
+  .ladder .rung { display: flex; gap: 3px; align-items: flex-end; height: 2.4rem; }
+  .ladder .set { background: var(--berry); border-radius: 2px; width: 2.2rem; display: flex; align-items: flex-end; justify-content: center; color: var(--ground); font-family: var(--mono); font-size: 0.7rem; padding-bottom: 0.15rem; }
+  .ladder .note { color: var(--muted); font-size: 0.85rem; align-self: center; margin-left: 0.5rem; }
+
+  details { margin: 1.25rem 0; border: 1px solid var(--rule); border-radius: 6px; background: var(--panel); }
+  summary { cursor: pointer; padding: 0.7rem 1rem; font-family: var(--display); font-size: 0.85rem; font-weight: 600; list-style: none; display: flex; align-items: center; gap: 0.6rem; }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: "▸"; color: var(--muted); font-size: 0.8em; transition: transform 0.15s; }
+  details[open] summary::before { transform: rotate(90deg); }
+  details .inner { padding: 0 1rem 1rem; font-size: 0.95rem; }
+  details .inner p, details .inner li { max-width: 66ch; }
+
+  .callout { border-left: 3px solid var(--berry); padding: 0.2rem 0 0.2rem 1rem; margin: 1.4rem 0; max-width: 66ch; }
+  .callout.teal { border-color: var(--teal); }
+  .callout.amber { border-color: var(--amber); }
+
+  .changes { display: grid; gap: 0.75rem; margin: 1rem 0; }
+  .change { display: grid; grid-template-columns: 6.5rem 1fr; gap: 1rem; padding: 0.8rem 1rem; background: var(--panel); border-radius: 6px; font-size: 0.95rem; }
+  .change .tag { font-family: var(--display); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+  .change .tag.added { color: var(--teal); } .change .tag.removed { color: var(--berry); } .change .tag.cleaned { color: var(--muted); }
+  .change p { margin: 0; max-width: none; }
+  @media (max-width: 600px) { .change { grid-template-columns: 1fr; gap: 0.3rem; } }
+
+  dl { max-width: 66ch; }
+  dt { font-family: var(--display); font-weight: 600; font-size: 0.95rem; margin-top: 0.9rem; }
+  dd { margin: 0.2rem 0 0; }
+
+  @media (prefers-reduced-motion: reduce) { summary::before { transition: none; } }
+</style>
+
+<main class="page">
+  <p class="eyebrow">MenoLisa · the 8-week plan</p>
+  <h1>How her plan is built</h1>
+  <p class="lede">A woman answers thirteen questions. A minute later she has eight weeks of movement, food, and calm written for her. This is what happens in that minute, what she is actually asked to do each week, and why the movement part is shaped the way it is.</p>
+  <p class="meta">Written for three readers at once. Everything is in plain language; the boxes marked <em>under the hood</em> are for the engineering team and name where each rule lives, without code.</p>
+
+  <div class="audiences">
+    <div class="audience"><b>If you use the app</b>Read the first five sections. They tell you what your week holds and why it changes.</div>
+    <div class="audience"><b>If you run the product</b>The whole page. The promises the quiz makes are the numbers the code enforces.</div>
+    <div class="audience"><b>If you build it</b>Open every <em>under the hood</em> box. Each one names the file and the rule.</div>
+  </div>
+
+  <nav class="toc" aria-label="Contents">
+    <span class="eyebrow">Contents</span>
+    <ol>
+      <li><a href="#what">What she gets</a></li>
+      <li><a href="#minute">The minute after the quiz</a></li>
+      <li><a href="#week">Her movement week</a></li>
+      <li><a href="#session">Inside one strength session</a></li>
+      <li><a href="#cardio">Cardio</a></li>
+      <li><a href="#progress">How it gets harder</a></li>
+      <li><a href="#rails">The guard rails</a></li>
+      <li><a href="#food">Food, calm and habits</a></li>
+      <li><a href="#after">After eight weeks</a></li>
+      <li><a href="#today">What changed today</a></li>
+      <li><a href="#glossary">Words used here</a></li>
+    </ol>
+  </nav>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h2 id="what">1. What she gets</h2>
+  <p>One plan, eight weeks long, made of four kinds of thing. Every week has all four.</p>
+  <ul>
+    <li><strong>Movement.</strong> A short strength session she repeats two to four times a week, with a warm-up in front, a minute or two of bone-loading hops at the end, and a stretch to finish. Beside it, two or three easy cardio sessions — a walk, a bike, a swim, whatever she has.</li>
+    <li><strong>Food.</strong> The same ten daily habits for everyone (protein at each meal, a ten-minute walk after eating, a twelve-hour overnight fast, and so on). Each week nominates one or two to concentrate on, and every one carries a reason written for her.</li>
+    <li><strong>Calm.</strong> One breathing practice a day, chosen for her worst symptom — a hot-flash breath, a sleep wind-down, a reset for a racing heart.</li>
+    <li><strong>One small habit.</strong> A single change to a day she already has: "cool the room before bed", "phone out of the bedroom". Plus a short list of temptations she gets credit for resisting.</li>
+  </ul>
+  <p>The plan is not a document she reads. It is a set of things she ticks, one day at a time, and the app scores the ticks. When the eight weeks end, the next eight are written against what she actually did.</p>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h2 id="minute">2. The minute after the quiz</h2>
+  <p>The plan is built by an AI model, but the model is not allowed to invent anything she will do. It chooses from a library we wrote and filmed, and it writes the words around those choices. The split is deliberate: the medicine is ours, the personalisation is the model's.</p>
+  <ol>
+    <li><strong>Her answers set the limits.</strong> How much time she has decides how many strength sessions a week and how long each is. That same answer decides which exercises she can be given at all — a beginner never sees a loaded Bulgarian split squat.</li>
+    <li><strong>The model picks and writes.</strong> From her allowed list it assembles eight weekly sessions, sizes the sets, chooses a breathing practice and a habit for each week, names each week, and writes a one-line reason for every task in her words. A second, parallel request rewrites the ten food reasons for her symptoms.</li>
+    <li><strong>Code checks everything and adds what the model never sees.</strong> Every session is measured against the minutes she was promised and trimmed or filled to fit. Then two segments are added that the model cannot touch: the bone-loading block at the end of each session, and the cardio sessions beside it.</li>
+    <li><strong>It is saved once.</strong> Her plan is written to the database as one object and never rewritten underneath her. The app shows one week at a time; future weeks show their title only.</li>
+  </ol>
+  <p>If the model is unavailable or returns something unusable, she still gets a plan: a written one, built from the same library with the same sessions, cardio and bone-loading — just with our week titles and reasons instead of hers. Nobody is ever left waiting on an outage.</p>
+  <details>
+    <summary>Under the hood</summary>
+    <div class="inner">
+      <p>Everything lives in <code>lib/plan/</code>. <code>catalog.ts</code> is the library — 79 rows: strength (<span class="id">L</span>, <span class="id">U</span>, <span class="id">C</span>, <span class="id">P</span>), bone loading (<span class="id">I</span>), cardio (<span class="id">K</span>), warm-ups (<span class="id">W</span>) and stretches (<span class="id">S</span>) — plus the ten nutrition rows, the nine relaxation practices, the volume tables and the dose maths. <code>generate.ts</code> builds the prompt, calls the model with a strict response schema whose exercise ids are an enum of <em>her</em> pool, repairs the answer in <code>sanitize()</code>, and falls back to <code>fallbackPlan()</code>. The two calls share a run id in <code>llm_usage</code> so the admin panel can price a plan (about $0.002).</p>
+      <p>Generation runs 15–17 s inside <code>after()</code> from the Stripe webhook, the checkout fallback, or <code>GET /api/plan</code> when no row exists; all three declare <code>maxDuration = 60</code>. The stored shape is documented in <code>docs/plan/generated-plan.md</code>; the app contract in <code>docs/mobile-app-changes.md</code>.</p>
+    </div>
+  </details>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h2 id="week">3. Her movement week</h2>
+  <p>The quiz asks one question about exercise: <em>how much time do you have?</em> Not how fit she is — that answer is a mood — but how many minutes she can keep giving for eight weeks. The four answers are four different weeks, and the label on each answer is a promise the plan keeps to the minute.</p>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>She chose</th><th>Strength sessions</th><th>Easy cardio</th><th>Hard cardio</th></tr></thead>
+    <tbody>
+      <tr><td>A few minutes, spread out</td><td>4 × 5 min a day</td><td>2 × 10–15 min a week</td><td>—</td></tr>
+      <tr><td>20–25 min, 2 days a week</td><td>2 × 20 min (25 with the bone block)</td><td>2 × 15–25 min</td><td>—</td></tr>
+      <tr><td>30–40 min, 3 days a week</td><td>3 × 30 min (40 with the bone block)</td><td>2 × 20–30 min</td><td>one of them, from week 5</td></tr>
+      <tr><td>35–45 min, 4 days a week</td><td>4 × 35 min (45 with the bone block)</td><td>3 × 25–35 min</td><td>one of them, from week 3</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>Here is a middle-option week in its sixth week. She decides which days; the plan only says how many.</p>
+  <div class="key"><span class="c-strength">Strength session</span><span class="c-power">with bone-loading block</span><span class="c-cardio">Cardio</span></div>
+  <div class="weekwrap">
+  <div class="week" aria-label="An example week for the 30 to 40 minute option">
+    <div class="day"><span class="d">MON</span><span class="chip s">Strength 30 min<span class="p">+ bone block</span></span></div>
+    <div class="day"><span class="d">TUE</span><span class="chip c">Zone 2 · 30 min</span></div>
+    <div class="day"><span class="d">WED</span><span class="chip s">Strength 30 min<span class="p">+ bone block</span></span></div>
+    <div class="day"><span class="d">THU</span><span class="chip c">Intervals · 19 min</span></div>
+    <div class="day"><span class="d">FRI</span><span class="chip s">Strength 30 min</span></div>
+    <div class="day"><span class="d">SAT</span></div>
+    <div class="day"><span class="d">SUN</span></div>
+  </div>
+  </div>
+  <p class="caption">Three strength sessions, the bone-loading block on the first two she completes, one easy cardio session and one interval session. Five active days, two off. Every strength session that week is the same workout — the variety is between weeks, not within one.</p>
+
+  <p>Three things are true of every week, at every level:</p>
+  <ul>
+    <li><strong>The strength session count never moves.</strong> If she is struggling, the next plan makes the session smaller — fewer moves, shorter sets — never fewer sessions. Two sessions she does beat five she plans.</li>
+    <li><strong>The cardio session count never moves either.</strong> When the hard interval day arrives, it replaces an easy session; it does not add one. How many times a week she laces up is fixed on day one.</li>
+    <li><strong>Bone loading is in the session, not on her to-do list.</strong> It is a segment of the workout, on two of her sessions a week, added by code — she cannot forget it and the model cannot skip it.</li>
+  </ul>
+  <details>
+    <summary>Under the hood</summary>
+    <div class="inner">
+      <p>Two tables in <code>catalog.ts</code> are the promise: <code>MOVEMENT_VOLUME</code> (strength: sessions, ordinary minutes, and the longer power-day minutes) and <code>CARDIO_VOLUME</code> (sessions, minutes for each of the three progression bands, and the week intervals start). The quiz labels in <code>FITNESS_OPTIONS</code> and the "your week, sized to you" loader read these same tables, so the funnel cannot promise a week the generator does not build.</p>
+      <p>A week in the stored plan holds one strength task (<code>w3_movement</code>, cadence weekly, target = sessions), one Zone 2 task (<code>w3_cardio</code>), an intervals task when scheduled (<code>w5_intervals</code>), one relaxation task and one habit. <code>cardioTasks()</code> writes the cardio on both the model path and the fallback. The model is told the cardio exists and is forbidden from writing walking or intervals into anything. The rule "one strength task per week" exists because the model's cadence and target are overwritten from the volume table — a second one would double her sold week.</p>
+    </div>
+  </details>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h2 id="session">4. Inside one strength session</h2>
+  <p>A session has four parts, always in this order. The first and last are the same in week 8 as in week 1; the middle two grow.</p>
+
+  <div class="session" aria-label="Session structure by option">
+    <div class="key"><span class="c-bookend">Warm-up / cool-down</span><span class="c-strength">The work</span><span class="c-power">Bone-loading block</span></div>
+
+    <div class="label"><span>20–25 min option</span><span class="num">≈ 2:00 + 16:20 + 4:45 + 1:40</span></div>
+    <div class="bar">
+      <div class="seg w" style="flex: 2">warm-up</div>
+      <div class="seg k" style="flex: 16.3">4–6 exercises</div>
+      <div class="seg p" style="flex: 4.75">hops</div>
+      <div class="seg d" style="flex: 1.7">stretch</div>
+    </div>
+
+    <div class="label"><span>30–40 min option</span><span class="num">≈ 2:00 + 26:20 + 10:00 + 1:40</span></div>
+    <div class="bar">
+      <div class="seg w" style="flex: 2">warm-up</div>
+      <div class="seg k" style="flex: 26.3">4–6 exercises</div>
+      <div class="seg p" style="flex: 10">bone-loading block</div>
+      <div class="seg d" style="flex: 1.7">stretch</div>
+    </div>
+
+    <div class="label"><span>35–45 min option</span><span class="num">≈ 2:00 + 31:20 + 10:00 + 1:40</span></div>
+    <div class="bar">
+      <div class="seg w" style="flex: 2">warm-up</div>
+      <div class="seg k" style="flex: 31.3">4–6 exercises</div>
+      <div class="seg p" style="flex: 10">bone-loading block</div>
+      <div class="seg d" style="flex: 1.7">stretch</div>
+    </div>
+  </div>
+  <p class="caption">Proportions at week 8 with the bone block present. The ordinary session (warm-up + work + stretch) fits inside the first number on her quiz label; the block is what takes it to the second. On the session without the block, it simply ends at the stretch.</p>
+
+  <h3>Warm-up</h3>
+  <p>Two or three dynamic movements — hip circles, leg swings, a deep squat with a reach — chosen to open the joints the session is about to load. About two minutes. It is never progressed; a warm-up is not a workout in front of the workout.</p>
+
+  <h3>The work</h3>
+  <p>Four to six exercises from her level's pool, filmed, each shown as a clip on a full-screen stage. <strong>Every exercise is measured in time, never in repetitions.</strong> She works for the seconds on the screen, at her own tempo, and the app counts them down; then she rests for a set number of seconds, then goes again. There is no counting in her head while the phone shows her something else.</p>
+  <p>Each set is between 20 and 60 seconds and she does two or three of them. Moves done one side at a time (a step-up, a side plank) run the set twice, once per side, at a shorter dose so they cost the same as a two-sided move. Rest is 45 to 90 seconds depending on the exercise — set by us, never by the model, because rest is where the strength adaptation actually happens.</p>
+
+  <h3>The bone-loading block</h3>
+  <p>Estrogen falling takes bone density with it, and impact loading is the one thing exercise does about that which nothing else does — so this is the pillar the plan is named after, not a bonus round. After the work, on two of her sessions a week, she does up to three short plyometric movements: a stomping march, a supported heel drop, and at higher levels pogo jumps, step-and-stick landings, box drops. Short sets, long rests. The block grows from about five minutes to the full budget across the eight weeks.</p>
+  <p>It is purely additive. The gap between the two numbers on her quiz label is exactly this block's budget, so adding bone loading never shortens the work she was already sold.</p>
+
+  <h3>Cool-down</h3>
+  <p>Two static stretches held for 30–40 seconds — a figure-four for the glutes, child's pose for the spine. Thirty seconds a side is the shortest hold that lets tissue give, so these were never shortened to save time; the session got shorter elsewhere.</p>
+
+  <div class="callout amber">
+    <p><strong>The five-minute option is different.</strong> Four short bursts a day get no warm-up, no cool-down and no separate bone block — two minutes of hip circles in front of a five-minute burst is not a warm-up, it is a 40% tax. Instead her bone loading is mixed into the burst itself as an ordinary movement, every week.</p>
+  </div>
+
+  <details>
+    <summary>Under the hood</summary>
+    <div class="inner">
+      <p>The stored task carries <code>warmup</code>, <code>exercises</code>, <code>power</code> and <code>cooldown</code> as four separate arrays plus <code>powerSessions</code> (2). <code>exercises</code> means the main work only — every adherence and volume read measures that array, so the other three are never folded into it. When the model writes no bookends, the app is handed a generic pair at read time (<code>DEFAULT_WARMUP</code> / <code>DEFAULT_COOLDOWN</code>, 220 s together). There is no generic power block: which plyometrics she may be given depends on her level, so an absent block is drawn as nothing.</p>
+      <p>The dose contract: the catalog owns the <em>unit</em> (timed, hold, carry) and whether a move is per-side; the model owns sets and seconds; code owns rest and the clamps (timed 15–90 s, holds 10–90 s, carries 15–120 s, sets 1–6). <code>hydrateDose()</code> turns a stored row into what the timer runs, including an honest total with rest. Clips live in a public Supabase bucket, named on the catalog row, and only the API builds their URLs.</p>
+    </div>
+  </details>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h2 id="cardio">5. Cardio</h2>
+  <p>Heart risk climbs as estrogen falls, and nothing in a strength session touches that. So every plan carries aerobic work as its own sessions — not as a walk squeezed between two sets of squats, which is how it used to arrive and how it kept going missing.</p>
+  <p><strong>Zone 2</strong> is the easy kind: minutes at a pace where she could talk but not sing, on whatever she has — walking, a bike, a swim, the rower, marching in the front room. We prescribe the minutes; the activity is hers. The minutes grow on the same three steps the sets do:</p>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Option</th><th class="num">Sessions / week</th><th class="num">Weeks 1–2</th><th class="num">Weeks 3–5</th><th class="num">Weeks 6–8</th><th>Interval day</th></tr></thead>
+    <tbody>
+      <tr><td>A few minutes, spread out</td><td class="num">2</td><td class="num">10</td><td class="num">12</td><td class="num">15</td><td>—</td></tr>
+      <tr><td>20–25 min, 2 days</td><td class="num">2</td><td class="num">15</td><td class="num">20</td><td class="num">25</td><td>—</td></tr>
+      <tr><td>30–40 min, 3 days</td><td class="num">2</td><td class="num">20</td><td class="num">25</td><td class="num">30</td><td>from week 5</td></tr>
+      <tr><td>35–45 min, 4 days</td><td class="num">3</td><td class="num">25</td><td class="num">30</td><td class="num">35</td><td>from week 3</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p><strong>Intervals</strong> are the one hard day, for the two higher options only. It is a fixed nineteen-minute protocol: five to ten minutes easy, then three rounds of thirty seconds at about ninety percent effort with two minutes easy between them, then five minutes easy. On a bike, an elliptical, a rower or a brisk incline walk — the low-impact ways are named first on purpose. When it starts, it takes the place of one easy session, so her week still has the same number of cardio days it had in week 1.</p>
+  <p>Cardio sessions have no warm-up, no stretch and no bone block attached: a walk warms up by being a walk for the first five minutes. They have no video either — "walk at a pace where you could talk but not sing" is a complete instruction, and a fifteen-second loop of a woman walking adds nothing to it.</p>
+  <details>
+    <summary>Under the hood</summary>
+    <div class="inner">
+      <p><span class="id">K01</span> Zone 2 and <span class="id">K02</span> Sprint intervals are catalog rows with no clip and a <code>duration</code> dose. <code>cardioForWeek(level, week)</code> returns the sessions and minutes for a week; <code>cardioTasks()</code> turns that into one or two movement-pillar tasks holding exactly one exercise with <code>minutes</code>. The task hydrates to a single countdown (<code>dose.unit: "duration"</code>, no sets, no rest), which the app already renders. Ticks count against <code>target</code> like any weekly task and feed the movement ring: a week she walked and did not lift scores as half a movement week, which is what it was.</p>
+      <p>Both <span class="id">K</span> ids are excluded from <code>allowedExercises()</code>, so under the strict schema the model cannot place them inside a strength session even if asked to. That is what let five pieces of policing code be deleted (<code>capCardio</code>, <code>cardioMinutes</code>, the minutes clamp, the trimmer's cardio step and its floor constant).</p>
+    </div>
+  </details>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h2 id="progress">6. How it gets harder</h2>
+  <p>An eight-week plan that asks the same thing in week 8 as in week 1 is not a plan. But the length of a session is a promise she read before paying, so the session does not get longer — the sets inside it do. Week 1 is the length she chose at a shorter set; week 8 is the same length at a longer one.</p>
+  <p>The eight weeks fall into three bands. Within each, one number moves at a time: seconds first, then a third set, never both in the same week.</p>
+
+  <div class="ladder" aria-label="The dose ladder for a 30-minute session with five exercises">
+    <span class="band">Weeks 1–2</span>
+    <div class="rung"><div class="set" style="height:50%">30s</div><div class="set" style="height:50%">30s</div><div class="set" style="height:50%">30s</div><span class="note">3 sets · 30 s</span></div>
+    <span class="band">Weeks 3–5</span>
+    <div class="rung"><div class="set" style="height:83%">50s</div><div class="set" style="height:83%">50s</div><div class="set" style="height:83%">50s</div><span class="note">3 sets · 50 s</span></div>
+    <span class="band">Weeks 6–8</span>
+    <div class="rung"><div class="set" style="height:100%">60s</div><div class="set" style="height:100%">60s</div><div class="set" style="height:100%">60s</div><span class="note">3 sets · 60 s — the hardest rung one exercise's share of the session can afford</span></div>
+  </div>
+  <p class="caption">Example for the 30–40 minute option. A shorter session lands on lower rungs of the same ladder (a five-minute burst goes 2×20 → 2×25 → 2×40); the shape is identical, only where it starts and stops moves.</p>
+
+  <p>The same three bands drive everything else that grows: the cardio minutes above, and the bone block (2 × 20 s → 3 × 25 s → 3 × 30 s per movement). And the exercises themselves rotate — the model is asked to use at least a dozen different ones across the eight weeks, to give every week at least one upper-body movement, and never to give an exercise a smaller dose in a later week than it had before.</p>
+  <details>
+    <summary>Under the hood</summary>
+    <div class="inner">
+      <p><code>DOSE_RUNGS</code> in <code>catalog.ts</code> is the ladder: 2×20, 2×25, 2×30, 2×40, 3×30, 3×40, 3×50, 3×60. <code>doseBands(workMinutes, exerciseCount)</code> finds the top rung one exercise's share of the work minutes can afford (rest included) and steps back one and three rungs for the earlier bands. The prompt prints those three bands for the model, and <code>defaultDoseForWeek()</code> reads the same table when code fills a session itself — one table, so a topped-up exercise never sits at a different intensity from the model's own. <code>cardioForWeek()</code> and <code>powerDoseForWeek()</code> use the same week-to-band mapping.</p>
+    </div>
+  </details>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h2 id="rails">7. The guard rails</h2>
+  <p>The model is good at writing and unreliable at arithmetic and rules. So every rule that matters is enforced by code after the model has answered, and the code repairs rather than rejects — a plan is never thrown away over one bad line.</p>
+  <dl>
+    <dt>She can only be given what is on her list.</dt>
+    <dd>Her pool is decided by her time answer alone: 15 strength moves for a beginner, 40 for the middle option, 42 for the top one, 23 short ones for the spread-out option. The model's answer format only accepts ids from that list, so an invented exercise is not rejected — it is impossible to send.</dd>
+    <dt>The session fits the minutes she was promised.</dt>
+    <dd>Every session is added up, warm-up and stretch included. Too long, and it is trimmed in a deliberate order: a few seconds off the longest set first, then a set, and only as a last resort an exercise — because that is the only cut she would notice as a different workout. Too short, and it is filled from her pool at the week's dose until another whole exercise would not fit.</dd>
+    <dt>Every number is clamped into a range a physio would sign off.</dt>
+    <dd>A two-minute wall sit prescribed to a woman new to loading is an injury, not an ambitious week. Sets, seconds and minutes each have a floor and a ceiling.</dd>
+    <dt>Nothing on her list is said twice.</dt>
+    <dd>The ten food habits are always there, so a "habit" that restates one ("drink water before meals") is swapped for a written one. Two relaxation tasks naming the same practice collapse to one. A session title the model has already used gets renamed after the movements in it.</dd>
+    <dt>Every reason has to say something.</dt>
+    <dd>"Helps with", "supports", "boosts", "overall wellbeing" — the phrases health copy reaches for when it has no mechanism — are caught, and the line is replaced with one of ours that names what actually happens.</dd>
+    <dt>A missing piece is rebuilt, not fatal.</dt>
+    <dd>A week with no workout gets one built from her pool. A week with fewer than three tasks is topped up. A week numbered wrongly is renumbered by position. Only if all of that still leaves a week short does she get the written plan instead.</dd>
+  </dl>
+  <details>
+    <summary>Under the hood</summary>
+    <div class="inner">
+      <p>All of this is <code>sanitize()</code> in <code>generate.ts</code>, with the trimmer and filler in <code>fitSessionToMinutes()</code>. Ids are enums in a <code>strict: true</code> JSON schema built per user. <code>NUTRITION_ECHO</code> and <code>STOCK_PHRASES</code> are the two regexes; the written fallbacks (<code>PILLAR_WHY</code>, <code>FALLBACK_HABITS</code>, <code>FALLBACK_RESIST</code>) rotate by week so a repaired plan never reads as a template. <code>npm run verify-plan-dose</code> checks the ladder, the clamps, the pools, the power block and the cardio schedule against each other without a model call; the audit log in <code>CLAUDE.md</code> records what was measured on live generations.</p>
+    </div>
+  </details>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h2 id="food">8. Food, calm and habits</h2>
+  <h3>Food</h3>
+  <p>Ten habits, the same ten for everyone, shown every day: protein, healthy fat and fibre at each meal; low-sugar fruit; a ten-minute walk after eating; a twelve-hour overnight fast; five hours between meals; no snacking; six to eight glasses of water; supplements taken. She ticks what she did, some rows three times a day. The model does not choose these — it only picks one or two a week to push on, starting where her eating actually is, and rewrites the reason under each row for her symptoms (that rewrite is its own request, because folded into the plan prompt it came back as ten interchangeable stock lines).</p>
+  <h3>Calm</h3>
+  <p>Nine practices: six breathing patterns and three quiet routines. Every breath pattern follows three rules made for menopause — the out-breath is always at least one and a half times the in-breath, nothing built for a hot flash contains a breath-hold, and no in-breath is longer than five seconds. The model picks one a day matched to her worst symptom, and if it picks something that is not a practice, code substitutes the right one rather than dropping the task. A guided ten-minute meditation is offered beside every practice as an alternative; it is never scheduled, so the choice stays a choice.</p>
+  <h3>Habits and temptations</h3>
+  <p>One small daily habit a week, written by the model, anchored to something already in her day. And four things she gets credit for not doing — "no sweets after 8pm", "phone stays out of the bedroom" — drawn from what her symptoms predict. She opts in; the app never assumes.</p>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h2 id="after">9. After eight weeks</h2>
+  <p>Day 56 ends the plan and the next one is written that day, against how the last one went. The model is told four numbers — what share of the movement, food, calm and habit asks she actually did — and whether she faded or built across the two halves. It never repeats them to her; nothing she reads says "last time you managed 38%".</p>
+  <ul>
+    <li><strong>80% or more:</strong> she has room. The next plan opens near where the last one's week 6 sat and adds one new thing.</li>
+    <li><strong>50–79%:</strong> the size was right and the shape was not. Same weekly ask, different fillings.</li>
+    <li><strong>Under 50%:</strong> the ask was too big. The session gets smaller inside — fewer moves, shorter sets — never fewer sessions. The smaller plan is made excellent rather than the bigger one optional.</li>
+  </ul>
+  <p>Old plans stay readable forever, day by day. Week 1 of any plan starts the first time she opens it, not the day she paid, so a woman who buys on Tuesday and installs the app on Sunday still gets all eight weeks.</p>
+  <details>
+    <summary>Under the hood</summary>
+    <div class="inner">
+      <p><code>cycles.ts</code>: <code>user_plans</code> is keyed by (user, cycle); <code>scoreCycle()</code> reads <code>user_plan_logs</code> for the finished window and <code>summarizeAdherence()</code> reduces it to the <code>Adherence</code> object the prompt reads. <code>history.ts</code> scores the grid: a weekly task only counts on days she did it and takes its denominator at the week, so a rest day is never a zero. The habit pillar is scored and reported but not in the three-ring <code>score</code> until the app draws a fourth ring.</p>
+    </div>
+  </details>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h2 id="today">10. What changed today</h2>
+  <p>An audit of the whole generation path, measured on four live plans and four fallback plans before and after. Three decisions, and a clean-out.</p>
+  <div class="changes">
+    <div class="change"><span class="tag added">Added</span><p><strong>Cardio is a segment of the week</strong>, written by code into every plan on both paths, with its own schedule per option and a hard day that replaces an easy one. It used to be two ids the model could drop inside a strength session — so it was optional, wrong-sized, and cost five pieces of policing code to contain. Those five are gone.</p></div>
+    <div class="change"><span class="tag removed">Removed</span><p><strong>The joint-pain filter</strong>, and the impact grade it read on every exercise. It was the last body-signal rule, it had already lost most of its job when bone loading moved into its own block, and what remained collapsed the bone-loading pool to two moves while making the plan harder to reason about than it made it safer. Her time answer is now the only filter. Anyone who needs an exercise excluded for pain needs a clinician, and the product says so by not pretending otherwise.</p></div>
+    <div class="change"><span class="tag removed">Removed</span><p><strong>Dead weight</strong>: the conversion for plans stored in repetitions (none exist), the check for a mobility family that has had no rows for a week, three profile fields fetched and never read, three copies of the same date arithmetic, parameters threaded through four functions for pools that are constants, and every comment describing machinery that no longer exists.</p></div>
+    <div class="change"><span class="tag cleaned">Found</span><p><strong>One real fault, by measuring</strong>: the written fallback plan repeated its session titles in weeks 6–8 on the smallest pool. Fixed the same way the model path already handled it.</p></div>
+  </div>
+  <p>After: strength session, bone block and cardio in every week of every plan, every session inside its promised minutes, no repeated titles, no stock reasons — zero findings across all eight generations.</p>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h2 id="glossary">11. Words used here</h2>
+  <dl>
+    <dt>Session</dt><dd>One strength workout: warm-up, the work, the bone block, cool-down. Repeated two to four times a week; every repeat in a week is the same workout.</dd>
+    <dt>Set</dt><dd>One stretch of continuous work on one exercise, measured in seconds, followed by rest. Two or three per exercise.</dd>
+    <dt>Per side</dt><dd>A move done one leg or arm at a time. The set runs twice, at a shorter dose.</dd>
+    <dt>Bone-loading block / power block</dt><dd>The short plyometric segment after the work: hops, drops, marching landings. Two of her sessions a week.</dd>
+    <dt>Zone 2</dt><dd>Easy cardio at a pace where she could talk but not sing.</dd>
+    <dt>Intervals</dt><dd>The one hard cardio day: three rounds of thirty seconds hard, two minutes easy, inside an easy warm-up and cool-down.</dd>
+    <dt>Band</dt><dd>Weeks 1–2, 3–5 and 6–8 — the three steps every growing number climbs.</dd>
+    <dt>Pool</dt><dd>The exercises she may be given, decided by her time answer.</dd>
+    <dt>Cycle</dt><dd>One eight-week plan. Cycle 1 is the plan she bought; cycle 2 is written from how cycle 1 went.</dd>
+    <dt>Fallback plan</dt><dd>The written plan she gets when the model is unavailable — same sessions, cardio and bone loading, our words instead of hers.</dd>
+  </dl>
+</main>

@@ -412,6 +412,81 @@ async function cmdAudit() {
   console.log("\nNo blocking problems.");
 }
 
+
+/**
+ * Re-stamps the cache header on clips already in the bucket, without re-encoding.
+ *
+ * The 2026-08-27 and 2026-08-29 batches went up through the Supabase dashboard,
+ * which stamps `cacheControl: max-age=3600`. Supabase then serves
+ * `cache-control: no-cache` and Cloudflare answers MISS or BYPASS on essentially
+ * every request — so each clip is fetched from origin every time she plays it,
+ * on a phone, mid-session, on her own data. The bytes are already correct and
+ * already at the edge; only the header is wrong.
+ *
+ * Storage has no metadata-only update, so the file has to be sent again. This
+ * downloads each one and puts the identical bytes back with a one-year header,
+ * verifying the size round-trips before and after. It deliberately does NOT run
+ * the encode gate `upload` runs: nothing here changes a pixel, and refusing to
+ * fix a cache header because a clip is 200 kbps over budget would leave the
+ * worse problem in place to protect against the smaller one.
+ *
+ * Idempotent — a clip already carrying the year is skipped, so it is safe to
+ * re-run and cheap when there is nothing to do.
+ */
+async function cmdRecache() {
+  const bucket = storage();
+  const { data, error } = await bucket.list("", { limit: 1000 });
+  if (error) throw error;
+
+  const stale = (data ?? []).filter(
+    (f) =>
+      f.name.endsWith(".mp4") &&
+      String(f.metadata?.cacheControl ?? "") !== `max-age=${SPEC.cacheControl}`
+  );
+  if (!stale.length) {
+    console.log("Every clip already carries the one-year cacheControl. Nothing to do.");
+    return;
+  }
+
+  console.log(`Re-stamping ${stale.length} clip(s) with cacheControl ${SPEC.cacheControl}...\n`);
+  let done = 0;
+  const failed: string[] = [];
+
+  for (const f of stale) {
+    const expected = Number(f.metadata?.size ?? 0);
+    const dl = await bucket.download(f.name);
+    if (dl.error || !dl.data) {
+      console.error(`  ${f.name}  DOWNLOAD FAILED  ${dl.error?.message ?? "no body"}`);
+      failed.push(f.name);
+      continue;
+    }
+    const bytes = Buffer.from(await dl.data.arrayBuffer());
+    // Never put back something that is not what was there. A short read here
+    // would otherwise overwrite a good clip with a truncated one.
+    if (expected && bytes.length !== expected) {
+      console.error(`  ${f.name}  SIZE MISMATCH  got ${bytes.length}, expected ${expected} — skipped`);
+      failed.push(f.name);
+      continue;
+    }
+    const up = await bucket.upload(f.name, bytes, {
+      contentType: "video/mp4",
+      cacheControl: SPEC.cacheControl,
+      upsert: true,
+    });
+    if (up.error) {
+      console.error(`  ${f.name}  UPLOAD FAILED  ${up.error.message}`);
+      failed.push(f.name);
+      continue;
+    }
+    done++;
+    console.log(`  ${f.name}  ${bytes.length} bytes  ok`);
+  }
+
+  console.log(`\n${done}/${stale.length} re-stamped${failed.length ? `, ${failed.length} failed` : ""}.`);
+  await cmdAudit();
+  if (failed.length) process.exit(1);
+}
+
 // ─── Entry ───────────────────────────────────────────────────────────────────
 
 const [cmd, dir] = process.argv.slice(2);
@@ -420,6 +495,7 @@ const usage = `
   npx tsx scripts/exercise-clips.ts check  <dir>   validate local .mp4 files, no network
   npx tsx scripts/exercise-clips.ts upload <dir>   validate, then upload with a 1-year cacheControl
   npx tsx scripts/exercise-clips.ts audit          compare the live bucket against the catalog's clip filenames
+  npx tsx scripts/exercise-clips.ts recache        re-stamp the 1-year cacheControl on clips already in the bucket
 `;
 
 async function main() {
@@ -435,6 +511,7 @@ async function main() {
     return cmd === "check" ? cmdCheck(dir) : cmdUpload(dir);
   }
   if (cmd === "audit") return cmdAudit();
+  if (cmd === "recache") return cmdRecache();
   console.error(usage);
   process.exit(1);
 }

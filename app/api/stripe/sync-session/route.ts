@@ -6,6 +6,21 @@ import { fulfillCheckout } from "@/lib/stripe/fulfillCheckout";
 
 export const runtime = "nodejs";
 
+/**
+ * Plan generation runs inside `after()` and measures 15-17 seconds — two
+ * OpenAI calls, in parallel, on a prompt that carries her whole pool.
+ *
+ * `after()` work is billed against THIS function's duration, so without this
+ * line the route inherits the platform default. If that default is below the
+ * generation time the callback is killed mid-flight, the row stays
+ * `generating`, and the app's poll re-kicks a run that is guaranteed to die the
+ * same way — "building your plan" forever, on an account that has paid.
+ *
+ * Sixty is roughly 3.5x the measured time, which covers a slow OpenAI without
+ * holding a function open for five minutes over a hung socket.
+ */
+export const maxDuration = 60;
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 /**

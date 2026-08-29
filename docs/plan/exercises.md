@@ -15,13 +15,13 @@ mapping is not one-to-one and both halves are deliberate:
 | Shoot series | Catalog ids | n | Role |
 | --- | --- | --- | --- |
 | Lower Body Strength | `L01`–`L17` | 17 | Main work |
-| Plyometrics & Force Absorption | `I01`–`I09` | 9 | Main work — bone loading |
+| Plyometrics & Force Absorption | `I01`–`I09` | 9 | The power block — bone loading |
 | Upper Body Strength | `U01`–`U13` | 13 | Main work |
 | Core & Posterior Stability | `C01`–`C09` + `P01`–`P03` | 12 | Main work |
 | Warm-up & Mobility | `W01`–`W15` | 15 | Bookend, front |
 | Post-Lower Body Routine | `S01`–`S06` | 6 | Bookend, back |
 | Post-Upper Body Routine | `S07`–`S11` | 5 | Bookend, back |
-| *(not filmed)* Cardio | `K01`–`K02` | 2 | Main work — the aerobic pillar |
+| *(not filmed)* Cardio | `K01`–`K02` | 2 | Cardio tasks — the aerobic pillar |
 
 77 clips, 79 catalog rows. The bucket has no orphans and no ghosts; the two
 extra rows are the `K` cardio block, which carries no `clip` on purpose — see
@@ -38,48 +38,47 @@ could talk but not sing" is a complete instruction on its own, "band pull-apart"
 in front of a woman who has never held a band is not. Shoot it first, then add
 the row.
 
-### Cardio has rows and no clips, deliberately
+### Cardio is its own task, scheduled by code
 
 The `K` prefix was wired and empty from the day the plan was written until
-2026-08-28: `isCardioId()`, `cardioMinutes()`, the `duration` dose unit and the
-prompt's continuous-block rule all existed with nothing to apply to, so an
-eight-week menopause plan contained no aerobic work at all. Estrogen falls,
-cardiovascular risk climbs, and nothing else in the catalog touches it. (The
-ten-minute post-meal walk lives in `NUTRITION`, where it is a glucose habit and
-is counted as one.)
+2026-08-28, and for one day after that it was two ids the model could put
+*inside* a strength session — which made cardio optional (it forgot),
+wrong-sized (a walk handed the whole half hour) and expensive to police. Since
+2026-08-29 it is a segment of the week, like the power block is a segment of
+the session: `CARDIO_VOLUME` in `lib/plan/catalog.ts` is the schedule,
+`cardioForWeek()` says what a given week holds, and `cardioTasks()` in
+`generate.ts` writes it into every week on both the model path and the fallback.
+`allowedExercises()` keeps both `K` ids out of the model's pool.
 
-Closing it cost five rows and no code, which is exactly what the catalog's own
-note had predicted it would take. It also cost no shoot: `clip` is optional and
-`exerciseMedia()` returns undefined without one, so the app draws name and props
-and no player — which for "walk at a pace where you could talk but not sing" is
-the correct presentation, not a degraded one. **Do not shoot these to make the
-library look uniform.**
+| Level | Zone 2 sessions | Minutes, weeks 1-2 / 3-5 / 6-8 | Intervals (`K02`) |
+| --- | --- | --- | --- |
+| beginner | 2 | 15 / 20 / 25 | never |
+| medium | 2 | 20 / 25 / 30 | from week 5, replacing one Zone 2 |
+| advanced | 3 | 25 / 30 / 35 | from week 3, replacing one Zone 2 |
+| movement_snacks | 2 | 10 / 12 / 15 | never |
 
-Both are `snack: false` (a continuous block is the opposite shape from a
-five-minute desk-side burst) and `impact: none`, so cardio is the one family a
-`joint_pain` answer leaves completely intact — which is the point: the woman
-whose knees hurt is the one who most needs the pillar that is not jumping.
-Modality is where she adapts, and modality is hers.
+The interval day **replaces** an easy session rather than adding one, so the
+number of times a week she laces up is fixed for the whole plan.
 
-`K01` is a dose, not a movement: 150 minutes a week at a pace where she could
-talk but not sing, on whatever she has — which is also why there is no separate
-indoor row: "any activity" already covers marching in the front room, and a
-second id meaning the same dose is a second thing to keep in step for nothing.
-`K02` is the only protocol row —
-30s at ~90% effort, 2 min easy, 3 rounds, inside a 5-10 min warm-up and a 5 min
-cool-down on the same activity — and it is level 2, so a beginner never sees it.
+It cost no shoot: `clip` is optional and `exerciseMedia()` returns undefined
+without one, so the app draws name and props and no player — which for "walk
+at a pace where you could talk but not sing" is the correct presentation, not
+a degraded one. **Do not shoot these to make the library look uniform.**
+
+`K01` is a dose, not a movement: minutes at a conversational pace on whatever
+she has, which is also why there is no separate indoor row. `K02` is the only
+protocol row — 30s at ~90% effort, 2 min easy, 3 rounds, inside a 5-10 min
+warm-up and a 5 min cool-down on the same activity, about nineteen minutes.
 
 Core & Posterior Stability is one series and two prefixes: `C` is the trunk work
-and `P` the hinge. They are kept apart because the prefix is what
-`ensureBoneLoading()` and the prompt's bone rule test — under a prefix rule the
-plyometrics and the posterior chain must not share a letter.
+and `P` the hinge — two movement patterns the session top-up can tell apart.
 
 Two of those renamings carry weight:
 
-- **PLYO → `I`.** `ensureBoneLoading()` and the prompt's bone-coverage rule both
-  test `startsWith("I")`, and `P` belongs to the posterior chain — under a prefix
-  rule `PLYO01` and `P01` are indistinguishable. `I` for impact keeps every
-  existing predicate working without a rewrite.
+- **PLYO → `I`.** `isPowerId()` tests `startsWith("I")`, and `P` belongs to the
+  posterior chain — under a prefix rule `PLYO01` and `P01` are
+  indistinguishable. `I` for impact keeps the predicate working without a
+  rewrite.
 - **Rl/Ru → one `S` series.** `isStretchId()` is `startsWith("S")`, so both
   post-workout routines fold into one cool-down pool and `allowedCooldowns()`
   needs no change. The lower/upper split survives as the `S01`–`S06` /
@@ -109,37 +108,28 @@ field that cannot disagree with itself.
 `npm run clips audit` checks it in both directions against what is actually
 live: a row whose clip is missing, and a file no row claims.
 
-## Pool sizes, and the one gap left
+## Pool sizes
 
-What `allowedExercises()` leaves her, measured by
-`npx tsx scripts/verify-plan-dose.ts`:
+What `allowedExercises()` and `allowedPower()` leave her, measured by
+`npm run verify-plan-dose`. **Her fitness level is the only filter** — the
+limitation screen went on 2026-08-29 and the `joint_pain` impact rule went
+the same day, taking the `impact` grade on every row with it.
 
-| Level | main | +joint_pain | power | +joint_pain |
-| --- | --- | --- | --- | --- |
-| beginner | 16 | 16 | 2 | 2 |
-| medium | 42 | 42 | 6 | 2 |
-| advanced | 44 | 44 | 9 | 2 |
-| movement_snacks | 23 | 20 | 0 | 0 |
+| Level | strength pool | power pool | cardio |
+| --- | --- | --- | --- |
+| beginner | 15 | 2 | 2 × Zone 2 |
+| medium | 40 | 6 | 2 × Zone 2, intervals from wk 5 |
+| advanced | 42 | 9 | 3 × Zone 2, intervals from wk 3 |
+| movement_snacks | 23 | 0 | 2 × short Zone 2 |
 
-Two pools, since 2026-08-29. The `I` family is **reserved for the power block**
-and is no longer in `allowedExercises()` — see `allowedPower()` — so the model
-cannot spend a strength slot on a plyometric it is going to be given anyway. The
-snack cadence is the exception: it has no power block, so its `I` rows stay
-ordinary main work, which is the only reason a snack user has bone loading at
-all.
+Three pools. The `I` family is **reserved for the power block** and the `K`
+family for the cardio tasks — neither is in `allowedExercises()`, so the model
+cannot spend a strength slot on a plyometric or a walk it is going to be given
+anyway. The snack cadence is the exception on bone loading: it has no power
+block, so its `I` rows stay ordinary main work, which is the only reason a snack
+user has bone loading in her bursts at all.
 
-That reshuffle is also why the main pool is now unmoved by `joint_pain` at every
-level: with `I` reserved, the only `high` impact rows left in it were `I` rows.
-The whole of that filter's remaining work moved to the power pool, where it
-bites hard — **every level collapses to `I01` and `I09`**, the two `low` impact
-rows that survive it.
-
-Every level except `movement_snacks` gained cardio on 2026-08-28 (`K01` at
-level 1, both at level 2+); the snack pool is unchanged because cardio is
-`snack: false`.
-
-Bookends are no longer filtered: 15 warm-ups and 11 stretches, the same for
-everyone.
+Bookends are not filtered: 15 warm-ups and 11 stretches, the same for everyone.
 
 ## Session length and what the bookends cost
 
@@ -194,13 +184,3 @@ All three were the same fault: bone loading was competing for a slot instead of
 having one. `buildPowerBlock()` gives it its own segment, on its own budget on
 top of the session, in **8 of 8 weeks on both paths** — measured across all
 eight profile shapes, every session inside its band.
-
-**Still open: variety, for the woman who reported joint pain.** Her power pool
-is `I01` and `I09` at every level, so her block alternates two movements for
-eight weeks while a clean medium pool rotates six. Her block is also shorter for
-the same reason — ~6 minutes against ~10 — because there is nothing left to fill
-it with. That is a content gap, not a code one, and the fix is a shoot: three or
-four more `low` impact bone-loading rows (heel-raise-and-drop variations, low
-step-downs, a step-and-stick off a four-inch box). Grade anything new `low` if it
-can honestly be graded there — a shoot that adds only `high` rows widens this
-gap rather than closing it.

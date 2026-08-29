@@ -475,7 +475,9 @@ const HRT_OPTIONS = [
 // generation is untouched. The relabel is honest rather than cosmetic because
 // each label states that id's real `MOVEMENT_VOLUME` entry:
 //   movement_snacks 4x5min/day · beginner 2x20-25 · medium 3x30-40 · advanced 4x35-45.
-// Change a number here only if you change it there too.
+// Change a number here only if you change it there too. The label names the
+// strength sessions; the cardio the plan schedules on top (`CARDIO_VOLUME`) is
+// spelled out on the `reward_plan_shape` screen a few taps later.
 //
 // **They became ranges on 2026-08-29**, because the session did: `minutes` is
 // the ordinary session and `maxMinutes` the one that also carries the power
@@ -639,8 +641,8 @@ const RELAXATION_START: Record<string, string> = {
  * `lib/plan/catalog.ts` on demand.
  *
  * Two of the three loaders print a number that only the catalog knows -
- * `MOVEMENT_VOLUME` for her weekly minutes, `allowedExercises()` for the moves
- * her limitations remove. Importing it statically would put the whole exercise,
+ * `MOVEMENT_VOLUME` and `CARDIO_VOLUME` for her weekly minutes,
+ * `allowedExercises()` for the size of her pool. Importing it statically would put the whole exercise,
  * nutrition and relaxation dataset into the chunk that has to parse before
  * question 1 is tappable, which is the cost this page already goes out of its
  * way to avoid for the paywall and the plan stage.
@@ -3541,12 +3543,13 @@ function RegisterPageContent() {
 
   const planCatalog = usePlanCatalog();
 
-  // Loader B: her week, straight off MOVEMENT_VOLUME - the same numbers the
-  // generator uses, so what she is shown here is what the plan actually gives
-  // her. `perDay` is the snack cadence, hence the x7.
+  // Loader B: her week, straight off MOVEMENT_VOLUME and CARDIO_VOLUME - the
+  // same two tables the generator uses, so what she is shown here is what the
+  // plan actually gives her. `perDay` is the snack cadence, hence the x7.
   const weekShape = useMemo(() => {
     const volume = planCatalog?.MOVEMENT_VOLUME[fitnessLevel];
-    if (!volume) return null;
+    const cardio = planCatalog?.CARDIO_VOLUME[fitnessLevel];
+    if (!volume || !cardio) return null;
     // The band, wherever there is one. `minutes` alone would understate the
     // week by the whole power block and contradict the range on the label she
     // tapped one screen ago; `maxMinutes` alone would overstate every session
@@ -3555,22 +3558,26 @@ function RegisterPageContent() {
       volume.maxMinutes > volume.minutes
         ? `${volume.minutes}-${volume.maxMinutes}`
         : `${volume.minutes}`;
+    // Cardio is scheduled on top of the strength sessions, every week, so the
+    // headline minutes include it - at its week-1 length, which is the week she
+    // is about to be asked for. See `cardioForWeek()` in the catalog.
+    const cardioMinutes = cardio.sessions * cardio.minutes[0];
     return {
-      weeklyMinutes: volume.perDay
-        ? volume.sessions * volume.minutes * 7
-        : volume.sessions * volume.minutes,
+      weeklyMinutes:
+        (volume.perDay ? volume.sessions * volume.minutes * 7 : volume.sessions * volume.minutes) +
+        cardioMinutes,
       cadence: volume.perDay
-        ? `${volume.sessions} x ${span} min, spread through the day`
-        : `${volume.sessions} x ${span} min a week`,
+        ? `${volume.sessions} x ${span} min, spread through the day, plus ${cardio.sessions} short walks`
+        : `${volume.sessions} x ${span} min a week, plus ${cardio.sessions} x ${cardio.minutes[0]} min of easy cardio`,
       // For <WeekStrip />. Snacks happen every day; sessions land on N of the 7.
-      activeDays: volume.perDay ? 7 : volume.sessions,
+      activeDays: volume.perDay ? 7 : Math.min(7, volume.sessions + cardio.sessions),
     };
   }, [planCatalog, fitnessLevel]);
 
-  // Loader C: the size of the exercise pool her two movement answers just
-  // produced. It is the one number in the quiz she can verify against the plan
-  // she buys - `allowedExercises` really does filter on her fitness level and on
-  // joint pain before the model sees the list.
+  // Loader C: the size of the exercise pool her movement answer just produced.
+  // It is the one number in the quiz she can verify against the plan she buys -
+  // `allowedExercises` really does filter on her fitness level before the model
+  // sees the list.
   const exercisePool = useMemo(() => {
     if (!planCatalog) return null;
     // Both pools. Since 2026-08-29 the `I` family is reserved for the power
@@ -3579,10 +3586,10 @@ function RegisterPageContent() {
     // puts in front of her twice a week.
     return {
       allowed:
-        planCatalog.allowedExercises(fitnessLevel || null, topProblems).length +
-        planCatalog.allowedPower(fitnessLevel || null, topProblems).length,
+        planCatalog.allowedExercises(fitnessLevel || null).length +
+        planCatalog.allowedPower(fitnessLevel || null).length,
     };
-  }, [planCatalog, fitnessLevel, topProblems]);
+  }, [planCatalog, fitnessLevel]);
 
   // There used to be an `estrogenPct` here: `80 + (burden/maxBurden) * 15`,
   // rendered at 5xl as "{n}% of your symptoms trace back to shifting estrogen".
@@ -6660,8 +6667,8 @@ function RegisterPageContent() {
                   aimed at a woman who has just answered thirteen questions.
                   What replaces it is the one number in the funnel she can
                   verify against the plan she buys: `allowedExercises()` really
-                  does cut the pool to her level and her symptoms before the
-                  model sees it. See lib/plan/catalog.ts.
+                  does cut the pool to her level before the model sees it. See
+                  lib/plan/catalog.ts.
 
                   It had a second branch until 2026-08-29, counting what her
                   `q_limitations` answers took *out*. That screen is gone, so
@@ -6703,7 +6710,7 @@ function RegisterPageContent() {
                         className="block text-6xl font-black text-primary leading-none"
                       />
                       <span className="block text-sm sm:text-base font-normal text-[#5A5A5A] mt-3 max-w-xs mx-auto leading-snug">
-                        matched to <span className="font-bold text-[#3D3D3D]">your level and your symptoms</span> - nothing generic.
+                        matched to <span className="font-bold text-[#3D3D3D]">your level and your time</span> - nothing generic.
                       </span>
                     </motion.div>
 

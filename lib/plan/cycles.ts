@@ -20,16 +20,12 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { PLAN_WEEKS, type Plan } from "@/lib/plan/generate";
 import { computeHistory, type HistoryPayload, type PlanLogRow } from "@/lib/plan/history";
+import { addDays } from "@/lib/plan/dates";
+
+export { addDays, asUtc, daysBetween } from "@/lib/plan/dates";
 
 /** Days one cycle covers. Day 0 is week 1 day 1; day 56 is the first day of the next cycle. */
 export const PLAN_DAYS = PLAN_WEEKS * 7;
-
-const DAY = 86_400_000;
-export const asUtc = (d: string) => new Date(`${d}T00:00:00Z`).getTime();
-export const addDays = (d: string, n: number) =>
-  new Date(asUtc(d) + n * DAY).toISOString().slice(0, 10);
-export const daysBetween = (from: string, to: string) =>
-  Math.floor((asUtc(to) - asUtc(from)) / DAY);
 
 export type PlanRow = {
   cycle: number;
@@ -128,6 +124,17 @@ export type Adherence = {
   movement: number | null;
   nutrition: number | null;
   relaxation: number | null;
+  /**
+   * The plan's own weekly habit ("cool the room before bed").
+   *
+   * Deliberately absent from `overall`, `firstHalf` and `secondHalf`, which
+   * measure the three pillars the app draws as rings — see `SCORED` in
+   * history.ts. It is here because it is the one number the next plan most
+   * needs and never had: habits were tickable and scored nowhere, so eight
+   * weeks of "she kept none of them" and "she kept all of them" produced the
+   * identical next plan.
+   */
+  habit: number | null;
   /** 0-100 across all three. */
   overall: number;
   /** Weeks 1-4 and weeks 5-8, so the prompt can tell a fade from a build. */
@@ -154,6 +161,7 @@ export function summarizeAdherence(cycle: number, history: HistoryPayload): Adhe
     movement: overall.movement ? pct(overall.movement.ratio) : null,
     nutrition: overall.nutrition ? pct(overall.nutrition.ratio) : null,
     relaxation: overall.relaxation ? pct(overall.relaxation.ratio) : null,
+    habit: overall.habit ? pct(overall.habit.ratio) : null,
     overall: pct(overall.score),
     firstHalf: halfScore(history, 1, 4),
     secondHalf: halfScore(history, 5, PLAN_WEEKS),

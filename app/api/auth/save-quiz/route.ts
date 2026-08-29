@@ -42,8 +42,8 @@ const SAFETY_FLAGS = [
 //
 // The field is no longer accepted here and no longer written. Zod strips unknown
 // keys, so an older mobile client still sending it is ignored, not rejected. The
-// `user_profiles.physical_limits` column still exists and holds what was
-// collected between 2026-08-16 and 2026-08-29; nothing reads it.
+// `user_profiles.physical_limits` column was dropped the same day
+// (`scripts/sql/2026-08-29-drop-physical-limits.sql`), so nothing may select it.
 
 const QuizSchema = z.object({
   name: z.string().min(1).max(100).nullable().optional(),

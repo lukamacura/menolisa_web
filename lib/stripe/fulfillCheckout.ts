@@ -90,7 +90,6 @@ const QUIZ_PROFILE_COLUMNS = [
   "nutrition_style",
   "relaxation_style",
   "safety_flags",
-  "physical_limits",
   "tried_options",
   "hrt_status",
   "doctor_status",

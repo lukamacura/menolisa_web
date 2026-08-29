@@ -69,7 +69,6 @@ const PROFILE = {
   nutrition_style: "convenience",
   relaxation_style: "want_to",
   safety_flags: [] as string[],
-  physical_limits: [] as string[],
   qualifier: "perimenopausal",
 };
 

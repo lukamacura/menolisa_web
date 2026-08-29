@@ -20,18 +20,32 @@
 
 import { NUTRITION, nutritionKey } from "@/lib/plan/catalog";
 import { PLAN_WEEKS, type Plan, type PlanTask } from "@/lib/plan/generate";
-
-const DAY = 86_400_000;
-const asUtc = (d: string) => new Date(`${d}T00:00:00Z`).getTime();
-const addDays = (d: string, n: number) => new Date(asUtc(d) + n * DAY).toISOString().slice(0, 10);
-const daysBetween = (from: string, to: string) => Math.floor((asUtc(to) - asUtc(from)) / DAY);
+import { addDays, daysBetween } from "@/lib/plan/dates";
 
 /** Row target by log key, so a day's count can be scored against a finished row. */
 const NUTRITION_TARGETS = new Map(NUTRITION.map((n) => [nutritionKey(n.id), n.target]));
 const NUTRITION_ROWS = NUTRITION.length;
 
-const PILLARS = ["movement", "nutrition", "relaxation"] as const;
-export type HistoryPillar = (typeof PILLARS)[number];
+export type HistoryPillar = "movement" | "nutrition" | "relaxation" | "habit";
+
+/**
+ * The pillars that make up `score`, and the one that deliberately doesn't yet.
+ *
+ * `habit` is scored and reported, but it is NOT in `score` — because `score` is
+ * what the app draws as three rings, and a fourth pillar inside a number the
+ * app renders as three would make the total disagree with the picture. The
+ * plan's weekly habit ("cool the room before bed") was previously scored
+ * NOWHERE: she could tick it, and it fed no ring, no history and no adherence,
+ * so the next cycle had no idea whether she kept a single one. It now reaches
+ * the next plan's prompt (see `Adherence.habit`), which was the part that
+ * actually cost her something.
+ *
+ * When the app draws a fourth ring, add "habit" here and nothing else changes.
+ */
+const SCORED: readonly HistoryPillar[] = ["movement", "nutrition", "relaxation"];
+
+/** The pillars that come off plan TASKS. Nutrition is scored from the catalog, not from tasks. */
+type TaskPillar = "movement" | "relaxation" | "habit";
 
 export type PlanLogRow = { task_key: string; date: string; count: number | null };
 
@@ -55,7 +69,9 @@ export type DayProgress = {
   movement: PillarProgress | null;
   nutrition: PillarProgress | null;
   relaxation: PillarProgress | null;
-  /** Mean of the pillars that were in play. 0 on a future day. */
+  /** The plan's own weekly habit. Reported, but not inside `score` — see SCORED. */
+  habit: PillarProgress | null;
+  /** Mean of the scored pillars that were in play. 0 on a future day. */
   score: number;
 };
 
@@ -70,6 +86,7 @@ export type WeekProgress = {
   movement: PillarProgress | null;
   nutrition: PillarProgress | null;
   relaxation: PillarProgress | null;
+  habit: PillarProgress | null;
   score: number;
   days: DayProgress[];
 };
@@ -87,6 +104,7 @@ export type HistoryPayload = {
     movement: PillarProgress | null;
     nutrition: PillarProgress | null;
     relaxation: PillarProgress | null;
+    habit: PillarProgress | null;
     score: number;
   };
 };
@@ -164,11 +182,12 @@ export function computeHistory({ date, startedAt, plan, logs }: Input): HistoryP
     const startDate = addDays(startedAt, index * 7);
     const endDate = addDays(startDate, 6);
 
-    const tasks = (stored?.tasks ?? []).filter(
-      (t) => t.pillar === "movement" || t.pillar === "relaxation"
+    // Habit is in here now. It is scored exactly like relaxation — a daily task
+    // measured against its target — and simply left out of `score`.
+    const tasks = (stored?.tasks ?? []).filter((t): t is PlanTask & { pillar: TaskPillar } =>
+      t.pillar === "movement" || t.pillar === "relaxation" || t.pillar === "habit"
     );
-    const byPillar = (pillar: "movement" | "relaxation") =>
-      tasks.filter((t) => t.pillar === pillar);
+    const byPillar = (pillar: TaskPillar) => tasks.filter((t) => t.pillar === pillar);
 
     const days: DayProgress[] = Array.from({ length: 7 }, (_, offset) => {
       const day = addDays(startDate, offset);
@@ -184,12 +203,13 @@ export function computeHistory({ date, startedAt, plan, logs }: Input): HistoryP
           movement: null,
           nutrition: null,
           relaxation: null,
+          habit: null,
           score: 0,
         };
       }
 
       /** Pool one pillar's tasks for this day, averaging their ratios. */
-      const pillarOn = (pillar: "movement" | "relaxation"): PillarProgress | null => {
+      const pillarOn = (pillar: TaskPillar): PillarProgress | null => {
         const ratios: number[] = [];
         let done = 0;
         let target = 0;
@@ -212,6 +232,7 @@ export function computeHistory({ date, startedAt, plan, logs }: Input): HistoryP
       const movement = pillarOn("movement");
       const nutrition = nutritionOn(day);
       const relaxation = pillarOn("relaxation");
+      const habit = pillarOn("habit");
 
       return {
         date: day,
@@ -221,6 +242,7 @@ export function computeHistory({ date, startedAt, plan, logs }: Input): HistoryP
         movement,
         nutrition,
         relaxation,
+        habit,
         score: meanRatio([movement, nutrition, relaxation]),
       };
     });
@@ -229,7 +251,7 @@ export function computeHistory({ date, startedAt, plan, logs }: Input): HistoryP
     // days into is scored out of three days, not seven.
     const elapsed = days.filter((d) => d.state !== "future");
 
-    const weekPillar = (pillar: "movement" | "relaxation"): PillarProgress | null => {
+    const weekPillar = (pillar: TaskPillar): PillarProgress | null => {
       const list = byPillar(pillar);
       if (!list.length || !elapsed.length) return null;
       const ratios: number[] = [];
@@ -258,6 +280,7 @@ export function computeHistory({ date, startedAt, plan, logs }: Input): HistoryP
 
     const movement = weekPillar("movement");
     const relaxation = weekPillar("relaxation");
+    const habit = weekPillar("habit");
 
     return {
       number,
@@ -269,6 +292,7 @@ export function computeHistory({ date, startedAt, plan, logs }: Input): HistoryP
       movement,
       nutrition: weekNutrition,
       relaxation,
+      habit,
       score: meanRatio([movement, weekNutrition, relaxation]),
       days,
     };
@@ -293,6 +317,8 @@ export function computeHistory({ date, startedAt, plan, logs }: Input): HistoryP
   const movement = livePillar("movement");
   const nutrition = livePillar("nutrition");
   const relaxation = livePillar("relaxation");
+  const habit = livePillar("habit");
+  const byName = { movement, nutrition, relaxation, habit };
 
   return {
     startedAt,
@@ -305,7 +331,8 @@ export function computeHistory({ date, startedAt, plan, logs }: Input): HistoryP
       movement,
       nutrition,
       relaxation,
-      score: meanRatio([movement, nutrition, relaxation]),
+      habit,
+      score: meanRatio(SCORED.map((k) => byName[k])),
     },
   };
 }

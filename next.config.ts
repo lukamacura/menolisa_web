@@ -52,34 +52,28 @@ const nextConfig: NextConfig = {
         source: "/:path*.:ext(woff2|webp|avif|png|jpg|jpeg|svg|webm|mp4|ico)",
         headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
       },
-      {
-        // CORS headers for API routes to allow mobile app access
-        source: '/api/:path*',
-        headers: [
-          {
-            key: 'Access-Control-Allow-Origin',
-            value: process.env.NODE_ENV === 'development' 
-              ? '*' // Allow all origins in development (for Expo dev server)
-              : 'https://your-production-domain.com', // Replace with your production mobile app domain
-          },
-          {
-            key: 'Access-Control-Allow-Methods',
-            value: 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
-          },
-          {
-            key: 'Access-Control-Allow-Headers',
-            value: 'Content-Type, Authorization, X-Requested-With',
-          },
-          {
-            key: 'Access-Control-Allow-Credentials',
-            value: 'true',
-          },
-          {
-            key: 'Access-Control-Max-Age',
-            value: '86400',
-          },
-        ],
-      },
+      // CORS for API routes, development only. The Expo dev server sometimes
+      // runs in a browser (`expo start --web`), which needs these; the shipped
+      // app is native and sends no Origin, and the web app is same-origin.
+      // This rule used to ship to production with a placeholder origin
+      // (`https://your-production-domain.com`) plus `Allow-Credentials: true`,
+      // which is a header no real origin can satisfy — so omitting it there
+      // changes nothing and stops advertising a domain that does not exist.
+      // `proxy.ts` still answers preflights and Bearer requests on the routes
+      // it matches.
+      ...(process.env.NODE_ENV === "development"
+        ? [
+            {
+              source: "/api/:path*",
+              headers: [
+                { key: "Access-Control-Allow-Origin", value: "*" },
+                { key: "Access-Control-Allow-Methods", value: "GET, POST, PUT, DELETE, PATCH, OPTIONS" },
+                { key: "Access-Control-Allow-Headers", value: "Content-Type, Authorization, X-Requested-With" },
+                { key: "Access-Control-Max-Age", value: "86400" },
+              ],
+            },
+          ]
+        : []),
     ];
   },
 };

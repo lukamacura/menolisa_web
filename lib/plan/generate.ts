@@ -7,30 +7,30 @@ import type { Adherence } from "@/lib/plan/cycles";
 import {
   DEFAULT_COOLDOWN,
   DEFAULT_WARMUP,
-  EXERCISES,
-  allowedCooldowns,
-  allowedWarmups,
+  INTERVALS_ID,
   MOVEMENT_VOLUME,
   NUTRITION,
+  POWER_SESSIONS_PER_WEEK,
   RELAXATION,
+  ZONE2_ID,
+  allowedCooldowns,
   allowedExercises,
   allowedPower,
+  allowedWarmups,
   buildPowerBlock,
-  capCardio,
-  cardioMinutes,
+  cardioForWeek,
   defaultDoseForWeek,
+  doseBands,
   exerciseMedia,
   fitSessionToMinutes,
   getExercise,
   hydrateDose,
-  listSeconds,
+  intervalsMinutes,
   isCardioId,
   isNutritionId,
-  isRelaxationId,
   isPowerId,
-  isStretchId,
-  isWarmupId,
-  POWER_SESSIONS_PER_WEEK,
+  isRelaxationId,
+  listSeconds,
   powerMinutes,
   relaxationDetail,
   relaxationForSymptom,
@@ -73,18 +73,14 @@ export type PlanTask = {
    * not of the plan — the catalog decides that a walk is one continuous block,
    * and `hydrateDose()` reads the matching field at request time.
    *
-   * `reps` is only ever present on plans stored before the dose became time.
-   * Nothing writes it now; `hydrateDose()` converts it on the way out.
+   * On a cardio task this is exactly one `K` id with `minutes`, written by
+   * code — see `cardioTasks()`.
    */
   exercises?: StoredExercise[];
   /**
-   * What she does before and after the work, when the plan wrote it herself.
-   *
-   * Nothing writes these yet — the plan-building model has not been taught to,
-   * so every stored plan in existence has neither. They exist now so that when
-   * it is taught, a bespoke warm-up simply overrides the generic one with no
-   * migration and no second shape: read them through `sessionWarmup()` /
-   * `sessionCooldown()`, never directly.
+   * What she does before and after the work, when the model wrote them
+   * (`bookendFrom()`). Absent means "use the generic pair": read them through
+   * `sessionWarmup()` / `sessionCooldown()`, never directly.
    *
    * `exercises` stays meaning the main work only. Folding bookends into it
    * would silently change what every adherence and volume read is measuring.
@@ -96,9 +92,9 @@ export type PlanTask = {
    *
    * Written by code at generation (`buildPowerBlock()`), not by the model and
    * not resolved at read time — unlike the bookends there is no generic version
-   * of it, because which plyometrics she may be given depends on her level and
-   * on whether she reported joint pain. Absent on a snack, on a cardio-only
-   * session, and on every plan generated before 2026-08-29.
+   * of it, because which plyometrics she may be given depends on her level.
+   * Absent on a snack, on a cardio task, and on every plan generated before
+   * 2026-08-29.
    *
    * `exercises` still means the main work only. The same rule the bookends
    * follow, for the same reason: every adherence and volume read measures that
@@ -146,8 +142,8 @@ export type Plan = {
   nutritionWhy?: Record<string, string>;
 };
 
+/** The quiz answers the two prompts actually read. Nothing else is selected. */
 export type Profile = {
-  name: string | null;
   top_problems: string[] | null;
   symptom_impact: string | null;
   goals: string[] | null;
@@ -155,13 +151,11 @@ export type Profile = {
   age_band: string | null;
   here_for: string | null;
   menopause_type: string | null;
-  timing: string | null;
   hrt_status: string | null;
   fitness_level: string | null;
   nutrition_style: string | null;
   relaxation_style: string | null;
   safety_flags: string[] | null;
-  qualifier: string | null;
 };
 
 /** Contraindications she ticked on the quiz's safety screen, as a line for the
@@ -308,24 +302,18 @@ const PlanSchema = z.object({
  *  - bounds keywords (minItems, maximum, …) are not supported here, so the
  *    counts and lengths stay in PlanSchema, which clamps rather than rejects.
  */
-function planJsonSchema(pool: Exercise[], warmupPool: Exercise[], cooldownPool: Exercise[]) {
+function planJsonSchema(pool: Exercise[]) {
   const nullableInt = { type: ["integer", "null"] };
-  // An empty `enum` is not valid JSON Schema, and OpenAI rejects the whole
-  // request over it — which would cost the entire personalized plan because one
-  // future limitation happened to exclude every bookend. So the enum falls back
-  // to the full family; `bookendFrom()` filters against her real pool anyway, so
-  // the safety gate is unmoved and the worst case is a dropped id.
-  //
   // Warm-up and cool-down get SEPARATE enums, which is the strongest form the
   // "dynamic in front, static after" rule can take: under `strict: true` a
   // stretch in the warm-up slot is not a rule the model can break, it is a token
   // it cannot emit. The prose version of this rule was being ignored routinely.
-  const bookend = (fallback: (id: string) => boolean, ownPool: Exercise[]) => {
-    const ids = ownPool.length ? ownPool : EXERCISES.filter((e) => fallback(e.id));
-    return { type: ["array", "null"], items: { type: "string", enum: ids.map((e) => e.id) } };
-  };
-  const warmup = bookend(isWarmupId, warmupPool);
-  const cooldown = bookend(isStretchId, cooldownPool);
+  const bookend = (family: Exercise[]) => ({
+    type: ["array", "null"],
+    items: { type: "string", enum: family.map((e) => e.id) },
+  });
+  const warmup = bookend(allowedWarmups());
+  const cooldown = bookend(allowedCooldowns());
 
   return {
     type: "object",
@@ -425,8 +413,8 @@ function planJsonSchema(pool: Exercise[], warmupPool: Exercise[], cooldownPool: 
 function adherenceBlock(a: Adherence | null): string[] {
   if (!a) return [];
 
-  const line = (label: string, value: number | null) =>
-    value === null
+  const line = (label: string, value: number | null | undefined) =>
+    value == null
       ? `- ${label}: her last plan asked nothing here.`
       : `- ${label}: she did ${value}% of what her last plan asked.`;
 
@@ -446,6 +434,7 @@ function adherenceBlock(a: Adherence | null): string[] {
     line("Movement", a.movement),
     line("Nutrition", a.nutrition),
     line("Relaxation", a.relaxation),
+    line("Daily habit", a.habit),
     trend,
     ``,
     `Size this plan to what she ACTUALLY did, pillar by pillar:`,
@@ -464,6 +453,11 @@ function adherenceBlock(a: Adherence | null): string[] {
     `- Where a pillar was never asked for, introduce it gently: one short task, cadence "daily", nothing to schedule.`,
     `- Nutrition focus follows the same rule. Under 50% means going back to one or two rows and staying there, not marching through all ten again.`,
     `- Give her new habit tasks and new resist_suggestions. She has had eight weeks of the last set.`,
+    // Habits were scored nowhere until 2026-08-29, so this rule had no number
+    // behind it and could not be written. A habit she dropped is a habit that
+    // did not fit her day, and the answer to that is a smaller one, not the
+    // same one repeated louder.
+    `- If her daily habit score was under 50%, the habits you wrote last time did not fit her day. Make the next ones smaller and tie each to something already in it ("while the kettle boils", "before you turn the light off"), not to a new slot she has to find.`,
     `- NEVER put a percentage, a score, "last time", "you missed", "you struggled", or any reference to a previous plan into a title, a focus or a why. The numbers above decide what you build. They never appear in what she reads.`,
     ``,
   ];
@@ -472,21 +466,26 @@ function adherenceBlock(a: Adherence | null): string[] {
 export function buildPrompt(
   profile: Profile,
   pool: Exercise[],
-  adherence: Adherence | null = null,
-  warmupPool: Exercise[] = [],
-  cooldownPool: Exercise[] = []
+  adherence: Adherence | null = null
 ): string {
-  const vol = MOVEMENT_VOLUME[profile.fitness_level ?? "beginner"] ?? MOVEMENT_VOLUME.beginner;
+  const level = profile.fitness_level ?? "beginner";
+  const vol = MOVEMENT_VOLUME[level] ?? MOVEMENT_VOLUME.beginner;
   const movement = vol.perDay
     ? `${vol.sessions} short bursts per day of about ${vol.minutes} minutes (cadence "per_day")`
     : `${vol.sessions} sessions per week of about ${vol.minutes} minutes (cadence "weekly", target ${vol.sessions})`;
   // A 5-minute snack cannot hold six exercises; a 30-minute session should not
   // hold one. sanitize() tops up to this same floor when the model under-delivers.
-  const [minEx, maxEx] = vol.perDay ? [2, 3] : [4, 6];
-  const hasBookends = Boolean(warmupPool.length && cooldownPool.length && !vol.perDay);
+  const [minEx, maxEx] = vol.perDay ? [MIN_SNACK_EXERCISES, MAX_SNACK_EXERCISES] : [MIN_EXERCISES, MAX_EXERCISES];
+  // Bookends belong on every session except a snack — see wantsBookends().
+  const hasBookends = !vol.perDay;
+  const warmupPool = allowedWarmups();
+  const cooldownPool = allowedCooldowns();
   // What is actually left for the work, once the bookends have taken their two
   // minutes. This is the number the ladder below has to fit inside.
-  const workMinutes = Math.max(3, vol.minutes - (hasBookends ? BOOKEND_MINUTES : 0));
+  const workMinutes = workMinutesFor(vol);
+  // The cardio the app schedules beside her sessions, so the model can be told
+  // it exists and told not to write it. Week 1's shape is enough for that.
+  const cardio = cardioForWeek(level, 1);
   // The ladder, sized to HER session rather than printed as a constant.
   //
   // It used to be the same three lines for everyone: "weeks 6-8: 3 sets, 45-60
@@ -495,10 +494,7 @@ export function buildPrompt(
   // exercises at 3x55s is thirteen minutes, and week 8 was asking her for that
   // four times a day. She was shown "About 5 min" on the quiz screen and charged
   // $59 against it, so the promise is explicit and the overrun was a broken one.
-  const ladder = doseLadder(workMinutes, minEx);
-  // Only the ones she can actually be given — naming ids outside her pool would
-  // invite her to be given them.
-  const continuous = pool.filter((e) => e.dose === "duration").map((e) => e.id);
+  const ladder = doseLadder(workMinutes, minEx, maxEx);
   const perSide = pool.filter((e) => e.perSide).map((e) => e.id);
   // Named from her own pool, so a coverage rule can never ask for an id her
   // limitations already took away.
@@ -562,6 +558,7 @@ export function buildPrompt(
           `- Her menopause was ${profile.menopause_type === "surgical" ? "surgical" : "brought on by cancer treatment"}, so it arrived at once rather than over years. Do not write "as your hormones gradually shift" or anything that assumes a slow transition, and open movement one step gentler than her stated fitness level.`,
         ]
       : []),
+    `- She also gets ${cardio.zone2.sessions + (cardio.intervals ? 1 : 0)} cardio sessions a week — walks, bike, swim, whatever she has — that the app schedules beside your sessions. You do not write them. Never put walking, cardio, running, cycling or intervals into an exercises array, a title, a "why" or a habit; it is already there.`,
     `- Habit tasks are yours to write: one small, concrete daily action she starts doing (e.g. "Cool the room before bed"). Cadence "daily". Name the action itself — never begin the title with "Add". Never write a habit about quitting something — that is what resist_suggestions is for.`,
     `- Never write a habit or movement task that repeats a nutrition row — no walks after meals, no water, no protein, no meal timing. She already ticks those every day; put the id in nutrition_focus instead.`,
     `- Relaxation tasks need item_id and cadence "daily" (or "per_day" with a target). Match the item to her worst symptom: hot flashes get breath_hotflash, night waking gets breath_sleep, anxiety or palpitations get breath_sigh.`,
@@ -602,16 +599,7 @@ export function buildPrompt(
         ]
       : []),
     ``,
-    `DOSE — every exercise is measured in TIME. There are no repetitions anywhere in this plan: she works for the seconds you prescribe and the app counts them down. Never write a rep count in a title or a "why". Every exercise gets one of these two shapes, with null for the fields that don't apply:`,
-    // Not simply "ids starting with K": M01 is a continuous flow, so it is
-    // measured in minutes too, and asking for sets of it produces a dose that
-    // hydrateDose() has to throw away.
-    ...(continuous.length
-      ? [
-          `- One continuous block — ${continuous.join(", ")}: "minutes" only, never more than ${cardioMinutes(vol.minutes, minEx)}. "sets" and "seconds" are null.`,
-        ]
-      : []),
-    `- Everything else: "sets" and "seconds" only — "seconds" is how long ONE set runs. "minutes" is null.`,
+    `DOSE — every exercise is measured in TIME. There are no repetitions anywhere in this plan: she works for the seconds you prescribe and the app counts them down. Never write a rep count in a title or a "why". Every exercise carries "sets" and "seconds" — "seconds" is how long ONE set runs — and "minutes" is always null.`,
     ...(perSide.length
       ? [
           `- ${perSide.join(", ")} are worked one side at a time, so "seconds" is per side and the set runs twice. Keep them shorter than a both-sides move.`,
@@ -635,10 +623,6 @@ export function buildPrompt(
         ]
       : ladder),
     `- Move one number at a time. Add seconds before adding a set, and never raise both in the same week.`,
-    // Conditional for the same reason the DOSE rule above it is: with no
-    // continuous ids in her pool, telling the model that "minutes climb" is an
-    // invitation to invent a block that sanitize() then has to throw away.
-    ...(continuous.length ? [`- Cardio minutes climb too, within the cap above.`] : []),
     `- If you bring an exercise back in a later week, it gets the later week's dose — never a smaller one than it had before.`,
     `- Title each movement session after what is actually in it, and give all 8 weeks different titles. Never title a session after one exercise, and never repeat a title you have already used.`,
     `- Titles and focus lines are sentence case: "Steady the basics", not "Steady The Basics".`,
@@ -660,11 +644,6 @@ export function buildPrompt(
   ].join("\n");
 }
 
-/**
- * Drops anything the model invented: unknown exercise/relaxation ids, exercises
- * outside her allowed pool, and movement tasks left with nothing in them. Also
- * assigns the stable task keys — the model never sees them.
- */
 /**
  * Four, matching the `${minEx}-${maxEx}` the prompt asks for.
  *
@@ -736,8 +715,17 @@ const BOOKEND_MINUTES = Math.round(
   (listSeconds(DEFAULT_WARMUP) + listSeconds(DEFAULT_COOLDOWN)) / 60
 );
 
-/** Average rest between sets, for sizing the ladder. Real rest comes from the catalog. */
-const LADDER_REST = 50;
+/**
+ * The minutes left for the WORK once the bookends have taken theirs.
+ *
+ * The prompt sizes its dose ladder against this number, so everything that
+ * writes a dose has to size against the same one — handing `vol.minutes` to
+ * `defaultDoseForWeek()` would ask a 30-minute band to fill a 26-minute
+ * session, which is the overrun `fitSessionToMinutes()` then has to cut back
+ * out. A snack has no bookends, so for it the two numbers are the same.
+ */
+const workMinutesFor = (vol: (typeof MOVEMENT_VOLUME)[string]) =>
+  vol.perDay ? vol.minutes : Math.max(3, vol.minutes - BOOKEND_MINUTES);
 
 /**
  * The three progression bands, sized to the minutes she actually has.
@@ -748,28 +736,38 @@ const LADDER_REST = 50;
  * (add seconds before adding a set) identical at every session length, and only
  * moves where it starts and stops.
  *
+ * **The steps back are one and three rungs, not two and four** (2026-08-29).
+ * The wider spacing put week 1 at 61-70% of the minutes she was sold — a
+ * medium user opening on 14:50 against "30-40 min, 3 days a week". The clock
+ * is the promise and the dose is the progression: her week 1 should be the
+ * length she chose at a shorter set, not a shorter session. Measured after,
+ * week 1 lands at 76-92% and week 8 still climbs in intensity.
+ *
  * Every level still progresses. A five-minute snack goes 2x20 -> 2x25 -> 2x40,
  * which is modest and honest; the alternative was a week 8 she cannot do, and a
  * dose she cannot do is a dose she does not do.
  */
-function doseLadder(workMinutes: number, exerciseCount: number): string[] {
-  const rungs: [number, number][] = [
-    [2, 20], [2, 25], [2, 30], [2, 40], [3, 30], [3, 40], [3, 50], [3, 60],
-  ];
-  const share = (workMinutes * 60) / Math.max(1, exerciseCount);
-  const cost = ([sets, secs]: [number, number]) => sets * secs + (sets - 1) * LADDER_REST;
-  let top = 0;
-  for (let i = rungs.length - 1; i >= 0; i--) {
-    if (cost(rungs[i]) <= share) { top = i; break; }
-  }
-  const [hiSets, hiSecs] = rungs[top];
-  const [midSets, midSecs] = rungs[Math.max(0, top - 2)];
-  const [loSets, loSecs] = rungs[Math.max(0, top - 4)];
+function doseLadder(workMinutes: number, exerciseCount: number, maxExercises: number): string[] {
+  // Same table the code's own top-up reads, so the exercises the model writes
+  // and the ones we add to fill the session carry the same dose. See DOSE_RUNGS.
+  const [[loSets, loSecs], [midSets, midSecs], [hiSets, hiSecs]] = doseBands(
+    workMinutes,
+    exerciseCount
+  );
   return [
     `- Weeks 1-2: ${loSets} sets, ${loSecs} seconds per set.`,
     `- Weeks 3-5: ${midSets} sets, ${midSecs} seconds per set.`,
     `- Weeks 6-8: ${hiSets} sets, ${hiSecs} seconds per set.`,
-    `- Those are the ceiling, not a starting point to build on. Her session is ${workMinutes} minutes of work and that is the length she chose; anything larger gets trimmed back before she sees it.`,
+    // The old version of this line read "Those are the ceiling, not a starting
+    // point to build on", which the model obeyed exactly: it wrote doses UNDER
+    // the bottom rung, and a medium week 1 measured 14:50 against the 30
+    // minutes she was sold. The line was written to stop overrun and it bought
+    // that at the price of under-delivery on the first session she ever does,
+    // which is the one that decides whether she believes the product. Say the
+    // length is a target to fill, and let fitSessionToMinutes() be the ceiling
+    // — that is what it is for, and it cannot be argued with.
+    `- Her session is ${workMinutes} minutes of work. FILL it: with ${exerciseCount}-${maxExercises} exercises at the week's dose above it should come out close to ${workMinutes} minutes, in week 1 as much as in week 8. A week 1 that runs half the length she chose is a failed week, not a gentle one — week 1 is gentler because the sets are shorter, never because the session is.`,
+    `- Do not go under the doses above to be cautious, and do not go over them to be ambitious. Anything larger is trimmed back before she sees it.`,
   ];
 }
 
@@ -856,36 +854,134 @@ function bookendFrom(
 }
 
 /**
- * `ensureBoneLoading()` and `BONE_WEEKS` used to live here (removed 2026-08-29).
+ * The snack cadence is the one that gets no power block, so its bone loading
+ * stays where it always was: in the main list, as ordinary work (see
+ * `allowedExercises`).
  *
- * They were the repair for a prompt rule the model kept ignoring: bone loading
- * was requested in the prompt, absent from two of four measured generations, and
- * this function went round afterwards swapping an `I` id into the last slot of
- * the shortest sessions until four of the eight weeks had one. It worked, and it
- * cost a strength exercise every time it fired, covered four weeks with one
- * movement on a thin pool, and left the FALLBACK plan with no bone guarantee at
- * all because it only ran inside `sanitize()`.
- *
- * All three faults were the same fault: bone loading was an exercise competing
- * for a slot instead of a segment of the workout. It is a segment now — see
- * `buildPowerBlock()` — with its own budget on top of the session, in every
- * week, on both the model path and the fallback. The `I` family is out of the
- * pool the model picks from, so there is nothing left to forget, nothing to
- * duplicate, and nothing to repair afterwards.
+ * **Every week, and added before it is substituted.** It used to run on even
+ * weeks only and always by replacement, which is the pair of faults
+ * `ensureBoneLoading()` was deleted for, surviving in the one branch that
+ * still needed a backstop: four of eight weeks covered, and each of those four
+ * bought at the price of a strength movement. A snack user is the one who
+ * trains most often and she was getting the least bone loading of anyone. Now
+ * the guarantee is 8 of 8, and the swap only happens when her five minutes
+ * genuinely cannot hold another movement — which is the honest reason to take
+ * one out, unlike "it is an even week".
  */
+function ensureSnackBone(
+  work: StoredExercise[],
+  n: number,
+  pool: Exercise[],
+  vol: (typeof MOVEMENT_VOLUME)[string],
+  workMinutes: number
+): void {
+  const floor = MIN_SNACK_EXERCISES;
+  const exerciseCeiling = MAX_SNACK_EXERCISES;
+  if (!vol.perDay || !work.length || work.some((e) => isPowerId(e.id))) return;
+  const bone = filmedFirst(pool.filter((e) => isPowerId(e.id)));
+  const pick = bone[(n - 1) % (bone.length || 1)];
+  if (!pick) return;
+  const added = { id: pick.id, ...defaultDoseForWeek(pick, n, workMinutes, floor) };
+  if (work.length < exerciseCeiling && listSeconds([...work, added]) <= vol.minutes * 60) {
+    work.push(added);
+    return;
+  }
+  // No room, so it takes the last movement's place — at its OWN dose, not the
+  // one it is replacing. Inheriting `sets`/`seconds` looks conservative and
+  // is not: rest and per-side are properties of the movement, so a per-side
+  // hop wearing a both-sides dose costs double and pushed a five-minute snack
+  // to 5:10. Re-fit afterwards, because a swap can only be safe if something
+  // measures it.
+  work[work.length - 1] = added;
+  work.splice(0, work.length, ...fitSessionToMinutes(work, 0, vol.minutes, floor));
+}
 
+
+/**
+ * The cardio sessions for one week, written the same way on both paths.
+ *
+ * A separate task rather than an exercise inside the strength session, and a
+ * separate task rather than a second "movement" the model writes: `cadence`
+ * and `target` on a model-written movement task are overwritten from
+ * `MOVEMENT_VOLUME`, so a second one would double her strength week, which is
+ * exactly why one-movement-task-per-week was a rule. Cardio has its own volume
+ * table (`CARDIO_VOLUME`) and its own keys (`w3_cardio`, `w3_intervals`), so it
+ * sits beside that rule rather than breaking it.
+ *
+ * Pillar stays `movement`: the app draws three rings and the history averages
+ * every movement task's ratio into one, so a week she walked and did not lift
+ * scores as half a movement week, which is what it was.
+ *
+ * No bookends and no power block — `wantsBookends()` and `sessionPower()` both
+ * read a cardio-only task as wanting neither, and a walk warms up by being a
+ * walk for the first five minutes.
+ */
+function cardioTasks(fitnessLevel: string | null, n: number): PlanTask[] {
+  const { zone2, intervals } = cardioForWeek(fitnessLevel, n);
+  const out: PlanTask[] = [];
+  if (zone2.sessions > 0) {
+    out.push({
+      key: "cardio",
+      pillar: "movement",
+      title: getExercise(ZONE2_ID)?.name ?? "Zone 2 cardio",
+      why: CARDIO_WHY[(n - 1) % CARDIO_WHY.length],
+      cadence: "weekly",
+      target: zone2.sessions,
+      exercises: [{ id: ZONE2_ID, minutes: zone2.minutes }],
+    });
+  }
+  if (intervals) {
+    out.push({
+      key: "intervals",
+      pillar: "movement",
+      title: getExercise(INTERVALS_ID)?.name ?? "Sprint intervals",
+      why: INTERVALS_WHY[(n - 1) % INTERVALS_WHY.length],
+      cadence: "weekly",
+      target: 1,
+      exercises: [{ id: INTERVALS_ID, minutes: intervalsMinutes() }],
+    });
+  }
+  return out;
+}
+
+/**
+ * Written reasons for the cardio tasks, one per week. Same rules as
+ * PILLAR_WHY: run anything new past STOCK_PHRASES first, because the gate does
+ * not check its own copy.
+ */
+const CARDIO_WHY = [
+  "Your heart is the organ estrogen was quietly protecting. This is you taking that job over.",
+  "A pace where you can talk but not sing is where the heart gets stronger without the stress hormones climbing.",
+  "Twenty steady minutes teaches the same nervous system that runs a hot flash how to settle.",
+  "This is the one pillar that asks nothing of your knees and gives the most back to your heart.",
+  "Walking is where the sugar from lunch goes, and where the 3pm slump does not.",
+  "The point is the minutes, not the miles. Any pace you could hold a conversation at counts.",
+  "Sleep comes easier to a body that was warm and moving in daylight.",
+  "Eight weeks of this is what turns stairs and hills back into things you do not notice.",
+];
+
+const INTERVALS_WHY = [
+  "Three short hard efforts, once a week, is the cheapest thing you can do for your heart — and it is over in twenty minutes.",
+  "Going hard for thirty seconds and easing off is what teaches your heart to recover fast, which is the whole skill.",
+  "One hard day a week. The easy ones build the base; this is the one that raises the ceiling.",
+];
+
+/**
+ * Drops anything the model invented, repairs what it got wrong, and adds the
+ * segments it never sees (the power block, the cardio tasks). Also assigns the
+ * stable task keys — the model never sees those either.
+ */
 function sanitize(
   raw: z.infer<typeof PlanSchema>,
   pool: Exercise[],
   vol: (typeof MOVEMENT_VOLUME)[string],
   profile: Profile,
-  warmupPool: Exercise[] = [],
-  cooldownPool: Exercise[] = [],
-  powerPool: Exercise[] = []
+  powerPool: Exercise[]
 ): Plan {
+  const workMinutes = workMinutesFor(vol);
   const allowed = new Set(pool.map((e) => e.id));
-  const allowedWarm = new Set(warmupPool.map((e) => e.id));
-  const allowedCool = new Set(cooldownPool.map((e) => e.id));
+  const allowedWarm = new Set(allowedWarmups().map((e) => e.id));
+  const allowedCool = new Set(allowedCooldowns().map((e) => e.id));
   const topProblems = profile.top_problems ?? [];
 
   // Parse each week on its own, and repair the two fields the model breaks: a
@@ -906,6 +1002,66 @@ function sanitize(
   });
 
   const weeks: PlanWeek[] = [];
+  /**
+   * Every week title and every session title used so far, lowercased.
+   *
+   * The prompt asks for eight different titles in as many words ("never repeat
+   * a title you have already used") and the model repeats them anyway —
+   * measured on a live advanced plan, "Full body strength session" was weeks 3,
+   * 6 and 8. On her phone that is an eight-week plan that looks like the same
+   * workout copied out, which is the one thing a personalized plan cannot look
+   * like. Same rule as everywhere else in this file: a rule the model can opt
+   * out of is not a rule, so it is repaired here instead.
+   */
+  const usedTitles = new Set<string>();
+  /** Takes `title` if it is new, otherwise the first alternative that is. */
+  const uniqueTitle = (title: string, ...alternatives: string[]): string => {
+    for (const candidate of [title, ...alternatives]) {
+      const key = candidate.trim().toLowerCase();
+      if (!key || usedTitles.has(key)) continue;
+      usedTitles.add(key);
+      return candidate;
+    }
+    return title;
+  };
+
+  const genericBookendSeconds = vol.perDay
+    ? 0
+    : listSeconds(DEFAULT_WARMUP) + listSeconds(DEFAULT_COOLDOWN);
+  const exerciseFloor = vol.perDay ? MIN_SNACK_EXERCISES : MIN_EXERCISES;
+  const exerciseCeiling = vol.perDay ? MAX_SNACK_EXERCISES : MAX_EXERCISES;
+
+  /** The bone-loading block. Undefined on a snack, which has no segment for it. */
+  const powerFor = (work: StoredExercise[], n: number) =>
+    vol.perDay || !work.length ? undefined : buildPowerBlock(powerPool, n, powerMinutes(vol));
+
+  /**
+   * A whole movement session, built from her pool alone.
+   *
+   * For the week the model gave no movement task at all. Measured live on a
+   * beginner plan: week 8 came back with a relaxation task and a habit and no
+   * workout, the top-up below filled it to three tasks with another habit, and
+   * the completeness gate in buildPlan() — which counts tasks, not pillars —
+   * waved through an eight-week exercise plan whose last week had no exercise
+   * in it. A week without the pillar she bought is not a thin week, it is a
+   * missing one.
+   */
+  function sessionFromPool(n: number): StoredExercise[] {
+    const picks: StoredExercise[] = [];
+    for (const cand of filmedFirst(rotate(pool, n))) {
+      if (picks.length >= exerciseCeiling) break;
+      const extra = { id: cand.id, ...defaultDoseForWeek(cand, n, workMinutes, exerciseFloor) };
+      if (
+        picks.length >= exerciseFloor &&
+        listSeconds([...picks, extra]) + genericBookendSeconds > vol.minutes * 60
+      ) continue;
+      picks.push(extra);
+    }
+    const work = fitSessionToMinutes(picks, genericBookendSeconds, vol.minutes, exerciseFloor);
+    ensureSnackBone(work, n, pool, vol, workMinutes);
+    return work;
+  }
+
   for (let n = 1; n <= PLAN_WEEKS; n++) {
     const w = parsedWeeks.find((x) => x.number === n);
     if (!w) continue;
@@ -914,6 +1070,24 @@ function sanitize(
     // Practices already placed this week, so a repaired task doesn't duplicate
     // the one sitting next to it.
     const usedRelaxation = new Set<string>();
+    /**
+     * One movement task per week, and the second one is dropped rather than
+     * merged.
+     *
+     * `cadence` and `target` are overwritten from MOVEMENT_VOLUME on every
+     * movement task, so two of them do not split her week between them — they
+     * each ask for the full `vol.sessions`, and each gets its own power block.
+     * A medium user with two movement tasks is being asked for six sessions
+     * and twice the impact loading against a plan that sold her three. Nothing
+     * downstream can tell the difference, because a doubled ask is
+     * indistinguishable from an ambitious one.
+     *
+     * Dropping is safe: the week still needs MIN_TASKS_PER_WEEK, and the
+     * top-up below refills it with a relaxation practice or a written habit —
+     * both of which are things she can actually add to a day, unlike a second
+     * workout.
+     */
+    let movementPlaced = false;
     for (const rawTask of w.tasks) {
       const parsed = TaskSchema.safeParse(rawTask);
       if (!parsed.success) continue;
@@ -921,6 +1095,7 @@ function sanitize(
       const base = { key: "", pillar: t.pillar, title: t.title, why: taskWhy(t.why, t.pillar, n), cadence: t.cadence, target: t.target };
 
       if (t.pillar === "movement") {
+        if (movementPlaced) continue;
         const exercises: NonNullable<PlanTask["exercises"]> = (t.exercises ?? [])
           .filter((e) => allowed.has(e.id))
           .map((e) => ({
@@ -929,25 +1104,6 @@ function sanitize(
             seconds: e.seconds ?? undefined,
             minutes: e.minutes ?? undefined,
           }));
-
-        // A sensible 10 minutes of walking inside a 28-minute session survives;
-        // the model's habit of handing one cardio id the whole hour does not.
-        // Clamped rather than overwritten — the model is often right here.
-        // At most one continuous block — see capCardio(). Done before the
-        // top-up so a dropped second walk is refilled with real work.
-        exercises.splice(0, exercises.length, ...capCardio(exercises));
-
-        const cardioCap = cardioMinutes(vol.minutes, Math.max(exercises.length, 2));
-        for (const e of exercises) {
-          if (!isCardioId(e.id)) continue;
-          // Always write the minutes, never only clamp the ones we were given.
-          // A cardio row with `minutes` absent falls through hydrateDose() to
-          // CARDIO_DEFAULT_SECONDS — a FIFTEEN minute block — and
-          // fitSessionToMinutes() cannot trim what it cannot read, because its
-          // cardio lever tests `e.minutes`. Live, that was a 20-minute beginner
-          // session running 22.9 with an untouchable quarter-hour walk in it.
-          e.minutes = Math.min(e.minutes ?? cardioCap, cardioCap);
-        }
 
         // The model routinely returns a single exercise however firmly it's
         // asked for more, which is not a session. Top up from her own pool —
@@ -971,19 +1127,17 @@ function sanitize(
               ]
             : rotate(pool, n)
         );
-        const floor = vol.perDay ? MIN_SNACK_EXERCISES : MIN_EXERCISES;
-        const ceiling = vol.perDay ? MAX_SNACK_EXERCISES : MAX_EXERCISES;
         for (const cand of candidates) {
-          if (exercises.length >= floor) break;
+          if (exercises.length >= exerciseFloor) break;
           if (used.has(cand.id)) continue;
           used.add(cand.id);
           // Same ladder the prompt asks the model for, so a topped-up exercise
           // matches the intensity of the ones it is sitting next to.
-          exercises.push({ id: cand.id, ...defaultDoseForWeek(cand, n, vol.minutes, floor) });
+          exercises.push({ id: cand.id, ...defaultDoseForWeek(cand, n, workMinutes, exerciseFloor) });
         }
         if (!exercises.length) continue;
 
-        const capped = exercises.slice(0, vol.perDay ? MAX_SNACK_EXERCISES : MAX_EXERCISES);
+        const capped = exercises.slice(0, exerciseCeiling);
 
         // Bookends, and only on a session that wants them. `wantsBookends()`
         // already refuses to draw a generic warm-up onto a movement snack —
@@ -1029,15 +1183,15 @@ function sanitize(
         const roomFor = (list: StoredExercise[], extra: StoredExercise) =>
           listSeconds([...list, extra]) + bookendSeconds <= vol.minutes * 60;
         for (const cand of candidates) {
-          if (capped.length >= ceiling) break;
+          if (capped.length >= exerciseCeiling) break;
           if (used.has(cand.id)) continue;
-          const extra = { id: cand.id, ...defaultDoseForWeek(cand, n, vol.minutes, floor) };
+          const extra = { id: cand.id, ...defaultDoseForWeek(cand, n, workMinutes, exerciseFloor) };
           if (!roomFor(capped, extra)) continue;
           used.add(cand.id);
           capped.push(extra);
         }
 
-        const work = fitSessionToMinutes(capped, bookendSeconds, vol.minutes, floor);
+        const work = fitSessionToMinutes(capped, bookendSeconds, vol.minutes, exerciseFloor);
 
         // The power block, on its OWN budget on top of everything above.
         //
@@ -1046,39 +1200,19 @@ function sanitize(
         // nothing it costs can take a set or an exercise away from the session
         // she was sold. That is the whole reason the volume became a band.
         //
-        // Skipped on the two sessions `wantsBookends()` also skips, for the same
-        // reasons — four five-minute bursts a day do not each get plyometrics
-        // bolted on, and a Zone 2 walk is not a session you finish by hopping.
-        const power =
-          vol.perDay || !work.length || work.every((e) => isCardioId(e.id))
-            ? undefined
-            : buildPowerBlock(powerPool, n, powerMinutes(vol));
-
-        // The snack cadence is the one that gets no block, so its bone loading
-        // stays where it always was: in the main list, as ordinary work (see
-        // `allowedExercises`). The prompt asks for it and asking has never been
-        // enough, so half the weeks are guaranteed here — the small remainder of
-        // what `ensureBoneLoading()` used to do for everybody, kept because
-        // removing the backstop along with the reason for it would have quietly
-        // cost snack users the pillar.
-        if (vol.perDay && n % 2 === 0 && !work.some((e) => isPowerId(e.id))) {
-          const bone = filmedFirst(pool.filter((e) => isPowerId(e.id)));
-          const pick = bone[(n / 2) % (bone.length || 1)];
-          if (pick) {
-            const replaced = work[work.length - 1];
-            work[work.length - 1] = {
-              id: pick.id,
-              sets: replaced.sets,
-              seconds: replaced.seconds ?? pick.seconds,
-            };
-          }
-        }
+        // Skipped on a snack, as the bookends are — four five-minute bursts a
+        // day do not each get plyometrics bolted on.
+        ensureSnackBone(work, n, pool, vol, workMinutes);
+        const power = powerFor(work, n);
 
         // Volume is a rule keyed off her fitness level, not something the model
         // gets a vote on — it kept sending "daily x7" and "per_day x1".
         tasks.push({
           ...base,
-          title: base.title || movementTitle(work, n),
+          key: "movement",
+          // Named after the two movements in it when the model's own title is
+          // missing OR already spent — both are the same failure to her.
+          title: uniqueTitle(base.title || movementTitle(work, n), movementTitle(work, n)),
           cadence: vol.perDay ? "per_day" : "weekly",
           target: vol.sessions,
           exercises: work,
@@ -1090,6 +1224,7 @@ function sanitize(
           // the app cannot schedule, and a frequency with no block is a heading.
           ...(power ? { power, powerSessions: Math.min(POWER_SESSIONS_PER_WEEK, vol.sessions) } : {}),
         });
+        movementPlaced = true;
         continue;
       }
 
@@ -1105,10 +1240,20 @@ function sanitize(
         // throws away all eight weeks for the deterministic plan. One word
         // association cost the whole personalized plan. The strict schema
         // should now make this unreachable — this is the belt to its braces.
+        // `usedRelaxation` gates the model's own choice too, not just the
+        // repair. It used to gate only the fallback, so two relaxation tasks
+        // naming the SAME item_id produced two tasks with the same catalog id
+        // — and the key below is built from that id, so the week ended up with
+        // two rows carrying the identical `w3_breath_sleep`. On her phone that
+        // is a visible duplicate whose two ticks write to one log row, so
+        // completing either completes both. The prompt actively invites two
+        // relaxation tasks ("routine can carry two from the start"), which is
+        // what makes this reachable rather than theoretical.
         const named = t.item_id ?? "";
-        const item = isRelaxationId(named)
-          ? RELAXATION.find((r) => r.id === named)!
-          : relaxationForSymptom(topProblems, usedRelaxation);
+        const item =
+          isRelaxationId(named) && !usedRelaxation.has(named)
+            ? RELAXATION.find((r) => r.id === named)!
+            : relaxationForSymptom(topProblems, usedRelaxation);
         usedRelaxation.add(item.id);
         // The catalog label wins over whatever the model typed, so the app and
         // the funnel always use the same words for the same practice.
@@ -1133,6 +1278,26 @@ function sanitize(
       });
     }
 
+    // No movement task at all — build her one. This runs before the top-up
+    // below, so the week is counted with its workout already in it.
+    if (tasks.length && !movementPlaced) {
+      const work = sessionFromPool(n);
+      if (work.length) {
+        const power = powerFor(work, n);
+        tasks.unshift({
+          key: "movement",
+          pillar: "movement",
+          title: uniqueTitle(movementTitle(work, n), FALLBACK_WEEKS[(n - 1) % FALLBACK_WEEKS.length][0]),
+          why: pillarWhy("movement", n),
+          cadence: vol.perDay ? "per_day" : "weekly",
+          target: vol.sessions,
+          exercises: work,
+          ...(power ? { power, powerSessions: Math.min(POWER_SESSIONS_PER_WEEK, vol.sessions) } : {}),
+        });
+        movementPlaced = true;
+      }
+    }
+
     // A week the model left short is topped up rather than sunk. Below three
     // tasks buildPlan() discards all eight weeks for the deterministic plan, so
     // the cost of one thin week is the whole product being less personalised —
@@ -1150,6 +1315,11 @@ function sanitize(
       tasks.push({ key: "", pillar: "habit", title: habit, why: pillarWhy("habit", n), cadence: "daily", target: 1 });
     }
 
+    // The cardio sessions, after the top-up so they never stand in for a
+    // missing relaxation practice or habit. Same on both paths — see
+    // cardioTasks().
+    if (tasks.length) tasks.push(...cardioTasks(profile.fitness_level, n));
+
     if (tasks.length) {
       // Keys must be unique within a week and stable forever. Relaxation takes
       // its catalog id as the suffix so the key says which practice it is; the
@@ -1160,7 +1330,9 @@ function sanitize(
       // taught to parse the bare id.
       weeks.push({
         number: n,
-        title: w.title,
+        // FALLBACK_WEEKS has eight distinct titles and n never repeats, so the
+        // alternative is guaranteed to be free.
+        title: uniqueTitle(w.title, FALLBACK_WEEKS[(n - 1) % FALLBACK_WEEKS.length][0]),
         focus: w.focus,
         // A week with no valid focus still shows all ten; it just doesn't
         // highlight any, which is a worse week, not a broken one.
@@ -1179,7 +1351,7 @@ function sanitize(
     return [parsed.data];
   });
 
-  return { weeks, resistSuggestions: resistSuggestions.slice(0, 6) };
+  return { weeks, resistSuggestions: resistSuggestions.slice(0, RESIST_TARGET) };
 }
 
 // ─── Nutrition: why each row is on her list ─────────────────────────────────
@@ -1453,8 +1625,25 @@ function topUpResist(kept: ResistSuggestion[], written: ResistSuggestion[]): Res
  * here, so the fallback is now the same plan minus the personalized copy rather
  * than minus a pillar.
  */
-function fallbackPlan(profile: Profile, pool: Exercise[], powerPool: Exercise[] = []): Plan {
+function fallbackPlan(profile: Profile, pool: Exercise[], powerPool: Exercise[]): Plan {
   const vol = MOVEMENT_VOLUME[profile.fitness_level ?? "beginner"] ?? MOVEMENT_VOLUME.beginner;
+  const workMinutes = workMinutesFor(vol);
+
+  // Session titles are named after the movements in them, and a small pool
+  // wraps: a beginner's fifteen ids rotate back to week 1's pair by week 6, so
+  // weeks 6-8 repeated weeks 1-3's titles word for word — measured live on the
+  // fallback path. Same repair as sanitize(): the next pair in the session,
+  // then the written week title, which is unique by construction.
+  const usedTitles = new Set<string>();
+  const uniqueTitle = (...candidates: string[]) => {
+    for (const c of candidates) {
+      const key = c.trim().toLowerCase();
+      if (!key || usedTitles.has(key)) continue;
+      usedTitles.add(key);
+      return c;
+    }
+    return candidates[0];
+  };
 
   return {
     resistSuggestions: FALLBACK_RESIST,
@@ -1475,7 +1664,7 @@ function fallbackPlan(profile: Profile, pool: Exercise[], powerPool: Exercise[] 
       const floor = vol.perDay ? MIN_SNACK_EXERCISES : MIN_EXERCISES;
       const ceiling = vol.perDay ? MAX_SNACK_EXERCISES : MAX_EXERCISES;
       const exercises = fitSessionToMinutes(
-        capCardio(picks.map((e) => ({ id: e.id, ...defaultDoseForWeek(e, n, vol.minutes, picks.length) }))),
+        picks.map((e) => ({ id: e.id, ...defaultDoseForWeek(e, n, workMinutes, picks.length) })),
         bookendSeconds,
         vol.minutes,
         floor
@@ -1494,22 +1683,31 @@ function fallbackPlan(profile: Profile, pool: Exercise[], powerPool: Exercise[] 
       for (const cand of rotate(pool, n)) {
         if (exercises.length >= ceiling) break;
         if (used.has(cand.id)) continue;
-        const extra = { id: cand.id, ...defaultDoseForWeek(cand, n, vol.minutes, floor) };
+        const extra = { id: cand.id, ...defaultDoseForWeek(cand, n, workMinutes, floor) };
         if (listSeconds([...exercises, extra]) + bookendSeconds > vol.minutes * 60) continue;
         used.add(cand.id);
         exercises.push(extra);
       }
 
+      // The same bone guarantee the model path gets. It used to live only in
+      // sanitize(), so a snack user who fell back — which is every snack user
+      // when OpenAI is down — measured 1 to 2 weeks of bone loading out of
+      // eight. The fallback is meant to be the same plan minus the personalized
+      // copy, never minus a pillar.
+      ensureSnackBone(exercises, n, pool, vol, workMinutes);
+
       const power =
-        vol.perDay || !exercises.length || exercises.every((e) => isCardioId(e.id))
-          ? undefined
-          : buildPowerBlock(powerPool, n, powerMinutes(vol));
+        vol.perDay || !exercises.length ? undefined : buildPowerBlock(powerPool, n, powerMinutes(vol));
 
       const tasks: PlanTask[] = [
         {
           key: `w${n}_movement`,
           pillar: "movement",
-          title: vol.perDay ? "Movement snack" : `Session ${n}`,
+          // Named after what is in it, like every other path that has to write
+          // a title. It was the literal "Movement snack" on every snack week,
+          // so a fallback snack plan was eight weeks with one name — which
+          // reads as broken rather than as deterministic.
+          title: uniqueTitle(movementTitle(exercises, n), movementTitle(exercises.slice(2), n), title),
           why: pillarWhy("movement", n),
           cadence: vol.perDay ? "per_day" : "weekly",
           target: vol.sessions,
@@ -1518,6 +1716,7 @@ function fallbackPlan(profile: Profile, pool: Exercise[], powerPool: Exercise[] 
         },
         { key: `w${n}_${relaxation.id}`, pillar: "relaxation", title: relaxation.label, why: pillarWhy("relaxation", n), cadence: "daily", target: 1 },
         { key: `w${n}_habit`, pillar: "habit", title: FALLBACK_HABITS[i % FALLBACK_HABITS.length], why: pillarWhy("habit", n), cadence: "daily", target: 1 },
+        ...cardioTasks(profile.fitness_level, n).map((t) => ({ ...t, key: `w${n}_${t.key}` })),
       ];
       // Walk the ten in priority order, two a week, so by week 5 she has been
       // pushed on every one of them at least once, and the last three weeks
@@ -1542,14 +1741,10 @@ export async function buildPlan(
   // One run id across both calls, so the admin panel can add them up into the
   // cost of *a plan* rather than averaging two very differently sized calls.
   const meter: PlanMeter = { userId: userId ?? null, runId: randomUUID() };
-  const pool = allowedExercises(p.fitness_level ?? null, p.top_problems ?? []);
-  // Bookends ignore her fitness level — see allowedWarmups(). An advanced user
-  // does not graduate past hip circles.
-  const warmupPool = allowedWarmups();
-  const cooldownPool = allowedCooldowns();
+  const pool = allowedExercises(p.fitness_level ?? null);
   // Bone loading, kept out of `pool` on purpose — the model never sees these
   // ids and cannot spend a strength slot on them. See allowedPower().
-  const powerPool = allowedPower(p.fitness_level ?? null, p.top_problems ?? []);
+  const powerPool = allowedPower(p.fitness_level ?? null);
   const vol = MOVEMENT_VOLUME[p.fitness_level ?? "beginner"] ?? MOVEMENT_VOLUME.beginner;
 
   const fallback = fallbackPlan(p, pool, powerPool);
@@ -1578,7 +1773,7 @@ export async function buildPlan(
       temperature: 0.5,
       response_format: {
         type: "json_schema",
-        json_schema: { name: "eight_week_plan", strict: true, schema: planJsonSchema(pool, warmupPool, cooldownPool) },
+        json_schema: { name: "eight_week_plan", strict: true, schema: planJsonSchema(pool) },
       },
       messages: [
         {
@@ -1586,7 +1781,7 @@ export async function buildPlan(
           content:
             "You are Lisa, a warm, evidence-informed menopause companion. You build practical 8-week plans by selecting from an approved list. Never invent exercises or supplements. Return JSON only.",
         },
-        { role: "user", content: buildPrompt(p, pool, adherence, warmupPool, cooldownPool) },
+        { role: "user", content: buildPrompt(p, pool, adherence) },
       ],
     });
 
@@ -1610,12 +1805,21 @@ export async function buildPlan(
     const raw = message?.content;
     const parsed = raw ? PlanSchema.safeParse(JSON.parse(raw)) : null;
     if (parsed?.success) {
-      const cleaned = sanitize(parsed.data, pool, vol, p, warmupPool, cooldownPool, powerPool);
+      const cleaned = sanitize(parsed.data, pool, vol, p, powerPool);
       // A thin plan means the model drifted off the catalog; the deterministic
       // fallback is better than handing her a week with two things in it.
+      // Counting tasks alone let a week with no workout through — see
+      // `sessionFromPool()`. sanitize() repairs that now; this is the gate that
+      // would have caught it, and it stays because the repair can only fire
+      // while her pool has something in it. The strength session specifically:
+      // the cardio tasks are movement too, and they are always there.
       const complete =
         cleaned.weeks.length === PLAN_WEEKS &&
-        cleaned.weeks.every((w) => w.tasks.length >= MIN_TASKS_PER_WEEK);
+        cleaned.weeks.every(
+          (w) =>
+            w.tasks.length >= MIN_TASKS_PER_WEEK &&
+            w.tasks.some((t) => t.pillar === "movement" && !isCardioTask(t))
+        );
       if (complete) {
         // Losing the resist list is not worth losing a good 8 weeks over, and
         // the stock-phrase gate routinely takes one or two of them.
@@ -1627,7 +1831,9 @@ export async function buildPlan(
         console.error(
           `Plan: incomplete after sanitize (weeks ${cleaned.weeks.length}/${PLAN_WEEKS}, tasks ${cleaned.weeks
             .map((w) => w.tasks.length)
-            .join(",")}), using fallback`
+            .join(",")}, movement ${cleaned.weeks
+            .map((w) => (w.tasks.some((t) => t.pillar === "movement" && !isCardioTask(t)) ? "y" : "n"))
+            .join("")}), using fallback`
         );
       }
     } else if (parsed) {
@@ -1682,7 +1888,7 @@ export async function generatePlan(
   const { data: profile } = await supabaseAdmin
     .from("user_profiles")
     .select(
-      "name, top_problems, symptom_impact, goals, goal, age_band, here_for, menopause_type, timing, hrt_status, fitness_level, nutrition_style, relaxation_style, safety_flags, qualifier"
+      "top_problems, symptom_impact, goals, goal, age_band, here_for, menopause_type, hrt_status, fitness_level, nutrition_style, relaxation_style, safety_flags"
     )
     .eq("user_id", userId)
     .maybeSingle();
@@ -1757,8 +1963,8 @@ function hydrateList(list: readonly StoredExercise[] | undefined, includeMedia: 
   return list.flatMap((e) => {
     const ex = getExercise(e.id);
     if (!ex) return [];
-    // `dose` is the repaired, runnable version of the stored sets/reps/minutes.
-    // The raw three are still sent alongside it: an older app build reads those
+    // `dose` is the repaired, runnable version of the stored sets/seconds/minutes.
+    // The raw fields are still sent alongside it: an older app build reads those
     // and is unaffected by any of this.
     return [
       {
@@ -1772,6 +1978,12 @@ function hydrateList(list: readonly StoredExercise[] | undefined, includeMedia: 
   });
 }
 
+/** A movement task whose work is cardio — the ones `cardioTasks()` writes. */
+export const isCardioTask = (task: PlanTask) =>
+  task.pillar === "movement" &&
+  Boolean(task.exercises?.length) &&
+  task.exercises!.every((e) => isCardioId(e.id));
+
 /**
  * Whether this session is one a generic warm-up and cool-down belong on.
  *
@@ -1781,20 +1993,18 @@ function hydrateList(list: readonly StoredExercise[] | undefined, includeMedia: 
  * - **Movement snacks** (`per_day`). Four five-minute bursts a day is the whole
  *   design. Two minutes of hip circles in front of each of them is not a
  *   warm-up, it is a 40% tax on the thing she agreed to do four times.
- * - **Cardio-only sessions.** A Zone 2 walk warms up by being a walk for the
- *   first five minutes, and cools down the same way. Bolting mobility work onto
- *   either end asks her to stand in the driveway doing arm swings before going
- *   for a walk, which is how a walk stops happening.
+ * - **Cardio tasks.** A Zone 2 walk warms up by being a walk for the first five
+ *   minutes, and cools down the same way. Bolting mobility work onto either end
+ *   asks her to stand in the driveway doing arm swings before going for a walk,
+ *   which is how a walk stops happening.
  *
  * Everything else — anything with a loaded or bodyweight movement in it — gets
  * them. That is the case the bookends were added for.
  */
 function wantsBookends(task: PlanTask): boolean {
-  if (task.pillar !== "movement") return false;
-  const exercises = task.exercises ?? [];
-  if (!exercises.length) return false;
+  if (task.pillar !== "movement" || !task.exercises?.length) return false;
   if (task.cadence === "per_day") return false;
-  return !exercises.every((e) => isCardioId(e.id));
+  return !isCardioTask(task);
 }
 
 /**
@@ -1841,10 +2051,9 @@ export function sessionCooldown(task: PlanTask, includeMedia = false) {
  * **No generic fallback, unlike the two bookends**, and that asymmetry is the
  * point. A hip circle is safe for everyone, so a session with no written
  * warm-up can be handed the default pair. A plyometric is not: which ones she
- * may be given depends on her level and on whether she reported joint pain, and
- * neither of those is knowable from the stored task. So a plan with no `power`
- * — every plan generated before 2026-08-29, and every snack and cardio-only
- * session since — gets no block rather than a guessed one.
+ * may be given depends on her level, which is not knowable from the stored
+ * task. So a plan with no `power` — every plan generated before 2026-08-29, and
+ * every snack and cardio task since — gets no block rather than a guessed one.
  */
 export function sessionPower(task: PlanTask, includeMedia = false) {
   if (task.pillar !== "movement") return undefined;

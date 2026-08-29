@@ -77,8 +77,9 @@ copywriter**, never an author of content.
 
 | Thing | Decided by | Where |
 |---|---|---|
-| Which exercises exist, their names, equipment, level, impact | Catalog | `EXERCISES` in `lib/plan/catalog.ts` |
-| Which exercises *she* may be given | Code | `allowedExercises(fitness_level, top_problems)` — joint pain removes high impact |
+| Which exercises exist, their names, equipment, level | Catalog | `EXERCISES` in `lib/plan/catalog.ts` |
+| Which exercises *she* may be given | Code | `allowedExercises(fitness_level)` — her level is the only filter |
+| The cardio sessions each week, and the bone-loading block in each session | Code | `cardioTasks()` / `buildPowerBlock()` — the model never sees the `K` or `I` ids |
 | How many movement sessions, and how long | Code | `MOVEMENT_VOLUME[fitness_level]` — the model's cadence/target is overwritten |
 | Which exercises go in a session, and sets/seconds/minutes | **LLM**, filtered to her pool | topped up by code if it under-delivers |
 | Session title, week title, week focus, task `why` | **LLM** | ungated copy — see §7 |
@@ -120,8 +121,7 @@ type PlanTask = {
   cadence: "daily" | "weekly" | "per_day";
   target: number;                 // completions a full period takes
   // Every dose is time: sets of seconds, or minutes for one continuous block.
-  // `reps` survives only on plans stored before 2026-08-15, converted on read.
-  exercises?: { id: string; sets?: number; seconds?: number; minutes?: number; reps?: number }[];
+  exercises?: { id: string; sets?: number; seconds?: number; minutes?: number }[];
 };
 ```
 
@@ -169,15 +169,11 @@ so there are only two shapes:
 | A set of anything | `sets` + `seconds` | `{"id":"L01","sets":3,"seconds":40}` |
 | A continuous block | `minutes` | `{"id":"K01","minutes":12}` |
 
-The second shape is **currently unused**: cardio (`K*`) and the mobility flow
-(`M01`) were retired from the catalog on 2026-08-24, so nothing in the pool has
-`unit: "duration"` any more. The shape, `hydrateDose()`'s branch for it and the
-prompt rule that asks for it are all still wired — the app must keep handling a
-`minutes`-only exercise, both for plans stored before that date and for the day
-cardio comes back. See the RETIRED block in `lib/plan/catalog.ts`.
-
-`reps` appears only on plans stored before 2026-08-15. Nothing writes it now;
-`hydrateDose()` converts it to seconds on the way out so those plans keep
+The second shape is written by code only: the cardio tasks (`w{n}_cardio`,
+`w{n}_intervals`) each hold exactly one `K` id with `minutes`, and no `K` id is
+in the pool the model picks from. There is no `reps` field anywhere; the legacy
+conversion was removed on 2026-08-29 once no stored plan carried one.
+`hydrateDose()` keeps
 running.
 
 #### Who decides what
@@ -335,8 +331,8 @@ string is in the row — resolve through `getExercise(id)`.
 `buildPlan()` never throws. When OpenAI is down, `OPENAI_API_KEY` is unset, or
 the model's output fails validation or comes back thin (fewer than 8 weeks, or
 any week under 3 tasks), she gets a hand-written plan instead. It is still
-personalised — her fitness level filters the exercise pool, joint pain removes
-high impact — but the week titles, habits and resist lines come from
+personalised — her fitness level filters the exercise pool, and it gets the
+same power block and cardio tasks — but the week titles, habits and resist lines come from
 `FALLBACK_WEEKS` / `FALLBACK_HABITS` / `FALLBACK_RESIST`.
 
 **The stored JSON has exactly the same shape.** There is no flag distinguishing
@@ -404,10 +400,7 @@ style — a plan digest belongs beside it, not in a second system message.
 
 1. **Never invent an exercise.** The catalog is 59 entries and her pool is a
    filtered subset — 22 for a beginner, 43 at medium, all 59 at advanced, 25 for
-   movement snacks, minus high-impact work entirely if she reported joint pain.
-   Anything outside it was excluded for a reason.
-   Suggesting a jump to a woman with joint pain undoes a rule the generator
-   enforces in code precisely so a model cannot opt out of it.
+   movement snacks. Anything outside it was excluded for a reason.
 2. **Never restate a nutrition row as advice.** She already has ten rows to tick
    with ten streaks. "Try walking after meals" is a duplicate of
    `post_meal_walk`, not a suggestion. The generator strips these out of habit

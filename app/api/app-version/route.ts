@@ -84,7 +84,7 @@ export async function GET() {
     {
       minimum,
       latest,
-      ios_url: `https://apps.apple.com/app/id${IOS_APP_ID}`,
+      ios_url: `https://apps.apple.com/app/menolisa/id${IOS_APP_ID}`,
       android_url: `https://play.google.com/store/apps/details?id=${ANDROID_PACKAGE}`,
     },
     {

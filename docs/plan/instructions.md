@@ -94,8 +94,8 @@ This is the shape of the whole feature, and it is deliberately uneven:
 Two safety rules run **before** the prompt is even built, so the model never sees
 what it isn't allowed to give:
 
-- **Joint pain** → every high-impact exercise is removed from her pool
-- **Fitness level** → caps which exercises she can be given at all
+- **Fitness level** → caps which exercises she can be given at all; it is the
+  only filter (the joint-pain rule and the limitation screen are both gone)
 
 ---
 

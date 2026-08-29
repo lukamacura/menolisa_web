@@ -6,8 +6,6 @@
  * maps to content we actually have, and makes tasks comparable across users.
  */
 
-export type Impact = "none" | "low" | "high";
-
 /**
  * What an exercise's dose is actually measured in.
  *
@@ -32,7 +30,6 @@ export type Exercise = {
   props: string;
   /** 1 = anyone, 2 = some equipment/load, 3 = gym or high skill. */
   level: 1 | 2 | 3;
-  impact: Impact;
   /** Short, no real setup — usable as a "movement snack". */
   snack: boolean;
   /** What this exercise's dose is measured in. */
@@ -57,10 +54,13 @@ export type Exercise = {
   clip?: string;
 };
 
-// 53 prescribable exercises (`L`/`I`/`U`/`C`/`P`/`K`), plus 26 bookend
-// movements: 15 warm-ups (`W`) and 11 stretches (`S`). Both bookend families are
-// ordinary rows here so `getExercise()` resolves them; the prefix is what keeps
-// them out of the main work.
+// 79 rows in five roles, all told apart by id prefix: the strength work the
+// model picks from (`L`/`U`/`C`/`P`), the bone-loading block code appends to a
+// session (`I`), the cardio sessions code schedules beside it (`K`), and the two
+// bookend families — 15 warm-ups (`W`) and 11 stretches (`S`). Everything is an
+// ordinary row so `getExercise()` resolves it; the prefix is what decides which
+// pool it is drawn from, and `allowedExercises()` is the one place that rule is
+// applied.
 //
 // **This table is a superset of the bucket.** It was rebuilt on 2026-08-27
 // against a shoot that replaced the library wholesale, and topped up on
@@ -91,10 +91,9 @@ export type Exercise = {
 //
 // Two of those renamings are load-bearing, not cosmetic:
 //
-// - **PLYO -> `I`.** `ensureBoneLoading()` and the prompt's bone-coverage rule
-//   both test `startsWith("I")`, and `P` is already spoken for by the posterior
-//   chain — under any prefix rule `PLYO01` and `P01` are the same family. `I`
-//   for impact keeps every existing predicate working untouched.
+// - **PLYO -> `I`.** `isPowerId()` is `startsWith("I")`, and `P` is already
+//   spoken for by the posterior chain — under any prefix rule `PLYO01` and `P01`
+//   are the same family. `I` for impact keeps the predicate working untouched.
 // - **Rl/Ru -> one `S` series.** `isStretchId` is `startsWith("S")`, so folding
 //   both post-workout routines into one cool-down pool keeps
 //   `allowedCooldowns()` working. The lower/upper split survives as the S01-S06
@@ -103,8 +102,8 @@ export type Exercise = {
 //   that is a second predicate here, not a rename.
 //
 // Core & Posterior Stability is one series and two prefixes: `C` is the trunk
-// work and `P` the hinge, kept apart because they are excluded by different
-// limitations — a pelvic floor rule wants the plank gone and the bridge kept.
+// work and `P` the hinge — two movement patterns, so the top-up that fills a
+// session "from the first exercise's family" can tell them apart.
 //
 // The seventh tuple element is the clip's **exact filename in the bucket**,
 // spaces and all. Ids are the contract with the app and the model; filenames
@@ -115,7 +114,7 @@ export type Exercise = {
 //
 // Names are house sentence case rather than the shoot's title case: the ids are
 // the contract, the strings are UI copy.
-const E: [string, string, string, 1 | 2 | 3, Impact, boolean, string?][] = [
+const E: [string, string, string, 1 | 2 | 3, boolean, string?][] = [
   // ─── Lower Body Strength (17) ─────────────────────────────────────────────
   //
   // Seventeen clips, but around eight distinct movement patterns: the shoot
@@ -125,88 +124,69 @@ const E: [string, string, string, 1 | 2 | 3, Impact, boolean, string?][] = [
   // than 17 suggests, and the prompt's "use at least N different ids" rule can
   // be satisfied with four squats. Worth remembering when reading a generated
   // plan.
-  ["L01", "Chair squat", "Sturdy chair", 1, "none", true, "L01 - Chair Squat.mp4"],
-  ["L02", "Bodyweight squat", "None", 1, "none", true, "L02 - Bodyweight Squat.mp4"],
-  ["L03", "Goblet squat", "1 dumbbell", 2, "none", false, "L03 - Goblet Squat.mp4"],
-  ["L04", "Step-up", "Stair or sturdy chair", 1, "low", true, "L04 - Bodyweight Step Up.mp4"],
-  ["L05", "Step-up, loaded", "Stair, 2 dumbbells", 2, "low", false, "L05 - Loaded Step Up.mp4"],
-  ["L06", "Walking lunge", "None", 3, "none", false, "L06 - Walking Lunge.mp4"],
-  ["L07", "Bulgarian split squat, loaded", "Chair or couch, 2 dumbbells", 3, "none", false, "L07 - Loaded Bulgarian Split Squat.mp4"],
-  ["L08", "Bulgarian split squat", "Chair or couch", 2, "none", false, "L08 - Bodyweight Bulgarian Split Squat.mp4"],
-  ["L09", "Split squat, loaded", "2 dumbbells", 2, "none", false, "L09 - Loaded Split Squat.mp4"],
-  ["L10", "Split squat", "None", 2, "none", true, "L10 - Bodyweight Split Squat.mp4"],
-  ["L11", "Prisoner squat", "None", 1, "none", true, "L11 - Prisoner Squat.mp4"],
+  ["L01", "Chair squat", "Sturdy chair", 1, true, "L01 - Chair Squat.mp4"],
+  ["L02", "Bodyweight squat", "None", 1, true, "L02 - Bodyweight Squat.mp4"],
+  ["L03", "Goblet squat", "1 dumbbell", 2, false, "L03 - Goblet Squat.mp4"],
+  ["L04", "Step-up", "Stair or sturdy chair", 1, true, "L04 - Bodyweight Step Up.mp4"],
+  ["L05", "Step-up, loaded", "Stair, 2 dumbbells", 2, false, "L05 - Loaded Step Up.mp4"],
+  ["L06", "Walking lunge", "None", 3, false, "L06 - Walking Lunge.mp4"],
+  ["L07", "Bulgarian split squat, loaded", "Chair or couch, 2 dumbbells", 3, false, "L07 - Loaded Bulgarian Split Squat.mp4"],
+  ["L08", "Bulgarian split squat", "Chair or couch", 2, false, "L08 - Bodyweight Bulgarian Split Squat.mp4"],
+  ["L09", "Split squat, loaded", "2 dumbbells", 2, false, "L09 - Loaded Split Squat.mp4"],
+  ["L10", "Split squat", "None", 2, true, "L10 - Bodyweight Split Squat.mp4"],
+  ["L11", "Prisoner squat", "None", 1, true, "L11 - Prisoner Squat.mp4"],
   // L02 and L12 are near neighbours — the shoot filmed a bodyweight squat twice,
   // once with the arms forward and once without. Both are kept because the model
   // gets more to rotate through and she cannot tell them apart badly; do not
   // read "two ids" as "two exercises" when counting the beginner pool.
-  ["L12", "Air squat", "None", 1, "none", true, "L12 - Squat.mp4"],
+  ["L12", "Air squat", "None", 1, true, "L12 - Squat.mp4"],
   // The only hinge in the catalog until the C/P series is filmed. Losing it to a
   // limitation leaves her with no posterior-chain work at all.
-  ["L13", "Dumbbell sumo deadlift", "1 dumbbell", 2, "none", false, "L13 - Dumbbell Sumo Deadlift.mp4"],
-  ["L14", "Calf raise, loaded", "2 dumbbells", 2, "none", false, "L14 - Loaded Calf Raise.mp4"],
-  ["L15", "Calf raise", "None", 1, "none", true, "L15 - Calf Raise Short.mp4"],
-  ["L16", "Supported reverse lunge", "Wall or counter", 2, "none", false, "L16 - Supported Reverse Lunge.mp4"],
+  ["L13", "Dumbbell sumo deadlift", "1 dumbbell", 2, false, "L13 - Dumbbell Sumo Deadlift.mp4"],
+  ["L14", "Calf raise, loaded", "2 dumbbells", 2, false, "L14 - Loaded Calf Raise.mp4"],
+  ["L15", "Calf raise", "None", 1, true, "L15 - Calf Raise Short.mp4"],
+  ["L16", "Supported reverse lunge", "Wall or counter", 2, false, "L16 - Supported Reverse Lunge.mp4"],
   // The frontal-plane lunge, and the only one in the catalog — every other
   // split position here travels forward or back. Supported for the same reason
-  // L16 is, and excluded by the same two limitations: a hand on the counter
-  // answers the balance rule, it does not answer a knee bending deep under load
-  // or a hip taken to end-range abduction.
-  ["L17", "Supported lateral lunge", "Wall or counter", 2, "none", false, "L17 - Supported Lateral Lunge.mp4"],
+  // L16 is.
+  ["L17", "Supported lateral lunge", "Wall or counter", 2, false, "L17 - Supported Lateral Lunge.mp4"],
 
   // ─── Plyometrics & Force Absorption (9) ───────────────────────────────────
   //
-  // The bone-loading family. `Impact` has no middle value, so everything that
-  // involves leaving the ground or catching a landing is graded "high" and is
-  // dropped wholesale by `joint_pain` and by every limitation except a sore
-  // shoulder. Grading a pogo jump "low" to keep it in the pool would put it in
-  // front of a woman who has just told us her knee hurts.
-  //
-  // That left **I01 as the only bone work a limited user could be given** after
-  // the 2026-08-27 shoot, so `ensureBoneLoading()` covered four of her eight
-  // weeks with one movement. `I09` closes it: a supported heel drop is graded
-  // "low" on the same reasoning as the stomping march — the heel meets the floor
-  // under control with a hand on the counter, nothing leaves the ground — so it
-  // survives `joint_pain` and all six limitations. A limited user now has two
-  // bone-loading ids to rotate across, which is the whole of what that gap
-  // needed. It was a content fix, exactly as this note predicted; no code
-  // changed.
-  ["I01", "Stomping march", "None", 1, "low", true, "Plyo01 - Stomping March.mp4"],
-  ["I02", "Box drop deceleration", "Low box or bottom stair", 3, "high", false, "Plyo02 - Box Drop Deceleration.mp4"],
-  ["I03", "Pogo jump, vertical", "None", 2, "high", true, "Plyo03 - Vertical Pogo Jumps.mp4"],
-  ["I04", "Pogo jump, lateral", "None", 2, "high", true, "Plyo04 - Lateral Pogo Jumps.mp4"],
-  ["I05", "Pogo jump, linear", "None", 2, "high", true, "Plyo05 - Linear Pogo Jumps.mp4"],
-  ["I06", "Pogo jump, multi-directional", "None", 3, "high", false, "Plyo06 - Multi Directional Pogo Jumps.mp4"],
-  ["I07", "Lateral step and stick", "None", 2, "high", false, "Plyo07 - Lateral Step And Stick.mp4"],
-  ["I08", "Plyometric skip", "None", 3, "high", false, "Plyo08 - Plyometric Skips.mp4"],
+  // The bone-loading family, reserved for the power block `buildPowerBlock()`
+  // appends to every strength session — see `allowedPower()`. Only her fitness
+  // level filters it: level 1 is the two floor-contact movements (`I01`, `I09`),
+  // level 2 adds the pogo family, level 3 the drops and skips.
+  ["I01", "Stomping march", "None", 1, true, "Plyo01 - Stomping March.mp4"],
+  ["I02", "Box drop deceleration", "Low box or bottom stair", 3, false, "Plyo02 - Box Drop Deceleration.mp4"],
+  ["I03", "Pogo jump, vertical", "None", 2, true, "Plyo03 - Vertical Pogo Jumps.mp4"],
+  ["I04", "Pogo jump, lateral", "None", 2, true, "Plyo04 - Lateral Pogo Jumps.mp4"],
+  ["I05", "Pogo jump, linear", "None", 2, true, "Plyo05 - Linear Pogo Jumps.mp4"],
+  ["I06", "Pogo jump, multi-directional", "None", 3, false, "Plyo06 - Multi Directional Pogo Jumps.mp4"],
+  ["I07", "Lateral step and stick", "None", 2, false, "Plyo07 - Lateral Step And Stick.mp4"],
+  ["I08", "Plyometric skip", "None", 3, false, "Plyo08 - Plyometric Skips.mp4"],
   // Level 1 and `snack: true`, which no other `I` row is — this is the one piece
   // of bone loading that fits in a five-minute burst beside a counter. Its clip
   // keeps the shoot's `Plyo` prefix while the id takes `I`; that mismatch is
   // what the `clip` field exists for, so do not rename the file to match.
-  ["I09", "Supported heel drop", "Wall or counter", 1, "low", true, "Plyo09 - Supported Heel Drop.mp4"],
+  ["I09", "Supported heel drop", "Wall or counter", 1, true, "Plyo09 - Supported Heel Drop.mp4"],
 
   // ─── Upper Body Strength (13) ─────────────────────────────────────────────
   //
-  // U01-U03 are the graded push-up ramp — wall, then table, then bench. That
-  // ladder IS the way back for a sore shoulder, which is why the `shoulder`
-  // limitation keeps all three and drops the overhead and floor work instead.
-  ["U01", "Wall push-up", "Wall", 1, "none", true, "U01 - Wall Push Up.mp4"],
-  ["U02", "Table push-up", "Kitchen counter or table", 1, "none", true, "U02 - Table Push Up.mp4"],
-  ["U03", "Bench push-up", "Sturdy bench or chair", 2, "none", true, "U03 - Bench Push Up.mp4"],
-  ["U04", "Dumbbell floor press", "2 dumbbells, floor", 2, "none", false, "U04 - Dumbbell Floor Press.mp4"],
-  ["U05", "Seated overhead press", "2 dumbbells, chair", 2, "none", false, "U05 - Seated Overhead Press.mp4"],
-  ["U06", "Standing overhead press", "2 dumbbells", 2, "none", false, "U06 - Standing Overhead Press.mp4"],
-  ["U07", "Bent-over dumbbell row", "2 dumbbells", 2, "none", false, "U07 - Bent Over Dumbbell Row.mp4"],
-  ["U08", "Single-arm dumbbell row", "1 dumbbell, chair or bench", 2, "none", false, "U08 - Single Arm Dumbbell Row.mp4"],
-  ["U09", "Rear-delt fly", "2 dumbbells", 2, "none", false, "U09 - Rear Delt Fly.mp4"],
-  // The scapular work. Kept in for a sore shoulder deliberately — Y-T-W and the
-  // rear-delt fly are usually what an irritable shoulder needs more of, not less.
-  ["U10", "Y-T-W shoulder raise", "Mat", 1, "none", false, "U10 - Ytw Shoulder Protocol.mp4"],
-  ["U11", "Dumbbell lateral raise", "2 dumbbells", 2, "none", false, "U11 - Dumbbell Lateral Raise.mp4"],
-  ["U12", "Seated overhead triceps extension", "1 dumbbell, chair", 2, "none", false, "U12 - Seated Overhead Tricep Extension.mp4"],
-  // Elbow flexion only, so neither the shoulder rule (nothing overhead, nothing
-  // abducted) nor the back rule (she stays upright) touches it.
-  //
+  // U01-U03 are the graded push-up ramp — wall, then table, then bench.
+  ["U01", "Wall push-up", "Wall", 1, true, "U01 - Wall Push Up.mp4"],
+  ["U02", "Table push-up", "Kitchen counter or table", 1, true, "U02 - Table Push Up.mp4"],
+  ["U03", "Bench push-up", "Sturdy bench or chair", 2, true, "U03 - Bench Push Up.mp4"],
+  ["U04", "Dumbbell floor press", "2 dumbbells, floor", 2, false, "U04 - Dumbbell Floor Press.mp4"],
+  ["U05", "Seated overhead press", "2 dumbbells, chair", 2, false, "U05 - Seated Overhead Press.mp4"],
+  ["U06", "Standing overhead press", "2 dumbbells", 2, false, "U06 - Standing Overhead Press.mp4"],
+  ["U07", "Bent-over dumbbell row", "2 dumbbells", 2, false, "U07 - Bent Over Dumbbell Row.mp4"],
+  ["U08", "Single-arm dumbbell row", "1 dumbbell, chair or bench", 2, false, "U08 - Single Arm Dumbbell Row.mp4"],
+  ["U09", "Rear-delt fly", "2 dumbbells", 2, false, "U09 - Rear Delt Fly.mp4"],
+  // The scapular work.
+  ["U10", "Y-T-W shoulder raise", "Mat", 1, false, "U10 - Ytw Shoulder Protocol.mp4"],
+  ["U11", "Dumbbell lateral raise", "2 dumbbells", 2, false, "U11 - Dumbbell Lateral Raise.mp4"],
+  ["U12", "Seated overhead triceps extension", "1 dumbbell, chair", 2, false, "U12 - Seated Overhead Tricep Extension.mp4"],
   // It holds `U13` because the band pull-apart that was drafted into this slot
   // was not shot, and an unfilmed strength row is not the same thing as an
   // unfilmed `K` row: "walk where you could talk but not sing" is a complete
@@ -214,33 +194,28 @@ const E: [string, string, string, 1 | 2 | 3, Impact, boolean, string?][] = [
   // is not. So it was deleted rather than left clipless, and the id it was
   // holding went to the movement that does have a clip. Do not restore it from
   // this comment — shoot it first, then add the row.
-  ["U13", "Standing dumbbell biceps curl", "2 dumbbells", 2, "none", false, "U13 - Standing Dumbbell Biceps Curl.mp4"],
+  ["U13", "Standing dumbbell biceps curl", "2 dumbbells", 2, false, "U13 - Standing Dumbbell Biceps Curl.mp4"],
 
   // ─── Core & Posterior Stability (12) ──────────────────────────────────────
   //
   // The trunk work and the hinge. `C01`, `C04` and `C05` are isometrics and
   // `C03` is a loaded carry, so this series is the only reason the `hold` and
   // `carry` dose units have prescribable members at all — see `DOSE`.
-  ["C01", "Wall sit", "Wall", 1, "none", true, "C01 - Wall Sit.mp4"],
-  ["C02", "Bird-dog", "Mat", 1, "none", true, "C02 - Bird Dog.mp4"],
-  ["C03", "Farmer's carry", "2 heavy dumbbells", 2, "none", false, "C03 - Farmers Carry.mp4"],
-  ["C04", "Forearm plank", "Mat", 1, "none", true, "C04 - Forearm Plank.mp4"],
-  ["C05", "Side plank", "Mat", 2, "none", false, "C05 - Side Plank.mp4"],
-  ["C06", "Dead bug", "Mat", 1, "none", true, "C06 - Dead Bug.mp4"],
-  // Mountain climbers are a fast alternating drill from a plank — graded "low"
-  // rather than "high" because nothing leaves the ground, but it is still the
-  // one `C` row a pelvic floor rule wants gone.
-  ["C07", "Mountain climber", "Mat", 2, "low", true, "C07 - Mountain Climber.mp4"],
-  ["C08", "Oblique twist", "Mat", 2, "none", true, "C08 - Oblique Twist.mp4"],
-  // The catalog's only balance row, and deliberately NOT excluded by the
-  // `balance` limitation — same call as L16 and L17. A hand on the counter is the
-  // training for a poor single-leg stand, not a risk of it, and dropping it for
-  // the woman who ticked that box would remove the one thing in here that
-  // addresses what she told us. A `hold`, per side.
-  ["C09", "Supported single-leg stand", "Wall or counter", 1, "none", true, "C09 - Supported Single Leg Stand.mp4"],
-  ["P01", "Glute bridge", "Mat", 1, "none", true, "P01 - Bodyweight Glute Bridge.mp4"],
-  ["P02", "Glute bridge, weighted", "Mat, 1 dumbbell", 2, "none", false, "P02 - Weighted Glute Bridge.mp4"],
-  ["P03", "Romanian deadlift", "2 dumbbells", 2, "none", false, "P03 - Romanian Deadlift Pattern.mp4"],
+  ["C01", "Wall sit", "Wall", 1, true, "C01 - Wall Sit.mp4"],
+  ["C02", "Bird-dog", "Mat", 1, true, "C02 - Bird Dog.mp4"],
+  ["C03", "Farmer's carry", "2 heavy dumbbells", 2, false, "C03 - Farmers Carry.mp4"],
+  ["C04", "Forearm plank", "Mat", 1, true, "C04 - Forearm Plank.mp4"],
+  ["C05", "Side plank", "Mat", 2, false, "C05 - Side Plank.mp4"],
+  ["C06", "Dead bug", "Mat", 1, true, "C06 - Dead Bug.mp4"],
+  // A fast alternating drill from a plank — the one `C` row that is conditioning
+  // rather than a hold.
+  ["C07", "Mountain climber", "Mat", 2, true, "C07 - Mountain Climber.mp4"],
+  ["C08", "Oblique twist", "Mat", 2, true, "C08 - Oblique Twist.mp4"],
+  // The catalog's only balance row. A `hold`, per side.
+  ["C09", "Supported single-leg stand", "Wall or counter", 1, true, "C09 - Supported Single Leg Stand.mp4"],
+  ["P01", "Glute bridge", "Mat", 1, true, "P01 - Bodyweight Glute Bridge.mp4"],
+  ["P02", "Glute bridge, weighted", "Mat, 1 dumbbell", 2, false, "P02 - Weighted Glute Bridge.mp4"],
+  ["P03", "Romanian deadlift", "2 dumbbells", 2, false, "P03 - Romanian Deadlift Pattern.mp4"],
 
   // ─── Warm-up & Mobility (15) ──────────────────────────────────────────────
   //
@@ -252,21 +227,21 @@ const E: [string, string, string, 1 | 2 | 3, Impact, boolean, string?][] = [
   //
   // W02, W12 and W13 are sequences rather than single movements, so they carry
   // longer doses in `DOSE` below and read as one block on the session screen.
-  ["W01", "Lateral leg swings", "Wall or counter", 1, "none", false, "W01 - Lateral Leg Swings.mp4"],
-  ["W02", "Dynamic movement prep", "None", 1, "none", false, "W02 - Dynamic Movement Prep.mp4"],
-  ["W03", "PVC around the world", "Broomstick or PVC pipe", 1, "none", false, "W03 - Pvc Around The World.mp4"],
-  ["W04", "Shoulder mobility", "None", 1, "none", false, "W04 - Shoulder Mobility Protocol.mp4"],
-  ["W05", "Open book cross", "Mat", 1, "none", false, "W05 - Open Book Cross.mp4"],
-  ["W06", "Hip circles", "None", 1, "none", false, "W06 - Hip Circles.mp4"],
-  ["W07", "Cobra spinal extension", "Mat", 1, "none", false, "W07 - Cobra Spinal Extension Stretch.mp4"],
-  ["W08", "World's greatest stretch", "Mat", 1, "none", false, "W08 - Worlds Greatest Stretch Flow.mp4"],
-  ["W09", "Deep squat with thoracic reach", "None", 1, "none", false, "W09 - Deep Squat With Thoracic Reach.mp4"],
-  ["W10", "Hamstring rocker", "Mat", 1, "none", false, "W10 - Hamstring Rocker Dissociation.mp4"],
-  ["W11", "Thread the needle", "Mat", 1, "none", false, "W11 - Thread The Needle.mp4"],
-  ["W12", "Full warm-up sequence", "None", 1, "none", false, "W12 - Comprehensive Warmup Sequence.mp4"],
-  ["W13", "Integrated mobility flow", "Mat", 1, "none", false, "W13 - Integrated Mobility Flow.mp4"],
-  ["W14", "Inchworm to plank reach", "Mat", 1, "none", false, "W14 - Inchworm To Plank Reach.mp4"],
-  ["W15", "Linear leg swings", "Wall or counter", 1, "none", false, "W15 - Linear Leg Swings.mp4"],
+  ["W01", "Lateral leg swings", "Wall or counter", 1, false, "W01 - Lateral Leg Swings.mp4"],
+  ["W02", "Dynamic movement prep", "None", 1, false, "W02 - Dynamic Movement Prep.mp4"],
+  ["W03", "PVC around the world", "Broomstick or PVC pipe", 1, false, "W03 - Pvc Around The World.mp4"],
+  ["W04", "Shoulder mobility", "None", 1, false, "W04 - Shoulder Mobility Protocol.mp4"],
+  ["W05", "Open book cross", "Mat", 1, false, "W05 - Open Book Cross.mp4"],
+  ["W06", "Hip circles", "None", 1, false, "W06 - Hip Circles.mp4"],
+  ["W07", "Cobra spinal extension", "Mat", 1, false, "W07 - Cobra Spinal Extension Stretch.mp4"],
+  ["W08", "World's greatest stretch", "Mat", 1, false, "W08 - Worlds Greatest Stretch Flow.mp4"],
+  ["W09", "Deep squat with thoracic reach", "None", 1, false, "W09 - Deep Squat With Thoracic Reach.mp4"],
+  ["W10", "Hamstring rocker", "Mat", 1, false, "W10 - Hamstring Rocker Dissociation.mp4"],
+  ["W11", "Thread the needle", "Mat", 1, false, "W11 - Thread The Needle.mp4"],
+  ["W12", "Full warm-up sequence", "None", 1, false, "W12 - Comprehensive Warmup Sequence.mp4"],
+  ["W13", "Integrated mobility flow", "Mat", 1, false, "W13 - Integrated Mobility Flow.mp4"],
+  ["W14", "Inchworm to plank reach", "Mat", 1, false, "W14 - Inchworm To Plank Reach.mp4"],
+  ["W15", "Linear leg swings", "Wall or counter", 1, false, "W15 - Linear Leg Swings.mp4"],
 
   // ─── Post-Lower Body Routine (6) ──────────────────────────────────────────
   //
@@ -276,12 +251,12 @@ const E: [string, string, string, 1 | 2 | 3, Impact, boolean, string?][] = [
   // from `W` is *which* end they belong on — a dynamic leg swing warms a joint
   // up, a 40-second butterfly hold does the opposite — so `S` is the cool-down
   // pool and `W` is the warm-up pool. See `allowedCooldowns()`.
-  ["S01", "Toe and heel calf stretch", "Wall or step", 1, "none", true, "Rl01 - Toe And Heel Calf Stretch.mp4"],
-  ["S02", "Kneeling hip flexor stretch", "Mat", 1, "none", true, "Rl02 - Kneeling Low Lunge Hip Flexor Stretch.mp4"],
-  ["S03", "Kneeling hamstring stretch", "Mat", 1, "none", true, "Rl03 - Kneeling Hamstring Stretch.mp4"],
-  ["S04", "Child's pose", "Mat", 1, "none", true, "Rl04 - Childs Pose.mp4"],
-  ["S05", "Butterfly stretch", "Mat", 1, "none", true, "Rl05 - Butterfly Pose.mp4"],
-  ["S06", "Supine figure-4 stretch", "Mat", 1, "none", true, "Rl06 - Supine Figure-4 Stretch.mp4"],
+  ["S01", "Toe and heel calf stretch", "Wall or step", 1, true, "Rl01 - Toe And Heel Calf Stretch.mp4"],
+  ["S02", "Kneeling hip flexor stretch", "Mat", 1, true, "Rl02 - Kneeling Low Lunge Hip Flexor Stretch.mp4"],
+  ["S03", "Kneeling hamstring stretch", "Mat", 1, true, "Rl03 - Kneeling Hamstring Stretch.mp4"],
+  ["S04", "Child's pose", "Mat", 1, true, "Rl04 - Childs Pose.mp4"],
+  ["S05", "Butterfly stretch", "Mat", 1, true, "Rl05 - Butterfly Pose.mp4"],
+  ["S06", "Supine figure-4 stretch", "Mat", 1, true, "Rl06 - Supine Figure-4 Stretch.mp4"],
 
   // ─── Post-Upper Body Routine (5) ──────────────────────────────────────────
   //
@@ -291,60 +266,45 @@ const E: [string, string, string, 1 | 2 | 3, Impact, boolean, string?][] = [
   // thoracic work whether or not she just pressed anything. When the `U` series
   // lands, this block is the natural argument for splitting `allowedCooldowns()`
   // in two.
-  ["S07", "Cross-arm shoulder stretch", "None", 1, "none", true, "Ru01 - Cross Arm Abduction Stretch.mp4"],
-  ["S08", "Seated side bend", "Mat", 1, "none", true, "Ru02 - Seated Side Bend.mp4"],
-  ["S09", "Seated spinal twist", "Mat", 1, "none", true, "Ru03 - Seated Spinal Twist.mp4"],
-  ["S10", "Chest and shoulder stretch", "Wall or doorway", 1, "none", true, "Ru04 - Chest And Shoulder Stretch.mp4"],
-  ["S11", "Standing shoulder stretch", "None", 1, "none", true, "Ru05 - Standing Combination Shoulder Stretch.mp4"],
+  ["S07", "Cross-arm shoulder stretch", "None", 1, true, "Ru01 - Cross Arm Abduction Stretch.mp4"],
+  ["S08", "Seated side bend", "Mat", 1, true, "Ru02 - Seated Side Bend.mp4"],
+  ["S09", "Seated spinal twist", "Mat", 1, true, "Ru03 - Seated Spinal Twist.mp4"],
+  ["S10", "Chest and shoulder stretch", "Wall or doorway", 1, true, "Ru04 - Chest And Shoulder Stretch.mp4"],
+  ["S11", "Standing shoulder stretch", "None", 1, true, "Ru05 - Standing Combination Shoulder Stretch.mp4"],
 
-  // ─── Cardio (2) ───────────────────────────────────────────────────────────
+  // ─── Cardio (2) ──────────────────────────────────────────────────────────
   //
-  // The `K` prefix, which was wired and empty from the day the plan was written
-  // until 2026-08-28: `isCardioId()`, `cardioMinutes()`, the `duration` dose
-  // unit and `buildPrompt()`'s continuous-block rule all existed with nothing to
-  // apply to, so an eight-week menopause plan contained no aerobic work at all.
-  // That is a missing pillar rather than a missing exercise — estrogen falls and
-  // cardiovascular risk climbs, and nothing else in the catalog touches it. The
-  // ten-minute post-meal walk is in `NUTRITION`, where it is a glucose habit and
-  // is counted as one; it is not the cardio pillar and never was.
+  // The aerobic pillar. **Scheduled by code, never picked by the model** — see
+  // `CARDIO_VOLUME` and `cardioForWeek()`. Every week of every plan carries a
+  // Zone 2 task built from `K01`, and from a set week one of those easy sessions
+  // becomes the `K02` interval protocol. `allowedExercises()` keeps both out of
+  // the pool the model chooses strength work from, for the same reason the `I`
+  // family is kept out: a session-sized block competing for an exercise slot
+  // was arriving as a fifteen-minute walk wedged between two sets of squats,
+  // and the code that clamped, capped and trimmed it around the strength work
+  // was most of the complexity in the session builder. It is its own session
+  // now, and none of that code exists.
   //
-  // **These two carry no clip on purpose, and that is the entire reason they
-  // could ship without a shoot.** `clip` is optional, `exerciseMedia()` returns
-  // undefined without one, and the app draws name + props and no player — which
-  // for "walk at a pace where you could talk but not sing" is not a degraded
-  // experience, it is the correct one. There is nothing a fifteen-second loop of
-  // a woman walking teaches that the sentence does not. Do not shoot these to
-  // make the library look uniform. `npm run clips audit` lists them under
-  // "catalog ids with no clip" and passes.
+  // **Both carry no clip on purpose.** `clip` is optional, `exerciseMedia()`
+  // returns undefined without one, and the app draws name + props and no
+  // player — which for "walk at a pace where you could talk but not sing" is
+  // the correct presentation, not a degraded one. Do not shoot these to make the
+  // library look uniform. `npm run clips audit` lists them under "catalog ids
+  // with no clip" and passes.
   //
-  // Both are `snack: false`. A movement snack is five minutes of something
-  // she can do beside her desk without changing shoes; a continuous cardio block
-  // is the opposite shape, and letting one into that pool would spend the whole
-  // snack on it.
+  // **Modality is hers.** `K01` is a dose, not a movement — minutes at a pace
+  // where she could talk but not sing, on whatever she has: walking, swimming,
+  // the elliptical, a bike, the rower. Naming one in the row would read as a
+  // rule to a woman who owns a bike and hates walking.
   //
-  // Impact is `none` on both, and no limitation excludes either of them —
-  // which is the point: the woman whose knees hurt, whose balance is poor and
-  // who leaks is the one who most needs the pillar that is not jumping. Modality
-  // is where she adapts, and modality is hers.
-  // **Modality is hers, not ours.** `K01` is a dose, not a movement — 150
-  // minutes a week at a pace where she could talk but not sing, on whatever she
-  // has: walking, swimming, the elliptical, a bike, the rower. Naming a modality
-  // in the row ("Zone 2 walk") would be a prescription we have no reason to make
-  // and would read as a rule to a woman who owns a bike and hates walking.
-  // Modality being hers is also why there is no separate indoor row: an
-  // `Indoor zone 2` id was added and removed the same day, because "any
-  // activity" already covers marching in the front room, and a second id that
-  // means the same dose is a second thing to keep in step for nothing.
-  //
-  // `K02` is the one hard day, and it is the only row here that is a protocol
-  // rather than a dose: 30 seconds at about 90% effort, two minutes easy, three
-  // rounds, inside a 5-10 minute warm-up and a 5 minute cool-down on the same
-  // activity. Level 2, so it is out of the beginner pool entirely — "start once
-  // a week and build to two" is advice for a woman already training. Its props
-  // lead with the low-impact modalities on purpose: prescribing running sprints
-  // to a 52-year-old is the failure mode this row is one bad word away from.
-  ["K01", "Zone 2 cardio", "Any activity — walk, bike, swim, row, elliptical", 1, "none", false],
-  ["K02", "Sprint intervals", "Bike, elliptical, rower, or brisk incline walk", 2, "none", false],
+  // `K02` is the one hard day, and the only protocol row: 30 seconds at about
+  // 90% effort, two minutes easy, three rounds, inside a 5-10 minute warm-up
+  // and a 5 minute cool-down on the same activity — about nineteen minutes,
+  // fixed. Its props lead with the low-impact modalities on purpose: prescribing
+  // running sprints to a 52-year-old is the failure mode this row is one bad
+  // word away from. Beginners and snack users never get it (`CARDIO_VOLUME`).
+  ["K01", "Zone 2 cardio", "Any activity — walk, bike, swim, row, elliptical", 1, false],
+  ["K02", "Sprint intervals", "Bike, elliptical, rower, or brisk incline walk", 2, false],
 ];
 
 /*
@@ -359,13 +319,6 @@ const E: [string, string, string, 1 | 2 | 3, Impact, boolean, string?][] = [
  *
  * `git log -- lib/plan/catalog.ts` is the record. Bringing a movement back means
  * filming it, giving it an id nothing else uses, and adding a row above.
- *
- * Cardio used to be the standing example here — the `duration` dose unit,
- * `isCardioId()` (`K`) and `cardioMinutes()` were all wired with no members.
- * That was closed on 2026-08-28 by adding `K01`-`K02` above, which is exactly
- * what the note predicted it would take: rows, and nothing else. No code
- * changed. `buildPrompt()` prints its continuous-block rule on its own now that
- * the pool holds `duration` ids, and stops again if they ever leave.
  */
 
 /**
@@ -374,7 +327,7 @@ const E: [string, string, string, 1 | 2 | 3, Impact, boolean, string?][] = [
  * Listed as exceptions rather than as a seventh column on `E` so the table above
  * stays readable — anything absent from here is `["timed", false]`, which is the
  * honest default for the squat/press/row/hinge families that make up most of the
- * catalog. Cardio is handled by prefix below and never needs a row here.
+ * catalog.
  *
  * The seconds are a starting dose for a woman new to loading, not a ceiling.
  * They are deliberately conservative; progression is a separate piece of work.
@@ -463,22 +416,16 @@ const DOSE: Record<string, [DoseUnit, boolean, number?]> = {
   S04: ["hold", false, 40],
   S05: ["hold", false, 40],
   S11: ["hold", false, 40],
-  // The one cardio row that is not a plain block: 5-10 min warm-up + 3 x (30s
-  // hard + 2 min easy) + 5 min cool-down is about nineteen minutes, and the
-  // shape is fixed, so it does not take the generic 15-minute default.
-  K02: ["duration", false, 1140],
-  // Otherwise cardio needs no row here. `K` ids are resolved by prefix below —
-  // `["duration", false, CARDIO_DEFAULT_SECONDS]` — so a new walk is one line in
-  // `E` and nothing else. `duration` has had members since 2026-08-28; the
-  // mobility flow that used to share the unit is still retired.
+  // Cardio. `K01`'s seconds are a floor only — `cardioForWeek()` writes the real
+  // minutes into the task. `K02` is a fixed protocol: 5-10 min warm-up + 3 x
+  // (30s hard + 2 min easy) + 5 min cool-down, about nineteen minutes.
+  K01: ["duration", false, 15 * 60],
+  K02: ["duration", false, 19 * 60],
 };
 
-/** Cardio's default block length when nothing else says otherwise. */
-const CARDIO_DEFAULT_SECONDS = 900;
-
-export const EXERCISES: Exercise[] = E.map(([id, name, props, level, impact, snack, clip]) => {
-  const [dose, perSide, seconds] = DOSE[id] ?? (isCardioId(id) ? (["duration", false, CARDIO_DEFAULT_SECONDS] as const) : (["timed", false, undefined] as const));
-  return { id, name, props, level, impact, snack, dose, perSide, seconds, clip };
+export const EXERCISES: Exercise[] = E.map(([id, name, props, level, snack, clip]) => {
+  const [dose, perSide, seconds] = DOSE[id] ?? ["timed", false, undefined];
+  return { id, name, props, level, snack, dose, perSide, seconds, clip };
 });
 
 const BY_ID = new Map(EXERCISES.map((e) => [e.id, e]));
@@ -492,9 +439,6 @@ export const getExercise = (id: string): Exercise | undefined => BY_ID.get(id);
 export function isCardioId(id: string) {
   return id.startsWith("K");
 }
-
-/** Mobility work. Short, unloaded, and it does not want a minute of rest after it. */
-const isMobilityId = (id: string) => id.startsWith("M");
 
 /**
  * Warm-up movements — dynamic, done before the work.
@@ -526,10 +470,7 @@ export const isBookendId = (id: string) => isWarmupId(id) || isStretchId(id);
 /**
  * Bone loading — the plyometric and force-absorption family.
  *
- * `I` for impact. The prefix has always been the marker (`ensureBoneLoading()`
- * and the prompt's bone-coverage rule both tested `startsWith("I")` by hand);
- * this is that test with a name, and it is now load-bearing in a second way:
- * since 2026-08-29 these ids are **reserved for the power block** and kept out
+ * `I` for impact. These ids are **reserved for the power block** and kept out
  * of the pool the model picks its main work from. See `allowedPower()`.
  */
 export const isPowerId = (id: string) => id.startsWith("I");
@@ -540,7 +481,6 @@ export const isPowerId = (id: string) => id.startsWith("I");
 export type StoredExercise = {
   id: string;
   sets?: number;
-  reps?: number;
   seconds?: number;
   minutes?: number;
 };
@@ -615,18 +555,9 @@ const REST_BY_UNIT: Record<DoseUnit, [number, number, number]> = {
 };
 
 export function restSeconds(exercise: Exercise): number {
-  if (isMobilityId(exercise.id) || isBookendId(exercise.id)) return 15;
+  if (isBookendId(exercise.id)) return 15;
   return REST_BY_UNIT[exercise.dose][exercise.level - 1];
 }
-
-/**
- * Roughly how long one controlled repetition takes at this population's tempo.
- *
- * Only used to read plans generated before the dose became time — those rows
- * stored `reps`, and a stored plan is never regenerated, so "3 × 10" has to keep
- * turning into something a timer can run for the rest of that plan's eight weeks.
- */
-const LEGACY_SECONDS_PER_REP = 3;
 
 /** Fallbacks for a stored row that carries nothing usable for its unit. */
 const DEFAULT_SETS = 3;
@@ -678,22 +609,15 @@ const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, M
  *
  * Everything the model writes is clamped into a safe band. A missing or absurd
  * value falls back rather than failing — a plan is never lost over a number.
- *
- * `stored.reps` only appears on plans generated before the dose became time. It
- * is converted at a controlled tempo rather than dropped, so those plans keep
- * running with numbers that still mean what they meant.
  */
-export function hydrateDose(
-  exercise: Exercise,
-  stored: { sets?: number; reps?: number; seconds?: number; minutes?: number }
-): HydratedDose {
+export function hydrateDose(exercise: Exercise, stored: Omit<StoredExercise, "id">): HydratedDose {
   const rest = restSeconds(exercise);
   const sides = exercise.perSide ? 2 : 1;
 
   if (exercise.dose === "duration") {
     const seconds = stored.minutes
       ? clamp(stored.minutes, 1, 90) * 60
-      : exercise.seconds ?? CARDIO_DEFAULT_SECONDS;
+      : exercise.seconds ?? 15 * 60;
     return {
       unit: "duration",
       perSide: false,
@@ -707,9 +631,8 @@ export function hydrateDose(
   // timed | hold | carry — one shape: sets of seconds, run once per side.
   const sets = clamp(stored.sets ?? DEFAULT_SETS, 1, 6);
   const range = SECONDS_RANGE[exercise.dose];
-  const written = stored.seconds ?? (stored.reps ? stored.reps * LEGACY_SECONDS_PER_REP : undefined);
-  const seconds = written
-    ? clamp(written, range.min, range.max)
+  const seconds = stored.seconds
+    ? clamp(stored.seconds, range.min, range.max)
     : exercise.seconds ?? range.min;
 
   return {
@@ -723,37 +646,92 @@ export function hydrateDose(
 }
 
 /**
+ * The progression ladder, as rungs ordered by what ONE exercise costs.
+ *
+ * This is the single source for both places a dose is decided: the three bands
+ * the prompt hands the model (`doseLadder()` in generate.ts) and the dose the
+ * code writes when it fills a session itself (`defaultDoseForWeek()` below).
+ *
+ * **They used to be two different tables and that was a live bug.** The prompt
+ * sized its bands to her actual session — 3 sets of 30s in week 1 for a medium
+ * user — while this file held a flat `[25, 40, 55]` regardless of session
+ * length. The model reliably writes three exercises and our top-up adds the
+ * rest, so a real week-1 session came out as three exercises at the prompt's
+ * dose and three at a much smaller one, and landed at **16:35 against the 30
+ * minutes she was sold**. The docstring here even claimed the two ladders
+ * matched. Two numbers that have to agree are one number.
+ */
+const DOSE_RUNGS: readonly (readonly [number, number])[] = [
+  [2, 20], [2, 25], [2, 30], [2, 40], [3, 30], [3, 40], [3, 50], [3, 60],
+];
+
+/** Average rest between sets, for sizing the ladder. Real rest comes from `restSeconds()`. */
+const LADDER_REST = 50;
+
+const rungCost = ([sets, secs]: readonly [number, number]) =>
+  sets * secs + (sets - 1) * LADDER_REST;
+
+/**
+ * The three progression bands for a session of `workMinutes`, as
+ * `[weeks 1-2, weeks 3-5, weeks 6-8]`.
+ *
+ * Weeks 6-8 land on the hardest rung one exercise's share of the session can
+ * afford; the two earlier bands step back one and three rungs from it. The
+ * steps used to be two and four, which put week 1 at 61-70% of the minutes she
+ * was sold. The clock is the promise and the dose is the progression: week 1
+ * should be the length she chose at a shorter set, not a shorter session.
+ */
+export function doseBands(
+  workMinutes: number,
+  exerciseCount: number
+): [readonly [number, number], readonly [number, number], readonly [number, number]] {
+  const share = (workMinutes * 60) / Math.max(1, exerciseCount);
+  let top = 0;
+  for (let i = DOSE_RUNGS.length - 1; i >= 0; i--) {
+    if (rungCost(DOSE_RUNGS[i]) <= share) { top = i; break; }
+  }
+  return [
+    DOSE_RUNGS[Math.max(0, top - 3)],
+    DOSE_RUNGS[Math.max(0, top - 1)],
+    DOSE_RUNGS[top],
+  ];
+}
+
+/** Which band a week falls in. 0 = weeks 1-2, 1 = weeks 3-5, 2 = weeks 6-8. */
+const bandForWeek = (week: number) => (week <= 2 ? 0 : week <= 5 ? 1 : 2);
+
+/**
  * The dose an exercise gets in a given week when the model did not supply one.
  *
  * Used by the deterministic fallback plan and by the top-up that fills a session
- * the model under-delivered. The ladder matches the one the prompt asks for, so
- * a topped-up exercise sits at the same intensity as the ones around it rather
- * than reading as a week-1 dose dropped into week 7.
+ * the model under-delivered. It reads the same bands the prompt asked the model
+ * for, so a topped-up exercise sits at the intensity of the ones beside it
+ * rather than dragging the session's total down — see `DOSE_RUNGS`.
  *
- * Weeks 1-2 open conservatively, 3-5 build, 6-8 consolidate — one number moving
- * at a time, which is the only progression pattern that is safe to apply without
- * knowing how the last week actually went for her.
+ * `workMinutes` is the time left for the WORK, bookends already taken off. The
+ * caller knows whether this session has any (a snack does not), so it does that
+ * subtraction rather than this function guessing at it.
  */
 export function defaultDoseForWeek(
   exercise: Exercise,
   week: number,
-  sessionMinutes: number,
+  workMinutes: number,
   exerciseCount: number
 ): { sets?: number; seconds?: number; minutes?: number } {
-  const band = week <= 2 ? 0 : week <= 5 ? 1 : 2;
+  const band = bandForWeek(week);
 
+  // Cardio is never in a strength session — `cardioForWeek()` doses it — so this
+  // only has to be total, not clever: a continuous row gets its catalog length.
   if (exercise.dose === "duration") {
-    const cap = cardioMinutes(sessionMinutes, exerciseCount);
-    // Cardio climbs toward the cap rather than starting at it.
-    return { minutes: Math.max(CARDIO_MIN_MINUTES, Math.round(cap * [0.7, 0.85, 1][band])) };
+    return { minutes: Math.round((exercise.seconds ?? 15 * 60) / 60) };
   }
 
-  const sets = [2, week <= 4 ? 2 : 3, 3][band];
+  const [sets, secs] = doseBands(workMinutes, exerciseCount)[band];
   const range = SECONDS_RANGE[exercise.dose];
-  // A per-side set runs its seconds twice, so the same number would be twice the
+  // A per-side set runs its seconds twice, so the full number would be twice the
   // work — and a session of them would quietly run double the minutes promised.
-  const ladder = exercise.perSide ? [15, 25, 35] : [25, 40, 55];
-  return { sets, seconds: clamp(ladder[band], range.min, range.max) };
+  const perSideSeconds = exercise.perSide ? Math.round(secs * 0.6) : secs;
+  return { sets, seconds: clamp(perSideSeconds, range.min, range.max) };
 }
 
 /** What one exercise's stored dose actually costs, in seconds, rest included. */
@@ -805,21 +783,7 @@ export function fitSessionToMinutes(
   const over = () => listSeconds(out) + bookendSeconds > budget;
   const unitOf = (e: StoredExercise) => getExercise(e.id)?.dose;
 
-  // 1a. Cardio minutes, before anything else. A continuous block is the single
-  // biggest line in a session and the two levers below cannot reach it — it has
-  // no seconds and its sets are always 1 — so a session carrying one was
-  // effectively untrimmable, and step 3 would sooner drop a strength exercise
-  // than shorten a walk. Minutes are the same category of cut as seconds: less
-  // of the same session, nothing removed.
-  for (let guard = 0; guard < 90 && over(); guard++) {
-    const block = out
-      .filter((e) => unitOf(e) === "duration" && (e.minutes ?? 0) > CARDIO_MIN_MINUTES)
-      .sort((a, b) => (b.minutes ?? 0) - (a.minutes ?? 0))[0];
-    if (!block) break;
-    block.minutes = Math.max(CARDIO_MIN_MINUTES, (block.minutes ?? CARDIO_MIN_MINUTES) - 1);
-  }
-
-  // 1b. Seconds, five at a time, off whichever set is currently longest.
+  // 1. Seconds, five at a time, off whichever set is currently longest.
   for (let guard = 0; guard < 200 && over(); guard++) {
     const trimmable = out
       .filter((e) => {
@@ -848,48 +812,70 @@ export function fitSessionToMinutes(
   return out;
 }
 
-/**
- * The shortest a cardio block is worth prescribing. Below this it is a walk to
- * the kitchen, and `fitSessionToMinutes()` stops trimming it here.
- */
-const CARDIO_MIN_MINUTES = 3;
+// ─── Cardio ─────────────────────────────────────────────────────────────────
 
 /**
- * At most one continuous block per session.
+ * Weekly aerobic volume by fitness level — the sessions the plan schedules
+ * BESIDE her strength sessions, written by code into every week of every plan.
  *
- * A `duration` id is not an exercise-sized thing — it is half the session on its
- * own — so two of them is not variety, it is the session twice. The rotation in
- * `fallbackPlan()` walked straight into it the day cardio got rows: week 6 drew
- * two cardio ids side by side, 10 minutes each, and landed at **26.2 minutes
- * against a 20-minute budget** with `fitSessionToMinutes()` unable to do
- * anything about it — it could not shorten a block it had no seconds lever on,
- * and could not pop one without going under the exercise floor.
+ * Cardio used to be a `K` id the model could put inside a strength session,
+ * which made it optional (it forgot), wrong-sized (it handed a walk the whole
+ * half hour), and expensive to police (a cap, a clamp, a trimmer step and a
+ * dedupe existed only to keep one walk from eating the squats). Every one of
+ * those was a symptom of the same mistake the power block fixed for bone
+ * loading: a pillar competing for a slot instead of having one. So cardio is a
+ * task of its own now — `cardioForWeek()` says what it holds — and the model is
+ * told it exists and told not to write it.
  *
- * Applied where the list is assembled rather than inside the trimmer, because
- * this is a fact about what a session IS, not about whether it fits.
+ * `minutes` is one session in weeks 1-2, 3-5 and 6-8, so the walk grows on the
+ * same ladder as the sets do. `intervalsFromWeek` is where one of the easy
+ * sessions turns into the `K02` interval protocol — REPLACING a Zone 2 session,
+ * never adding to the count, because the number of times a week she laces up is
+ * the promise and the hard day is a change of what one of them is. Beginners and
+ * snack users never get it: "once a week and build to two" is advice for a
+ * woman already training.
+ *
+ * These sit on top of `MOVEMENT_VOLUME`, and the funnel says so — the
+ * `reward_plan_shape` screen reads both tables. Change a number here and
+ * check that screen still tells the truth.
  */
-export function capCardio(list: readonly StoredExercise[]): StoredExercise[] {
-  let seen = false;
-  return list.filter((e) => {
-    if (!isCardioId(e.id)) return true;
-    if (seen) return false;
-    seen = true;
-    return true;
-  });
+export const CARDIO_VOLUME: Record<
+  string,
+  { sessions: number; minutes: readonly [number, number, number]; intervalsFromWeek?: number }
+> = {
+  beginner: { sessions: 2, minutes: [15, 20, 25] },
+  medium: { sessions: 2, minutes: [20, 25, 30], intervalsFromWeek: 5 },
+  advanced: { sessions: 3, minutes: [25, 30, 35], intervalsFromWeek: 3 },
+  // Two short walks. She chose "a few minutes, spread out" for her strength
+  // work, and a ten-minute walk is a few minutes — it is the one thing in her
+  // week that is not a five-minute burst beside the desk.
+  movement_snacks: { sessions: 2, minutes: [10, 12, 15] },
+};
+
+/** The two cardio rows, by role. The ids are the contract with the app. */
+export const ZONE2_ID = "K01";
+export const INTERVALS_ID = "K02";
+
+export type CardioWeek = {
+  /** Easy sessions this week, and how long each one runs. */
+  zone2: { sessions: number; minutes: number };
+  /** Whether one session this week is the interval protocol instead. */
+  intervals: boolean;
+};
+
+/** What cardio a given week of her plan holds. Total sessions never change mid-plan. */
+export function cardioForWeek(fitnessLevel: string | null, week: number): CardioWeek {
+  const vol = CARDIO_VOLUME[fitnessLevel ?? "beginner"] ?? CARDIO_VOLUME.beginner;
+  const intervals = vol.intervalsFromWeek !== undefined && week >= vol.intervalsFromWeek;
+  return {
+    zone2: { sessions: vol.sessions - (intervals ? 1 : 0), minutes: vol.minutes[bandForWeek(week)] },
+    intervals,
+  };
 }
 
-/**
- * How many minutes a cardio block gets inside a session that also has other work.
- *
- * Both the fallback builder and the code top-up used to hand a cardio id
- * `MOVEMENT_VOLUME.minutes` — the ENTIRE session allowance — and then sit three
- * strength exercises next to it, so a "28 minute" session really ran 45+. That
- * was invisible while nothing displayed a total; the session player prints one.
- */
-export function cardioMinutes(sessionMinutes: number, exerciseCount: number): number {
-  if (exerciseCount <= 1) return sessionMinutes;
-  return Math.max(CARDIO_MIN_MINUTES, Math.round(sessionMinutes * 0.5));
-}
+/** Minutes the interval protocol runs, off its catalog row. */
+export const intervalsMinutes = () =>
+  Math.round((getExercise(INTERVALS_ID)?.seconds ?? 19 * 60) / 60);
 
 // ─── The power block ────────────────────────────────────────────────────────
 
@@ -906,10 +892,7 @@ export function cardioMinutes(sessionMinutes: number, exerciseCount: number): nu
  * that she ticks `target` times a week, so "plyo on 2 of your 3 days" is not
  * something the stored plan can say — every session in a week is the same
  * session. What we send instead is the block plus this number, and the app
- * shows the power section on the first two completions of the week. When a week
- * eventually holds several DIFFERENT sessions (the change that also unblocks
- * cardio's weekly volume — see the `K` rows), this constant becomes a property
- * of which sessions get the block, and the app stops needing to count.
+ * shows the power section on the first two completions of the week.
  */
 export const POWER_SESSIONS_PER_WEEK = 2;
 
@@ -964,14 +947,11 @@ function powerDoseForWeek(week: number): { sets: number; seconds: number } {
  * cool-down.
  *
  * Written by CODE, never by the model, and that is the entire point. The prompt
- * asked for bone loading in as many words and measured over four generations
- * the model wrote plans with none at all in two of them — so `ensureBoneLoading()`
- * went round afterwards swapping an `I` id into the last slot of the shortest
- * sessions, which covered four of eight weeks with one movement and cost a
- * strength exercise every time it fired. Both of those are gone: the block is
- * its own segment, on its own budget, in every session, and the `I` family is
- * out of the pool the model picks from (see `allowedPower()`), so there is
- * nothing left for it to forget or to duplicate.
+ * used to ask for bone loading in as many words and, measured over four
+ * generations, the model wrote plans with none at all in two of them. The block
+ * is its own segment, on its own budget, in every session, and the `I` family
+ * is out of the pool the model picks from (see `allowedPower()`), so there is
+ * nothing left for it to forget.
  *
  * Fills to the budget and never past it. Each movement takes the week's dose if
  * it fits, one fewer set if it doesn't, and is skipped if even that overflows —
@@ -1090,9 +1070,34 @@ export function buildPowerBlock(
  * Only the API builds these URLs. If the bucket ever moves to another CDN, this
  * constant is the only thing that changes — no client ships a hardcoded path.
  */
-const MEDIA_BASE =
-  process.env.EXERCISE_MEDIA_BASE ??
-  `${process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""}/storage/v1/object/public/exercise-clips`;
+/**
+ * **Read at call time, not at module load**, and the env var is checked before
+ * the template rather than inside it.
+ *
+ * This was `process.env.EXERCISE_MEDIA_BASE ?? \`${process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""}/storage/...\``,
+ * evaluated once at import, and it has the same two faults `meditationMedia()`
+ * documents at length — the note there was written about this constant and then
+ * not applied to it:
+ *
+ * - **An empty `NEXT_PUBLIC_SUPABASE_URL` interpolates to `""` and the string
+ *   still concatenates**, producing `/storage/v1/object/public/exercise-clips`.
+ *   That is truthy, so the `!MEDIA_BASE` guard below never fires, and every
+ *   clip URL in the response becomes a RELATIVE path — which a phone has no
+ *   origin to resolve. A blank env var on Vercel would have shipped a video
+ *   player with nothing behind it to every session, with nothing failing in the
+ *   build and nothing in the logs. Same trap as the blank pixel id, and as
+ *   `customer_email: ""` in create-checkout.
+ * - **Module-load evaluation loses to dotenv.** `import` is hoisted above any
+ *   `config()` call, so any script that loads `.env.local` in its body sees an
+ *   already-frozen empty base. That is how this was found.
+ */
+function mediaBase(): string | undefined {
+  const override = process.env.EXERCISE_MEDIA_BASE;
+  if (override) return override;
+  const supabase = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!supabase) return undefined;
+  return `${supabase}/storage/v1/object/public/exercise-clips`;
+}
 
 export type ExerciseMedia = { video: string };
 
@@ -1116,111 +1121,68 @@ export type ExerciseMedia = { video: string };
  */
 export function exerciseMedia(id: string): ExerciseMedia | undefined {
   const clip = BY_ID.get(id)?.clip;
-  if (!clip || !MEDIA_BASE) return undefined;
-  return { video: `${MEDIA_BASE}/${encodeURIComponent(clip)}` };
+  if (!clip) return undefined;
+  const base = mediaBase();
+  if (!base) return undefined;
+  return { video: `${base}/${encodeURIComponent(clip)}` };
 }
 
 /**
- * Physical limitations are no longer collected or applied (2026-08-29).
+ * The strength exercises this user may be given — the pool the model picks a
+ * session's main work from.
  *
- * `LIMITATION_EXCLUDES` used to strip lunges, kneeling stretches, overhead
- * pressing and every high-impact row out of the pool for the six body parts the
- * quiz's `q_limitations` screen asked about. That screen is gone: a woman who
- * tells us something hurts needs a clinician, not an unsupervised eight-week
- * plan, and the product is not built to be the first. She is out of scope
- * rather than accommodated.
- *
- * What remains is `joint_pain` from `q4_symptoms`, which still drops every
- * high-impact exercise wholesale in `allowedExercises()` below. It is the only
- * body-signal filter left in the catalog.
- *
- * Bringing the exclusions back means bringing back all three ends at once — the
- * quiz screen (`LIMITATION_OPTIONS`), the accepted values (`PHYSICAL_LIMITS` in
- * `app/api/auth/save-quiz/route.ts`) and the rules here. `git log` has the
- * lists; do not restore one end without the other two, because an answer no
- * rule matches is silently ignored, which is a knee that gets lunges.
- */
-
-/**
- * The exercises this user may be given.
+ * **Her fitness level is the only filter.** There is no body-signal filter left:
+ * the physical-limitations screen went on 2026-08-29 (a woman who tells us
+ * something hurts needs a clinician, not an unsupervised plan, so she is out of
+ * scope rather than accommodated), and the `joint_pain` impact rule that
+ * survived it was removed the same day — it was the last reader of an `impact`
+ * grade on every row, and a grade nothing reads is a claim nobody maintains.
+ * Bringing a filter back means bringing back the grade with it, in the same
+ * commit, and deciding what the funnel promises her about it.
  *
  * `movement_snacks` is a cadence, not a difficulty — it gets short, no-setup
- * moves she can do many times a day. Joint pain removes the work she shouldn't
- * be given; that filter runs in code, never in the prompt, so a model can't opt
- * out of it.
+ * moves she can do many times a day.
  *
- * **Power ids are not in here** (2026-08-29). The `I` family is reserved for the
- * power block that `buildPowerBlock()` appends to every session — bone loading
- * is now a structural segment of the workout rather than one movement the model
- * may or may not remember to include, which is what `ensureBoneLoading()`
- * existed to paper over. The one exception is the snack cadence: five-minute
- * bursts get no power block, so for them the `I` rows stay ordinary main work,
- * which is the only reason a snack user has any bone loading at all.
+ * Three families are drawable but never in this pool, each because it has a
+ * segment of its own: bookends (`W`/`S`, see `allowedWarmups()`), bone loading
+ * (`I`, see `allowedPower()`), and cardio (`K`, see `cardioForWeek()`). The one
+ * exception is the snack cadence, which has no power block, so for it the `I`
+ * rows stay ordinary main work — the only reason a snack user has any bone
+ * loading in her bursts at all.
  *
- * The pool is never emptied by this. Measured by `scripts/verify-plan-dose.ts`
- * against this catalog:
+ * Measured by `scripts/verify-plan-dose.ts` against this catalog:
  *
- *   | Level            | main | +joint_pain | power | +joint_pain |
- *   |------------------|------|-------------|-------|-------------|
- *   | beginner         |   16 |          16 |     2 |           2 |
- *   | medium           |   42 |          42 |     6 |           2 |
- *   | advanced         |   44 |          44 |     9 |           2 |
- *   | movement_snacks  |   23 |          20 |     0 |           0 |
- *
- * The main pool is now unmoved by joint pain at every level, because with the
- * `I` family reserved the only high-impact rows left in it were `I` rows. The
- * whole of that filter's remaining work has moved to the power pool, where it
- * bites hard: **every level collapses to `I01` and `I09`** — the stomping march
- * and the supported heel drop, the two low-impact rows that survive it. That is
- * the population most in need of bone loading getting the least variety of it,
- * and it is a content gap, not a code one. Keep any future `I` row at `low`
- * impact if it can honestly be graded there.
+ *   | Level            | main | power |
+ *   |------------------|------|-------|
+ *   | beginner         |   16 |     2 |
+ *   | medium           |   42 |     6 |
+ *   | advanced         |   44 |     9 |
+ *   | movement_snacks  |   23 |     0 |
  */
-export function allowedExercises(
-  fitnessLevel: string | null,
-  topProblems: string[]
-): Exercise[] {
+export function allowedExercises(fitnessLevel: string | null): Exercise[] {
   const maxLevel = fitnessLevel === "advanced" ? 3 : fitnessLevel === "medium" ? 2 : 1;
   const snacksOnly = fitnessLevel === "movement_snacks";
 
   return EXERCISES.filter((e) => {
-    // Bookends are drawable, never prescribable as the main work.
-    if (isBookendId(e.id)) return false;
-    // Bone loading has its own segment now — except on the cadence that has no
-    // segment to put it in.
+    if (isBookendId(e.id) || isCardioId(e.id)) return false;
     if (isPowerId(e.id) && !snacksOnly) return false;
-    if (snacksOnly ? !e.snack : e.level > maxLevel) return false;
-    if (topProblems.includes("joint_pain") && e.impact === "high") return false;
-    return true;
+    return snacksOnly ? e.snack : e.level <= maxLevel;
   });
 }
 
 /**
- * The bone-loading movements this user may be given, for the power block.
- *
- * The same two filters the main pool applies — her level, and joint pain
- * dropping every high-impact row — over the `I` family alone. Empty for the
- * snack cadence, which has no power block and keeps its `I` rows in the main
- * pool instead.
+ * The bone-loading movements this user may be given, for the power block —
+ * her level over the `I` family alone. Empty for the snack cadence, which has
+ * no power block and keeps its `I` rows in the main pool instead.
  *
  * Empty is a real answer and `buildPowerBlock()` handles it by returning
- * nothing: if a future filter ever strips the whole family, the correct
- * response is a session with no power block, not a session with a movement she
+ * nothing: a session with no power block, never a session with a movement she
  * was excluded from.
  */
-export function allowedPower(
-  fitnessLevel: string | null,
-  topProblems: string[]
-): Exercise[] {
+export function allowedPower(fitnessLevel: string | null): Exercise[] {
   if (fitnessLevel === "movement_snacks") return [];
   const maxLevel = fitnessLevel === "advanced" ? 3 : fitnessLevel === "medium" ? 2 : 1;
-
-  return EXERCISES.filter((e) => {
-    if (!isPowerId(e.id)) return false;
-    if (e.level > maxLevel) return false;
-    if (topProblems.includes("joint_pain") && e.impact === "high") return false;
-    return true;
-  });
+  return EXERCISES.filter((e) => isPowerId(e.id) && e.level <= maxLevel);
 }
 
 /**
@@ -1228,8 +1190,8 @@ export function allowedPower(
  *
  * Neither end applies fitness level or the snack rule — a bookend is level 1 by
  * construction, and two minutes of hip circles is not something an advanced user
- * graduates past. With the limitation filter gone, both pools are simply the
- * whole family: 15 warm-ups and 11 stretches, the same for everyone.
+ * graduates past. Both pools are simply the whole family: 15 warm-ups and 11
+ * stretches, the same for everyone.
  */
 
 /** Dynamic prep, for the front of a session. */
@@ -1243,7 +1205,9 @@ export function allowedCooldowns(): Exercise[] {
 }
 
 /**
- * Weekly movement volume by fitness level. `perDay` marks the snack cadence.
+ * Weekly STRENGTH volume by fitness level — the sessions the model builds.
+ * `perDay` marks the snack cadence. Cardio is scheduled separately and on top;
+ * see `CARDIO_VOLUME`.
  *
  * **These numbers are the sentence she read on the quiz screen before she
  * paid**, not an internal target — `FITNESS_OPTIONS` in `app/register/page.tsx`

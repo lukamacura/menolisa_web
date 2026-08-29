@@ -877,6 +877,125 @@ Two things the app has to do that no previous media needed:
 
 ---
 
+## 19. `GET /api/plan/history` — a `habit` pillar (**additive**) — 2026-08-29
+
+Every `overall`, every `weeks[]` and every `days[]` object gained one field,
+beside `movement` / `nutrition` / `relaxation` and shaped identically:
+
+```jsonc
+{
+  "movement":   { "done": 4, "target": 6, "ratio": 0.67 },
+  "nutrition":  { "done": 41, "target": 70, "ratio": 0.59 },
+  "relaxation": { "done": 5, "target": 7, "ratio": 0.71 },
+  "habit":      { "done": 3, "target": 7, "ratio": 0.43 },  // NEW
+  "score": 0.66                                            // UNCHANGED — still the three above
+}
+```
+
+### `score` deliberately does not include it
+
+`score` is what the app draws as three rings, so folding a fourth pillar into it
+would make the number disagree with the picture on the same screen. It still
+averages movement, nutrition and relaxation exactly as before. **Nothing about
+the existing rings changes**, and an app that ignores `habit` keeps working.
+
+When the app is ready to draw a fourth ring, say so and `score` gains it in the
+same release — it is one line server-side (`SCORED` in `lib/plan/history.ts`).
+
+### Why it appeared
+
+The plan writes her a small daily habit every week ("cool the room before bed"),
+she could always tick it, and it was scored **nowhere**: not in a ring, not in
+the history grid, and not in the adherence numbers that size her next eight
+weeks. Eight weeks of keeping every habit and eight weeks of keeping none
+produced the identical next plan.
+
+It now also reaches the next cycle's prompt as `Adherence.habit`, which was the
+part that actually cost her something: under 50% now tells the model the habits
+it wrote did not fit her day, and to make the next ones smaller and anchor them
+to something already in it.
+
+**What the app should do:** nothing is required. If you want the extra signal,
+render `habit` beside the other three — the shape is identical, and `null` means
+the plan asked nothing of her there, never zero.
+
+## 20. `GET /api/plan` — cardio is its own task every week (**additive**) — 2026-08-29
+
+Every week now carries one or two **extra movement tasks** beside the strength
+session. They come from code, not the model, and they are there in every plan
+generated from today, on the fallback path too:
+
+```jsonc
+{
+  "key": "w3_cardio",              // NEW — Zone 2. Every week.
+  "pillar": "movement",
+  "title": "Zone 2 cardio",
+  "why": "…",
+  "cadence": "weekly",
+  "target": 2,                     // sessions this week
+  "exercises": [
+    { "id": "K01", "minutes": 25, "name": "Zone 2 cardio",
+      "props": "Any activity — walk, bike, swim, row, elliptical",
+      "dose": { "unit": "duration", "sets": 1, "seconds": 1500, "restSeconds": 0, "estimatedSeconds": 1500, "perSide": false } }
+  ]
+  // no warmup, no power, no cooldown, no video — see below
+},
+{
+  "key": "w5_intervals",           // NEW — from a set week, medium and advanced only
+  "pillar": "movement",
+  "title": "Sprint intervals",
+  "cadence": "weekly",
+  "target": 1,
+  "exercises": [ { "id": "K02", "minutes": 19, /* … */ } ]
+}
+```
+
+### What it is
+
+The aerobic pillar. `K01` is a dose, not a movement — minutes at a pace where
+she could talk but not sing, on whatever she has. `K02` is a fixed 19-minute
+protocol (5-10 min easy, 3 × 30s hard / 2 min easy, 5 min easy). From
+`intervalsFromWeek` one Zone 2 session **becomes** the intervals session; the
+number of cardio sessions in a week never changes mid-plan.
+
+| Level | Zone 2 | Minutes wk 1-2 / 3-5 / 6-8 | Intervals |
+|---|---|---|---|
+| beginner | 2 / week | 15 / 20 / 25 | never |
+| medium | 2 / week | 20 / 25 / 30 | from week 5, replacing one Zone 2 |
+| advanced | 3 / week | 25 / 30 / 35 | from week 3, replacing one Zone 2 |
+| movement snacks | 2 / week | 10 / 12 / 15 | never |
+
+### How to render it
+
+- **It is a movement task with exactly one exercise**, and that exercise has
+  `dose.unit: "duration"` — a single countdown of `dose.seconds`, no sets, no
+  rest. Both the existing session runner and the existing task list already
+  handle that shape (§11); nothing new to build for the timer.
+- **No `warmup`, `power` or `cooldown`, ever.** A walk warms up by being a walk.
+  Draw no empty section.
+- **No `video`.** `K` rows carry no clip by design; show name + props.
+- **Tick it like any weekly task.** Log against `task.key` with the date;
+  `doneThisWeek` counts against `target`. It contributes to the movement ring
+  and to `Adherence.movement` exactly like the strength session does — a week
+  she walked and did not lift scores as half a movement week.
+- Tell them apart from the strength session by `key` suffix (`_cardio`,
+  `_intervals`) or by every exercise id starting with `K` — not by title.
+
+### Keys
+
+New plans key the strength session `w{n}_movement` (it was `w{n}_movement0`).
+Plans already stored keep their keys, and logs are keyed by whatever the plan
+row says, so nothing migrates. Never hardcode either.
+
+### Also gone
+
+The `joint_pain` symptom no longer filters the exercise pool, and catalog rows
+no longer carry an `impact` grade. Nothing in the API exposed either.
+
+**What the app should do:** render `w{n}_cardio` / `w{n}_intervals` as movement
+tasks with a single-timer exercise and no bookends, power or video; count them
+against `target` with `doneThisWeek`; nothing else changes.
+
 ## Quick checklist
 
 - [ ] Remove `trial_start` / `trial_end` / `trial_days` reads
@@ -922,3 +1041,8 @@ Two things the app has to do that no previous media needed:
 - [ ] Keep `power` out of `exercises` in every count, estimate and adherence score
 - [ ] Draw no power section when the field is absent (snacks, walks, old plans)
 - [ ] Stop hardcoding session length per level — it is a band now, or sum the doses
+- [ ] Optional: render the new `habit` pillar from `/api/plan/history`
+- [ ] Keep reading `score` as the three rings — `habit` is not in it yet
+- [ ] Render `w{n}_cardio` / `w{n}_intervals` as one-exercise movement tasks with a single countdown
+- [ ] Draw no warm-up, power, cool-down or video on a cardio task
+- [ ] Count cardio ticks against `target` with `doneThisWeek`, like any weekly task

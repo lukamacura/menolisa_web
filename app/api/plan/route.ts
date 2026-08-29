@@ -19,6 +19,7 @@ import {
   scoreCycle,
   type PlanRow,
 } from "@/lib/plan/cycles";
+import { addDays, asUtc, daysBetween } from "@/lib/plan/dates";
 import {
   NUTRITION,
   NUTRITION_GROUP_ORDER,
@@ -28,14 +29,22 @@ import {
 } from "@/lib/plan/catalog";
 
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
 
-// All date maths is done in UTC on plain YYYY-MM-DD strings, so it can't drift
-// with the server's DST. The client tells us its local date; we only sanity-check it.
-const DAY = 86_400_000;
-const asUtc = (d: string) => new Date(`${d}T00:00:00Z`).getTime();
-const addDays = (d: string, n: number) => new Date(asUtc(d) + n * DAY).toISOString().slice(0, 10);
-const daysBetween = (from: string, to: string) => Math.floor((asUtc(to) - asUtc(from)) / DAY);
+/**
+ * Plan generation runs inside `after()` and measures 15-17 seconds — two
+ * OpenAI calls, in parallel, on a prompt that carries her whole pool.
+ *
+ * `after()` work is billed against THIS function's duration, so without this
+ * line the route inherits the platform default. If that default is below the
+ * generation time the callback is killed mid-flight, the row stays
+ * `generating`, and the app's poll re-kicks a run that is guaranteed to die the
+ * same way — "building your plan" forever, on an account that has paid.
+ *
+ * Sixty is roughly 3.5x the measured time, which covers a slow OpenAI without
+ * holding a function open for five minutes over a hung socket.
+ */
+export const maxDuration = 60;
+export const dynamic = "force-dynamic";
 
 /** Her local date, from the client. Rejected if more than a day off ours — travel is fine, tampering isn't. */
 function resolveDate(param: string | null): string {
@@ -51,8 +60,6 @@ function resolveDate(param: string | null): string {
 // current attempt was claimed", and the re-kick below moves it forward. It stops
 // being touched once the row is `ready`.
 const STALL_MS = 120_000;
-
-const PILLARS = new Set(["movement", "relaxation", "habit"]);
 
 export async function GET(req: NextRequest) {
   const user = await getAuthenticatedUser(req);
@@ -237,9 +244,7 @@ export async function GET(req: NextRequest) {
       title: week.title,
       focus: week.focus,
       state,
-      tasks: week.tasks
-        .filter((t) => PILLARS.has(t.pillar))
-        .map((t) => ({
+      tasks: week.tasks.map((t) => ({
           key: t.key,
           pillar: t.pillar,
           title: t.title,
@@ -266,7 +271,7 @@ export async function GET(req: NextRequest) {
           // Breathing pattern and round count, so the app can run the timer
           // without shipping its own copy of the protocol.
           relaxation: hydrateRelaxation(t),
-        })),
+      })),
     };
   });
 

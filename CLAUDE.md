@@ -55,7 +55,6 @@ web app/
 │   │   ├── auth/            # OTP helpers, save-quiz, mobile↔web handoff
 │   │   ├── chat-sessions/   # Chat session persistence
 │   │   ├── cron/            # Scheduled jobs (see table below)
-│   │   ├── daily-mood/      # Mood tracking (1-4 scale)
 │   │   ├── doctor-report/   # Generate doctor-ready health report
 │   │   ├── good-days/       # "Good day" logs
 │   │   ├── health-summary/  # Health summary report generation
@@ -159,12 +158,23 @@ Don't add another.
 **Cron jobs** (run automatically on Vercel per `vercel.json`):
 | Endpoint | Schedule | Purpose |
 |---|---|---|
-| `/api/cron/daily-reminders` | 9am UTC daily | Push notification to users who haven't logged today |
-| `/api/cron/weekly-insights` | 12am UTC Monday | Generate weekly insight summaries |
+| `/api/cron/weekly-recap` | 7pm UTC Sunday | The week's recap |
 | `/api/cron/renewal-notices` | 11am UTC daily | Warn paying subscribers `RENEWAL_NOTICE_DAYS` before the next charge |
 | `/api/cron/purge-anon-accounts` | 3am UTC daily | Delete emailless, unpaid anonymous accounts older than 7 days |
 
-These four are the whole list — keep it in sync with `vercel.json`.
+These three are the whole list — keep it in sync with `vercel.json`. (This table
+used to name `daily-reminders` and `weekly-insights`, which have not been in
+`vercel.json` for some time; engagement reminders moved to the device on
+2026-08-27.)
+
+**Any route that generates a plan needs `export const maxDuration`.** Generation
+measures 15-17 seconds inside `after()`, and `after()` work is billed against
+the function's duration — so a route that declares nothing inherits the platform
+default, and if that default is under the generation time the callback is killed
+mid-flight. The row stays `generating`, the app's poll re-kicks a run guaranteed
+to die the same way, and she watches "building your plan" forever on an account
+she has paid for. `/api/plan`, `/api/stripe/webhook` and
+`/api/stripe/sync-session` each declare 60.
 
 ---
 
@@ -351,7 +361,6 @@ Supabase (PostgreSQL) — no ORM, raw SQL queries via Supabase JS client:
 |---|---|
 | `symptoms` | `id`, `user_id`, `name`, `icon`, `is_default` |
 | `symptom_logs` | `id`, `user_id`, `symptom_id`, `severity` (1-3), `triggers[]`, `time_of_day`, `notes`, `logged_at` |
-| `daily_mood` | `user_id`, `date`, `mood` (1-4); unique on `(user_id, date)` |
 | `user_profiles` | `user_id`, `name`, `top_problems[]`, `severity`, `timing`, `goal`, `doctor_status` |
 | `user_trials` | `user_id`, `account_status` ("pending_payment"/"paid"/"expired"), `subscription_ends_at`, `subscription_canceled`, `payment_failed_at`, `dispute_flagged_at`, `provider`, `plan_type`, `plan_amount`, `fulfilled_at` (one-time-side-effect claim — see "Checkout fulfillment"), `renewal_notice_sent_for` (the `subscription_ends_at` the renewal email already covered). No trial columns — see below. The table name is legacy; it holds subscriptions. |
 | `documents` | Vector store — `id`, `content`, `metadata` (JSONB), `embedding` (vector 1536) |
@@ -922,6 +931,159 @@ again also works — that calls `sync-session`.
 ## 7. CURRENT STATUS
 
 Recent work:
+- **Cardio became a segment, joint pain stopped being a filter, and the
+  generator lost its dead weight (2026-08-29)** — an audit of the whole LLM
+  plan flow, measured across four live generations and four fallback plans
+  per pass (0 problems after).
+  **Cardio is scheduled by code now, every week, on both paths.** It used to be
+  two `K` ids in the model's pool that it could put inside a strength session —
+  so it was optional (it forgot), wrong-sized (it handed a walk the whole half
+  hour), and expensive to police: `capCardio()`, `cardioMinutes()`,
+  `CARDIO_MIN_MINUTES`, a minutes-clamp loop in `sanitize()` and step 1a of
+  `fitSessionToMinutes()` existed only to keep one walk from eating the squats.
+  All five are deleted. `CARDIO_VOLUME` (catalog.ts) is the schedule and
+  `cardioTasks()` (generate.ts) writes it into every week as its own tasks:
+  `w3_cardio` (Zone 2, `K01`, 2-3 sessions a week, minutes climbing on the
+  same three bands as the sets) and, from `intervalsFromWeek`, `w5_intervals`
+  (`K02`, once a week, **replacing** an easy session so the count she laces up
+  for never changes). beginner 2x15→25, medium 2x20→30 with intervals from
+  week 5, advanced 3x25→35 with intervals from week 3, snacks 2x10→15 (two
+  short walks — a few minutes is what she asked for). `K` is out of
+  `allowedExercises()` the way `I` is, the prompt tells the model the cardio
+  exists and forbids it from writing any, and the completeness gate now asks
+  for a *strength* session per week (`isCardioTask()`), since cardio is
+  movement too and is always there. The `reward_plan_shape` loader reads both
+  tables, so the weekly minutes it shows include the walks. See §20 of
+  `docs/mobile-app-changes.md` — the app renders these as a movement task
+  with one `K` exercise, no bookends, no power block, no clip.
+  **The `joint_pain` filter is gone, and `impact` with it.** It was the last
+  body-signal filter and it had already lost most of its work when `I` was
+  reserved for the power block; what was left collapsed every joint-pain power
+  pool to two movements. The user's call: it made the plan harder to reason
+  about than it made it safer. With no reader left, the `impact` grade on all
+  79 rows was a claim nobody would maintain, so the column, the `Impact` type
+  and every row comment that argued a grade are deleted. `allowedExercises()`
+  and `allowedPower()` take `fitnessLevel` alone. Level is the only filter.
+  **Dead code out:** the legacy `reps` path (`StoredExercise.reps`,
+  `LEGACY_SECONDS_PER_REP`, the `hydrateDose()` branch — 0 of 4 stored plans
+  carry it), `isMobilityId()` (no `M` row has existed since 2026-08-24),
+  `Profile.name/timing/qualifier` (selected from the database, read by neither
+  prompt), the threaded `warmupPool`/`cooldownPool` parameters on
+  `buildPrompt()`/`planJsonSchema()`/`sanitize()` and the empty-enum fallback
+  they needed (the pools are constants now), the duplicated
+  floor/ceiling constants inside `sanitize()`, the `PILLARS` filter in
+  `GET /api/plan`, and the three copies of `asUtc`/`addDays`/`daysBetween` in
+  `cycles.ts`, `history.ts` and the route — one `lib/plan/dates.ts` now.
+  Stale docstrings that described removed machinery (`ensureBoneLoading()`,
+  "nothing writes bookends yet", the limitation rules) are gone with it.
+  **One more fault found by measuring:** the fallback plan's rotation wraps a
+  15-id beginner pool every five weeks, so weeks 6-8 repeated weeks 1-3's
+  session titles word for word. `fallbackPlan()` dedupes titles the way
+  `sanitize()` does. New plans key the strength session `w1_movement` rather
+  than `w1_movement0`; stored plans keep whatever key they have.
+  Verified: `npx tsc --noEmit` clean, `npm run lint` clean on every touched
+  file, `npm run build` passes, `npm run verify-plan-dose` passes with a new
+  cardio section (pools 15/40/42/23, power 2/6/9/0, cardio 8 of 8 at every
+  level with a constant session count), and **0 problems across 4 live
+  generations and 4 fallback plans** — strength session + power block + cardio
+  in every week, every session inside its band, no cardio inside a strength
+  session, no repeated titles, no stock "why" lines.
+  `docs/plan/how-the-plan-works.html` is the plain-language explainer of all
+  of it, for users, product and engineering alike.
+- **The plan flow audited end to end, and eight faults fixed (2026-08-29)** —
+  measured across eight live generations per pass (four profile shapes x model
+  path and fallback path) rather than read. Every one of these was invisible
+  from the code and visible in the output.
+  **Three could reach a paying customer as a broken app:**
+  - **No `maxDuration` on any route that generates a plan.** The two crons
+    declare 300; `/api/plan`, the Stripe webhook and `sync-session` declared
+    nothing while doing 15-17 seconds of work inside `after()`. See §3 — this
+    is the one that turns a purchase into a refund.
+  - **A duplicate relaxation key.** `sanitize()` gated `usedRelaxation` on the
+    repair path but not on the model's own `item_id`, so two relaxation tasks
+    naming the same practice produced two tasks with the identical
+    `w3_breath_sleep` — a visible duplicate row whose two ticks write to one log
+    row. The prompt invites two relaxation tasks ("routine can carry two from
+    the start"), which is what made it reachable.
+  - **Nothing capped movement tasks per week.** `cadence`/`target` are
+    overwritten from `MOVEMENT_VOLUME` on every movement task, so two of them
+    each asked for the full `vol.sessions` and each got its own power block —
+    a medium user asked for six sessions against a plan that sold her three.
+    The second is now dropped and the week topped up with something she can
+    actually add to a day.
+  **Two dose ladders that had to agree, and didn't.** The prompt sized its three
+  bands to her real session (`doseLadder()`); `defaultDoseForWeek()` held a flat
+  `[25, 40, 55]` regardless of session length. The model reliably writes three
+  exercises and the code tops the rest up, so a real week 1 came out as three
+  exercises at one dose and three at a much smaller one and measured **14:50
+  against the 30 minutes she was sold**. `defaultDoseForWeek`'s own docstring
+  claimed the two matched. They are one table now (`DOSE_RUNGS` in catalog.ts),
+  its third argument means WORK minutes rather than session minutes, and every
+  caller passes `workMinutesFor(vol)`. The bands also step back one and three
+  rungs instead of two and four — the clock is the promise and the dose is the
+  progression, so week 1 is the length she chose at a shorter set. Measured:
+  **week 1 now 22:36 of 30, was 14:50.**
+  The prompt's `- Those are the ceiling, not a starting point to build on` line
+  went with it. It was written to stop overrun and the model obeyed it exactly,
+  writing *under* the bottom rung; `fitSessionToMinutes()` is the ceiling and
+  cannot be argued with, so the prompt now says fill the session.
+  **A week with no workout in it.** Measured live on a beginner plan: week 8
+  came back with a relaxation task and a habit and no movement task, the
+  MIN_TASKS_PER_WEEK top-up filled it to three with another habit, and the
+  completeness gate — which counted tasks, not pillars — waved through an
+  eight-week exercise plan whose last week had no exercise. `sessionFromPool()`
+  builds her one from her own pool, and the gate now requires the movement
+  pillar in every week.
+  **Repeated titles.** The prompt asks for eight different ones in as many words
+  and the model repeated them anyway ("Full body strength session" was weeks 3,
+  6 and 8 of a live advanced plan); the deterministic fallback titled all eight
+  snack weeks `Movement snack`. `uniqueTitle()` repairs both, and the fallback
+  names its sessions with `movementTitle()` like every other path.
+  **Snack users had the worst bone loading of anyone.** The guarantee ran on
+  even weeks only and always by replacement — four of eight weeks, each bought
+  at the price of a strength movement, and the *fallback* path had no guarantee
+  at all (measured 1 to 2 weeks of 8). `ensureSnackBone()` is module-level now,
+  runs on both paths every week, adds before it substitutes, and re-fits after
+  a swap — a per-side hop wearing the replaced movement's both-sides dose cost
+  double and pushed a five-minute snack to 5:10. Measured after: **8 of 8 on
+  both paths, at every level.**
+  **`exerciseMedia()` had the bug `meditationMedia()` documents.** `MEDIA_BASE`
+  was a module-load `const` with `?? ""` inside the template, so a missing
+  `NEXT_PUBLIC_SUPABASE_URL` yielded `/storage/v1/object/public/exercise-clips`
+  — truthy, so the `!MEDIA_BASE` guard never fired — and every clip URL in the
+  response became a RELATIVE path, which a phone has no origin to resolve. A
+  blank env var on Vercel would have shipped a silent, empty video player to
+  every session. Read at call time now, env var checked before the template.
+  Same trap as the blank pixel id.
+  **The plan's daily habit was scored nowhere.** Not a ring, not the history
+  grid, not adherence — so eight weeks of keeping every habit and eight of
+  keeping none produced the identical next plan. `history.ts` scores it and
+  reports it as a fourth pillar; `score` deliberately still averages the three
+  the app draws as rings (`SCORED`), so nothing about the existing UI moves. It
+  reaches the next prompt as `Adherence.habit`. See §19 of
+  `docs/mobile-app-changes.md`.
+  **Assets:** all 77 clips carried the dashboard's `max-age=3600`. `npm run
+  clips recache` (new) re-stamps the one-year header on files already in the
+  bucket — downloads, verifies the size round-trips, puts the identical bytes
+  back — and all 77 are done. It has **no visible effect yet**: the Supabase org
+  is on the **Free plan**, so Smart CDN is off and the public endpoint returns
+  `cache-control: no-cache` whatever the metadata says. It starts working on
+  upgrade to Pro with nothing further to do.
+  Verified: `npx tsc --noEmit` clean, `npm run lint` clean on every touched
+  file, `npm run build` passes, `npm run verify-plan-dose` passes, `npm run
+  clips audit` passes (77 live, 77 served, no orphans, no ghosts), all 77 clip
+  URLs and the meditation HEAD 200 against the live bucket, and **0 problems
+  across 8 live generations and 8 fallback generations** — 8 weeks each, 3+
+  tasks a week with all three pillars, every session inside its band, bone
+  loading 8 of 8, unique titles, no duplicate keys, every exercise with a name,
+  a dose and a clip.
+  **Still open, all content or platform rather than code:** `joint_pain` still
+  collapses the power pool to `I01`/`I09` at every level (needs low-impact
+  clips, not code); the aerobic pillar has rows but no weekly volume, and the
+  one-movement-task-per-week model cannot express one — the cap added above
+  makes that constraint explicit rather than accidental; `K01`/`K02` carry no
+  clip by design, so the app must render name + props with no player; and early
+  weeks still sit below the band by design, now at 75-92% rather than 50-70%.
 - **The session got a power block, and its minutes became a band (2026-08-29)** —
   bone loading stopped being an exercise the model might forget and became a
   segment of the workout, and the time she was sold stopped being a single
