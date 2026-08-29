@@ -4,7 +4,7 @@
  * Uses in-memory storage (can be swapped to Supabase later)
  */
 
-import type { ConversationMessage, ConversationMemory, Persona } from "./types";
+import type { ConversationMessage, ConversationMemory } from "./types";
 
 // In-memory storage: Map<sessionId, ConversationMemory>
 const memoryStore = new Map<string, ConversationMemory>();
@@ -56,68 +56,4 @@ export function addMessage(sessionId: string, message: ConversationMessage): voi
       msg.timestamp = Date.now();
     }
   });
-}
-
-/**
- * Get user preferences for a session
- */
-export function getUserPreferences(sessionId: string): Record<string, any> {
-  const memory = memoryStore.get(sessionId);
-  return memory?.userPreferences || {};
-}
-
-/**
- * Update user preferences for a session
- */
-export function updateUserPreferences(
-  sessionId: string,
-  preferences: Record<string, any>
-): void {
-  let memory = memoryStore.get(sessionId);
-  
-  if (!memory) {
-    memory = {
-      sessionId,
-      messages: [],
-      userPreferences: {},
-    };
-    memoryStore.set(sessionId, memory);
-  }
-  
-  memory.userPreferences = {
-    ...memory.userPreferences,
-    ...preferences,
-  };
-}
-
-/**
- * Clear conversation history for a session
- */
-export function clearHistory(sessionId: string): void {
-  memoryStore.delete(sessionId);
-}
-
-/**
- * Get full conversation memory for a session
- */
-export function getConversationMemory(sessionId: string): ConversationMemory | null {
-  return memoryStore.get(sessionId) || null;
-}
-
-/**
- * Initialize or get conversation memory for a session
- */
-export function initializeSession(sessionId: string): ConversationMemory {
-  let memory = memoryStore.get(sessionId);
-  
-  if (!memory) {
-    memory = {
-      sessionId,
-      messages: [],
-      userPreferences: {},
-    };
-    memoryStore.set(sessionId, memory);
-  }
-  
-  return memory;
 }

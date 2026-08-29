@@ -43,8 +43,6 @@ import {
   Lock,
   Sparkles,
   ChevronRight,
-  Users,
-  CalendarCheck,
   Flame,
   MoonStar,
   Brain,
@@ -53,11 +51,16 @@ import {
   Bone,
   Droplets,
   HeartPulse,
-  Dumbbell,
-  Utensils,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { HighlightSweep } from "@/components/HighlightSweep";
+import {
+  FirstSessionBoard,
+  SymptomLoadBoard,
+  TrainingWeekBoard,
+  type PlannerDay,
+  type SessionRow,
+} from "@/components/funnel/RewardBoards";
 import { SHOT_W, SHOT_H } from "@/components/PhoneShots";
 
 /*
@@ -355,7 +358,7 @@ const PROBLEM_OPTIONS = [
 // 48px circle is an unreadable smudge, and it makes the payoff screen look like
 // a brochure. The app renders her symptoms as icons on a dark tile, so icons
 // here mean the reward is a first look at the product rather than more funnel
-// art. Same reasoning behind the three medallions - see <RewardMedallion />.
+// art. The reward boards draw the same icons - see components/funnel/RewardBoards.tsx.
 const SYMPTOM_ICON: Record<string, LucideIcon> = {
   hot_flashes: Flame,
   sleep_issues: MoonStar,
@@ -2027,46 +2030,6 @@ function ScoreCauseCard({
   );
 }
 
-/** Reward-step count-up: animates 0 → value on mount (eased), honoring reduced motion. */
-function CountUpNumber({
-  value,
-  suffix = "",
-  className,
-}: {
-  value: number;
-  suffix?: string;
-  className?: string;
-}) {
-  const prefersReducedMotion = useReducedMotion();
-  const [display, setDisplay] = useState(prefersReducedMotion ? value : 0);
-
-  useEffect(() => {
-    if (prefersReducedMotion) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDisplay(value);
-      return;
-    }
-    let raf = 0;
-    const duration = 1100;
-    const start = performance.now();
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / duration);
-      const eased = 1 - Math.pow(1 - t, 3);
-      setDisplay(Math.round(value * eased));
-      if (t < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [value, prefersReducedMotion]);
-
-  return (
-    <span className={className}>
-      {display}
-      {suffix}
-    </span>
-  );
-}
-
 // Results reveal: her letter rises out of an envelope.
 //
 // The whole thing is CSS boxes, one clip-path and one inline SVG - no new
@@ -3037,113 +3000,6 @@ function CalculatingScreen({ error, onRetry }: { error: string | null; onRetry: 
  * option: a payoff that renders without its number and then pops it in is worse
  * than a beat of stillness.
  */
-/**
- * The hero of a reward screen: one icon, on a ring, over a pulsing glow.
- *
- * It replaces the three `/illustrations/*.webp` drawings (reward-1,
- * plan-preview, reward-2) that used to sit here. Those were the only thing on
- * a reward screen that was not derived from her own answers - decoration in the
- * one slot the funnel spends on proving the opposite, that something is being
- * computed on what she just told us. A drawing of a woman celebrating is a
- * stock image whatever the file name is; a lock icon over her movement rules is
- * the same mark the app puts on the same thing.
- *
- * It also earns its place in bytes: 40KB of WebP across three screens, all of
- * it `priority`, on a phone mid-quiz - for art that carried no information.
- *
- * The glow is the dopamine beat, so it survives here and only here; everything
- * else on these screens is a spring-in. Reduced motion drops the pulse and the
- * rotation, never the icon.
- */
-function RewardMedallion({ icon: Icon, tone = "primary" }: { icon: LucideIcon; tone?: "primary" | "green" }) {
-  const prefersReducedMotion = useReducedMotion();
-  const green = tone === "green";
-  return (
-    <motion.div
-      className="relative"
-      initial={prefersReducedMotion ? false : { scale: 0, rotate: -12, opacity: 0 }}
-      animate={{ scale: 1, rotate: 0, opacity: 1 }}
-      transition={
-        prefersReducedMotion
-          ? { duration: 0 }
-          : { type: "spring", stiffness: 220, damping: 13, delay: 0.05 }
-      }
-    >
-      {!prefersReducedMotion && (
-        <motion.div
-          aria-hidden
-          className={cn(
-            "absolute -inset-3 rounded-full blur-2xl",
-            green ? "bg-[#22C55E]/30" : "bg-primary/30"
-          )}
-          animate={{ scale: [0.9, 1.15, 0.9], opacity: [0.4, 0.75, 0.4] }}
-          transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-        />
-      )}
-      <div
-        className={cn(
-          "relative flex h-20 w-20 sm:h-24 sm:w-24 items-center justify-center rounded-full border",
-          green
-            ? "border-[#22C55E]/25 bg-[#22C55E]/10 text-[#16A34A]"
-            : "border-primary/25 bg-primary/10 text-primary"
-        )}
-      >
-        <Icon className="h-9 w-9 sm:h-11 sm:w-11" strokeWidth={1.75} aria-hidden />
-      </div>
-    </motion.div>
-  );
-}
-
-/**
- * Her training week as seven dots - the app's week view, at reward size.
- *
- * The minutes count above it is the argument ("that's the whole ask") and a
- * number cannot show how thinly it is spread. Seven dots can, and it is the
- * first thing in the funnel that looks like a screen she would open rather than
- * a page she would read. Active days are placed evenly rather than sequentially
- * so four sessions read as Mon/Wed/Fri/Sun, which is what the plan builds.
- */
-function WeekStrip({ activeDays }: { activeDays: number }) {
-  const prefersReducedMotion = useReducedMotion();
-  const days = ["M", "T", "W", "T", "F", "S", "S"];
-  const n = Math.min(7, Math.max(0, activeDays));
-  // Even spread across seven slots: 2 -> Mon/Thu, 3 -> Mon/Wed/Fri, 4 -> +Sun.
-  const active = new Set(
-    Array.from({ length: n }, (_, i) => Math.round((i * 6) / Math.max(1, n - 1 || 1)))
-  );
-  return (
-    <div className="flex items-end justify-center gap-1.5" aria-hidden>
-      {days.map((d, i) => {
-        const on = active.has(i);
-        return (
-          <motion.div
-            key={i}
-            initial={prefersReducedMotion ? false : { scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={
-              prefersReducedMotion
-                ? { duration: 0 }
-                : { type: "spring", stiffness: 320, damping: 18, delay: 0.75 + i * 0.06 }
-            }
-            className="flex flex-col items-center gap-1"
-          >
-            <span
-              className={cn(
-                "flex h-8 w-8 items-center justify-center rounded-xl border text-[11px] font-bold",
-                on
-                  ? "border-primary bg-primary text-white shadow-sm shadow-primary/30"
-                  : "border-foreground/10 bg-foreground/[0.03] text-[#B4B4B4]"
-              )}
-            >
-              {on ? <Check className="h-4 w-4" strokeWidth={3} /> : d}
-            </span>
-          </motion.div>
-        );
-      })}
-    </div>
-  );
-}
-
 function QuizReward({
   messages,
   initialDone,
@@ -3576,7 +3432,8 @@ function RegisterPageContent() {
       cadence: volume.perDay
         ? `${volume.sessions} one-move bursts a day, about ${span} min all in, plus a ${cardio.minutes[0]} min walk every day`
         : `${volume.sessions} x ${span} min a week, plus ${easy}${week1.intervals ? ` and ${week1.intervals} short interval session${week1.intervals > 1 ? "s" : ""}` : ""}`,
-      // For <WeekStrip />. Snacks happen every day; sessions land on N of the 7.
+      // Snacks happen every day; sessions land on N of the 7. Kept for the
+      // sr-only summary; the visible week is drawn by `weekPlanner` below.
       activeDays: volume.perDay ? 7 : Math.min(7, volume.sessions + cardio.sessions),
     };
   }, [planCatalog, fitnessLevel]);
@@ -3597,6 +3454,171 @@ function RegisterPageContent() {
         planCatalog.allowedPower(fitnessLevel || null).length,
     };
   }, [planCatalog, fitnessLevel]);
+
+  // Loader B, part two: the seven days themselves, for <TrainingWeekBoard />.
+  //
+  // `weekShape` gives the SIZE of her week; this gives its SHAPE, and the shape
+  // is what answers "I don't have time" - a woman reading "Tue: walk 20 min,
+  // Wed: rest" has been told something a minutes total cannot tell her. Both
+  // read the same two tables, so the board and the headline figure can never
+  // disagree.
+  //
+  // Strength is spread rather than stacked (Mon/Wed/Fri, not Mon/Tue/Wed), and
+  // the interval days are placed onto her emptiest days first: a sprint
+  // protocol the morning after a squat session is not how a week 1 opens.
+  const weekPlanner = useMemo(() => {
+    const volume = planCatalog?.MOVEMENT_VOLUME[fitnessLevel];
+    if (!planCatalog || !volume) return null;
+    const week1 = planCatalog.cardioForWeek(fitnessLevel || null, 1);
+    const days: PlannerDay[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => ({
+      label,
+      chips: [],
+    }));
+
+    if (volume.perDay) {
+      // Snacks are every day by definition - `sessions` is bursts a day.
+      for (const day of days) {
+        day.chips.push({
+          text: `${volume.sessions} bursts · ${volume.minutes} min`,
+          tone: "strength",
+        });
+      }
+    } else {
+      const n = Math.min(7, volume.sessions);
+      // Spread across the seven days rather than between the first and last of
+      // them: dividing by `n - 1` pins a session to Sunday, so a two-day week
+      // came out Mon + Sun, which is the one pairing that is not spread at all
+      // once the week loops. Dividing by `n` gives Mon/Fri, Mon/Wed/Sat,
+      // Mon/Wed/Fri/Sat.
+      const slots = new Set(Array.from({ length: n }, (_, i) => Math.round((i * 7) / n)));
+      const span =
+        volume.maxMinutes > volume.minutes
+          ? `${volume.minutes}-${volume.maxMinutes}`
+          : `${volume.minutes}`;
+      for (const slot of slots) days[slot].chips.push({ text: `Strength ${span} min`, tone: "strength" });
+    }
+
+    // Emptiest day first, ties broken by day order, so the week fills evenly
+    // and deterministically rather than front-loading Monday.
+    const emptiestFirst = () =>
+      days.map((_, i) => i).sort((a, b) => days[a].chips.length - days[b].chips.length || a - b);
+
+    for (const d of emptiestFirst().slice(0, week1.intervals)) {
+      days[d].chips.push({ text: `Intervals ${planCatalog.intervalsMinutes()} min`, tone: "power" });
+    }
+    for (const d of emptiestFirst().slice(0, Math.min(7, week1.zone2.sessions)).sort((a, b) => a - b)) {
+      days[d].chips.push({ text: `Walk ${week1.zone2.minutes} min`, tone: "cardio" });
+    }
+
+    return days;
+  }, [planCatalog, fitnessLevel]);
+
+  // Loader C: her actual first session, for <FirstSessionBoard />.
+  //
+  // The screen used to print the size of her pool and assert "nothing generic",
+  // which asks her to take our word for it one screen before the price. This
+  // discharges the claim instead: every name and every dose below comes out of
+  // the catalog through the same four functions the generator's own fallback
+  // path calls for week 1 - `allowedExercises()`, `PATTERN_PRIORITY`,
+  // `defaultDoseForWeek()` and `buildPowerBlock()`. She is looking at Monday.
+  //
+  // It is deliberately NOT a model call. A preview that disagreed with the plan
+  // she then buys would be the single most expensive inconsistency in the
+  // funnel, so the board only ever shows what the deterministic path guarantees.
+  const sessionPreview = useMemo(() => {
+    const c = planCatalog;
+    const volume = c?.MOVEMENT_VOLUME[fitnessLevel];
+    if (!c || !volume) return null;
+    const pool = c.allowedExercises(fitnessLevel || null);
+    if (!pool.length) return null;
+
+    const snack = volume.perDay;
+    // A snack day IS its burst count; a session shows four, which is
+    // `PATTERN_ESSENTIALS` - squat, push, hinge, core - the shape that makes a
+    // session whole-body.
+    const want = snack ? volume.sessions : c.PATTERN_ESSENTIALS;
+
+    const taken = new Set<string>();
+    const picks: typeof pool = [];
+    for (const pattern of c.PATTERN_PRIORITY) {
+      if (picks.length >= want) break;
+      // The HARDEST row she is cleared for in this pattern, not the first one
+      // in the pool. The pool is in id order, which puts every level-1 row
+      // ahead of every level-2 one - so `find` handed a medium and an advanced
+      // user the beginner session (chair squat, wall push-up) on the one screen
+      // that claims the movements are matched to her level. Measured: medium,
+      // advanced and beginner produced an identical five rows.
+      let hit: (typeof pool)[number] | undefined;
+      for (const e of pool) {
+        if (c.patternOf(e.id) !== pattern || taken.has(e.id)) continue;
+        if (!hit || e.level > hit.level) hit = e;
+      }
+      if (hit) {
+        picks.push(hit);
+        taken.add(hit.id);
+      }
+    }
+    // Only if her pool has fewer patterns than slots.
+    for (const e of pool) {
+      if (picks.length >= want) break;
+      if (!taken.has(e.id)) {
+        picks.push(e);
+        taken.add(e.id);
+      }
+    }
+    if (!picks.length) return null;
+
+    const warmSecs = c.listSeconds(c.DEFAULT_WARMUP);
+    const coolSecs = c.listSeconds(c.DEFAULT_COOLDOWN);
+    const bookendMin = snack ? 0 : Math.round((warmSecs + coolSecs) / 60);
+    const workMinutes = Math.max(5, volume.minutes - bookendMin);
+
+    const rows: SessionRow[] = picks.map((ex) => {
+      const d = c.defaultDoseForWeek(ex, 1, workMinutes, picks.length);
+      return {
+        name: ex.name,
+        dose: d.minutes
+          ? `${d.minutes} min`
+          : `${d.sets ?? 3} x ${d.seconds ?? ex.seconds ?? 40}s${ex.perSide ? "/side" : ""}`,
+      };
+    });
+
+    // Weeks 1-2 are held to the low-impact rows by POWER_RAMP_WEEKS, so the
+    // movement named here is the one she is genuinely handed on day one.
+    if (!snack) {
+      const block = c.buildPowerBlock(
+        c.allowedPower(fitnessLevel || null),
+        1,
+        c.powerMinutes(volume)
+      );
+      const first = block?.[0];
+      const ex = first ? c.getExercise(first.id) : undefined;
+      if (first && ex) {
+        rows.push({ name: ex.name, dose: `${first.sets ?? 3} x ${first.seconds ?? 20}s`, power: true });
+      }
+    }
+
+    const span =
+      volume.maxMinutes > volume.minutes
+        ? `${volume.minutes}-${volume.maxMinutes}`
+        : `${volume.minutes}`;
+
+    return {
+      heading: snack ? "Day 1 · your bursts" : "Week 1 · Session 1",
+      minutesLabel: `${span} min`,
+      warmup: snack
+        ? undefined
+        : { count: c.DEFAULT_WARMUP.length, minutes: Math.max(1, Math.round(warmSecs / 60)) },
+      cooldown: snack
+        ? undefined
+        : { count: c.DEFAULT_COOLDOWN.length, minutes: Math.max(1, Math.round(coolSecs / 60)) },
+      rows,
+      sessionsTotal: snack
+        ? `${volume.sessions * 7 * PLAN_WEEKS} bursts`
+        : `${volume.sessions * PLAN_WEEKS}`,
+    };
+  }, [planCatalog, fitnessLevel]);
+
 
   // There used to be an `estrogenPct` here: `80 + (burden/maxBurden) * 15`,
   // rendered at 5xl as "{n}% of your symptoms trace back to shifting estrogen".
@@ -6422,13 +6444,28 @@ function RegisterPageContent() {
                 </div>
               )}
 
-              {/* Reward 1: mirror her #1 symptom back as a prevalence stat ("you're not alone, and it's biology"). */}
+              {/* Reward 1: every symptom she picked, logged and answered.
+                  It used to be one prevalence number about her #1 symptom over
+                  a medallion, with the other picks reduced to three unlabelled
+                  chips. Same figures now, one row each, on paper - see
+                  components/funnel/RewardBoards.tsx for why a list beats a
+                  headline here: the screen's job is "we heard all of it", and
+                  only a list can say "all". */}
               {currentStep === "reward_symptoms" && (() => {
-                const topSymptom = topProblems[0];
-                const prevalence = SYMPTOM_PREVALENCE[topSymptom] ?? 70;
-                const symptomLabel = (SYMPTOM_LABELS[topSymptom] || "these symptoms").toLowerCase();
                 const cohort = COHORT_PHRASE[hereFor] ?? "women your age";
-                const chips = topProblems.filter((id) => SYMPTOM_ICON[id]).slice(0, 3);
+                // Her own picks, in the order she chose them, each carrying the
+                // prevalence figure the single headline used to carry alone.
+                // Four is the ceiling: a fifth row pushes the sign-off off a
+                // short viewport, and the argument has landed by the third.
+                const rows = topProblems
+                  .filter((id) => SYMPTOM_ICON[id])
+                  .slice(0, 4)
+                  .map((id) => ({
+                    id,
+                    label: SYMPTOM_LABELS[id] || id,
+                    pct: SYMPTOM_PREVALENCE[id] ?? 70,
+                    Icon: SYMPTOM_ICON[id] ?? Sparkles,
+                  }));
                 // Everything these captions name is a count of her own answers
                 // or a lookup keyed off one - nothing is asserted about her.
                 const messages = [
@@ -6442,73 +6479,8 @@ function RegisterPageContent() {
                     initialDone={!!rewardSeen.current.reward_symptoms}
                     onDone={() => markRewardSeen("reward_symptoms")}
                   >
-                  <div className="flex-1 flex flex-col justify-center items-center text-center space-y-4">
-                    <RewardMedallion icon={Users} />
-
-                    <motion.p
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.25, duration: 0.4 }}
-                      className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground"
-                    >
-                      What your answers tell us
-                    </motion.p>
-
-                    <motion.div
-                      initial={{ scale: 0.4, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 260, damping: 14, delay: 0.4 }}
-                    >
-                      <CountUpNumber
-                        value={prevalence}
-                        suffix="%"
-                        className="block text-6xl font-black text-primary leading-none"
-                      />
-                      <span className="block text-sm sm:text-base font-normal text-[#5A5A5A] mt-3 max-w-xs mx-auto leading-snug">
-                        of {cohort} feel <span className="font-bold text-[#3D3D3D]">{symptomLabel}</span> too - just like you.
-                      </span>
-                    </motion.div>
-
-                    {/* Her symptoms, as the app draws them: icon tile, label
-                        under it, tracked. This is the "taste of the app" beat -
-                        the row she is looking at is the row she will tap every
-                        morning, so the reward previews the product instead of
-                        illustrating a feeling. The label is 11px, not the 9px
-                        it was: it names her own answers back to her, to an
-                        audience that mostly cannot resolve 9px grey. */}
-                    {chips.length > 0 && (
-                      <div className="flex flex-wrap justify-center gap-2">
-                        {chips.map((id, i) => {
-                          const Icon = SYMPTOM_ICON[id] ?? Sparkles;
-                          return (
-                            <motion.div
-                              key={id}
-                              initial={prefersReducedMotion ? false : { scale: 0, opacity: 0 }}
-                              animate={{ scale: 1, opacity: 1 }}
-                              transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 16, delay: 0.7 + i * 0.12 }}
-                              className="flex flex-col items-center gap-1.5 w-20"
-                            >
-                              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/5 text-primary">
-                                <Icon className="h-6 w-6" strokeWidth={1.75} aria-hidden />
-                              </div>
-                              <span className="text-[11px] leading-tight text-[#5A5A5A] text-center">
-                                {SYMPTOM_LABELS[id] || id}
-                              </span>
-                            </motion.div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    <motion.p
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.95, duration: 0.45 }}
-                      className="w-full max-w-xs rounded-xl bg-primary/5 border border-primary/20 px-4 py-3 text-sm sm:text-base font-semibold text-[#3D3D3D] leading-snug"
-                    >
-                      <span className="font-bold">You&apos;re not broken.</span> This is your{" "}
-                      <span className="font-bold">biology</span> talking - and it&apos;s <span className="font-bold">workable</span>.
-                    </motion.p>
+                  <div className="flex-1 min-h-0 overflow-y-auto flex flex-col justify-center py-1">
+                    <SymptomLoadBoard rows={rows} cohort={cohort} />
                   </div>
                   </QuizReward>
                 );
@@ -6578,11 +6550,11 @@ function RegisterPageContent() {
                 </QuizReward>
               )}
 
-              {/* Reward 2: her week, sized. Breaks the six-question run through
-                  body/fitness/nutrition/relaxation/HRT/limitations in half, and
-                  it is the only screen before the paywall that shows her the
-                  actual shape of what she'd be buying. Every figure is read
-                  straight out of MOVEMENT_VOLUME. */}
+              {/* Reward 2: her week, day by day. Breaks the six-question run
+                  through body/fitness/nutrition/relaxation/HRT in half, and it
+                  is the first screen in the funnel that shows the actual shape
+                  of what she'd be buying. Every chip is read straight out of
+                  MOVEMENT_VOLUME + cardioForWeek() - see `weekPlanner`. */}
               {currentStep === "reward_plan_shape" && (() => {
                 const messages = [
                   "Sizing your week...",
@@ -6596,70 +6568,16 @@ function RegisterPageContent() {
                     messages={messages}
                     initialDone={!!rewardSeen.current.reward_plan_shape}
                     onDone={() => markRewardSeen("reward_plan_shape")}
-                    ready={!!weekShape}
+                    ready={!!weekShape && !!weekPlanner}
                   >
-                  <div className="flex-1 flex flex-col justify-center items-center text-center space-y-4">
-                    <RewardMedallion icon={CalendarCheck} />
-
-                    <motion.p
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.25, duration: 0.4 }}
-                      className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground"
-                    >
-                      Your week, sized to you
-                    </motion.p>
-
-                    <motion.div
-                      initial={{ scale: 0.4, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 260, damping: 14, delay: 0.4 }}
-                    >
-                      <CountUpNumber
-                        value={weekShape?.weeklyMinutes ?? 0}
-                        suffix=" min"
-                        className="block text-6xl font-black text-primary leading-none"
+                  <div className="flex-1 min-h-0 overflow-y-auto flex flex-col justify-center py-1">
+                    {weekPlanner && (
+                      <TrainingWeekBoard
+                        days={weekPlanner}
+                        totalMinutes={weekShape?.weeklyMinutes ?? 0}
+                        food={food}
+                        windDown={windDown}
                       />
-                      {/* The number is framed as small on purpose - she just
-                          told us her time budget, and "I don't have time" is
-                          the objection this screen exists to answer. */}
-                      <span className="block text-sm sm:text-base font-normal text-[#5A5A5A] mt-3 max-w-xs mx-auto leading-snug">
-                        of movement a week - <span className="font-bold text-[#3D3D3D]">{weekShape?.cadence}</span>. That&apos;s the whole ask.
-                      </span>
-                    </motion.div>
-
-                    {weekShape && <WeekStrip activeDays={weekShape.activeDays} />}
-
-                    {(food || windDown) && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.75, duration: 0.45 }}
-                        className="w-full max-w-xs rounded-xl bg-primary/5 border border-primary/20 divide-y divide-primary/15 text-left"
-                      >
-                        {/* Iconed rows, same as the app's pillar list. "Wind-down"
-                            is the nervous-system pillar the ads sell as the
-                            cortisol fix, so it is named on the one pre-paywall
-                            screen that shows the plan's actual shape. */}
-                        {food && (
-                          <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-                            <span className="flex shrink-0 items-center gap-1.5 text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">
-                              <Utensils className="h-3.5 w-3.5" aria-hidden />
-                              Food
-                            </span>
-                            <span className="text-right text-sm font-semibold text-[#3D3D3D] leading-snug">{food}</span>
-                          </div>
-                        )}
-                        {windDown && (
-                          <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-                            <span className="flex shrink-0 items-center gap-1.5 text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">
-                              <Wind className="h-3.5 w-3.5" aria-hidden />
-                              Wind-down
-                            </span>
-                            <span className="text-right text-sm font-semibold text-[#3D3D3D] leading-snug">{windDown}</span>
-                          </div>
-                        )}
-                      </motion.div>
                     )}
                   </div>
                   </QuizReward>
@@ -6680,7 +6598,10 @@ function RegisterPageContent() {
                   It had a second branch until 2026-08-29, counting what her
                   `q_limitations` answers took *out*. That screen is gone, so
                   there is no subtraction to name and the number is the pool she
-                  got rather than the one she was spared. */}
+                  got rather than the one she was spared.
+
+                  Since 2026-08-29 the pool size is a footnote and the screen is
+                  her real week-1 session - see `sessionPreview`. */}
               {currentStep === "reward_progress" && (() => {
                 const pride = STAGE_PRIDE_LINE[hereFor] ?? "You're finally putting yourself first - that takes strength.";
                 return (
@@ -6688,47 +6609,32 @@ function RegisterPageContent() {
                     messages={[
                       "Checking your history...",
                       "Matching moves to your level...",
-                      "Locking your movement rules...",
+                      "Building session 1...",
                     ]}
                     initialDone={!!rewardSeen.current.reward_progress}
                     onDone={() => markRewardSeen("reward_progress")}
-                    ready={!!exercisePool}
+                    ready={!!exercisePool && !!sessionPreview}
                   >
-                  <div className="flex-1 flex flex-col justify-center items-center text-center space-y-4">
-                    <RewardMedallion icon={Dumbbell} tone="primary" />
-
-                    <motion.p
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.25, duration: 0.4 }}
-                      className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground"
-                    >
-                      What your plan just locked
-                    </motion.p>
-
-                    <motion.div
-                      initial={{ scale: 0.4, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 260, damping: 14, delay: 0.4 }}
-                    >
-                      <CountUpNumber
-                        value={exercisePool?.allowed ?? 0}
-                        suffix=" moves"
-                        className="block text-6xl font-black text-primary leading-none"
+                  <div className="flex-1 min-h-0 overflow-y-auto flex flex-col justify-center py-1">
+                    {sessionPreview && (
+                      <FirstSessionBoard
+                        heading={sessionPreview.heading}
+                        minutesLabel={sessionPreview.minutesLabel}
+                        warmup={sessionPreview.warmup}
+                        rows={sessionPreview.rows}
+                        cooldown={sessionPreview.cooldown}
+                        poolCount={exercisePool?.allowed ?? 0}
+                        sessionsTotal={sessionPreview.sessionsTotal}
                       />
-                      <span className="block text-sm sm:text-base font-normal text-[#5A5A5A] mt-3 max-w-xs mx-auto leading-snug">
-                        matched to <span className="font-bold text-[#3D3D3D]">your level and your time</span> - nothing generic.
-                      </span>
-                    </motion.div>
-
-                    <motion.p
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.7, duration: 0.45 }}
-                      className="w-full max-w-xs rounded-xl bg-primary/5 border border-primary/20 px-4 py-3 text-sm sm:text-base font-semibold text-[#3D3D3D] leading-snug"
-                    >
+                    )}
+                    {/* The stage-keyed pride line survives the redesign, one
+                        size down and outside the paper. It is the only
+                        emotional beat on a board that is otherwise all
+                        prescription, and stacking it inside as a second pill
+                        would have fought the board's own sign-off. */}
+                    <p className="mx-auto mt-2 max-w-sm text-center text-[11.5px] italic leading-snug text-[#7A7A7A]">
                       {pride}
-                    </motion.p>
+                    </p>
                   </div>
                   </QuizReward>
                 );

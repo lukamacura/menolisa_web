@@ -12,6 +12,11 @@
 
 import {
   CARDIO_VOLUME,
+  EXERCISES as ALL_EXERCISES,
+  MAX_PER_PATTERN,
+  PATTERN_PRIORITY,
+  POWER_RAMP_WEEKS,
+  patternOf,
   DEFAULT_COOLDOWN,
   DEFAULT_WARMUP,
   EXERCISES,
@@ -294,10 +299,108 @@ for (const level of LEVELS) {
   console.log(`  ${level.padEnd(16)} ${shown.join("  ")}`);
 }
 
+// ─── Movement patterns ───────────────────────────────────────────────────────
+//
+// The rules that make a session whole-body rather than six names for a squat.
+// They are checked here because nothing at runtime can notice: a plan of four
+// squat variants is structurally perfect — valid ids, correct dose, inside the
+// minute band — and only reads wrong to the woman doing it.
+
+console.log("\n=== movement patterns: every prescribable id is classified ===");
+{
+  const prescribable = ALL_EXERCISES.filter(
+    (e) => !isCardioId(e.id) && !/^[WSI]/.test(e.id)
+  );
+  for (const ex of prescribable) {
+    check(Boolean(patternOf(ex.id)), `${ex.id} (${ex.name}): no movement pattern`);
+  }
+  const used = new Set(prescribable.map((e) => patternOf(e.id)).filter(Boolean));
+  for (const p of PATTERN_PRIORITY) {
+    check(used.has(p), `pattern "${p}" is in PATTERN_PRIORITY but no exercise has it`);
+  }
+  console.log(`  ${prescribable.length} prescribable ids across ${used.size} patterns`);
+}
+
+console.log("\n=== movement patterns: no session repeats one more than twice ===");
+for (const level of LEVELS) {
+  if (level === "movement_snacks") continue;
+  const plan = deterministicPlan({ fitness_level: level } as Profile);
+  const widths: number[] = [];
+  for (const week of plan.weeks) {
+    const task = week.tasks.find(
+      (t) => t.pillar === "movement" && !isCardioTask(t) && t.exercises?.length
+    );
+    if (!task?.exercises) {
+      problems.push(`${level} week ${week.number}: no strength session`);
+      continue;
+    }
+    const counts = new Map<string, number>();
+    for (const e of task.exercises) {
+      const key = patternOf(e.id) ?? e.id[0];
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    for (const [p, n] of counts) {
+      check(
+        n <= MAX_PER_PATTERN,
+        `${level} week ${week.number}: ${n} "${p}" movements in one session (max ${MAX_PER_PATTERN})`
+      );
+    }
+    // Half a plan is squats and core. The pool always has something to press.
+    check(
+      task.exercises.some((e) => e.id.startsWith("U")),
+      `${level} week ${week.number}: no upper-body movement in the session`
+    );
+    widths.push(counts.size);
+  }
+  // Week 1 is the one she judges the plan on, so it is the widest — or tied,
+  // which a small pool can force and is not a failure.
+  check(
+    widths[0] === Math.max(...widths),
+    `${level}: week 1 covers ${widths[0]} patterns, less than week ${widths.indexOf(Math.max(...widths)) + 1}'s ${Math.max(...widths)}`
+  );
+  console.log(`  ${level.padEnd(16)} patterns per week: ${widths.join(" ")}`);
+}
+
+console.log("\n=== power block: nothing leaves the ground in weeks 1-2 ===");
+{
+  const AIRBORNE = /jump|skip|hop|box drop/i;
+  for (const level of LEVELS) {
+    const pool = allowedPower(level);
+    if (!pool.length) {
+      console.log(`  ${level.padEnd(16)} no power block`);
+      continue;
+    }
+    const vol = MOVEMENT_VOLUME[level];
+    const shown: string[] = [];
+    for (let week = 1; week <= 8; week++) {
+      const block = buildPowerBlock(pool, week, powerMinutes(vol)) ?? [];
+      check(block.length > 0, `${level} week ${week}: empty power block`);
+      const names = block.map((e) => getExercise(e.id)?.name ?? e.id);
+      if (week <= POWER_RAMP_WEEKS) {
+        for (const n of names) {
+          check(!AIRBORNE.test(n), `${level} week ${week}: "${n}" leaves the ground inside the ramp`);
+        }
+      }
+      shown.push(String(block.length));
+    }
+    // The ramp is a floor on impact, not a cap on it — the jumps still arrive.
+    const later = (buildPowerBlock(pool, 8, powerMinutes(vol)) ?? []).map(
+      (e) => getExercise(e.id)?.name ?? e.id
+    );
+    if (pool.some((e) => AIRBORNE.test(e.name))) {
+      check(
+        later.some((n) => AIRBORNE.test(n)),
+        `${level}: no jumping anywhere in the plan, so the ramp never ends`
+      );
+    }
+    console.log(`  ${level.padEnd(16)} movements per week: ${shown.join(" ")}`);
+  }
+}
+
 // ─── Result ──────────────────────────────────────────────────────────────────
 
 if (problems.length) {
   console.error(`\nFAIL (${problems.length})\n- ` + problems.join("\n- "));
   process.exit(1);
 }
-console.log("\nOK — dose rules, safe bands, the ladder, the power block and the cardio schedule agree.");
+console.log("\nOK — dose rules, safe bands, the ladder, the power block, the cardio schedule and the movement patterns agree.");

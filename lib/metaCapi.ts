@@ -347,6 +347,19 @@ export type SendMetaInitiateCheckoutParams = MetaMatchData & {
   userId: string;
   /** Usually absent on the funnel - she has no email until Stripe collects one. */
   email?: string | null;
+  /**
+   * Her first name, off the quiz ("What should Lisa call you?"). Hashed as `fn`.
+   *
+   * The same parameter `Lead` sends, for the same reason: it is the only
+   * *identity* signal the funnel has before Stripe collects an email, and
+   * without it this event matches on cookies and IP alone. Read from
+   * `user_profiles`, so it is correct across tabs and devices. First name only —
+   * the quiz never asks for a surname, and a guessed `ln` hashes to a value that
+   * matches nobody.
+   */
+  firstName?: string | null;
+  /** Two-letter ISO country, from the edge's geo header. Hashed as `country`. */
+  country?: string | null;
   planType?: string | null;
   eventSourceUrl?: string | null;
 };
@@ -401,6 +414,19 @@ export type SendMetaViewContentParams = MetaMatchData & {
   userId: string;
   /** Absent on the funnel; present for a lapsed customer on `/paywall`. */
   email?: string | null;
+  /**
+   * Her first name, off the quiz ("What should Lisa call you?"). Hashed as `fn`.
+   *
+   * The same parameter `Lead` sends, for the same reason: it is the only
+   * *identity* signal the funnel has before Stripe collects an email, and
+   * without it this event matches on cookies and IP alone. Read from
+   * `user_profiles`, so it is correct across tabs and devices. First name only —
+   * the quiz never asks for a surname, and a guessed `ln` hashes to a value that
+   * matches nobody.
+   */
+  firstName?: string | null;
+  /** Two-letter ISO country, from the edge's geo header. Hashed as `country`. */
+  country?: string | null;
   /** "register" | "dashboard" - which paywall she is looking at. */
   source?: string | null;
   eventSourceUrl?: string | null;

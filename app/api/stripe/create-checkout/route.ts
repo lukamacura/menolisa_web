@@ -193,6 +193,9 @@ export async function POST(req: NextRequest) {
     // The page she tapped the CTA on. Meta uses event_source_url for domain
     // attribution, and the webhook has no other way to know it.
     const eventSourceUrl = req.headers.get("referer")?.slice(0, 500);
+    // Read off the request here, not inside `after()` — the callback runs after
+    // the response and must not depend on request-scoped state still being live.
+    const clientCountry = req.headers.get("x-vercel-ip-country");
     if (fbp) metaMetadata.fbp = fbp;
     if (fbc) metaMetadata.fbc = fbc;
     if (clientIp) metaMetadata.fb_client_ip = clientIp;
@@ -253,22 +256,40 @@ export async function POST(req: NextRequest) {
     // double-count her against the browser pixel.
     const metaEventId = body?.meta_event_id;
     if (isValidMetaEventId(metaEventId)) {
-      after(() =>
-        sendMetaInitiateCheckout({
+      const eventTimeSec = Math.floor(Date.now() / 1000);
+      after(async () => {
+        // Her first name, hashed as `fn` — the same identity parameter `Lead`
+        // already sends, and the only one this funnel has before Stripe collects
+        // an email. The lookup is inside `after()` on purpose: this route is on
+        // the critical path to the card form, and a match parameter must never
+        // add latency between her tap and the redirect. A miss just omits it.
+        const { data: profile } = await getSupabaseAdmin()
+          .from("user_profiles")
+          .select("name")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        await sendMetaInitiateCheckout({
           eventId: metaEventId,
-          eventTimeSec: Math.floor(Date.now() / 1000),
+          // Stamped before the response, so the event time is when she actually
+          // tapped rather than whenever the deferred work got scheduled.
+          eventTimeSec,
           value: PLAN_VALUE,
           currency: META_CURRENCY,
           userId: user.id,
           email: user.email?.trim() ? user.email : null,
+          firstName: profile?.name ?? null,
+          // Vercel's edge geo header. Not new information next to the IP Meta
+          // already has, but a parameter it scores, and it costs a header read.
+          country: clientCountry,
           planType: plan,
           fbp,
           fbc,
           clientIp,
           clientUa,
           eventSourceUrl,
-        })
-      );
+        });
+      });
     }
 
     return NextResponse.json({ url: session.url });

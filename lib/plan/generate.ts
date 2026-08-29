@@ -8,8 +8,11 @@ import {
   DEFAULT_COOLDOWN,
   DEFAULT_WARMUP,
   INTERVALS_ID,
+  MAX_PER_PATTERN,
   MOVEMENT_VOLUME,
   NUTRITION,
+  PATTERN_ESSENTIALS,
+  PATTERN_PRIORITY,
   POWER_SESSIONS_PER_WEEK,
   RELAXATION,
   ZONE2_ID,
@@ -32,6 +35,7 @@ import {
   isPowerId,
   isRelaxationId,
   listSeconds,
+  patternOf,
   powerMinutes,
   relaxationDetail,
   relaxationForSymptom,
@@ -609,6 +613,19 @@ export function buildPrompt(
           `- Every week needs at least one upper-body id (${upperIds.slice(0, 6).join(", ")}${upperIds.length > 6 ? ", …" : ""}). Squats and core alone is half a plan.`,
         ]
       : []),
+    // The variety rule the schema cannot express. Enums constrain which ids are
+    // legal, not how alike the chosen ones are, so left to itself the model
+    // sends four squat variants — measured live, in week 1, on three of four
+    // profiles. capPatterns() enforces the ceiling whatever this says; the rule
+    // is here so the model writes a good session rather than one that survives
+    // being repaired, and so the title it writes describes what actually ships.
+    ...(!vol.perDay
+      ? [
+          `- A session is DIFFERENT MOVEMENT PATTERNS, not different names for one. Never put more than ${MAX_PER_PATTERN} of the same pattern in a session. The patterns: ${PATTERN_PRIORITY.join(", ")} — a chair squat, a bodyweight squat, a prisoner squat and an air squat are ONE pattern, and so are a wall sit and a goblet squat.`,
+          `- Build each session from a squat, something she presses or pulls, a hip hinge and something for her trunk. Cover as many patterns as the session has room for.`,
+          `- WEEK 1 IS THE WIDEST WEEK. It is the first session she opens after paying, so it must cover the most patterns of any week in the plan — never two of anything if a pattern she has none of is still available.`,
+        ]
+      : []),
     `- Across the eight weeks, use at least ${Math.min(pool.length, minEx * 3)} different exercise ids. Repeating the same four every week is not progression.`,
     ...(hasBookends
       ? [
@@ -847,6 +864,142 @@ const filmedFirst = (items: Exercise[]): Exercise[] => [
   ...items.filter((e) => exerciseMedia(e.id)),
   ...items.filter((e) => !exerciseMedia(e.id)),
 ];
+
+// ─── Movement-pattern balance ───────────────────────────────────────────────
+
+/**
+ * How many movements of each pattern a session currently holds.
+ *
+ * Ids outside the prescribable families fall back to their prefix, which for a
+ * warm-up or a stretch is the right granularity — those are their own segment
+ * and are never balanced against the main work.
+ */
+function patternCounts(ids: Iterable<string>): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const id of ids) {
+    const key = patternOf(id) ?? id[0] ?? "?";
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * The next exercise to add to a session, preferring a pattern it does not have
+ * yet and refusing one it already has `MAX_PER_PATTERN` of.
+ *
+ * `candidates` arrives already ordered — rotated by the week for variety and
+ * filmed-first — so this only ever *reorders within* that preference: the first
+ * candidate whose pattern is unused wins outright, and a pool with nothing new
+ * left in it falls back to the least-used pattern rather than failing. Returns
+ * undefined only when every remaining candidate is at the cap, which is the
+ * signal to stop filling rather than to fill badly.
+ *
+ * Mutates neither argument; the caller records the pick.
+ */
+function nextDiversePick(
+  candidates: readonly Exercise[],
+  used: ReadonlySet<string>,
+  counts: ReadonlyMap<string, number>
+): Exercise | undefined {
+  let best: Exercise | undefined;
+  let bestCount = Infinity;
+  for (const cand of candidates) {
+    if (used.has(cand.id)) continue;
+    const seen = counts.get(patternOf(cand.id) ?? cand.id[0] ?? "?") ?? 0;
+    if (seen >= MAX_PER_PATTERN) continue;
+    // A pattern she has none of is the best possible pick and cannot be beaten,
+    // so the ordering of `candidates` decides among equals and we stop here.
+    if (seen === 0) return cand;
+    if (seen < bestCount) {
+      best = cand;
+      bestCount = seen;
+    }
+  }
+  return best;
+}
+
+/**
+ * Reorders a pool so the patterns come out in the order they are worth having,
+ * rotated by the week so the eight sessions do not all open the same way.
+ *
+ * **Week 1 gets the unrotated order on purpose.** It is the session she judges
+ * the whole plan on — the first thing she opens after paying — so it leads with
+ * the canonical whole-body shape: a squat, something to press, a hinge, then
+ * the trunk. Weeks 2-8 rotate off that, which is where the variety across the
+ * plan comes from.
+ *
+ * Stable within a pattern, so the rotation and filmed-first ordering already
+ * applied to `pool` still decide *which* squat.
+ */
+function orderByPattern(pool: readonly Exercise[], week: number): Exercise[] {
+  // The essential shape stays put; only the enrichment patterns rotate. See
+  // PATTERN_ESSENTIALS — rotating the whole list cost week 6 its upper body.
+  const order = [
+    ...PATTERN_PRIORITY.slice(0, PATTERN_ESSENTIALS),
+    ...rotate([...PATTERN_PRIORITY.slice(PATTERN_ESSENTIALS)], week - 1),
+  ];
+  const rank = new Map(order.map((p, i) => [p as string, i]));
+  return [...pool].sort((a, b) => {
+    const ra = rank.get(patternOf(a.id) ?? "") ?? order.length;
+    const rb = rank.get(patternOf(b.id) ?? "") ?? order.length;
+    return ra - rb;
+  });
+}
+
+/**
+ * `count` exercises from her pool, as different from each other as the pool
+ * allows, with the highest-value patterns first.
+ *
+ * The one place a whole session is chosen by code with nothing else to lean on
+ * — the deterministic fallback. Returns fewer than asked only when the pool
+ * runs out, which no real level does.
+ */
+function pickDiverseSession(pool: readonly Exercise[], week: number, count: number): Exercise[] {
+  const candidates = orderByPattern(filmedFirst(rotate([...pool], week)), week);
+  const used = new Set<string>();
+  const counts = new Map<string, number>();
+  const out: Exercise[] = [];
+  while (out.length < count) {
+    const cand = nextDiversePick(candidates, used, counts);
+    if (!cand) break;
+    takePick(cand, used, counts);
+    out.push(cand);
+  }
+  return out;
+}
+
+/** Records a pick against both the id set and the pattern tally. */
+function takePick(ex: Exercise, used: Set<string>, counts: Map<string, number>) {
+  used.add(ex.id);
+  const key = patternOf(ex.id) ?? ex.id[0] ?? "?";
+  counts.set(key, (counts.get(key) ?? 0) + 1);
+}
+
+/**
+ * Drops the third and later movement of any one pattern from a session the
+ * model wrote.
+ *
+ * The prompt asks for variety and the schema cannot enforce it — the ids are an
+ * enum, not a shape — so the model is free to send four squat variants, and
+ * measured live it does exactly that in week 1 more often than not. Dropping
+ * rather than swapping is safe because the top-up runs immediately after and
+ * refills from her own pool, pattern-first; the net effect is a squat traded
+ * for a press.
+ *
+ * Order is preserved, so the movement the title was written about survives.
+ */
+function capPatterns(list: readonly StoredExercise[]): StoredExercise[] {
+  const counts = new Map<string, number>();
+  const out: StoredExercise[] = [];
+  for (const e of list) {
+    const key = patternOf(e.id) ?? e.id[0] ?? "?";
+    const seen = counts.get(key) ?? 0;
+    if (seen >= MAX_PER_PATTERN) continue;
+    counts.set(key, seen + 1);
+    out.push(e);
+  }
+  return out;
+}
 
 /**
  * Turns the model's bookend id list into stored exercises, dosed from the
@@ -1210,8 +1363,20 @@ function sanitize(
    */
   function sessionFromPool(n: number): StoredExercise[] {
     const picks: StoredExercise[] = [];
-    for (const cand of filmedFirst(rotate(pool, n))) {
-      if (picks.length >= exerciseCeiling) break;
+    // Whole-body by construction, not by luck. Walking the pool in id order —
+    // which is what this did — is walking it alphabetically, and alphabetically
+    // the `L` squats come first: a fallback medium week 1 was chair squat,
+    // bodyweight squat, goblet squat and Bulgarian split squat, with no
+    // pressing or pulling anywhere in it. Three of eight advanced weeks had no
+    // upper body at all. That is what a paying customer got whenever OpenAI was
+    // down, and it is the one path with no model to catch the omission.
+    const ordered = orderByPattern(filmedFirst(rotate(pool, n)), n);
+    const used = new Set<string>();
+    const counts = new Map<string, number>();
+    while (picks.length < exerciseCeiling) {
+      const cand = nextDiversePick(ordered, used, counts);
+      if (!cand) break;
+      takePick(cand, used, counts);
       const extra = { id: cand.id, ...defaultDoseForWeek(cand, n, workMinutes, exerciseFloor) };
       if (
         picks.length >= exerciseFloor &&
@@ -1286,39 +1451,52 @@ function sanitize(
             minutes: e.minutes ?? undefined,
           }));
 
+        // Cap repetition BEFORE topping up, so what the cap drops the top-up
+        // replaces. The prompt asks for variety and the schema cannot enforce
+        // it, so the model sends four squat variants often enough that week 1
+        // was routinely chair squat / bodyweight squat / prisoner squat / air
+        // squat — four ids, four clips, one exercise as far as she is
+        // concerned. See `capPatterns()`.
+        //
+        // Snacks are exempt: a burst day is three moves in a fixed order that
+        // `snackWeek()` rebuilds from her pool anyway, and the day is already
+        // one bone move, one strength move and one calm move — which is the
+        // pattern rule, stated differently.
+        const deduped = vol.perDay ? exercises : capPatterns(exercises);
+
         // The model routinely returns a single exercise however firmly it's
-        // asked for more, which is not a session. Top up from her own pool —
-        // her *first* exercise's family first (the id prefix is the movement
-        // pattern), so a squat day gets more legs rather than a neck stretch
-        // bolted onto it. The title the model wrote describes that first pick,
-        // and this is what keeps the title honest.
+        // asked for more, which is not a session. Top up from her own pool,
+        // preferring a movement pattern the session does not have yet — so a
+        // squat day gains a press rather than a fourth squat.
+        //
+        // This used to prefer her first exercise's *prefix*, calling it "the
+        // movement pattern". It is not: `L` is a body region holding squats,
+        // lunges, a hinge and calf raises, so a session that opened on a chair
+        // squat was topped up with more squats by design. `patternOf()` is the
+        // real answer to that question.
         //
         // An empty array is filled from the pool rather than dropping the task:
         // under the strict schema the ids can't be invalid, so empty means the
         // model simply sent none, and a session built from her own pool is
         // worth more than the week losing a task. Only an empty *pool* — which
         // would mean no exercise is safe for her — leaves it unfixable.
+        // Every id the model wrote, including the ones `capPatterns()` just
+        // dropped — a movement cut for being the third squat must not be
+        // offered back by the very next loop.
         const used = new Set(exercises.map((e) => e.id));
-        const family = exercises[0]?.id[0];
-        const candidates = filmedFirst(
-          family
-            ? [
-                ...rotate(pool.filter((e) => e.id[0] === family), n),
-                ...rotate(pool.filter((e) => e.id[0] !== family), n),
-              ]
-            : rotate(pool, n)
-        );
-        for (const cand of candidates) {
-          if (exercises.length >= exerciseFloor) break;
-          if (used.has(cand.id)) continue;
-          used.add(cand.id);
+        const counts = patternCounts(deduped.map((e) => e.id));
+        const candidates = orderByPattern(filmedFirst(rotate(pool, n)), n);
+        while (deduped.length < exerciseFloor) {
+          const cand = nextDiversePick(candidates, used, counts);
+          if (!cand) break;
+          takePick(cand, used, counts);
           // Same ladder the prompt asks the model for, so a topped-up exercise
           // matches the intensity of the ones it is sitting next to.
-          exercises.push({ id: cand.id, ...defaultDoseForWeek(cand, n, workMinutes, exerciseFloor) });
+          deduped.push({ id: cand.id, ...defaultDoseForWeek(cand, n, workMinutes, exerciseFloor) });
         }
-        if (!exercises.length) continue;
+        if (!deduped.length) continue;
 
-        const capped = exercises.slice(0, exerciseCeiling);
+        const capped = deduped.slice(0, exerciseCeiling);
 
         // Bookends, and only on a session that wants them. `wantsBookends()`
         // already refuses to draw a generic warm-up onto a movement snack —
@@ -1361,14 +1539,26 @@ function sanitize(
         // a model that sends three short exercises hands her eighteen and calls
         // it a plan. Fill toward the length she chose while there is room for a
         // whole extra exercise, from her own pool, at the week's own dose.
+        //
+        // Pattern-aware, like the top-up above it, and it has to be: this loop
+        // runs AFTER capPatterns() and fills from the same pool, so a plain
+        // "not already used" test re-added the exact squats the cap had just
+        // dropped — `used` is built from the capped list, which no longer holds
+        // them. Measured live: sessions still came back with four squat
+        // variants and the cap looked like it was doing nothing. Two fill loops
+        // and only one of them knowing the rule is the whole bug.
         const roomFor = (list: StoredExercise[], extra: StoredExercise) =>
           listSeconds([...list, extra]) + bookendSeconds <= vol.minutes * 60;
-        for (const cand of candidates) {
-          if (capped.length >= exerciseCeiling) break;
-          if (used.has(cand.id)) continue;
+        const fillCounts = patternCounts(capped.map((e) => e.id));
+        while (capped.length < exerciseCeiling) {
+          const cand = nextDiversePick(candidates, used, fillCounts);
+          if (!cand) break;
           const extra = { id: cand.id, ...defaultDoseForWeek(cand, n, workMinutes, exerciseFloor) };
+          // Recorded whether or not it fits, or a movement too long for the
+          // remaining seconds is offered again on every pass and the loop never
+          // ends.
+          takePick(cand, used, fillCounts);
           if (!roomFor(capped, extra)) continue;
-          used.add(cand.id);
           capped.push(extra);
         }
 
@@ -1832,7 +2022,20 @@ function fallbackPlan(profile: Profile, pool: Exercise[], powerPool: Exercise[])
       // Rotate through the pool so the weeks don't all look identical, and ramp
       // the set count once past the halfway mark.
       const count = vol.perDay ? MIN_SNACK_EXERCISES : 4;
-      const picks = Array.from({ length: count }, (_, k) => pool[(i * 3 + k) % pool.length]).filter(Boolean);
+      // A strided walk of the pool — `pool[(i * 3 + k) % pool.length]` — is a
+      // walk of the id order, and the id order is alphabetical: `L` squats,
+      // then `L` lunges, then `U`. So the fallback's week 1 was four squat
+      // variants at medium and advanced, and weeks 1-3 of an advanced fallback
+      // had no pressing or pulling in them at all. That is what a paying
+      // customer got whenever OpenAI was down or the response failed
+      // validation, and it is the one path with no model to catch it.
+      //
+      // Snacks keep the old walk: a burst day is three moves that
+      // `snackWeek()` rebuilds from her pool below, in a fixed bone / strength
+      // / calm order that already is the pattern rule.
+      const picks = vol.perDay
+        ? Array.from({ length: count }, (_, k) => pool[(i * 3 + k) % pool.length]).filter(Boolean)
+        : pickDiverseSession(pool, n, count);
       const relaxation = RELAXATION[i % RELAXATION.length];
       // The same clamp the model's plan gets. This path writes no bookends, so
       // it will be shown the generic pair and has to leave room for them.
@@ -1857,13 +2060,24 @@ function fallbackPlan(profile: Profile, pool: Exercise[], powerPool: Exercise[])
       // for and did not get. The trim was always the loud half of the promise
       // and the fill is the quiet half; the model path has had both since
       // 2026-08-28 and this path had neither.
+      //
+      // Recomputed from `exercises` rather than carried over from `picks`,
+      // because `fitSessionToMinutes()` may have dropped one — filling against
+      // a tally of what was asked for instead of what survived would leave a
+      // pattern short and think it was covered.
       const used = new Set(exercises.map((e) => e.id));
-      for (const cand of rotate(pool, n)) {
-        if (exercises.length >= ceiling) break;
-        if (used.has(cand.id)) continue;
+      const counts = patternCounts(used);
+      const candidates = vol.perDay
+        ? filmedFirst(rotate(pool, n))
+        : orderByPattern(filmedFirst(rotate(pool, n)), n);
+      while (exercises.length < ceiling) {
+        const cand = nextDiversePick(candidates, used, counts);
+        if (!cand) break;
         const extra = { id: cand.id, ...defaultDoseForWeek(cand, n, workMinutes, floor) };
+        // Still record the pick even when it does not fit, or the loop offers
+        // the same over-long movement forever and the session stops filling.
+        takePick(cand, used, counts);
         if (listSeconds([...exercises, extra]) + bookendSeconds > vol.minutes * 60) continue;
-        used.add(cand.id);
         exercises.push(extra);
       }
 

@@ -25,7 +25,6 @@ const USER_TABLES = [
   "symptom_logs",
   "symptoms",
   "user_habits",
-  "user_insights",
   "user_plan_logs",
   "user_plans",
   "user_preferences",

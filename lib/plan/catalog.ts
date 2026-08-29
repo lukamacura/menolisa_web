@@ -623,6 +623,114 @@ export const isBookendId = (id: string) => isWarmupId(id) || isStretchId(id);
  */
 export const isPowerId = (id: string) => id.startsWith("I");
 
+// ─── Movement patterns ──────────────────────────────────────────────────────
+
+/**
+ * What a movement actually *is*, as her body experiences it.
+ *
+ * The id prefix is a body region, not a pattern, and the difference is the
+ * whole reason this table exists. `L` holds squats, lunges, a hinge and calf
+ * raises; `C` holds core holds, a carry, a balance stand and — in `C01` — an
+ * isometric squat. Code that treated the prefix as the pattern (the session
+ * top-up did, and said so in a comment) filled a squat day with more `L` and
+ * handed her four squat variants in a row.
+ *
+ * Measured before this existed: a live beginner week 1 opened with chair squat,
+ * bodyweight squat, prisoner squat and air squat — four distinct ids, four
+ * distinct clips, and one exercise as far as she is concerned. Week 1 is the
+ * session she decides the whole plan on, and it read like a bug.
+ *
+ * Only the prescribable families are mapped (`L`/`U`/`C`/`P`). Warm-ups,
+ * stretches, the power block and cardio are each their own segment and are
+ * never balanced against the main work, so a pattern for them would be a fact
+ * nobody reads. `patternOf()` returns undefined for those and callers fall back
+ * to the prefix, which is the right granularity there.
+ */
+export type Pattern =
+  | "squat"
+  | "lunge"
+  | "hinge"
+  | "push"
+  | "pull"
+  | "core"
+  | "calf"
+  | "carry"
+  | "balance";
+
+const PATTERN: Record<string, Pattern> = {
+  // Knee-dominant, both legs. C01 belongs here and not in "core": a wall sit is
+  // a squat she holds still, and pairing it with a split squat is two squats.
+  L01: "squat", L02: "squat", L03: "squat", L11: "squat", L12: "squat", C01: "squat",
+  // Knee-dominant, one leg at a time.
+  L04: "lunge", L05: "lunge", L06: "lunge", L07: "lunge", L08: "lunge",
+  L09: "lunge", L10: "lunge", L16: "lunge", L17: "lunge",
+  // Hip-dominant. The bridge is a hinge she does lying down, which is why it is
+  // the one hinge a beginner pool has.
+  L13: "hinge", P01: "hinge", P02: "hinge", P03: "hinge",
+  // Pressing, and the shoulder work that shares its muscles.
+  U01: "push", U02: "push", U03: "push", U04: "push", U05: "push",
+  U06: "push", U11: "push", U12: "push",
+  // Pulling, and the mid-back work that shares its muscles.
+  U07: "pull", U08: "pull", U09: "pull", U10: "pull", U13: "pull",
+  C02: "core", C04: "core", C05: "core", C06: "core", C07: "core", C08: "core",
+  L14: "calf", L15: "calf",
+  C03: "carry",
+  C09: "balance",
+};
+
+/** The pattern this movement trains, or undefined outside the prescribable families. */
+export const patternOf = (id: string): Pattern | undefined => PATTERN[id];
+
+/**
+ * How many movements of one pattern may share a session.
+ *
+ * Two, because two is a pattern trained twice and three is a session that has
+ * run out of ideas. It is a ceiling on repetition rather than a quota to fill —
+ * nothing requires a second squat, and a session of six distinct patterns is
+ * the better outcome wherever her pool can reach it.
+ */
+export const MAX_PER_PATTERN = 2;
+
+/**
+ * The patterns a session should try to cover, in the order they are worth
+ * having. A squat, something to press, something to hinge on and something for
+ * the trunk is a whole-body session; everything after that is enrichment.
+ *
+ * Read by the code that builds a session from her pool alone — the fallback
+ * plan and the repair for a week the model left with no workout. Both used to
+ * walk the pool in id order, which is alphabetical, which is why a fallback
+ * medium week 1 was four squats and no upper body at all.
+ */
+export const PATTERN_PRIORITY: readonly Pattern[] = [
+  "squat",
+  "push",
+  "hinge",
+  "core",
+  "pull",
+  "lunge",
+  "balance",
+  "carry",
+  "calf",
+];
+
+/**
+ * How many of `PATTERN_PRIORITY` are the session's non-negotiable shape.
+ *
+ * The first four — a squat, something to press, a hinge and trunk work — are
+ * what makes a session whole-body, and they are held in place while everything
+ * after them rotates week to week for variety. Rotating the whole list instead
+ * looks like the more elegant thing to do and is wrong in a specific way:
+ * `orderByPattern()` rotates by the week, so week 6 opened on lunge / balance /
+ * carry / calf and a four-slot beginner session filled up before it ever
+ * reached "push". Measured — beginner and medium week 6 came out with no upper
+ * body in them at all, which is the exact failure the prompt has its own rule
+ * against.
+ *
+ * Variety belongs in the tail, and in *which* squat she gets — the pool is
+ * rotated by week underneath this, so week 6's squat is not week 1's.
+ */
+export const PATTERN_ESSENTIALS = 4;
+
 // ─── Warm-up and cool-down ──────────────────────────────────────────────────
 
 /** An exercise reference exactly as a plan stores one. */
@@ -988,16 +1096,28 @@ export function fitSessionToMinutes(
  * | Level | Weeks 1-2 | Weeks 3-8 |
  * |---|---|---|
  * | beginner | 7 x Zone 2 | 7 x Zone 2 |
- * | medium | 6 x Zone 2 + 1 x SIIT | 5 x Zone 2 + 2 x SIIT |
- * | advanced | 4 x Zone 2 + 2 x SIIT | 4 x Zone 2 + 2 x SIIT |
+ * | medium | 7 x Zone 2 | 5 x Zone 2 + 2 x SIIT |
+ * | advanced | 6 x Zone 2 | 4 x Zone 2 + 2 x SIIT |
  * | movement snacks | 7 x 20-min walk | 7 x 20-min walk |
  *
- * Beginners and snack users still never get `K02`: a 30-second all-out effort
- * is not a first fortnight of training, and their whole cardio prescription is
- * the daily walk. Medium starts on one hard day and steps to two once the two
- * easy weeks are behind her; advanced carries two from week 1 and takes its
- * rest day out of the easy sessions instead — six days, not seven, because two
- * genuinely maximal days a week need one day that asks for nothing.
+ * **Nobody sprints in weeks 1-2**, at any level. `K02` is thirty seconds of
+ * everything she has, and the quiz asks nothing about her heart, her joints or
+ * what she has done in the last decade — the limitations and safety screens are
+ * both gone from the funnel and are not coming back. An all-out effort on day 3
+ * of an unsupervised plan sold to 45-60 year olds is the one prescription here
+ * that cannot be walked back if it goes wrong, so it is earned with a fortnight
+ * of easy aerobic work first. It costs the plan two hard sessions out of
+ * fourteen and buys the only ramp the product has.
+ *
+ * This is the same reasoning as `POWER_RAMP_WEEKS`, which keeps the bone-loading
+ * block on the ground for the same two weeks. Change one and look at the other.
+ *
+ * Beginners and snack users never get `K02` at all: their whole cardio
+ * prescription is the daily walk, and at level 1 the intensity in the week
+ * comes from the strength sessions. Medium and advanced both open on easy work
+ * and pick up two hard days from week 3. Advanced still runs six cardio days to
+ * medium's seven — two genuinely maximal days a week need one day that asks for
+ * nothing, and that stays true in the weeks before those days arrive.
  *
  * These sit on top of `MOVEMENT_VOLUME`, and the funnel says so — the
  * `reward_plan_shape` screen reads both tables. Change a number here and
@@ -1028,8 +1148,8 @@ export const CARDIO_VOLUME: Record<
   // without needing to recover from it, and at level 1 that is the whole
   // prescription — the intensity in her week comes from the strength sessions.
   beginner: { sessions: 7, minutes: [15, 20, 25], daily: true },
-  medium: { sessions: 7, minutes: [20, 25, 30], intervals: [1, 2, 2] },
-  advanced: { sessions: 6, minutes: [25, 30, 35], intervals: [2, 2, 2] },
+  medium: { sessions: 7, minutes: [20, 25, 30], intervals: [0, 2, 2] },
+  advanced: { sessions: 6, minutes: [25, 30, 35], intervals: [0, 2, 2] },
   // A 20-minute walk every day (2026-08-29). She chose "a few minutes, spread
   // out" for her strength work; the walk is the one steady thing in a week of
   // five-minute bursts, and it is the same length on day 56 as on day 1.
@@ -1124,6 +1244,40 @@ const POWER_MAX_EXERCISES = 3;
 const POWER_MIN_SETS = 2;
 
 /**
+ * The bone-loading movements where nothing leaves the ground: the heel meets
+ * the floor under control, with a hand on the counter if she wants one.
+ *
+ * They exist as a set because the quiz asks nothing about her joints, her back
+ * or her pelvic floor — deliberately, as of 2026-08-29 — so the plan cannot
+ * know who it is handing a jump to. The honest answer to not asking is to earn
+ * the impact rather than open on it.
+ */
+const LOW_IMPACT_POWER_IDS: ReadonlySet<string> = new Set([
+  "I01", // Stomping march
+  "I07", // Lateral step and stick
+  "I09", // Supported heel drop
+]);
+
+/**
+ * How many weeks the power block stays on the ground before it jumps.
+ *
+ * Two, and it is a safety floor rather than a training preference. Bone
+ * responds to impact, which is why the block exists at all — but a 54-year-old
+ * who has not jumped since school should land a stomping march and a heel drop
+ * for a fortnight before she leaves the floor, and the plan has no way to know
+ * whether she can. It cannot ask: the limitations question was removed and is
+ * not coming back, so the ramp is the whole of the protection.
+ *
+ * Measured before this existed: a live medium plan for a woman whose worst
+ * symptom was joint pain opened week 1 with three sets each of vertical,
+ * lateral and linear pogo jumps.
+ *
+ * Only the first band, so it costs nothing after week 2 — weeks 3-8 draw the
+ * full pool, which is where the plyometric dose the block was built for lives.
+ */
+export const POWER_RAMP_WEEKS = 2;
+
+/**
  * The power block's own budget, in minutes — the whole of the gap between the
  * ordinary session and the long one.
  *
@@ -1183,12 +1337,20 @@ export function buildPowerBlock(
 ): StoredExercise[] | undefined {
   if (!pool.length || budgetMinutes <= 0) return undefined;
 
+  // Weeks 1-2 stay on the ground. Falls back to the whole pool if her level
+  // has no low-impact row at all, because a block with no bone loading in it
+  // is not a safer block — it is a missing pillar. Every level does have one
+  // today (`I01` is level 1), so this is a guard rather than a live branch.
+  const ramped =
+    week <= POWER_RAMP_WEEKS ? pool.filter((e) => LOW_IMPACT_POWER_IDS.has(e.id)) : [];
+  const source = ramped.length ? ramped : pool;
+
   const budget = budgetMinutes * 60;
   const { sets: topSets, seconds } = powerDoseForWeek(week);
   // Rotate by the week so the eight blocks are not the same three movements,
   // and so a two-id pool at least alternates which one leads.
-  const offset = week % pool.length;
-  const movements = [...pool.slice(offset), ...pool.slice(0, offset)].slice(0, POWER_MAX_EXERCISES);
+  const offset = week % source.length;
+  const movements = [...source.slice(offset), ...source.slice(0, offset)].slice(0, POWER_MAX_EXERCISES);
 
   const out: StoredExercise[] = [];
   let spent = 0;

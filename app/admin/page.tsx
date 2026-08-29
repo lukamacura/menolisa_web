@@ -1,96 +1,122 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { PLAN_PRICE } from "@/lib/pricing";
 
-type AccountState = "active" | "canceling" | "past_due" | "ended" | "disputed";
-
-type Client = {
-  user_id: string;
-  name: string | null;
-  email: string | null;
-  state: AccountState;
-  account_status: string | null;
-  plan_type: string | null;
-  created_at: string | null;
-  subscription_ends_at: string | null;
-  subscription_canceled: boolean | null;
-  provider: string | null;
-  plan_amount: number | null;
-  spend: number | null;
-  purchases: number;
-  planStatus: string | null;
-};
+/**
+ * The sales desk.
+ *
+ * One question — is the campaign making money? — answered top to bottom:
+ * money collected, whether the ads are paying for themselves, where the
+ * traffic stops, who bought, and what needs a human.
+ *
+ * AI cost, tokens, MRR, the account-state grid and the full client table were
+ * removed on 2026-08-29. None of them changed a decision; all of them made the
+ * screen slower to read on the one morning it matters. `llm_usage` is still
+ * written on every OpenAI call — query the table if a cost question comes up.
+ */
 
 type Bucket = { count: number; net: number };
 
+type Sale = {
+  id: string;
+  at: string;
+  net: number;
+  gross: number;
+  refunded: boolean;
+  kind: "new" | "renewal";
+  name: string | null;
+  email: string | null;
+  planStatus: string | null;
+  known: boolean;
+};
+
 type Stats = {
-  revenue: {
-    error: string | null;
-    livemode: boolean | null;
-    currencies: string[];
-    purchases: number;
-    firstPurchases: number;
-    renewals: number;
-    gross: number;
-    refunded: number;
-    net: number;
-    fees: number;
-    netAfterFees: number;
-    failedLast30: number;
-    today: Bucket;
-    last7: Bucket;
-    last30: Bucket;
-    monthly: { month: string; count: number; net: number }[];
-    truncated: boolean;
-  };
-  llm: {
-    available: boolean;
-    generations: number;
-    totalCost: number;
-    avgCostPerGeneration: number;
-    maxCostPerGeneration: number;
-    last30Cost: number;
-    last30Generations: number;
-    avgPromptTokens: number;
-    avgCompletionTokens: number;
-    avgDurationMs: number;
-    unpricedCalls: number;
-    models: string[];
-  };
-  subscribers: {
-    paying: number;
-    byState: Record<AccountState, number>;
-    mrr: number;
-    unknownPlan: number;
-    quizCompleted: number;
-    accounts: number;
-    everPaid: number;
-    conversionPct: number;
-    missingPlans: number;
-    truncated: boolean;
-  };
-  clients: Client[];
+  livemode: boolean | null;
+  revenueError: string | null;
+  truncated: boolean;
+  money: { today: Bucket; last7: Bucket; last30: Bucket; allTime: Bucket };
+  unit: { price: number; feeRate: number; keptPerSale: number };
+  funnel: { quizFinished: number; paid: number; conversionPct: number };
+  sales: Sale[];
+  /** Every succeeded charge; `sales` is capped at the newest slice of it. */
+  salesTotal: number;
+  alerts: { tone: "bad" | "warn"; text: string }[];
+  refreshedAt: string;
 };
 
 const SESSION_KEY = "admin_panel_pw";
 
+/**
+ * Ad spend, kept in the browser.
+ *
+ * There is no Meta API in this codebase, so the figure is typed in by hand —
+ * and nobody types one in every day. So it is stored with the date it was
+ * entered and every number derived from it is stamped with that date; a spend
+ * figure three days old makes cost-per-sale look better than it is, and the
+ * panel says so rather than quietly flattering the campaign.
+ *
+ * Everything that does *not* need it — money collected, break-even spend, the
+ * funnel, the sales list — works with the field left empty forever.
+ */
+const SPEND_KEY = "admin_ad_spend";
+/** Past this many days, the entered spend is called out as stale. */
+const SPEND_STALE_DAYS = 3;
+
+type Spend = { amount: number; updatedAt: string };
+
+function readSpend(): Spend | null {
+  try {
+    const raw = localStorage.getItem(SPEND_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<Spend>;
+    if (typeof parsed.amount !== "number" || !Number.isFinite(parsed.amount)) return null;
+    return { amount: parsed.amount, updatedAt: parsed.updatedAt ?? new Date().toISOString() };
+  } catch {
+    return null;
+  }
+}
+
 const money = (n: number) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+  `$${n.toLocaleString("en-US", {
+    minimumFractionDigits: n % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`;
 
-/** Sub-cent figures — an LLM call costs a few hundredths of a cent. */
-const cents = (n: number) =>
-  n === 0 ? "$0" : n < 0.01 ? `${(n * 100).toFixed(3)}¢` : `$${n.toFixed(4)}`;
+const DAY_MS = 86_400_000;
 
-const date = (v: string | null) =>
-  v ? new Date(v).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
+function daysAgo(iso: string): number {
+  return Math.floor((Date.now() - new Date(iso).getTime()) / DAY_MS);
+}
+
+/** "12 min ago" / "2 hr ago" / "Yesterday" / "3 days ago" / "12 Jul". */
+function relative(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(ms / 60_000);
+  if (min < 1) return "Just now";
+  if (min < 60) return `${min} min ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} hr ago`;
+  const d = Math.floor(hr / 24);
+  if (d === 1) return "Yesterday";
+  if (d < 14) return `${d} days ago`;
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+const stamp = (iso: string) =>
+  new Date(iso).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
 export default function AdminPage() {
   const [password, setPassword] = useState("");
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
+  const [spend, setSpend] = useState<Spend | null>(null);
+  const [spendDraft, setSpendDraft] = useState("");
 
   const loadStats = useCallback(async (pw: string) => {
     setLoading(true);
@@ -99,7 +125,11 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/stats", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: pw }),
+        body: JSON.stringify({
+          password: pw,
+          // So "Collected today" means her today, not UTC's.
+          tzOffsetMinutes: new Date().getTimezoneOffset(),
+        }),
       });
       if (res.status === 401) {
         sessionStorage.removeItem(SESSION_KEY);
@@ -108,7 +138,7 @@ export default function AdminPage() {
         return;
       }
       if (!res.ok) {
-        setError("Failed to load stats. Try again.");
+        setError("Couldn't load the numbers. Try again.");
         return;
       }
       const data: Stats = await res.json();
@@ -125,44 +155,70 @@ export default function AdminPage() {
   useEffect(() => {
     const saved = sessionStorage.getItem(SESSION_KEY);
     if (saved) loadStats(saved);
+    const s = readSpend();
+    setSpend(s);
+    setSpendDraft(s ? String(s.amount) : "");
   }, [loadStats]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (password.trim()) loadStats(password.trim());
+  const commitSpend = () => {
+    const digits = spendDraft.replace(/[^0-9.]/g, "");
+    if (digits === "") {
+      localStorage.removeItem(SPEND_KEY);
+      setSpend(null);
+      setSpendDraft("");
+      return;
+    }
+    const amount = Math.round(parseFloat(digits) * 100) / 100;
+    if (!Number.isFinite(amount) || amount < 0) {
+      setSpendDraft(spend ? String(spend.amount) : "");
+      return;
+    }
+    const next = { amount, updatedAt: new Date().toISOString() };
+    localStorage.setItem(SPEND_KEY, JSON.stringify(next));
+    setSpend(next);
+    setSpendDraft(String(amount));
   };
 
-  const clients = useMemo(() => {
-    if (!stats) return [];
-    const q = query.trim().toLowerCase();
-    if (!q) return stats.clients;
-    return stats.clients.filter((c) =>
-      [c.name, c.email, c.state, c.user_id].some((v) => v?.toLowerCase().includes(q))
-    );
-  }, [stats, query]);
+  const economics = useMemo(() => {
+    if (!stats) return null;
+    const sales = stats.money.allTime.count;
+    const kept = stats.unit.keptPerSale;
+    const breakEven = Math.round(sales * kept * 100) / 100;
+    if (!spend) return { sales, kept, breakEven, cac: null, profit: null, stale: false, age: 0 };
+    const cac = sales > 0 ? Math.round((spend.amount / sales) * 100) / 100 : null;
+    const profit = Math.round((breakEven - spend.amount) * 100) / 100;
+    const age = daysAgo(spend.updatedAt);
+    return { sales, kept, breakEven, cac, profit, stale: age >= SPEND_STALE_DAYS, age };
+  }, [stats, spend]);
 
-  // ---- Password gate ----
+  // ── Password gate ─────────────────────────────────────────────────────────
   if (!stats) {
     return (
-      <main className="min-h-dvh flex items-center justify-center bg-slate-50 p-6">
+      <main className="flex min-h-dvh items-center justify-center bg-[#FAF7F8] p-6">
         <form
-          onSubmit={handleSubmit}
-          className="w-full max-w-sm rounded-2xl bg-white shadow-xl border border-slate-200 p-8 space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (password.trim()) loadStats(password.trim());
+          }}
+          className="w-full max-w-sm space-y-4 rounded-2xl border border-[#E7DFE4] bg-white p-8 shadow-sm"
         >
-          <h1 className="text-xl font-bold text-slate-800">Admin access</h1>
+          <div>
+            <h1 className="text-lg font-semibold tracking-tight text-[#1C181F]">MenoLisa</h1>
+            <p className="text-xs uppercase tracking-[0.14em] text-[#9B93A0]">Sales desk</p>
+          </div>
           <input
             type="password"
             autoFocus
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Password"
-            className="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+            className="w-full rounded-xl border border-[#D6CBD2] px-4 py-3 text-[#1C181F] outline-none focus:border-[#A8336E] focus:ring-2 focus:ring-[#A8336E]/20"
           />
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-[#A8261F]">{error}</p>}
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-xl bg-blue-600 py-3 font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+            className="w-full rounded-xl bg-[#1C181F] py-3 font-medium text-white transition-colors hover:bg-[#A8336E] disabled:opacity-50"
           >
             {loading ? "Checking…" : "Enter"}
           </button>
@@ -171,23 +227,35 @@ export default function AdminPage() {
     );
   }
 
-  const { revenue, llm, subscribers } = stats;
-  // What one sale is worth after Stripe's cut and the two OpenAI calls. The
-  // plan is generated once per customer, so it is a one-off cost against the
-  // first charge, not a per-renewal one.
-  const feeRate = revenue.gross > 0 ? revenue.fees / revenue.gross : 0;
-  const unitMargin = PLAN_PRICE - PLAN_PRICE * feeRate - llm.avgCostPerGeneration;
+  const { money: m, unit, funnel, sales, alerts } = stats;
+  const econ = economics!;
 
   return (
-    <main className="min-h-dvh bg-slate-50 p-6 sm:p-10">
-      <div className="mx-auto max-w-6xl space-y-10">
-        <div className="flex items-center justify-between pt-20">
-          <h1 className="text-2xl font-bold text-slate-800">MenoLisa Admin</h1>
-          <div className="flex items-center gap-4">
+    <main className="min-h-dvh bg-[#FAF7F8] px-5 pb-20 pt-24 text-[#1C181F] sm:px-8">
+      <div className="mx-auto max-w-[1020px]">
+        {/* ── Header ─────────────────────────────────────────────────────── */}
+        <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
+          <div className="flex items-baseline gap-3">
+            <h1 className="text-xl font-semibold tracking-tight">MenoLisa</h1>
+            <span className="text-[11px] uppercase tracking-[0.14em] text-[#9B93A0]">
+              Sales desk
+            </span>
+          </div>
+          <div className="flex items-center gap-4 text-xs text-[#6F6674]">
+            {stats.livemode === false && (
+              <span className="rounded-full border border-[#9C6212]/35 bg-[#FAEEDA] px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.1em] text-[#9C6212]">
+                Stripe test mode
+              </span>
+            )}
+            {stats.livemode === true && (
+              <span className="rounded-full border border-[#17694E]/30 bg-[#E2F0EA] px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.1em] text-[#17694E]">
+                Live
+              </span>
+            )}
             <button
               onClick={() => loadStats(sessionStorage.getItem(SESSION_KEY) ?? "")}
               disabled={loading}
-              className="text-sm text-slate-500 underline hover:text-slate-700 disabled:opacity-50"
+              className="underline underline-offset-4 hover:text-[#1C181F] disabled:opacity-50"
             >
               {loading ? "Refreshing…" : "Refresh"}
             </button>
@@ -197,259 +265,282 @@ export default function AdminPage() {
                 setStats(null);
                 setPassword("");
               }}
-              className="text-sm text-slate-500 underline hover:text-slate-700"
+              className="underline underline-offset-4 hover:text-[#1C181F]"
             >
               Lock
             </button>
           </div>
+        </header>
+
+        {stats.revenueError && (
+          <p className="mb-5 rounded-xl border border-[#9C6212]/30 bg-[#FAEEDA] px-4 py-3 text-sm text-[#9C6212]">
+            Stripe unavailable: {stats.revenueError}. Everything below it still reads from Supabase.
+          </p>
+        )}
+
+        {/* ── 1. The money line ──────────────────────────────────────────── */}
+        <div className="grid grid-cols-1 overflow-hidden rounded-2xl border border-[#E7DFE4] bg-white shadow-sm md:grid-cols-[1.15fr_1fr]">
+          <div className="border-b border-[#E7DFE4] px-7 py-6 md:border-b-0 md:border-r">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-[#9B93A0]">
+              Collected today
+            </p>
+            <p
+              className={`mt-1.5 text-5xl font-bold tracking-tight tabular-nums sm:text-6xl ${
+                m.today.net > 0 ? "text-[#17694E]" : "text-[#9B93A0]"
+              }`}
+            >
+              {money(m.today.net)}
+            </p>
+            <p className="mt-1.5 text-sm text-[#6F6674]">
+              {m.today.count > 0
+                ? `${m.today.count} ${m.today.count === 1 ? "sale" : "sales"} today`
+                : "No sales yet today"}
+            </p>
+          </div>
+          <div className="grid grid-cols-3">
+            <LedgerCell label="Last 7 days" bucket={m.last7} />
+            <LedgerCell label="Last 30 days" bucket={m.last30} bordered />
+            <LedgerCell label="All time" bucket={m.allTime} bordered />
+          </div>
         </div>
 
-        {revenue.error && (
-          <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            Revenue unavailable: {revenue.error}. Subscriber and cost figures below are unaffected.
+        {/* ── 2. Campaign economics ──────────────────────────────────────── */}
+        <SectionHead
+          title="Is the campaign paying for itself?"
+          note="Break-even needs nothing from you. The rest wakes up when you drop in a spend figure."
+        />
+        <div className="grid grid-cols-1 overflow-hidden rounded-2xl border border-[#E7DFE4] bg-white shadow-sm sm:grid-cols-2 lg:grid-cols-4">
+          <Tile
+            label="You can afford to have spent"
+            value={money(econ.breakEven)}
+            note={`${econ.sales} ${econ.sales === 1 ? "sale" : "sales"} × ${money(econ.kept)} kept`}
+          />
+          <Tile
+            label="Ad spend"
+            bordered
+            value={
+              <input
+                value={spendDraft}
+                onChange={(e) => setSpendDraft(e.target.value)}
+                onBlur={commitSpend}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                }}
+                inputMode="decimal"
+                placeholder="—"
+                aria-label="Total ad spend so far"
+                className="w-full border-b-2 border-dashed border-[#D6CBD2] bg-transparent pb-0.5 text-2xl font-semibold tracking-tight tabular-nums outline-none placeholder:text-[#9B93A0] focus:border-solid focus:border-[#A8336E]"
+              />
+            }
+            note={
+              spend ? (
+                <span className={econ.stale ? "text-[#9C6212]" : undefined}>
+                  As of {new Date(spend.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  {econ.age === 0
+                    ? " · today"
+                    : econ.age === 1
+                      ? " · 1 day old"
+                      : ` · ${econ.age} days old`}
+                </span>
+              ) : (
+                "Total to date, typed in — optional"
+              )
+            }
+          />
+          <Tile
+            label="Cost per sale"
+            bordered
+            value={econ.cac === null ? "—" : money(econ.cac)}
+            tone={econ.cac === null ? undefined : econ.cac <= econ.kept ? "good" : "bad"}
+            note={
+              econ.cac === null
+                ? spend
+                  ? "No sales to divide by yet"
+                  : "Add ad spend to see it"
+                : econ.cac <= econ.kept
+                  ? `Under the ${money(econ.kept)} you keep`
+                  : `Over the ${money(econ.kept)} you keep`
+            }
+          />
+          <Tile
+            label="Profit"
+            bordered
+            value={
+              econ.profit === null
+                ? "—"
+                : `${econ.profit < 0 ? "−" : ""}${money(Math.abs(econ.profit))}`
+            }
+            tone={econ.profit === null ? undefined : econ.profit >= 0 ? "good" : "bad"}
+            note={
+              econ.profit === null
+                ? "Add ad spend to see it"
+                : econ.profit >= 0
+                  ? "After ad spend and Stripe"
+                  : `${Math.ceil(-econ.profit / econ.kept)} more ${
+                      Math.ceil(-econ.profit / econ.kept) === 1 ? "sale" : "sales"
+                    } to break even`
+            }
+          />
+        </div>
+        {spend && econ.stale && (
+          <p className="mt-2 text-xs text-[#9C6212]">
+            Ad spend was last updated {econ.age} days ago, so cost per sale is flattering. Paste the
+            current total from Meta when you get a moment.
           </p>
         )}
-        {revenue.livemode === false && (
-          <p className="rounded-xl border border-purple-300 bg-purple-50 px-4 py-3 text-sm font-medium text-purple-900">
-            Stripe test mode — every revenue figure below is fake money.
+        {!spend && (
+          <p className="mt-2 text-xs text-[#9B93A0]">
+            No spend entered. {money(econ.breakEven)} is what {econ.sales}{" "}
+            {econ.sales === 1 ? "sale has" : "sales have"} earned you the room to spend — compare it
+            against Meta whenever you next look.
           </p>
         )}
 
-        {/* ── Revenue ───────────────────────────────────────────────── */}
-        <Section title="Revenue" note="Money actually collected, straight from Stripe charges.">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard
-              label="Purchases"
-              value={revenue.purchases.toString()}
-              sub={`${revenue.firstPurchases} new · ${revenue.renewals} renewals`}
-              accent="blue"
-            />
-            <StatCard
-              label="Net revenue"
-              value={money(revenue.net)}
-              sub={
-                revenue.refunded > 0
-                  ? `${money(revenue.gross)} gross − ${money(revenue.refunded)} refunded`
-                  : `${money(revenue.gross)} gross, no refunds`
-              }
-              accent="green"
-            />
-            <StatCard
-              label="After Stripe fees"
-              value={money(revenue.netAfterFees)}
-              sub={`${money(revenue.fees)} in fees (${(feeRate * 100).toFixed(1)}%)`}
-              accent="green"
-            />
-            <StatCard
-              label="MRR"
-              value={money(subscribers.mrr)}
-              sub={`${subscribers.paying} paying · $${PLAN_PRICE}/8wk normalised`}
-              accent="blue"
+        {/* ── 3. Funnel ──────────────────────────────────────────────────── */}
+        <SectionHead title="Where the traffic stops" note="Everyone who has ever finished the quiz." />
+        <div className="rounded-2xl border border-[#E7DFE4] bg-white px-6 py-5 shadow-sm">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="min-w-[130px]">
+              <p className="text-[11px] uppercase tracking-[0.1em] text-[#9B93A0]">
+                Finished the quiz
+              </p>
+              <p className="text-2xl font-semibold tabular-nums">{funnel.quizFinished}</p>
+            </div>
+            <span className="text-xs text-[#9B93A0]">———→</span>
+            <span className="rounded-full bg-[#F7E7EF] px-2.5 py-1 text-xs font-medium text-[#A8336E] tabular-nums">
+              {funnel.quizFinished > 0 ? `${funnel.conversionPct}% pay` : "—"}
+            </span>
+            <span className="text-xs text-[#9B93A0]">———→</span>
+            <div className="min-w-[100px]">
+              <p className="text-[11px] uppercase tracking-[0.1em] text-[#9B93A0]">Paid</p>
+              <p className="text-2xl font-semibold tabular-nums">{funnel.paid}</p>
+            </div>
+          </div>
+          <div className="mt-4 flex h-2 overflow-hidden rounded-full bg-[#F4EFF2]" aria-hidden>
+            <span
+              className="block h-full bg-[#A8336E]"
+              style={{ width: `${Math.min(100, funnel.conversionPct)}%` }}
             />
           </div>
+          <p className="mt-3 text-[13px] text-[#9B93A0]">
+            {funnel.quizFinished === 0
+              ? "Nobody has finished the quiz yet."
+              : funnel.paid === 0
+                ? `${funnel.quizFinished} finished the quiz and none have paid. The ads are delivering — the offer screen is where they stop.`
+                : `Every 100 quiz finishers are worth about ${money(
+                    Math.round(funnel.conversionPct * unit.keptPerSale)
+                  )}.`}
+          </p>
+        </div>
 
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <MiniStat label="Today" bucket={revenue.today} />
-            <MiniStat label="Last 7 days" bucket={revenue.last7} />
-            <MiniStat label="Last 30 days" bucket={revenue.last30} />
-          </div>
-
-          {revenue.monthly.length > 0 && (
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-6">
-              <h3 className="text-sm font-semibold text-slate-700">By month</h3>
-              <ul className="mt-4 space-y-3">
-                {revenue.monthly.map((m) => {
-                  const max = Math.max(...revenue.monthly.map((x) => x.net), 1);
-                  return (
-                    <li key={m.month} className="flex items-center gap-3">
-                      <span className="w-20 shrink-0 text-xs text-slate-500">{m.month}</span>
-                      <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100">
-                        <div
-                          className="h-full rounded-full bg-emerald-500"
-                          style={{ width: `${Math.max(2, (m.net / max) * 100)}%` }}
-                        />
-                      </div>
-                      <span className="w-28 shrink-0 text-right text-xs font-medium text-slate-700">
-                        {money(m.net)} · {m.count}
-                      </span>
-                    </li>
-                  );
-                })}
+        {/* ── 4. Latest sales ────────────────────────────────────────────── */}
+        <SectionHead
+          title="Latest sales"
+          note={
+            sales.length === 0
+              ? "Newest first · every charge Stripe cleared"
+              : sales.length < stats.salesTotal
+                ? `Newest ${sales.length} of ${stats.salesTotal} charges Stripe cleared`
+                : `Newest first · ${sales.length} ${sales.length === 1 ? "charge" : "charges"} Stripe cleared`
+          }
+        />
+        <div className="overflow-hidden rounded-2xl border border-[#E7DFE4] bg-white shadow-sm">
+          {sales.length === 0 ? (
+            <div className="px-7 py-12 text-center">
+              <h3 className="text-base font-semibold">No sales yet</h3>
+              <p className="mx-auto mt-1.5 max-w-[46ch] text-sm text-[#6F6674]">
+                The first row lands here the moment Stripe clears a charge. Nothing is broken — this
+                is what the screen looks like before anyone has paid.
+              </p>
+              <ul className="mx-auto mt-5 grid max-w-[46ch] gap-1.5 text-left text-[13px] text-[#6F6674]">
+                <EmptyPoint>
+                  {funnel.quizFinished > 0
+                    ? `${funnel.quizFinished} ${funnel.quizFinished === 1 ? "woman has" : "women have"} finished the quiz, so traffic is arriving`
+                    : "Nobody has finished the quiz yet — check the ads are actually delivering"}
+                </EmptyPoint>
+                {stats.livemode === false && (
+                  <EmptyPoint>Stripe is in test mode — swap the key when you go live</EmptyPoint>
+                )}
+                <EmptyPoint>
+                  A real checkout that never appears here is a webhook problem, not a sales problem
+                </EmptyPoint>
               </ul>
             </div>
-          )}
-
-          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-            {revenue.failedLast30 > 0 && <span>{revenue.failedLast30} failed charges in 30d</span>}
-            {revenue.currencies.length > 1 && (
-              <span className="text-amber-700">
-                Mixed currencies ({revenue.currencies.join(", ")}) — totals add them as-is.
-              </span>
-            )}
-            {revenue.truncated && <span>Showing the most recent 1000 charges only.</span>}
-          </div>
-        </Section>
-
-        {/* ── Funnel + account health ───────────────────────────────── */}
-        <Section title="Accounts" note="Where people are, and anything that needs a human.">
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-            <SmallCard label="Quiz finished" value={subscribers.quizCompleted} />
-            <SmallCard
-              label="Converted"
-              value={`${subscribers.conversionPct}%`}
-              hint={`${subscribers.everPaid} of ${subscribers.quizCompleted} ever paid`}
-            />
-            <SmallCard label="Active" value={subscribers.byState.active} />
-            <SmallCard label="Canceling" value={subscribers.byState.canceling} />
-            <SmallCard label="Past due" value={subscribers.byState.past_due} tone={subscribers.byState.past_due > 0 ? "warn" : undefined} />
-            <SmallCard label="Ended" value={subscribers.byState.ended} />
-          </div>
-          {(subscribers.byState.disputed > 0 ||
-            subscribers.missingPlans > 0 ||
-            subscribers.unknownPlan > 0) && (
-            <ul className="mt-4 space-y-2 text-sm">
-              {subscribers.byState.disputed > 0 && (
-                <Flag tone="bad">{subscribers.byState.disputed} disputed (chargeback) — locked out.</Flag>
-              )}
-              {subscribers.missingPlans > 0 && (
-                <Flag tone="bad">
-                  {subscribers.missingPlans} paying customer(s) with no generated plan — check the plan
-                  row before they notice.
-                </Flag>
-              )}
-              {subscribers.unknownPlan > 0 && (
-                <Flag tone="warn">{subscribers.unknownPlan} paying row(s) with an unrecognised plan_type.</Flag>
-              )}
-            </ul>
-          )}
-        </Section>
-
-        {/* ── LLM cost ──────────────────────────────────────────────── */}
-        <Section
-          title="AI cost"
-          note="What generating one 8-week plan costs. A generation is two gpt-4o-mini calls."
-        >
-          {!llm.available ? (
-            <p className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-              No usage table yet. Apply{" "}
-              <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">
-                scripts/sql/2026-08-11-llm-usage.sql
-              </code>{" "}
-              in the Supabase SQL editor, and figures appear from the next plan generated.
-            </p>
-          ) : llm.generations === 0 ? (
-            <p className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-              Table is ready but empty — no plan has been generated since metering went in.
-            </p>
           ) : (
-            <>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <StatCard
-                  label="Cost per plan"
-                  value={cents(llm.avgCostPerGeneration)}
-                  sub={`avg over ${llm.generations} generation${llm.generations === 1 ? "" : "s"} · worst ${cents(llm.maxCostPerGeneration)}`}
-                  accent="yellow"
-                />
-                <StatCard
-                  label="Total AI spend"
-                  value={money(llm.totalCost)}
-                  sub={`${money(llm.last30Cost)} in the last 30 days`}
-                  accent="yellow"
-                />
-                <StatCard
-                  label="Margin per sale"
-                  value={money(unitMargin)}
-                  sub={`$${PLAN_PRICE} − Stripe fee − AI`}
-                  accent="green"
-                />
-                <StatCard
-                  label="Tokens per plan"
-                  value={`${llm.avgPromptTokens.toLocaleString()} in`}
-                  sub={`${llm.avgCompletionTokens.toLocaleString()} out · ${(llm.avgDurationMs / 1000).toFixed(1)}s`}
-                  accent="blue"
-                />
-              </div>
-              <p className="mt-3 text-xs text-slate-500">
-                Models: {llm.models.join(", ")}. Rates from{" "}
-                <code className="rounded bg-slate-100 px-1 py-0.5">lib/llmCost.ts</code>, frozen at the
-                time of each call.
-                {llm.unpricedCalls > 0 && (
-                  <span className="text-amber-700">
-                    {" "}
-                    {llm.unpricedCalls} call(s) used a model with no rate listed — their cost is missing
-                    from these totals.
-                  </span>
-                )}
-              </p>
-            </>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[680px] text-left text-sm">
+                <thead>
+                  <tr className="border-b border-[#E7DFE4] text-[11px] uppercase tracking-[0.1em] text-[#9B93A0]">
+                    <th className="px-5 py-3 font-medium">When</th>
+                    <th className="px-5 py-3 font-medium">Customer</th>
+                    <th className="px-5 py-3 font-medium" />
+                    <th className="px-5 py-3 text-right font-medium">Paid</th>
+                    <th className="px-5 py-3 font-medium">Her plan</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sales.map((s) => (
+                    <tr key={s.id} className="border-b border-[#E7DFE4] last:border-0 hover:bg-[#FAF7F8]">
+                      <td className="whitespace-nowrap px-5 py-3.5 text-[13px]">
+                        {relative(s.at)}
+                        <span className="block text-[11px] text-[#9B93A0]">{stamp(s.at)}</span>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span className="font-medium">{s.name ?? "—"}</span>
+                        <span className="block text-[13px] text-[#6F6674]">
+                          {s.email ?? "no email on the charge"}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <Chip kind={s.refunded ? "refunded" : s.kind} />
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3.5 text-right font-semibold tabular-nums">
+                        {s.refunded ? (
+                          <span className="text-[#A8261F]">
+                            {s.net > 0 ? money(s.net) : `−${money(s.gross)}`}
+                          </span>
+                        ) : (
+                          money(s.net)
+                        )}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <PlanCell status={s.planStatus} known={s.known} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
-        </Section>
+        </div>
 
-        {/* ── Clients ───────────────────────────────────────────────── */}
-        <Section title={`Clients (${stats.clients.length})`} note="Every account with a billing row.">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search name, email or id…"
-            className="mb-4 w-full max-w-sm rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-          />
-          <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-            <table className="w-full min-w-[820px] text-left text-sm">
-              <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Client</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Joined</th>
-                  <th className="px-4 py-3 font-medium">Renews / ends</th>
-                  <th className="px-4 py-3 font-medium text-right">Paid</th>
-                  <th className="px-4 py-3 font-medium">Plan</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {clients.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
-                      {query ? "No match." : "No clients yet."}
-                    </td>
-                  </tr>
-                )}
-                {clients.map((c) => (
-                  <tr key={c.user_id} className="align-top">
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-slate-800">{c.name ?? "—"}</div>
-                      <div className="text-xs text-slate-500">{c.email ?? "no email yet"}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <StateBadge state={c.state} />
-                      {c.provider && c.provider !== "stripe" && (
-                        <div className="mt-1 text-xs capitalize text-slate-500">{c.provider}</div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">{date(c.created_at)}</td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {date(c.subscription_ends_at)}
-                      {c.subscription_canceled && (
-                        <div className="text-xs text-amber-700">cancels</div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium text-slate-800">
-                      {c.spend === null ? "—" : money(c.spend)}
-                      {c.purchases > 1 && (
-                        <div className="text-xs font-normal text-slate-500">{c.purchases}×</div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <PlanBadge status={c.planStatus} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {subscribers.truncated && (
-            <p className="mt-2 text-xs text-slate-500">Showing the {stats.clients.length} newest accounts.</p>
-          )}
-        </Section>
+        {/* ── 5. Needs a human ───────────────────────────────────────────── */}
+        {alerts.length > 0 && (
+          <>
+            <SectionHead title="Needs a human" note="Only here when something is actually wrong." />
+            <div className="grid gap-2">
+              {alerts.map((a, i) => (
+                <p
+                  key={i}
+                  className={`rounded-xl border px-4 py-3 text-[13.5px] ${
+                    a.tone === "bad"
+                      ? "border-[#A8261F]/28 bg-[#FAE5E3] text-[#A8261F]"
+                      : "border-[#9C6212]/28 bg-[#FAEEDA] text-[#9C6212]"
+                  }`}
+                >
+                  {a.text}
+                </p>
+              ))}
+            </div>
+          </>
+        )}
+
+        <footer className="mt-8 flex flex-wrap gap-x-5 gap-y-1.5 border-t border-[#E7DFE4] pt-3.5 text-[11.5px] text-[#9B93A0]">
+          <span>Revenue read from Stripe charges, net of refunds.</span>
+          <span>Quiz and customers read from Supabase.</span>
+          <span>Refreshed {stamp(stats.refreshedAt)}</span>
+          {stats.truncated && <span>Showing the most recent slice only.</span>}
+        </footer>
       </div>
     </main>
   );
@@ -457,130 +548,94 @@ export default function AdminPage() {
 
 // ─── Presentational bits ────────────────────────────────────────────────────
 
-function Section({
-  title,
-  note,
-  children,
-}: {
-  title: string;
-  note?: string;
-  children: React.ReactNode;
-}) {
+function SectionHead({ title, note }: { title: string; note: string }) {
   return (
-    <section>
-      <h2 className="text-lg font-semibold text-slate-800">{title}</h2>
-      {note && <p className="mb-4 mt-0.5 text-sm text-slate-500">{note}</p>}
-      {children}
-    </section>
-  );
-}
-
-const ACCENTS = {
-  blue: "border-blue-200 bg-blue-50 text-blue-700",
-  green: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  yellow: "border-yellow-200 bg-yellow-50 text-yellow-700",
-  red: "border-red-200 bg-red-50 text-red-700",
-} as const;
-
-function StatCard({
-  label,
-  value,
-  sub,
-  accent,
-}: {
-  label: string;
-  value: string;
-  sub: string;
-  accent: keyof typeof ACCENTS;
-}) {
-  return (
-    <div className={`rounded-2xl border p-5 shadow-sm ${ACCENTS[accent]}`}>
-      <p className="text-sm font-medium opacity-80">{label}</p>
-      <p className="mt-1 text-3xl font-bold">{value}</p>
-      <p className="mt-1 text-xs opacity-70">{sub}</p>
+    <div className="mb-3 mt-9 flex flex-wrap items-baseline justify-between gap-3">
+      <h2 className="text-[13px] font-semibold uppercase tracking-[0.05em]">{title}</h2>
+      <p className="text-xs text-[#9B93A0]">{note}</p>
     </div>
   );
 }
 
-function MiniStat({ label, bucket }: { label: string; bucket: Bucket }) {
+function LedgerCell({
+  label,
+  bucket,
+  bordered,
+}: {
+  label: string;
+  bucket: Bucket;
+  bordered?: boolean;
+}) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="mt-1 text-xl font-bold text-slate-800">{money(bucket.net)}</p>
-      <p className="text-xs text-slate-500">
-        {bucket.count} purchase{bucket.count === 1 ? "" : "s"}
+    <div className={`px-5 py-5 ${bordered ? "border-l border-[#E7DFE4]" : ""}`}>
+      <p className="text-[11px] uppercase tracking-[0.1em] text-[#9B93A0]">{label}</p>
+      <p className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">{money(bucket.net)}</p>
+      <p className="text-[13px] text-[#6F6674]">
+        {bucket.count} {bucket.count === 1 ? "sale" : "sales"}
       </p>
     </div>
   );
 }
 
-function SmallCard({
+function Tile({
   label,
   value,
-  hint,
+  note,
   tone,
+  bordered,
 }: {
   label: string;
-  value: number | string;
-  hint?: string;
-  tone?: "warn";
+  value: React.ReactNode;
+  note: React.ReactNode;
+  tone?: "good" | "bad";
+  bordered?: boolean;
 }) {
+  const toneClass = tone === "good" ? "text-[#17694E]" : tone === "bad" ? "text-[#A8261F]" : "";
   return (
     <div
-      className={`rounded-xl border p-4 ${
-        tone === "warn" ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-white"
-      }`}
+      className={`px-5 py-4 ${bordered ? "border-t border-[#E7DFE4] sm:border-t-0 sm:border-l" : ""}`}
     >
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-slate-800">{value}</p>
-      {hint && <p className="mt-0.5 text-xs text-slate-400">{hint}</p>}
+      <p className="text-[11px] uppercase tracking-[0.1em] text-[#9B93A0]">{label}</p>
+      {typeof value === "string" ? (
+        <p className={`mt-1 text-2xl font-semibold tracking-tight tabular-nums ${toneClass}`}>
+          {value}
+        </p>
+      ) : (
+        <div className="mt-1">{value}</div>
+      )}
+      <p className="mt-1 text-[13px] text-[#6F6674]">{note}</p>
     </div>
   );
 }
 
-function Flag({ tone, children }: { tone: "warn" | "bad"; children: React.ReactNode }) {
+function EmptyPoint({ children }: { children: React.ReactNode }) {
   return (
-    <li
-      className={`rounded-xl border px-4 py-2.5 ${
-        tone === "bad"
-          ? "border-red-200 bg-red-50 text-red-800"
-          : "border-amber-200 bg-amber-50 text-amber-800"
-      }`}
-    >
-      {children}
+    <li className="flex gap-2.5">
+      <span className="text-[#A8336E]">→</span>
+      <span>{children}</span>
     </li>
   );
 }
 
-const STATE_STYLES: Record<AccountState, string> = {
-  active: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  canceling: "bg-amber-50 text-amber-700 border-amber-200",
-  past_due: "bg-orange-50 text-orange-700 border-orange-200",
-  ended: "bg-slate-100 text-slate-500 border-slate-200",
-  disputed: "bg-red-50 text-red-700 border-red-200",
+const CHIP: Record<string, string> = {
+  new: "border-[#17694E]/30 bg-[#E2F0EA] text-[#17694E]",
+  renewal: "border-[#A8336E]/30 bg-[#F7E7EF] text-[#A8336E]",
+  refunded: "border-[#A8261F]/30 bg-[#FAE5E3] text-[#A8261F]",
 };
 
-const STATE_LABELS: Record<AccountState, string> = {
-  active: "Active",
-  canceling: "Canceling",
-  past_due: "Past due",
-  ended: "Ended",
-  disputed: "Disputed",
-};
-
-function StateBadge({ state }: { state: AccountState }) {
+function Chip({ kind }: { kind: "new" | "renewal" | "refunded" }) {
   return (
     <span
-      className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-medium ${STATE_STYLES[state]}`}
+      className={`inline-block rounded-full border px-2 py-0.5 text-[10.5px] font-medium uppercase tracking-[0.06em] ${CHIP[kind]}`}
     >
-      {STATE_LABELS[state]}
+      {kind}
     </span>
   );
 }
 
-function PlanBadge({ status }: { status: string | null }) {
-  if (status === "ready") return <span className="text-xs text-slate-500">ready</span>;
-  if (status === "generating")
-    return <span className="text-xs text-amber-700">generating…</span>;
-  return <span className="text-xs text-slate-400">none</span>;
+function PlanCell({ status, known }: { status: string | null; known: boolean }) {
+  if (!known) return <span className="text-[13px] text-[#9B93A0]">not linked</span>;
+  if (status === "ready") return <span className="text-[13px] text-[#6F6674]">ready</span>;
+  if (status === "generating") return <span className="text-[13px] text-[#9C6212]">building…</span>;
+  return <span className="text-[13px] font-medium text-[#A8261F]">none — fix</span>;
 }

@@ -13,8 +13,8 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
  * This list is *not* the mechanism — every one of these carries
  * `user_id references auth.users on delete cascade`, so
  * `auth.admin.deleteUser` below would remove them anyway, along with
- * `user_plans`, `user_plan_logs`, `user_habits`, `user_insights` and
- * `referrals`, which were never on this list at all. Keep it as an ordering
+ * `user_plans`, `user_plan_logs` and `user_habits`, which were never on this
+ * list at all. Keep it as an ordering
  * detail that makes the intent readable; never treat it as the guarantee.
  * A new user table is covered by adding the FK, not by adding a line here.
  */
@@ -24,7 +24,6 @@ const TABLES_TO_CLEAR: { table: string; column: string }[] = [
   { table: "symptom_logs", column: "user_id" },
   { table: "symptoms", column: "user_id" },
   { table: "weekly_insights", column: "user_id" },
-  { table: "user_insights", column: "user_id" },
   { table: "user_plan_logs", column: "user_id" },
   { table: "user_habits", column: "user_id" },
   { table: "user_plans", column: "user_id" },

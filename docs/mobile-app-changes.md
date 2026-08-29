@@ -1124,6 +1124,52 @@ No new endpoint, no query parameter, no logging, no key change, no effect on
 text and is sent to every client either way. An app build that ignores the field
 behaves exactly as it does today.
 
+## 23. Weeks 1-2 are a ramp, and the disclaimer is one screen — 2026-08-29
+
+**Nothing for the app to build.** Both halves are either ordinary data through
+existing fields or a change inside the app itself; this section exists so a
+tester who notices does not file them as bugs.
+
+### The plan ramps its two intensity levers over the first fortnight
+
+- **No `w1_intervals` or `w2_intervals` at any level.** `K02` is thirty seconds
+  all-out and the funnel screens nobody, so medium and advanced now open on two
+  weeks of easy aerobic work and pick up their two hard days from week 3. Cardio
+  session *counts* are unchanged — 7 a week at medium, 6 at advanced — so
+  `w{n}_cardio` simply carries all of them in weeks 1-2.
+- **The power block stays on the ground in weeks 1-2.** Those weeks draw only
+  `I01` / `I07` / `I09` (stomping march, lateral step and stick, supported heel
+  drop); the pogo jumps and drops arrive in week 3. Same fields, same
+  `powerSessions`, same shape.
+
+### One disclaimer, at the start, saying everything
+
+The app used to carry **three** differently-worded medical disclaimers — the
+consent modal, a card at the bottom of the daily loop, and a paragraph at the
+bottom of Settings. Three wordings is three things to keep true, and the two
+inline ones were wallpaper: permanent furniture on screens she opens every day,
+which is the fastest way to make a safety notice invisible.
+
+There is now exactly one, in `MedicalDisclaimerModal` — the "Before you begin"
+gate that already ran on first launch. It covers, in three sections: that this
+is not medical advice and that Lisa is an AI that can be wrong; that her plan is
+built from her quiz answers rather than a medical assessment, when to check with
+a doctor before starting, and the stop signals; and the existing AI/data-sharing
+and privacy links.
+
+**The consent key moved to `@menolisa:consent_v3_accepted`**, so everyone sees
+the gate once more — consent already given cannot cover text that did not exist
+when she gave it. Bump it again on any future change to what she is agreeing to.
+
+**It is deliberately not served by the API.** A `disclaimer` field on
+`GET /api/plan` was built and then removed: that endpoint needs auth *and* a
+paid subscription, so it cannot answer on first launch, which is exactly when
+this has to be read. The trade is real — correcting the wording now needs an
+App Store release — and it is the right way round for a consent gate, which has
+to show before there is anything to authenticate against.
+
+---
+
 ## Quick checklist
 
 - [ ] Render `exercise.why` on the session screen (§22)
@@ -1177,3 +1223,6 @@ behaves exactly as it does today.
 - [ ] Render `w{n}_cardio` / `w{n}_intervals` as one-exercise movement tasks with a single countdown
 - [ ] Draw no warm-up, power, cool-down or video on a cardio task
 - [ ] Count cardio ticks against `target` with `doneThisWeek`, like any weekly task
+- [ ] Keep exactly one medical disclaimer — the "Before you begin" gate; never add a second inline one (§23)
+- [ ] Bump `@menolisa:consent_vN_accepted` whenever that modal gains something she has not agreed to (§23)
+- [ ] Expect no interval sessions in weeks 1-2 at any level, and no jumping in the week 1-2 power block (§23)

@@ -11,8 +11,6 @@ export type Persona =
 
 export type RetrievalMode = "kb_strict" | "hybrid" | "llm_reasoning";
 
-export type QueryValidation = "allowed" | "refused" | "kb_required";
-
 export interface ContentSections {
   has_content: boolean;
   has_action_tips: boolean;

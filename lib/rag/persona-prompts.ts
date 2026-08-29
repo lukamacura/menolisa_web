@@ -93,11 +93,6 @@ ALWAYS:
 - Reframe challenges as normal biological transitions
 - Encourage healthcare provider consultation for medical decisions`;
 
-// Legacy exports for backward compatibility (deprecated - use getPersonaSystemPrompt instead)
-export const NUTRITION_COACH_SYSTEM_PROMPT = buildPersonaPrompt("nutrition_coach");
-export const EXERCISE_TRAINER_SYSTEM_PROMPT = buildPersonaPrompt("exercise_trainer");
-export const EMPATHY_COMPANION_SYSTEM_PROMPT = buildPersonaPrompt("empathy_companion");
-
 /**
  * Get system prompt for a given persona
  * Now uses the new persona spec system for exercise, nutrition, and empathy personas
@@ -126,10 +121,4 @@ export function getPersonaSystemPrompt(persona: string, userQuery?: string): str
     isWhyHormoneQuestion,
   });
 }
-
-
-
-
-
-
 

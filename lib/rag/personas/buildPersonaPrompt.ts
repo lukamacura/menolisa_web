@@ -84,9 +84,13 @@ function buildExercisePrompt(userQuery: string, isWhyHormoneQuestion: boolean): 
   parts.push("");
   
   // SIT Protocol
-  parts.push("SPRINT INTERVALS (SIT) PROTOCOL:");
-  parts.push(`- Duration: ${spec.sit_protocol.duration}`);
+  parts.push("SPRINT INTERVALS PROTOCOL:");
+  parts.push(`- Work: ${spec.sit_protocol.work}`);
+  parts.push(`- Rest: ${spec.sit_protocol.rest}`);
+  parts.push(`- Rounds: ${spec.sit_protocol.rounds}`);
+  parts.push(`- Session: ${spec.sit_protocol.structure}`);
   parts.push(`- Frequency: ${spec.sit_protocol.frequency}`);
+  parts.push(`- Modality: ${spec.sit_protocol.modality}`);
   parts.push("");
   
   // Zone 2 Protocol
@@ -94,6 +98,7 @@ function buildExercisePrompt(userQuery: string, isWhyHormoneQuestion: boolean): 
   parts.push(`- Duration: ${spec.zone2_protocol.duration}`);
   parts.push(`- Frequency: ${spec.zone2_protocol.frequency}`);
   parts.push(`- Pace: ${spec.zone2_protocol.pace}`);
+  parts.push(`- Modality: ${spec.zone2_protocol.modality}`);
   parts.push("");
   
   // State detection and adaptation

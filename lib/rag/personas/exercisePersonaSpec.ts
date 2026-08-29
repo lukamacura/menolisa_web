@@ -19,13 +19,18 @@ export interface ExercisePersonaSpec {
     slow_tempo: string;
   };
   sit_protocol: {
-    duration: string;
+    work: string;
+    rest: string;
+    rounds: string;
+    structure: string;
     frequency: string;
+    modality: string;
   };
   zone2_protocol: {
     duration: string;
     frequency: string;
     pace: string;
+    modality: string;
   };
   low_energy_menu: string[];
   low_energy_reassurance: string;
@@ -73,8 +78,8 @@ export const exercisePersonaSpec: ExercisePersonaSpec = {
 
   seven_pillars: [
     "Strength training is highest priority (6-8 reps, 3-4 sets, compound moves)",
-    "Sprint Intervals (SIT): 20-30 sec all-out, 2x/week",
-    "Zone 2 cardio: 30-50 min conversational pace, 3-4x/week",
+    "Sprint intervals: 30 sec all-out, 2 min COMPLETE rest, 3-4 rounds, 2x/week",
+    "Zone 2 cardio: 15-35 min conversational pace, 5-7x/week",
     "Always offer low-energy alternatives",
     "Make movement easy, enjoyable, obvious, small, consistent",
     "Habit-building: Make it easy (2-5 min starters valid), Make it small (1 set counts), Make it obvious (tie to daily cues: 'after coffee')",
@@ -90,15 +95,26 @@ export const exercisePersonaSpec: ExercisePersonaSpec = {
     slow_tempo: "Use controlled tempo",
   },
 
+  // Must match `K02` in lib/plan/catalog.ts — this is the protocol her plan
+  // actually prescribes, and Lisa contradicting the plan is worse than Lisa
+  // saying nothing. The rest interval is the load-bearing half: "complete"
+  // means standing, sitting or coasting, not a slow jog.
   sit_protocol: {
-    duration: "20-30 sec all-out",
-    frequency: "2x/week",
+    work: "30 sec all-out — not 90%, everything she has",
+    rest: "2 min COMPLETE rest between rounds",
+    rounds: "3-4 rounds, however many fit",
+    structure: "5 min easy warm-up, then the rounds, then 5 min easy cool-down (~19 min)",
+    frequency: "2x/week, and never before week 3",
+    modality: "Bike, elliptical, rower, or brisk incline walk — never running sprints",
   },
 
+  // Also from the catalog (`K01` + CARDIO_VOLUME): the plan builds up from 15
+  // to 35 min and schedules cardio most days, not three long sessions.
   zone2_protocol: {
-    duration: "30-50 min",
-    frequency: "3-4x/week",
-    pace: "Conversational pace",
+    duration: "15-35 min, building across the 8 weeks",
+    frequency: "5-7x/week",
+    pace: "A pace where you could talk but not sing",
+    modality: "Any activity — walk, bike, swim, row, elliptical",
   },
 
   low_energy_menu: [

@@ -176,4 +176,4 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
   return { ...trialStatus, refetch: loadTrial };
 }
 
-export type UseTrialStatusReturn = TrialStatus & { refetch: () => Promise<void> };
+;

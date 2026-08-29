@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getAuthenticatedUser } from "@/lib/getAuthenticatedUser";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendMetaViewContent } from "@/lib/metaCapi";
 import { META_CURRENCY, PLAN_VALUE, viewContentEventId } from "@/lib/metaPixel";
 
@@ -58,6 +59,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, skipped: "mobile" });
   }
 
+  // Her first name, for `fn`. `save-quiz` runs several screens before the
+  // paywall in the funnel, and a lapsed customer on `/paywall` has had a profile
+  // for weeks, so the row is there in both cases. A miss is not an error - the
+  // parameter is simply absent, exactly as it was before.
+  const supabaseAdmin = getSupabaseAdmin();
+  const { data: profile } = await supabaseAdmin
+    .from("user_profiles")
+    .select("name")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
   const url = new URL(request.url);
   const sourceParam = url.searchParams.get("source");
   const source = sourceParam && SOURCES.has(sourceParam) ? sourceParam : null;
@@ -73,6 +85,10 @@ export async function POST(request: NextRequest) {
     currency: META_CURRENCY,
     userId: user.id,
     email: user.email?.trim() ? user.email : null,
+    firstName: profile?.name ?? null,
+    // Vercel's edge geo header - not new information next to the IP Meta
+    // already has, but a parameter it scores, and it costs a header read.
+    country: request.headers.get("x-vercel-ip-country"),
     source,
     fbp: request.cookies.get("_fbp")?.value,
     fbc: request.cookies.get("_fbc")?.value,
