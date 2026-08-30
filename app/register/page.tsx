@@ -4638,7 +4638,7 @@ function RegisterPageContent() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: prefersReducedMotion ? 0 : 0.4 }}
-            className="w-full max-w-md mx-auto my-auto flex flex-col items-center py-2"
+            className="w-full max-w-md mx-auto my-auto flex flex-col items-center"
           >
             {/* The only brand mark in the funnel. `ConditionalNavbar` renders
                 nothing on /register (deliberately - the navbar used to sit over
@@ -4649,37 +4649,31 @@ function RegisterPageContent() {
 
                 Same lockup as `LandingFooter` - avatar plus wordmark - at 24px
                 rather than 32px, because this is orientation, not branding: it
-                has to be recognisable and it must not compete with the hero
-                directly under it. `alt=""` on the avatar because the wordmark
-                beside it already carries the name; announcing both reads as
-                "MenoLisa MenoLisa". Eager rather than `priority` - it is ~2KB
-                and above the fold, but a preload hint here would compete with
-                the hero, which is the image that actually has to be there on
-                first paint.
+                has to be recognisable and it must not compete with the hero.
+                `alt=""` on the avatar because the wordmark beside it already
+                carries the name; announcing both reads as "MenoLisa MenoLisa".
+                Eager rather than `priority` - it is ~2KB and above the fold,
+                but a preload hint here would compete with the hero, which is
+                the image that actually has to be there on first paint.
+
+                It sits *inside* the hero as of 2026-08-30, top-left. Above it
+                the lockup was a 24px row plus a 12px margin of otherwise empty
+                page, spent on the one screen where vertical space is the scarce
+                resource - and it read as a page header, which is the one thing
+                it is not. Inside the frame it is a watermark on the picture: the
+                same orientation, none of the height. That is ~36px reclaimed
+                directly from the top of the fold, which is where it is worth
+                the most.
+
+                On a translucent white pill rather than bare on the photo. The
+                hero is a photograph and its top-left corner is whatever the
+                shoot gave us - a bare wordmark there is legible in the file we
+                have today and illegible in the next one, which is a bug that
+                only appears when the art is replaced. The pill makes contrast a
+                property of the component instead of a property of the image.
 
                 Start phase only. The quiz screens have their own header and
                 their job is the question in front of her, not the brand. */}
-            <motion.div
-              initial={prefersReducedMotion ? false : { opacity: 0, y: -6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: prefersReducedMotion ? 0 : 0.35 }}
-              className="mb-3 flex shrink-0 items-center gap-2"
-            >
-              <span className="relative h-6 w-6 shrink-0 overflow-hidden rounded-full ring-1 ring-black/5">
-                <Image
-                  src="/brand/lisa-profile.webp"
-                  alt=""
-                  fill
-                  sizes="24px"
-                  loading="eager"
-                  className="object-cover"
-                />
-              </span>
-              <span className="text-sm font-bold tracking-tight text-[#3D3D3D]">
-                MenoLisa
-              </span>
-            </motion.div>
-
             <motion.div
               initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -4693,8 +4687,29 @@ function RegisterPageContent() {
                 height={504}
                 priority
                 sizes="(max-width: 480px) 92vw, 420px"
-                className="w-full h-auto max-h-[30vh] sm:max-h-[34vh] object-cover object-[50%_35%]"
+                className="w-full h-auto max-h-[26vh] sm:max-h-[34vh] object-cover object-[50%_28%]"
               />
+
+              <motion.div
+                initial={prefersReducedMotion ? false : { opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: prefersReducedMotion ? 0 : 0.2, duration: 0.35 }}
+                className="absolute left-2 top-2 z-10 flex items-center gap-1.5 rounded-full bg-white/90 py-1 pl-1 pr-2.5 shadow-[0_2px_8px_rgba(0,0,0,0.18)] backdrop-blur-sm"
+              >
+                <span className="relative h-6 w-6 shrink-0 overflow-hidden rounded-full ring-1 ring-black/5">
+                  <Image
+                    src="/brand/lisa-profile.webp"
+                    alt=""
+                    fill
+                    sizes="24px"
+                    loading="eager"
+                    className="object-cover"
+                  />
+                </span>
+                <span className="text-sm font-bold tracking-tight text-[#3D3D3D]">
+                  MenoLisa
+                </span>
+              </motion.div>
 
               {/* The photo is a diptych and nothing on it said so, which left the
                   two halves reading as two photos of the same woman rather than
@@ -4751,31 +4766,61 @@ function RegisterPageContent() {
 
                   Left half only. The right half has the app on the screen and a
                   label naming the plan; a second bubble would turn a
-                  transformation into a comic strip. Clipped by the hero's own
-                  `overflow-hidden`, so the offsets are percentages - the crop
-                  moves with the viewport and a fixed inset would ride off the
-                  photo on a short screen. */}
+                  transformation into a comic strip.
+
+                  Bottom-left, in white, as of 2026-08-30 - it was top-left in
+                  dark ink, and both halves of that were wrong.
+
+                  *Position:* the top-left corner is where the lockup now lives,
+                  and it is also the brightest, emptiest part of the frame - so
+                  the one line of copy that carries the whole "before" argument
+                  was floating in the corner she looks at last, above a face
+                  that is the actual subject. At the bottom it sits directly
+                  over the "Now" label it belongs to, and the two read as one
+                  statement rather than two overlays arguing for the same half.
+
+                  *Colour:* dark-on-photo was a contrast lottery. It sits over
+                  the hero's own bottom scrim (`from-black/65`) now, so white
+                  ink on a white bubble is high contrast against a known dark
+                  ground rather than against whatever the next shoot hands us -
+                  the same reasoning as the lockup pill above. The tail points
+                  down, at her.
+
+                  Offsets stay percentages for the left edge and a rem for the
+                  bottom: the hero is clipped by its own `overflow-hidden` and
+                  its crop moves with the viewport, but the labels bar it clears
+                  is a fixed height, so that gap should not scale.
+
+                  `max-w-[52%]` from a `left-[4%]` anchor overhangs the seam by
+                  ~6%, deliberately. Tightening it to end exactly on the seam
+                  costs a third line at the widths this actually renders at, and
+                  a taller bubble buys nothing: it is anchored left and its tail
+                  is on the left half, so a few percent of overhang reads as a
+                  bubble floating over the picture rather than as a caption on
+                  the "after". Do not push it past ~55% - that is where it
+                  starts covering the phone in her hand, which is the only thing
+                  on the right half that shows the product. */}
               <motion.div
                 initial={
                   prefersReducedMotion
                     ? false
-                    : { opacity: 0, y: -8, scale: 0.94, rotate: -3 }
+                    : { opacity: 0, y: 8, scale: 0.94, rotate: -2 }
                 }
-                animate={{ opacity: 1, y: 0, scale: 1, rotate: -3 }}
+                animate={{ opacity: 1, y: 0, scale: 1, rotate: -2 }}
                 transition={{
                   delay: prefersReducedMotion ? 0 : 0.5,
                   type: "spring",
                   stiffness: 260,
                   damping: 20,
                 }}
-                className="absolute left-[4%] top-[7%] max-w-[46%] rounded-xl bg-[#3D3D3D] px-2.5 py-1.5 text-left shadow-[0_6px_16px_-4px_rgba(0,0,0,0.45)]"
+                className="absolute bottom-8 left-[4%] z-10 max-w-[52%] rounded-xl bg-white px-2.5 py-1 text-left shadow-[0_6px_16px_-4px_rgba(0,0,0,0.55)]"
               >
-                <p className="text-[11px] sm:text-xs font-semibold leading-snug text-white">
+                <p className="text-[11px] sm:text-xs font-semibold leading-snug text-[#3D3D3D]">
                   &ldquo;Me, googling my symptoms. Again.&rdquo;
                 </p>
                 <span
                   aria-hidden
-                  className="absolute -bottom-1 left-5 h-3 w-3 rotate-45 rounded-[2px] bg-[#3D3D3D]"
+                  className="absolute -bottom-1 left-5 h-3 w-3 rotate-45 rounded-[2px] bg-white"
                 />
               </motion.div>
               <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-black/65 via-black/25 to-transparent px-2 pt-8 pb-2">
@@ -4843,7 +4888,7 @@ function RegisterPageContent() {
               initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: prefersReducedMotion ? 0 : 0.28, duration: 0.4 }}
-              className="mt-2.5 text-sm sm:text-base text-[#5A5A5A] leading-snug px-2"
+              className="mt-2 text-sm sm:text-base text-[#5A5A5A] leading-snug px-2"
             >
               After 40, <span className="font-semibold text-[#3D3D3D]">your hormones
               changed the rules</span> — and nobody handed you the new ones.
@@ -4876,7 +4921,7 @@ function RegisterPageContent() {
               initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: prefersReducedMotion ? 0 : 0.34, duration: 0.4 }}
-              className="mt-3 inline-flex flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-full bg-foreground/5 px-3.5 py-1.5 text-xs sm:text-sm font-semibold text-[#3D3D3D]"
+              className="mt-2.5 inline-flex flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-full bg-foreground/5 px-3.5 py-1.5 text-xs sm:text-sm font-semibold text-[#3D3D3D]"
             >
               <span>Free</span>
               <span aria-hidden className="text-[#9A9A9A]">·</span>
@@ -4921,7 +4966,7 @@ function RegisterPageContent() {
               initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: prefersReducedMotion ? 0 : 0.4, duration: 0.4 }}
-              className="mt-5 w-full rounded-2xl border border-foreground/10 bg-card px-4 py-4 shadow-sm"
+              className="mt-3 w-full rounded-2xl border border-foreground/10 bg-card px-4 py-3.5 shadow-sm"
             >
               {/* Message match with the live creatives, 2026-08-24. Three of the
                   four ads sell a *mechanism* - cortisol, the nervous system,
@@ -4952,10 +4997,9 @@ function RegisterPageContent() {
                 feel like yourself again
               </p>
               <p className="mt-1.5 text-xs sm:text-sm text-[#5A5A5A] leading-snug">
-                Built around the symptoms hitting you hardest, across the three
-                things that actually move after 40:
+                Built around the symptoms hitting you hardest:
               </p>
-              <ul className="mt-3 flex flex-col gap-2.5 text-left">
+              <ul className="mt-2.5 flex flex-col gap-2 text-left">
                 {START_PILLARS.map(({ Icon, name, copy }) => (
                   <li key={name} className="flex items-start gap-2.5">
                     <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#16A34A]/10">
@@ -4982,7 +5026,7 @@ function RegisterPageContent() {
                   sentence is true. A time promise she discovers is wrong on day
                   1 is a refund, and the refund guarantee is what this funnel
                   sells against. */}
-              <p className="mt-3 border-t border-foreground/10 pt-2.5 text-xs sm:text-sm text-[#5A5A5A] leading-snug">
+              <p className="mt-3 border-t border-foreground/10 pt-2.5 text-left text-xs sm:text-sm text-[#5A5A5A] leading-snug">
                 Built around the time you actually have. For most women that&apos;s
                 a daily walk and two short sessions a week —{" "}
                 <span className="font-semibold text-[#3D3D3D]">no gym needed.</span>
@@ -5007,21 +5051,30 @@ function RegisterPageContent() {
           animates opacity only, so it never becomes the containing block for a
           fixed child - the four other phases already pin bars inside it.
 
-          The sub-line answers "what does this cost me" at a size she can
-          actually read (13px #5A5A5A is 6.9:1; the 11px #9A9A9A it replaces was
-          2.85:1, i.e. the hardest text on the page belonged to the audience
-          least able to resolve it).
+          There is no cost sub-line here any more (2026-08-30). It read "Free
+          quiz - 2 minutes - no email needed", and those three facts now sit in
+          a pill directly under the headline, where the decision to keep reading
+          is actually made - down here they were the last thing she reads on a
+          screen most ad traffic never scrolls.
 
-          It is now a two-word echo. The full version - free, two minutes, no
-          email - moved up under the headline on 2026-08-30, because down here
-          it was the last thing she reads on a screen most ad traffic never
-          scrolls, and "no email needed" is the strongest objection-killer the
-          funnel owns (she genuinely gives no address until Stripe - see
-          "Anonymous accounts"). What stays here is the restatement at the tap,
-          which is worth having and is not worth printing the same sentence
-          twice for. Note "free" has to keep meaning *the quiz*: it sits 90
-          seconds before a $59 paywall, so never let this line grow into
-          anything that could be read as the plan being free.
+          Restating them at the tap is ordinarily worth doing, and it was tried:
+          a two-word "Free - no email needed" echo. It came out on the same day.
+          Measured at 375x557 - the Instagram/Facebook webview on a 375x667
+          device, i.e. the worst case this funnel actually gets - the pill ends
+          at 297px and this bar starts at 459px. Both are on screen together
+          there and on every taller viewport, so the echo was not a reminder of
+          something she had scrolled past: it was the same sentence printed
+          twice inside one glance, which reads as a mistake and spends the two
+          lines above the legal row that the CTA needs to sit clear in. Do not
+          add it back without re-measuring whether the pill still clears the
+          fold.
+
+          If a line ever does return here: "free" has to keep meaning *the
+          quiz*. It sits 90 seconds before a $59 paywall, so never let it grow
+          into anything that could be read as the plan being free. And size it
+          at 13px #5A5A5A (6.9:1), never the 11px #9A9A9A this bar used to use -
+          the hardest text on the page belonged to the audience least able to
+          resolve it.
 
           It read "Free quiz - 2 minutes - {QUESTION_STEPS.length} taps - no
           email needed" until 2026-08-20. The count was the only pure *cost* in
@@ -5049,9 +5102,6 @@ function RegisterPageContent() {
               Build my {PLAN_WEEKS}-week reset plan
               <ArrowRight className="w-4 h-4" />
             </button>
-            <p className="text-xs text-[#5A5A5A] text-center mt-2 leading-snug">
-              Free · no email needed
-            </p>
             {/* The funnel linked neither, on the one screen that is the entry
                 point for paid traffic ending at a $59 charge - so the two
                 documents Meta's reviewers look for, and the two a cautious
