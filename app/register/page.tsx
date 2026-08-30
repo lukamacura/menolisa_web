@@ -67,7 +67,7 @@ import type { LucideIcon } from "lucide-react";
 import { HighlightSweep } from "@/components/HighlightSweep";
 import {
   FirstSessionBoard,
-  SymptomLoadBoard,
+  StartingPointBoard,
   TrainingWeekBoard,
   type PlannerDay,
   type SessionRow,
@@ -142,6 +142,7 @@ import { getOfferPromise } from "@/lib/planTimeline";
 import {
   SYMPTOM_LABELS,
   SYMPTOM_MECHANISM,
+  SYMPTOM_FIRST_MOVE,
   AGE_BAND_LABELS,
   SCORE_GOAL,
   getScoreBenchmark,
@@ -260,7 +261,7 @@ const REWARD_STEPS: Step[] = [
 // Header label per reward, in place of the numbered "Question X of N". Each one
 // names what she just got rather than repeating "Quick win" three times.
 const REWARD_LABEL: Record<string, string> = {
-  reward_symptoms: "Quick win",
+  reward_symptoms: "Yours, free",
   reward_social_proof: `${SOCIAL_PROOF_WEEKS} weeks from now`,
   reward_plan_shape: "Your week, sized",
   reward_progress: "Your plan rules",
@@ -691,6 +692,19 @@ const CALCULATING_MAX_PCT = 99;
 // 1.7s over three captions is ~570ms a line, which is the floor for a
 // four-word phrase to be read rather than glimpsed. Shorter and the captions
 // are a blur; longer and three of them start costing real completion.
+// The scroll shell every reward payoff sits in, and the centring that goes on
+// the payoff rather than on the shell.
+//
+// The shell used to carry `justify-center`, which centres a payoff taller than
+// the viewport *and clips both ends of it* - the top of the board ends up above
+// scrollTop 0, where no scroll can reach it. Measured on 375x557 (the small-phone
+// in-app browser): board 1 overflowed by 33px and lost its header and its
+// sign-off. `my-auto` on the child centres exactly the same way while there is
+// free space and collapses to nothing when there is not, so a tall payoff simply
+// scrolls from its own top.
+const REWARD_SCROLL_SHELL = "flex-1 min-h-0 overflow-y-auto flex flex-col";
+const REWARD_PAYOFF_CENTER = "my-auto w-full shrink-0";
+
 const QUIZ_LOADER_MS = 1700;
 
 // Unlike the calculating screen this one really does reach 100: there is no
@@ -1297,56 +1311,42 @@ function getGoalCtaLabel(goals: string[]): string {
 // are the product, not a description of it: every row here is something
 // GET /api/plan returns.
 //
-// **Three rows, not two, and that is a reversal.** The card carried two checks
-// until 2026-08-30, on the argument that "two reads as a promise, three reads
-// as a list to skim". That call was made against a screen with no ads pointed
-// at it. It does not survive the four live creatives: three of the four sell a
-// specific *mechanism*, and the second check had been made to carry all three
-// of them at once ("movement, food, and a wind-down that lowers cortisol") —
-// fifteen words in which no single mechanism registers. Ad 4 is the proof. It
-// is entirely about estrogen, muscle and bone, and the word "bone" appeared
-// nowhere on the screen it paid to reach: a woman who clicked an ad about
-// losing her strength landed on a page about feeling like herself. Three named
-// rows with an icon each are *more* scannable than one run-on clause, not less
-// — the thing the old comment was right to fear is an undifferentiated list,
-// and this is not one.
+// **Two words each, in three columns — not sentences in three rows.** They were
+// full-sentence rows for most of 2026-08-30 ("Joint-friendly strength that
+// protects the muscle and bone estrogen used to...") and the sentences were
+// good. They were also ~60 words of body copy stacked under a photograph on the
+// screen with the least attention in the entire funnel, and they pushed the
+// hero down to 26vh to make room. The photograph is the argument here: a
+// before/after she can read in half a second, with no claim to evaluate. Copy
+// that outranks it is copy in the wrong place.
 //
-// Written against what the plan does, not what menopause does. Each row states
-// a mechanism and stops:
+// What survives the cut is the part that had to: the **mechanism keyword**.
+// Three of the four live creatives sell a mechanism, and Ad 4 sells estrogen,
+// muscle and bone specifically — a woman who clicked an ad about losing her
+// strength must find that word on the screen it paid to reach. "muscle & bone",
+// "cortisol" and "hormones" are each two words and each one is the match. The
+// verbs are the pillars themselves (movement / relaxation / nutrition, the
+// `Pillar` union in lib/plan/generate.ts plus the daily nutrition list), so the
+// column reads as a promise of a *thing she will do*, not a claim about what
+// menopause does to her.
 //
-// - **Bone, not a dumbbell.** The icon and the copy both name what Ad 4 sells.
-//   "Joint-friendly" rather than the "low-impact" the ad brief asked for: the
-//   catalog prescribes plyometrics (`I` ids) from week 3, held back before then
-//   by POWER_RAMP_WEEKS, so "low-impact" is true of weeks 1-2 and false after.
-// - **"Recover overnight", not "so sleep and weight stop fighting you".** The
-//   relaxation pillar is paced breathing and meditation. Lowering acute
-//   cortisol is a defensible mechanism claim; fixing her sleep and her weight
-//   is a cure claim, and this screen is the one place a cure claim would be
-//   read as the offer.
-// - **"No cutting out food groups" lives inside row 3**, where it costs no
-//   extra line. It is the strongest single objection-killer in the nutrition
-//   pillar and it is true: NUTRITION in lib/plan/catalog.ts adds protein, fat,
-//   fiber, water and timing, and removes nothing.
+// Deliberately not restored, and each was a real sentence that lost on space:
+// "joint-friendly" (true of weeks 1-2 only — POWER_RAMP_WEEKS holds the
+// plyometric `I` ids back, then they arrive), "recover overnight", and "nothing
+// cut out" — that last one moved to the sacrifice line under the columns, where
+// it does more work as an objection-killer than as a clause.
+//
+// A column is a label, not a claim, which is also why this shape is safe: two
+// words cannot overstate a mechanism. Keep it that way. If a pillar ever needs
+// a sentence again, it needs a screen with room for one — not this screen.
 //
 // Reword these only alongside docs/plan/pillars.md — the funnel and the app's
 // habit tracker have to name the same three things in the same words, or she
 // buys one product and opens another.
-const START_PILLARS: { Icon: LucideIcon; name: string; copy: string }[] = [
-  {
-    Icon: Bone,
-    name: "Move.",
-    copy: "Joint-friendly strength that protects the muscle and bone estrogen used to.",
-  },
-  {
-    Icon: Wind,
-    name: "Settle.",
-    copy: "A short daily wind-down that brings cortisol down so your body can recover overnight.",
-  },
-  {
-    Icon: Salad,
-    name: "Eat.",
-    copy: "Daily food habits timed to your hormones — nothing cut out, nothing weighed.",
-  },
+const START_PILLARS: { Icon: LucideIcon; name: string; what: string }[] = [
+  { Icon: Bone, name: "Move", what: "muscle & bone" },
+  { Icon: Wind, name: "Settle", what: "cortisol" },
+  { Icon: Salad, name: "Eat", what: "hormones" },
 ];
 
 // Diagnosis-step CTA (the doorstep to the paywall). She's already convinced she
@@ -4640,46 +4640,69 @@ function RegisterPageContent() {
             transition={{ duration: prefersReducedMotion ? 0 : 0.4 }}
             className="w-full max-w-md mx-auto my-auto flex flex-col items-center"
           >
-            {/* The only brand mark in the funnel. `ConditionalNavbar` renders
-                nothing on /register (deliberately - the navbar used to sit over
-                the headline, and waking the auth client on the ad landing page
-                buys nothing), which left the screen an ad click lands on with
-                no confirmation of *what she just clicked*. Every other element
-                here argues for the product; none of them said whose it was.
+            {/* No brand mark on this screen (2026-08-30).
 
-                Same lockup as `LandingFooter` - avatar plus wordmark - at 24px
-                rather than 32px, because this is orientation, not branding: it
-                has to be recognisable and it must not compete with the hero.
-                `alt=""` on the avatar because the wordmark beside it already
-                carries the name; announcing both reads as "MenoLisa MenoLisa".
-                Eager rather than `priority` - it is ~2KB and above the fold,
-                but a preload hint here would compete with the hero, which is
-                the image that actually has to be there on first paint.
+                It has now been tried in both places it could go. Above the hero
+                it was a 24px row plus a 12px margin of empty page and read as a
+                page header; inside the hero, on a pill, it was the single
+                highest-contrast object in the frame - a white chip in the
+                brightest corner, pulling the eye off the two faces that are the
+                entire argument of the picture. Orientation is worth a few
+                pixels; it is not worth outranking the hero.
 
-                It sits *inside* the hero as of 2026-08-30, top-left. Above it
-                the lockup was a 24px row plus a 12px margin of otherwise empty
-                page, spent on the one screen where vertical space is the scarce
-                resource - and it read as a page header, which is the one thing
-                it is not. Inside the frame it is a watermark on the picture: the
-                same orientation, none of the height. That is ~36px reclaimed
-                directly from the top of the fold, which is where it is worth
-                the most.
-
-                On a translucent white pill rather than bare on the photo. The
-                hero is a photograph and its top-left corner is whatever the
-                shoot gave us - a bare wordmark there is legible in the file we
-                have today and illegible in the next one, which is a bug that
-                only appears when the art is replaced. The pill makes contrast a
-                property of the component instead of a property of the image.
-
-                Start phase only. The quiz screens have their own header and
-                their job is the question in front of her, not the brand. */}
+                Nothing is lost. She arrived from an ad that carried the brand,
+                the CTA names the product, and /terms and /privacy are linked in
+                the bar. If it comes back a third time it belongs somewhere it
+                cannot compete - and the honest answer may be that this screen
+                does not need it at all. */}
             <motion.div
               initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ type: "spring", stiffness: 220, damping: 22 }}
               className="relative w-full shrink-0 rounded-2xl overflow-hidden ring-1 ring-black/5 shadow-[0_16px_36px_-10px_rgba(61,61,61,0.35)]"
             >
+              {/* **Height is the space the rest of the screen is not using.**
+
+                  Measured across five viewports on 2026-08-30, everything below
+                  this photo - headline, cause line, pill, card - is **329px,
+                  identically, at every width from 375 to 430**, and the fixed
+                  CTA bar plus the column's own padding accounts for a further
+                  114px. So the height this hero can take without pushing the
+                  card under the bar is exactly `100vh - 457px`, and that is the
+                  formula rather than a vh fraction because the part below is a
+                  *constant*, not a proportion: as a fraction of the viewport
+                  the budget swings from 20% on a small phone to 52% on a Pro
+                  Max, so no single `max-h-[Nvh]` can express it. A plain 38vh
+                  left ~80px of usable space unclaimed on a 390x844 and
+                  overflowed a 375x557.
+
+                  The `max(190px, ...)` floor is the deliberate exception. On
+                  375x557 - the Instagram/Facebook webview on a small phone -
+                  the honest budget is 114px, which is a letterbox strip rather
+                  than a photograph. That viewport cannot have both a legible
+                  hero and a no-scroll page, so it gets the hero and ~90px of
+                  scroll; the CTA is pinned, so scrolling never costs the tap.
+
+                  **The asset's own aspect ratio is the other ceiling, and today
+                  it is the binding one.** `start.webp` is 900x504, so at
+                  `w-full h-auto` it draws 191px tall at 375 wide and 222px at
+                  430 - under the budget everywhere, which means this formula is
+                  currently doing nothing on most phones and `object-cover` is
+                  cropping nothing. It is here so that a taller source (4:5, or
+                  3:4) is actually *used* instead of being cropped back to a
+                  number someone picked. If the photo needs to be bigger, that
+                  is the change - not this class.
+
+                  Which makes the crop band the thing to design the next asset
+                  against: the tightest common case is 390x664 at 221px against
+                  a 358px width, so anything essential - both faces, the phone,
+                  and room for the bubble and the NOW/WITH YOUR PLAN bar - has
+                  to survive a centre band of roughly 1:0.62. The focal point is
+                  35% rather than centred because the faces sit high in frame.
+
+                  If the 329px below ever changes, re-measure and move the 457.
+                  It is a measurement, not a guess, and it is only worth having
+                  while it stays one. */}
               <Image
                 src="/illustrations/start.webp"
                 alt="The same woman twice: searching on her phone alone, then following her plan in the app."
@@ -4687,29 +4710,9 @@ function RegisterPageContent() {
                 height={504}
                 priority
                 sizes="(max-width: 480px) 92vw, 420px"
-                className="w-full h-auto max-h-[26vh] sm:max-h-[34vh] object-cover object-[50%_28%]"
+                className="w-full h-auto max-h-[max(190px,calc(100vh-457px))] object-cover object-[50%_35%]"
               />
 
-              <motion.div
-                initial={prefersReducedMotion ? false : { opacity: 0, y: -6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: prefersReducedMotion ? 0 : 0.2, duration: 0.35 }}
-                className="absolute left-2 top-2 z-10 flex items-center gap-1.5 rounded-full bg-white/90 py-1 pl-1 pr-2.5 shadow-[0_2px_8px_rgba(0,0,0,0.18)] backdrop-blur-sm"
-              >
-                <span className="relative h-6 w-6 shrink-0 overflow-hidden rounded-full ring-1 ring-black/5">
-                  <Image
-                    src="/brand/lisa-profile.webp"
-                    alt=""
-                    fill
-                    sizes="24px"
-                    loading="eager"
-                    className="object-cover"
-                  />
-                </span>
-                <span className="text-sm font-bold tracking-tight text-[#3D3D3D]">
-                  MenoLisa
-                </span>
-              </motion.div>
 
               {/* The photo is a diptych and nothing on it said so, which left the
                   two halves reading as two photos of the same woman rather than
@@ -4860,19 +4863,42 @@ function RegisterPageContent() {
                 and "not a lack of discipline" answers the habit ads, and a
                 woman who arrived by either has to see her own objection named.
 
-                The sub-line keeps "your hormones changed the rules" and adds
-                the half that makes it a reason to keep reading: nobody gave her
-                the new ones. That is the gap the card below fills. The old
-                sub-line ended on a statement of fact with no forward motion. */}
+                The sub-line is the cause, at one clause. It ran a second half
+                ("and nobody handed you the new ones") which was the better
+                sentence and the wrong screen: it opens a gap, and the card
+                immediately below already closes it, so it was buying suspense
+                over ~40px of a fold that the photograph needs more.
+
+                Both false verdicts carry a rose sweep. That is the funnel's
+                colour rule read literally - rose is the load she is carrying
+                now, and "it's in your head" and "you lack discipline" are
+                exactly that load: they are the two sentences she has already
+                been handed, by a doctor and by herself. Sweeping them puts her
+                own words on the screen in the colour the rest of the funnel
+                uses for her own words.
+
+                Not primary pink, which belongs to the CTA and nothing else, and
+                not green, which is reserved for what closes the gap - these two
+                phrases are the gap. The sweep runs on `whileInView` with no
+                `active` prop, so it draws itself once as the screen settles.
+
+                The sub-line under it stays plain bold ink. "Your hormones
+                changed the rules" is the true claim answering both, and a third
+                sweep in a third colour would flatten the hierarchy into
+                decoration - at which point the highlight stops meaning
+                anything, which is the failure mode the variant table in
+                components/HighlightSweep.tsx exists to prevent. */}
             <motion.h1
               initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: prefersReducedMotion ? 0 : 0.15, duration: 0.4 }}
               className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] leading-tight px-2"
             >
-              It isn&apos;t in your head.
+              It isn&apos;t{" "}
+              <HighlightSweep variant="rose">in your head</HighlightSweep>.
               <br />
-              It isn&apos;t a lack of discipline.
+              It isn&apos;t{" "}
+              <HighlightSweep variant="rose">a lack of discipline</HighlightSweep>.
             </motion.h1>
 
             {/* The reframe. It has to land before she is asked to do any work -
@@ -4891,7 +4917,7 @@ function RegisterPageContent() {
               className="mt-2 text-sm sm:text-base text-[#5A5A5A] leading-snug px-2"
             >
               After 40, <span className="font-semibold text-[#3D3D3D]">your hormones
-              changed the rules</span> — and nobody handed you the new ones.
+              changed the rules.</span>
             </motion.p>
 
             {/* The cost of entry, stated before she decides whether to keep
@@ -4993,43 +5019,60 @@ function RegisterPageContent() {
                   the volume the catalog actually prescribes rather than the
                   flat "about 15 minutes a day" it used to assert. */}
               <p className="text-base sm:text-lg font-bold text-[#3D3D3D] leading-snug">
-                Your <HighlightSweep>personalized {PLAN_WEEKS}-week reset plan</HighlightSweep> to
-                feel like yourself again
+                Your <HighlightSweep>personalized {PLAN_WEEKS}-week plan</HighlightSweep>
               </p>
-              <p className="mt-1.5 text-xs sm:text-sm text-[#5A5A5A] leading-snug">
-                Built around the symptoms hitting you hardest:
-              </p>
-              <ul className="mt-2.5 flex flex-col gap-2 text-left">
-                {START_PILLARS.map(({ Icon, name, copy }) => (
-                  <li key={name} className="flex items-start gap-2.5">
-                    <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#16A34A]/10">
-                      <Icon className="h-4 w-4 text-[#16A34A]" strokeWidth={2.5} />
+              <ul className="mt-3 grid grid-cols-3 gap-1">
+                {START_PILLARS.map(({ Icon, name, what }) => (
+                  <li key={name} className="flex flex-col items-center gap-1">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#16A34A]/10">
+                      <Icon className="h-[18px] w-[18px] text-[#16A34A]" strokeWidth={2.5} />
                     </span>
-                    <span className="text-sm text-[#5A5A5A] leading-snug">
-                      <span className="font-semibold text-[#3D3D3D]">{name}</span>{" "}
-                      {copy}
+                    <span className="text-sm font-bold leading-none text-[#3D3D3D]">
+                      {name}
+                    </span>
+                    <span className="text-[11px] leading-tight text-[#5A5A5A]">
+                      {what}
                     </span>
                   </li>
                 ))}
               </ul>
-              {/* The "can I actually do this" answer, which the three rows
-                  above raise by naming three pillars: three things sounds like
-                  three commitments.
+              {/* The two questions that decide whether she starts, in one line:
+                  what it costs her, and why it would work for her.
 
-                  It is the real beginner prescription, not a softer one -
-                  MOVEMENT_VOLUME.beginner is 2 sessions of 20-25 min and
-                  CARDIO_VOLUME.beginner is a 15-25 min walk every day, and
-                  beginner is the modal customer (see the 2026-08-28 note in
-                  CLAUDE.md). Do not shrink it to "a few minutes a day": even
-                  the lightest level, movement_snacks, is a flat 20-minute daily
-                  walk on top of its bursts, so there is no level where that
-                  sentence is true. A time promise she discovers is wrong on day
-                  1 is a refund, and the refund guarantee is what this funnel
-                  sells against. */}
-              <p className="mt-3 border-t border-foreground/10 pt-2.5 text-left text-xs sm:text-sm text-[#5A5A5A] leading-snug">
-                Built around the time you actually have. For most women that&apos;s
-                a daily walk and two short sessions a week —{" "}
-                <span className="font-semibold text-[#3D3D3D]">no gym needed.</span>
+                  She is buying a behaviour change, and a behaviour change is
+                  bought on effort and on odds - "how much of my life does this
+                  take" and "will it actually work on me". The screen answered
+                  neither: it named a plan and three pillars, and left both
+                  blanks for her to fill in with whatever the last thing she
+                  tried cost her.
+
+                  **Cost, and it is the real prescription.** MOVEMENT_VOLUME
+                  .beginner is 2 sessions of 20-25 min, CARDIO_VOLUME.beginner
+                  is a 15-25 min walk every day, and beginner is the modal
+                  customer (the 2026-08-28 note in CLAUDE.md). Concrete beats a
+                  number here - "a daily walk and two short sessions" is both
+                  honest and less frightening than the ~25 min/day it adds up
+                  to. Do NOT soften it to "a few minutes a day": even the
+                  lightest level, movement_snacks, is a flat 20-minute daily
+                  walk on top of its bursts, so there is no level at which that
+                  sentence is true, and a time promise she discovers is wrong on
+                  day 1 is a refund.
+
+                  **Odds, and "built from your answers" is the only claim this
+                  screen has earned.** Not a testimonial, not a number, not the
+                  guarantee - the guarantee implies the price, and price stays
+                  off this screen. What it does is contrast the plan with the
+                  free PDF she has already downloaded and abandoned, and it is
+                  the reason the next two minutes are worth spending: the quiz
+                  is what makes the plan hers. It has to lead the sentence for
+                  that reason.
+
+                  One line, centred, because at one line centred is right and
+                  this must not grow back into a paragraph. */}
+              <p className="mt-3 border-t border-foreground/10 pt-2.5 text-xs sm:text-sm text-[#5A5A5A] leading-snug">
+                <span className="font-semibold text-[#3D3D3D]">Built from your
+                answers</span> — a daily walk and two short sessions a week. No
+                gym, nothing cut out.
               </p>
             </motion.div>
 
@@ -6696,34 +6739,45 @@ function RegisterPageContent() {
                 </div>
               )}
 
-              {/* Reward 1: every symptom she picked, logged and answered.
-                  It used to be one prevalence number about her #1 symptom over
-                  a medallion, with the other picks reduced to three unlabelled
-                  chips. Same figures now, one row each, on paper - see
-                  components/funnel/RewardBoards.tsx for why a list beats a
-                  headline here: the screen's job is "we heard all of it", and
-                  only a list can say "all". */}
+              {/* Reward 1: her worst symptom named, explained, and one free
+                  thing she can do about it tonight.
+
+                  It listed her symptoms back in tap order with a prevalence bar
+                  each until 2026-08-30 - the only one of the three payoffs that
+                  handed her nothing she did not already have, in the slot where
+                  she is deciding whether to finish twelve questions. See the
+                  note above <StartingPointBoard /> for the full argument; the
+                  short version is that boards 2 and 3 give her an object and
+                  this one gave her a receipt.
+
+                  The ranking runs through `getTopBurdenSymptoms()`, the same
+                  function `scoreDrivers` uses, so this screen and the results
+                  card can never disagree about which symptom is her worst. */}
               {currentStep === "reward_symptoms" && (() => {
                 const cohort = COHORT_PHRASE[hereFor] ?? "women your age";
-                // Her own picks, in the order she chose them, each carrying the
-                // prevalence figure the single headline used to carry alone.
-                // Four is the ceiling: a fifth row pushes the sign-off off a
-                // short viewport, and the argument has landed by the third.
-                const rows = topProblems
-                  .filter((id) => SYMPTOM_ICON[id])
-                  .slice(0, 4)
-                  .map((id) => ({
-                    id,
-                    label: SYMPTOM_LABELS[id] || id,
-                    pct: SYMPTOM_PREVALENCE[id] ?? 70,
-                    Icon: SYMPTOM_ICON[id] ?? Sparkles,
-                  }));
+                // Ranked by how much each symptom typically drags a day
+                // (SYMPTOM_IMPACT), her tap order breaking ties. Four is the
+                // ceiling: the payload below is the point of the screen, and a
+                // fifth row pushes it under the fold on a short viewport.
+                const ranked = getTopBurdenSymptoms(scoredSeverity, 4).filter(
+                  (id) => SYMPTOM_ICON[id]
+                );
+                const rows = ranked.map((id) => ({
+                  id,
+                  label: SYMPTOM_LABELS[id] || id,
+                  Icon: SYMPTOM_ICON[id] ?? Sparkles,
+                }));
+                const top = ranked[0];
                 // Everything these captions name is a count of her own answers
-                // or a lookup keyed off one - nothing is asserted about her.
+                // or a lookup keyed off one - nothing is asserted about her,
+                // and each one is now a thing the board actually does. The
+                // middle caption used to say "Comparing with {cohort}" for a
+                // payoff whose comparison is a grey footnote; the last one
+                // promised a ranking the old board never showed.
                 const messages = [
                   `Reading your ${topProblems.length} symptom${topProblems.length === 1 ? "" : "s"}...`,
-                  `Comparing with ${cohort}...`,
-                  "Ranking what to move first...",
+                  "Ranking them by what they cost you...",
+                  "Picking your one move for tonight...",
                 ];
                 return (
                   <QuizReward
@@ -6731,8 +6785,17 @@ function RegisterPageContent() {
                     initialDone={!!rewardSeen.current.reward_symptoms}
                     onDone={() => markRewardSeen("reward_symptoms")}
                   >
-                  <div className="flex-1 min-h-0 overflow-y-auto flex flex-col justify-center py-1">
-                    <SymptomLoadBoard rows={rows} cohort={cohort} />
+                  <div className={REWARD_SCROLL_SHELL + " py-1"}>
+                    <div className={REWARD_PAYOFF_CENTER}>
+                    <StartingPointBoard
+                      rows={rows}
+                      cohort={cohort}
+                      topPct={(top ? SYMPTOM_PREVALENCE[top] : undefined) ?? 70}
+                      mechanism={top ? SYMPTOM_MECHANISM[top] : undefined}
+                      firstMove={top ? SYMPTOM_FIRST_MOVE[top] : undefined}
+                      planWeeks={PLAN_WEEKS}
+                    />
+                    </div>
                   </div>
                   </QuizReward>
                 );
@@ -6785,8 +6848,8 @@ function RegisterPageContent() {
                   initialDone={!!rewardSeen.current.reward_social_proof}
                   onDone={() => markRewardSeen("reward_social_proof")}
                 >
-                  <div className="flex-1 min-h-0 overflow-y-auto flex flex-col justify-center">
-                    <div className="w-full max-w-md mx-auto px-1 pt-1">
+                  <div className={REWARD_SCROLL_SHELL}>
+                    <div className={cn(REWARD_PAYOFF_CENTER, "max-w-md mx-auto px-1 pt-1")}>
                       <SocialProofPolaroid reduced={!!prefersReducedMotion} />
                       <motion.p
                         initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
@@ -6822,14 +6885,16 @@ function RegisterPageContent() {
                     onDone={() => markRewardSeen("reward_plan_shape")}
                     ready={!!weekShape && !!weekPlanner}
                   >
-                  <div className="flex-1 min-h-0 overflow-y-auto flex flex-col justify-center py-1">
+                  <div className={REWARD_SCROLL_SHELL + " py-1"}>
                     {weekPlanner && (
+                      <div className={REWARD_PAYOFF_CENTER}>
                       <TrainingWeekBoard
                         days={weekPlanner}
                         totalMinutes={weekShape?.weeklyMinutes ?? 0}
                         food={food}
                         windDown={windDown}
                       />
+                      </div>
                     )}
                   </div>
                   </QuizReward>
@@ -6867,7 +6932,8 @@ function RegisterPageContent() {
                     onDone={() => markRewardSeen("reward_progress")}
                     ready={!!exercisePool && !!sessionPreview}
                   >
-                  <div className="flex-1 min-h-0 overflow-y-auto flex flex-col justify-center py-1">
+                  <div className={REWARD_SCROLL_SHELL + " py-1"}>
+                    <div className={REWARD_PAYOFF_CENTER}>
                     {sessionPreview && (
                       <FirstSessionBoard
                         heading={sessionPreview.heading}
@@ -6887,6 +6953,7 @@ function RegisterPageContent() {
                     <p className="mx-auto mt-2 max-w-sm text-center text-[11.5px] italic leading-snug text-[#7A7A7A]">
                       {pride}
                     </p>
+                    </div>
                   </div>
                   </QuizReward>
                 );

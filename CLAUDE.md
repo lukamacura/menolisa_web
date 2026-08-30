@@ -1066,6 +1066,56 @@ below reads like a rule, it is a pointer to one of those.
 
 ### Recent work
 
+**2026-08-30 — the quiz's first payoff rebuilt; it was the only one that gave
+her nothing.** `reward_symptoms` sat at step 7 of 17 — the screen where she
+decides whether twelve questions are worth finishing — and listed her own
+symptoms back in tap order with a prevalence bar each. Boards 2 and 3 hand her
+an object she did not have (her week, her session 1); this one handed back her
+homework. Worse, its only new information was a normalisation claim ("80% of
+women like you have this"), which is the belief that has kept her doing nothing
+for four years, and it was the third telling of the ad's own argument before
+question 7. The tell was its own loader: the meter said "Ranking what to move
+first…" over a board that showed no ranking.
+
+It now **ranks, explains, and pays her**: `getTopBurdenSymptoms()` orders her
+picks worst-first (the same function `scoreDrivers` uses, so this screen and the
+results card can never disagree), one line of `SYMPTOM_MECHANISM` explains the
+top one, and `SYMPTOM_FIRST_MOVE` — a new nine-row table in
+`lib/quiz-results-helpers.ts` — gives her one specific free thing to do tonight
+for that symptom. Prevalence survives as a grey footnote, the demotion board 3
+already gave its pool count. `<SymptomLoadBoard />` is now
+`<StartingPointBoard />`; the paper, tape and written-in stagger are unchanged.
+
+Rules that came out of it and now bind:
+- **A reward board has to hand her something she did not walk in with.** Written
+  at the top of `components/funnel/RewardBoards.tsx` beside the existing rule
+  that nothing on a board is invented.
+- **The tonight-actions are never the breathing exercise.** That is
+  `RELIEF_TOOL_NAME`, the thing she unlocks by doing it two phases later; handing
+  out a breathing drill here spends that unlock early. The other three rules the
+  table keeps (tonight/free/no equipment, no treatment claims, `why` earns the
+  action) are at the table itself.
+- **The board claims nothing about plan sequencing.** `relaxationForSymptom()`
+  walks `top_problems` in tap order, so "START HERE" is scoped to the thing this
+  screen actually delivers. Ranking by daily cost is a statement about the
+  symptom (`SYMPTOM_IMPACT`), never a measurement of her.
+
+Fixed in the same pass, and it was not board 1's bug: every reward payoff sat in
+a scroll shell carrying `justify-center`, which centres a payoff taller than the
+container **and clips both ends of it** — the top ends up above `scrollTop 0`,
+where no scroll can reach it. On 375x557 (the small-phone in-app browser) the
+social-proof payoff overflowed by 91px and lost its head and its foot. The shell
+and the centring are now `REWARD_SCROLL_SHELL` / `REWARD_PAYOFF_CENTER` in
+`app/register/page.tsx`: auto margins on the child centre while there is room and
+collapse to nothing when there isn't. All four payoffs verified reachable at
+375x557.
+
+**Still unmeasured, and worth saying plainly:** the funnel has no step
+analytics — the custom Meta events were removed on 2026-08-17 and re-adding them
+is the wrong channel (see the table above). So this pass is a judgment about
+where the first payoff was weak, not a fix for an observed drop-off. Knowing
+which screen leaks needs a product-analytics tool, which is its own decision.
+
 **2026-08-29 (last) — `/admin` rebuilt as a sales desk.** The panel was
 answering questions nobody was asking on the morning the first campaign went
 live. It is now five blocks — money collected, is the campaign paying for

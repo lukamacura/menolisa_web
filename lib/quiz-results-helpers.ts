@@ -58,6 +58,73 @@ export const SYMPTOM_MECHANISM: Record<string, string> = {
     "Shifting estrogen and progesterone slow the gut down and make the body hold on to water.",
 };
 
+// Symptom id -> the one thing she can do about it tonight, free, before she has
+// bought anything. The payload of the first quiz reward - see
+// <StartingPointBoard /> in components/funnel/RewardBoards.tsx.
+//
+// This table exists because the first reward was the only one of the three that
+// handed her nothing. Boards 2 and 3 give her an object she did not have (her
+// week, her session 1); board 1 read her own answers back with a prevalence
+// figure stapled to them, six questions in, at the exact moment she is deciding
+// whether twelve questions are worth finishing. The cheapest way to answer that
+// question is to pay her once, early, with something she can use before the
+// price is ever mentioned.
+//
+// Four rules, and each one has a way of going wrong:
+//
+//   1. **Tonight, free, and no equipment.** If it needs a purchase, a
+//      practitioner or a Tuesday, it is a plan preview rather than a gift, and
+//      the screen goes back to being a promise.
+//   2. **Never the breathing exercise.** That is RELIEF_TOOL_NAME, the thing
+//      she unlocks by *doing* it in the relief phase - the one item in the
+//      toolkit stack marked "yours to keep". Handing out a breathing drill here
+//      spends that unlock two phases before it happens.
+//   3. **General self-care, never treatment.** No doses, no supplements, no
+//      "this will fix your sleep". Same standard as SYMPTOM_MECHANISM above:
+//      a true statement about the body, and an action anyone can take, with no
+//      claim about what it will do to her specifically.
+//   4. **`why` earns the action, in one line.** Without it this is a listicle
+//      tip. With it, it is the first time the funnel has explained itself, and
+//      it is what makes her believe the plan behind it was reasoned too.
+export const SYMPTOM_FIRST_MOVE: Record<string, { do: string; why: string }> = {
+  hot_flashes: {
+    do: "Cool the bedroom and lay out loose cotton before you get in.",
+    why: "A cooler start gives the night surge less to build on.",
+  },
+  sleep_issues: {
+    do: "Set tomorrow's wake time now — and keep it even if tonight goes badly.",
+    why: "The wake time is what anchors the next night. The bedtime isn't.",
+  },
+  brain_fog: {
+    do: "Write tomorrow's three things on paper before bed.",
+    why: "Fog is a retrieval problem. Paper does the retrieving for you.",
+  },
+  mood_swings: {
+    do: "Charge your phone outside the bedroom tonight.",
+    why: "The late scroll is a stress spike you can't buffer the way you used to.",
+  },
+  weight_changes: {
+    do: "Set tomorrow's protein out tonight — eggs on the counter, yoghurt at the front.",
+    why: "Muscle is the thing you're protecting, and it's built from the first meal.",
+  },
+  low_energy: {
+    do: "Before you sleep, set a morning alarm for ten minutes outside.",
+    why: "The rhythm that runs your energy is set at first light, not at noon.",
+  },
+  anxiety: {
+    do: "Write the loop down — one line, whatever it is — and shut the notebook.",
+    why: "On paper it stops re-arriving every twenty minutes.",
+  },
+  joint_pain: {
+    do: "Two minutes of slow ankle and hip circles on the edge of the bed.",
+    why: "Stiff mornings start with a night that never moved.",
+  },
+  bloating: {
+    do: "Close the kitchen three hours before bed tonight.",
+    why: "A gut that has already slowed down needs the runway more than it used to.",
+  },
+};
+
 // Age band -> human label for cohort comparison copy.
 export const AGE_BAND_LABELS: Record<string, string> = {
   under_40: "women under 40",

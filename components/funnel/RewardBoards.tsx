@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { Check, Dumbbell, Footprints, Moon, Utensils, Zap } from "lucide-react";
+import { Dumbbell, Footprints, Moon, Utensils, Zap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +32,13 @@ import { cn } from "@/lib/utils";
  * `lib/plan/catalog.ts` — the same tables `generatePlan()` reads. That is what
  * makes the third board the strong one: the exercise names and the sets on it
  * are the session she gets on day one, not a mock-up of one.
+ *
+ * There is a second rule, added 2026-08-30 when board 1 was rebuilt: **a board
+ * has to hand her something she did not walk in with.** Boards 2 and 3 always
+ * passed it — her week, her session 1. Board 1 did not: it read her own answers
+ * back with a prevalence figure attached, which is a receipt, and it did it in
+ * the most expensive slot in the funnel. It now ranks those answers and gives
+ * her one free thing to do tonight. See the note above <StartingPointBoard />.
  */
 
 const PAPER = {
@@ -92,6 +99,9 @@ function RewardPaper({
   );
 }
 
+/** The gap between one written line and the next, on every board. */
+const LINE_STEP = 0.13;
+
 /**
  * One line of a board, written in.
  *
@@ -102,11 +112,14 @@ function RewardPaper({
 function Line({
   i,
   base = 0.18,
+  delay,
   children,
   className,
 }: {
   i: number;
   base?: number;
+  /** Absolute delay, overriding `base + i * STEP`. See <StartingPointBoard />. */
+  delay?: number;
   children: React.ReactNode;
   className?: string;
 }) {
@@ -118,7 +131,12 @@ function Line({
       transition={
         reduced
           ? { duration: 0 }
-          : { type: "spring", stiffness: 320, damping: 26, delay: base + i * 0.13 }
+          : {
+              type: "spring",
+              stiffness: 320,
+              damping: 26,
+              delay: delay ?? base + i * LINE_STEP,
+            }
       }
       className={className}
     >
@@ -161,22 +179,6 @@ function CountUp({ value, suffix }: { value: number; suffix: string }) {
   );
 }
 
-/** The small pen-tick that lands on a finished row. */
-function Tick({ delay }: { delay: number }) {
-  const reduced = useReducedMotion();
-  return (
-    <motion.span
-      aria-hidden
-      initial={reduced ? false : { scale: 0, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      transition={reduced ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 15, delay }}
-      className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] bg-[#16A34A]"
-    >
-      <Check className="h-2.5 w-2.5 text-white" strokeWidth={4} />
-    </motion.span>
-  );
-}
-
 /** The handwritten closing line every board ends on. */
 function Signoff({ delay, children }: { delay: number; children: React.ReactNode }) {
   const reduced = useReducedMotion();
@@ -192,67 +194,232 @@ function Signoff({ delay, children }: { delay: number; children: React.ReactNode
   );
 }
 
-/* ── Board 1: her symptoms, logged ─────────────────────────────────────────
+/* ── Board 1: where she starts, and the one thing she does tonight ─────────
  *
- * Was: one prevalence number, one symptom, three icon chips.
+ * Was (until 2026-08-30): "What you told Lisa" — her symptoms listed back in
+ * the order she tapped them, each with a prevalence bar, under the sign-off
+ * "you're not broken, this is your biology".
  *
- * Now: every symptom she picked gets its own line, with its own prevalence bar
- * filling behind it. The point of the screen is "we heard all of it and none of
- * it is your fault", and a list of four is the only shape that can say "all of
- * it". The bars are the same figures the old single number came from
- * (`SYMPTOM_PREVALENCE`), just shown per row instead of once.
+ * It was the weakest of the three payoffs sitting in the most expensive slot in
+ * the funnel, and it failed the same test board 3 was rebuilt to pass. Three
+ * things were wrong with it and they compound:
+ *
+ * - **It was a receipt, not a gift.** Every row was data she had typed thirty
+ *   seconds earlier. The only new information on the screen was the percentage,
+ *   and the percentage is about other people. Boards 2 and 3 hand her an object
+ *   she did not have — her week, her session 1. This handed back her own
+ *   homework.
+ * - **The prevalence figure argued the wrong way.** "80% of women like you have
+ *   this" is a normalisation claim, and normalisation is the right *empathy*
+ *   move and the wrong *conversion* move at question 6: "everyone has it, it's
+ *   normal" is the belief that has kept her doing nothing for four years. She
+ *   also already agreed — the ad said it, and the start headline says it again
+ *   ("It isn't in your head"), so this was the third telling before question 7
+ *   and it bought no new belief.
+ * - **It spent the funnel's best argument early, in its weakest form.** The
+ *   results screen makes the same case with mechanism lines and a cohort
+ *   benchmark (<ScoreCauseCard />), six screens later. Repetition without
+ *   escalation reads as padding.
+ *
+ * The tell was in the loader: its meter said "Ranking what to move first…" and
+ * then the board showed an unranked list. The meter already knew what this
+ * screen should have been.
+ *
+ * So the board keeps the paper and loses the payload. Now it does three things,
+ * in the order a woman needs them:
+ *
+ *   1. **Ranks.** `getTopBurdenSymptoms()` — the same function the results
+ *      screen uses for `scoreDrivers`, so the two screens can never disagree
+ *      about her worst one. A ranking is the first thing on this screen she
+ *      could not have got by googling, and it opens a loop the results screen
+ *      then closes.
+ *   2. **Explains the top one.** One line of SYMPTOM_MECHANISM, for #1 only.
+ *      Not all four: the results card owns the full convergence argument, and
+ *      running it here in miniature is what made this screen a duplicate.
+ *   3. **Pays her.** SYMPTOM_FIRST_MOVE — one specific, free thing she can do
+ *      tonight for her worst symptom, before the price has been mentioned. This
+ *      is the whole reason the screen was rebuilt: it turns the first payoff
+ *      from a claim into a delivered good, so finishing the quiz stops being a
+ *      bet and becomes a continuation.
+ *
+ * The prevalence figure survives as one grey line under the mechanism, which is
+ * where it belongs — the same demotion board 3 gave its pool count. "You're not
+ * the odd one out" is a true and useful beat; it is not a payoff.
+ *
+ * What the board deliberately does **not** claim: that her plan treats these in
+ * this order. It doesn't — `relaxationForSymptom()` walks `top_problems` in tap
+ * order — so "START HERE" is scoped to what this screen actually delivers, the
+ * thing she does tonight. Ranking by daily cost is a statement about the
+ * symptom (SYMPTOM_IMPACT, the same model behind her score), never a
+ * measurement of her.
  */
-export type SymptomRow = { id: string; label: string; pct: number; Icon: LucideIcon };
+export type StartingPointRow = { id: string; label: string; Icon: LucideIcon };
 
-export function SymptomLoadBoard({
+export function StartingPointBoard({
   rows,
   cohort,
+  topPct,
+  mechanism,
+  firstMove,
+  planWeeks,
 }: {
-  rows: SymptomRow[];
+  rows: StartingPointRow[];
   cohort: string;
+  topPct: number;
+  mechanism?: string;
+  firstMove?: { do: string; why: string };
+  planWeeks: number;
 }) {
   const reduced = useReducedMotion();
+  const top = rows[0];
+  const rest = Math.max(0, rows.length - 1);
+
+  /* The reveal, written out rather than derived from a running index.
+   *
+   * This board is four blocks that have to arrive in a reading order - the list,
+   * then the verdict on the list, then why, then the thing she does about it -
+   * and a shared `base + i * LINE_STEP` cursor put two pairs of them on the same
+   * frame: the START HERE chip landed with the mechanism line, and the payload
+   * landed with the prevalence line. Two things moving at once on a 320px board
+   * is one thing nobody reads.
+   *
+   * The steps are tighter than the other two boards' 0.13 (0.10 between rows,
+   * and the rows are single-line now) because the meter has already spent 1.7s
+   * in front of this. The payload is legible at ~1.0s and the whole page has
+   * settled by ~1.2s, against ~1.3s for <TrainingWeekBoard />.
+   */
+  const ROWS_BASE = 0.14;
+  const ROW_STEP = 0.1;
+  const rowsEnd = ROWS_BASE + rows.length * ROW_STEP;
+  const chipAt = rowsEnd;
+  const mechAt = rowsEnd + 0.14;
+  const pctAt = mechAt + 0.11;
+  // The payload gets a beat of air in front of it. It is the only block on the
+  // board she is asked to act on, and arriving on the same cadence as the rows
+  // above would file it as one more line of the same list.
+  const moveAt = pctAt + 0.18;
+  const signAt = moveAt + 0.22;
+
   return (
-    <RewardPaper title="What you told Lisa" meta={`${rows.length} logged`}>
-      <div className="mt-2 space-y-1.5">
-        {rows.map((row, i) => (
-          <Line key={row.id} i={i} className="flex items-center gap-2">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/5 text-primary">
-              <row.Icon className="h-4 w-4" strokeWidth={1.9} aria-hidden />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="flex items-baseline justify-between gap-2">
-                <span className="truncate text-[12px] font-bold text-[#3D3D3D]">{row.label}</span>
-                <span className="shrink-0 text-[11px] font-extrabold tabular-nums text-primary">
-                  {row.pct}%
-                </span>
+    <RewardPaper title="Where to start" meta="worst first">
+      <div className="mt-2 space-y-1">
+        {rows.map((row, n) => {
+          const isTop = n === 0;
+          return (
+            <Line
+              key={row.id}
+              i={n}
+              delay={ROWS_BASE + n * ROW_STEP}
+              className="flex items-center gap-2"
+            >
+              <span
+                className={cn(
+                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border",
+                  isTop
+                    ? "border-primary bg-primary text-white"
+                    : "border-[#E8DDD9] bg-white text-[#B5ADA9]"
+                )}
+              >
+                <row.Icon className="h-4 w-4" strokeWidth={isTop ? 2.2 : 1.9} aria-hidden />
               </span>
-              {/* The bar is the "you are not the odd one out" argument, drawn.
-                  It fills after its row has landed, so the eye reads the name
-                  first and the size of the crowd second. */}
-              <span className="mt-1 block h-1.5 w-full overflow-hidden rounded-full bg-[#EDE4DF]">
+              <span
+                className={cn(
+                  "min-w-0 flex-1 truncate text-[12.5px] leading-tight",
+                  isTop ? "font-extrabold text-[#3D3D3D]" : "font-semibold text-[#8C8279]"
+                )}
+              >
+                {row.label}
+              </span>
+              {isTop ? (
+                /* The one beat of theatre on the board, and it lands after all
+                   four names have arrived — the eye reads the list, then the
+                   list is decided. A chip that animated in with its own row
+                   would just be a label. */
                 <motion.span
-                  className="block h-full rounded-full bg-primary/70"
-                  initial={reduced ? false : { width: 0 }}
-                  animate={{ width: `${row.pct}%` }}
+                  initial={reduced ? false : { opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
                   transition={
-                    reduced ? { duration: 0 } : { duration: 0.7, delay: 0.34 + i * 0.13, ease: [0.22, 1, 0.36, 1] }
+                    reduced
+                      ? { duration: 0 }
+                      : { type: "spring", stiffness: 420, damping: 18, delay: chipAt }
                   }
-                />
-              </span>
-            </span>
-            <Tick delay={0.42 + i * 0.13} />
-          </Line>
-        ))}
+                  className="shrink-0 rounded-md bg-primary px-1.5 py-[2px] text-[9.5px] font-extrabold uppercase tracking-[0.08em] text-white"
+                >
+                  Start here
+                </motion.span>
+              ) : (
+                <span className="shrink-0 text-[10.5px] font-extrabold tabular-nums text-[#C6BDB9]">
+                  {n + 1}
+                </span>
+              )}
+            </Line>
+          );
+        })}
       </div>
 
-      <p className="mt-2 border-t border-dashed border-[#E0D5D0] pt-1.5 text-[10px] leading-snug text-[#9A9A9A]">
-        % = how many {cohort} report the same thing.
-      </p>
+      {/* Why the top one is the top one, then the crowd — in that order and at
+          that weight. The physiology is the argument; the percentage is the
+          reassurance underneath it. */}
+      {(mechanism || top) && (
+        <div className="mt-2 border-t border-dashed border-[#E0D5D0] pt-1.5">
+          {mechanism && (
+            <Line i={0} delay={mechAt} className="text-[11.5px] leading-snug text-[#5A5A5A]">
+              {mechanism}
+            </Line>
+          )}
+          {top && (
+            <Line i={0} delay={pctAt} className="mt-1 text-[10px] leading-snug text-[#9A9A9A]">
+              {topPct}% of {cohort} report {top.label.toLowerCase()} too.
+            </Line>
+          )}
+        </div>
+      )}
 
-      <Signoff delay={0.35 + rows.length * 0.13}>
-        You&apos;re not broken. This is your <span className="font-extrabold">biology</span> — and
-        every line above is <span className="font-extrabold">workable</span>.
+      {/* The payload. It is the only block on any of the three boards that asks
+          her to do something rather than showing her something, so it is the
+          only one drawn as a panel — and it arrives last, on its own spring,
+          because it is the reason the screen exists. */}
+      {firstMove && (
+        <motion.div
+          initial={reduced ? false : { opacity: 0, y: 8, scale: 0.985 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={
+            reduced
+              ? { duration: 0 }
+              : { type: "spring", stiffness: 300, damping: 24, delay: moveAt }
+          }
+          className="mt-2 rounded-xl border border-[#16A34A]/30 bg-[#16A34A]/[0.07] px-3 py-2"
+        >
+          <p className="flex items-center gap-1.5 text-[9.5px] font-extrabold uppercase tracking-[0.12em] text-[#15803D]">
+            <Moon className="h-3 w-3" strokeWidth={2.6} aria-hidden />
+            Do this tonight
+            <span className="ml-auto rounded bg-[#16A34A] px-1.5 py-[1px] text-[9px] tracking-normal text-white">
+              Free
+            </span>
+          </p>
+          <p className="mt-1 text-[12.5px] font-bold leading-snug text-[#3D3D3D]">{firstMove.do}</p>
+          <p className="mt-0.5 text-[11px] leading-snug text-[#5A5A5A]">{firstMove.why}</p>
+        </motion.div>
+      )}
+
+      {/* The payload panel above is green rather than the primary tint the rest
+          of the board uses, and that is the funnel's colour rule read straight:
+          green is the gap and the thing that closes it, and this is the first
+          moment in the funnel that anything closes any of it. The sign-off
+          below stays the shared pill, so the boards still end the same way. */}
+      <Signoff delay={signAt}>
+        One thing, tonight.{" "}
+        {rest > 0 ? (
+          <>
+            The other {rest} {rest === 1 ? "is" : "are"} in your{" "}
+            <span className="whitespace-nowrap font-extrabold">{planWeeks}-week plan</span>.
+          </>
+        ) : (
+          <>
+            The rest is in your{" "}
+            <span className="whitespace-nowrap font-extrabold">{planWeeks}-week plan</span>.
+          </>
+        )}
       </Signoff>
     </RewardPaper>
   );
