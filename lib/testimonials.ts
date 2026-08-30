@@ -1,39 +1,43 @@
 /**
  * Social-proof and before/after data shared by the /register diagnosis screen
  * and the paywall (`components/SocialProof.tsx`). One copy so both surfaces
- * show the same woman, the same photos, and the same symptom copy rather than
+ * show the same woman, the same photo, and the same symptom copy rather than
  * drifting apart.
  */
 import { PLAN_WEEKS } from "@/lib/pricing";
 
-// ─── Social proof: one woman, one week past the end of the plan ─────────────
-// The week count is PLAN_WEEKS + 1 on purpose - it has to read as *finished*,
-// not *in progress*.
-export const SOCIAL_PROOF_WEEKS = PLAN_WEEKS + 1;
-
-// Two prints from the same roll, in order: the day she sat with the quiz, and
-// the week she finished. `objectPosition` is the crop knob: both frames are a
-// fixed 4:5 portrait, so swapping an asset means retuning that one string, not
-// the layout.
-export const SOCIAL_PROOF_PHOTOS = [
-  {
-    src: "/proof/before.webp",
-    objectPosition: "50% 66%",
-    badge: "Day 1",
-    alt: "taking this quiz on her phone",
-  },
-  {
-    src: "/proof/after.webp",
-    objectPosition: "58% 82%",
-    badge: `Week ${SOCIAL_PROOF_WEEKS}`,
-    alt: `${SOCIAL_PROOF_WEEKS} weeks later, on the beach`,
-  },
-];
-
+// ─── Social proof: one woman, in her own words ──────────────────────────────
+// One square print of a member holding her plan, plus the story she sent.
+// It replaced a Day-1/Week-9 pair on 2026-08-30: two prints of the same face is
+// a transformation claim we cannot substantiate, and a photograph of a woman
+// holding *this app* on *her* phone is the only proof on the page that is also
+// a product shot.
+//
+// Rules for editing this block:
+//  - `story` is verbatim. It is a person's testimonial, not copy - tighten it
+//    with her, never in the repo.
+//  - `pullQuote` must be a sentence that also appears in `story`. It is a
+//    magazine pull-quote, not a second, stronger claim bolted on top.
+//  - Nothing here may assert a timeline, a weight lost or a symptom resolved
+//    that her own words do not. The copy this replaced said "finished her plan
+//    last week"; hers does not say she has finished.
 export const SOCIAL_PROOF = {
-  name: "Zoe",
-  age: 48,
-  quote: "I can finally fall asleep easily and wake up actually feeling rested.",
+  name: "Mary",
+  age: 49,
+  photo: "/proof/social.webp",
+  alt: "Mary, a MenoLisa member, holding her phone with her plan open",
+  /** One line under her name on the print - her own framing of how it started. */
+  context: "Menopause overnight, after a hysterectomy",
+  pullQuote:
+    "I finally feel like I have a plan instead of just trying to figure everything out on my own.",
+  // `PLAN_WEEKS` is interpolated rather than typed out as "8-week" so the quote
+  // can never name a plan length Stripe no longer sells. Same words today.
+  story: [
+    "I entered menopause suddenly after a hysterectomy, and I felt completely overwhelmed by all the symptoms I was dealing with. I was frustrated by how unprepared I was for such a challenging physical and emotional transition.",
+    `Then I discovered the MenoLisa app. I started asking questions, and for the first time, I began to understand what was actually happening to my body. I got a personalized ${PLAN_WEEKS}-week plan to help me work toward losing the 20 pounds I gained in the year after surgery.`,
+    "Because I was struggling with fatigue, I started with movement snacks but gradually moved to the beginner program from there. The habit tracker has been a game-changer\u2014it helps me stay consistent with the everyday choices that matter, from nutrition and movement to relaxation.",
+    "I finally feel like I have a plan instead of just trying to figure everything out on my own. I honestly don\u2019t think I could have stayed on track without MenoLisa.",
+  ],
 };
 
 // ─── Before/after transformations, keyed by symptom ─────────────────────────

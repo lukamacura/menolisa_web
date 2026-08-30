@@ -137,7 +137,7 @@ import {
   PLAN_ID,
   PLAN_WEEKS,
 } from "@/lib/pricing";
-import { SOCIAL_PROOF_WEEKS, getSymptomTransforms } from "@/lib/testimonials";
+import { getSymptomTransforms } from "@/lib/testimonials";
 import { getOfferPromise } from "@/lib/planTimeline";
 import {
   SYMPTOM_LABELS,
@@ -287,7 +287,7 @@ const REWARD_STEPS: Step[] = [
 // names what she just got rather than repeating "Quick win" three times.
 const REWARD_LABEL: Record<string, string> = {
   reward_symptoms: "Yours, free",
-  reward_social_proof: `${SOCIAL_PROOF_WEEKS} weeks from now`,
+  reward_social_proof: "Someone like you",
   reward_plan_shape: "Your week, sized",
   reward_progress: "Your plan rules",
 };
@@ -5809,11 +5809,11 @@ function RegisterPageContent() {
               );
             })()}
 
-            {/* ── Block 3: Someone who already finished it. Placed after the plan
+            {/* ── Block 3: Someone already walking it. Placed after the plan
                 because this is the moment the plan is at its most abstract - she
                 has just been shown eight weeks of tasks she hasn't done yet, and
-                the next honest question is "does anyone actually get to the end
-                of this". ────────────────────────────────────────────────────── */}
+                the next honest question is "does this work for
+                anyone real". ────────────────────────────────────────────────────── */}
             <SocialProofPolaroid reduced={!!prefersReducedMotion} />
 
             {/* ── Block 4: Where this is heading.
@@ -7090,12 +7090,12 @@ function RegisterPageContent() {
                   `initialDone` on Back, like the others: re-running the meter in
                   front of a payoff she has already seen reads as the funnel
                   changing its mind. Scrollable rather than clipped - the
-                  polaroid pair is the tallest reward payoff, and a short
+                  print plus her story is the tallest reward payoff, and a short
                   viewport must cut off nothing.
 
                   The framed line under it is her progress, not a second telling
-                  of Zoe's story - the polaroid's own caption already says she
-                  took this quiz, and restating it 40px lower is the duplicate
+                  of Mary's story - the print's own caption already introduces
+                  her, and restating it 40px lower is the duplicate
                   payoff the results screen's count-up was fixed for. The count
                   is `activeQuestionIndex + 1`, i.e. questions actually
                   answered; `stepIndex` would bill her for the reward screens
@@ -7105,8 +7105,8 @@ function RegisterPageContent() {
                 <QuizReward
                   messages={[
                     "Marking where you are today...",
-                    `Looking ${SOCIAL_PROOF_WEEKS} weeks ahead...`,
-                    "Opening someone who finished...",
+                    "One woman started right here...",
+                    "Opening her story...",
                   ]}
                   initialDone={!!rewardSeen.current.reward_social_proof}
                   onDone={() => markRewardSeen("reward_social_proof")}
