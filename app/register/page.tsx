@@ -61,6 +61,7 @@ import {
   Sunrise,
   Sun,
   Sunset,
+  Salad,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { HighlightSweep } from "@/components/HighlightSweep";
@@ -1288,6 +1289,65 @@ const GOAL_CTA_LABEL: Record<string, string> = {
 function getGoalCtaLabel(goals: string[]): string {
   return GOAL_CTA_LABEL[goals[0]] ?? "I want to start";
 }
+
+// ─── Start screen: the three pillars, i.e. what she actually walks away with ──
+//
+// These are `Pillar` in lib/plan/generate.ts — "movement", "relaxation",
+// "habit" — plus the nutrition checklist that runs alongside them daily. They
+// are the product, not a description of it: every row here is something
+// GET /api/plan returns.
+//
+// **Three rows, not two, and that is a reversal.** The card carried two checks
+// until 2026-08-30, on the argument that "two reads as a promise, three reads
+// as a list to skim". That call was made against a screen with no ads pointed
+// at it. It does not survive the four live creatives: three of the four sell a
+// specific *mechanism*, and the second check had been made to carry all three
+// of them at once ("movement, food, and a wind-down that lowers cortisol") —
+// fifteen words in which no single mechanism registers. Ad 4 is the proof. It
+// is entirely about estrogen, muscle and bone, and the word "bone" appeared
+// nowhere on the screen it paid to reach: a woman who clicked an ad about
+// losing her strength landed on a page about feeling like herself. Three named
+// rows with an icon each are *more* scannable than one run-on clause, not less
+// — the thing the old comment was right to fear is an undifferentiated list,
+// and this is not one.
+//
+// Written against what the plan does, not what menopause does. Each row states
+// a mechanism and stops:
+//
+// - **Bone, not a dumbbell.** The icon and the copy both name what Ad 4 sells.
+//   "Joint-friendly" rather than the "low-impact" the ad brief asked for: the
+//   catalog prescribes plyometrics (`I` ids) from week 3, held back before then
+//   by POWER_RAMP_WEEKS, so "low-impact" is true of weeks 1-2 and false after.
+// - **"Recover overnight", not "so sleep and weight stop fighting you".** The
+//   relaxation pillar is paced breathing and meditation. Lowering acute
+//   cortisol is a defensible mechanism claim; fixing her sleep and her weight
+//   is a cure claim, and this screen is the one place a cure claim would be
+//   read as the offer.
+// - **"No cutting out food groups" lives inside row 3**, where it costs no
+//   extra line. It is the strongest single objection-killer in the nutrition
+//   pillar and it is true: NUTRITION in lib/plan/catalog.ts adds protein, fat,
+//   fiber, water and timing, and removes nothing.
+//
+// Reword these only alongside docs/plan/pillars.md — the funnel and the app's
+// habit tracker have to name the same three things in the same words, or she
+// buys one product and opens another.
+const START_PILLARS: { Icon: LucideIcon; name: string; copy: string }[] = [
+  {
+    Icon: Bone,
+    name: "Move.",
+    copy: "Joint-friendly strength that protects the muscle and bone estrogen used to.",
+  },
+  {
+    Icon: Wind,
+    name: "Settle.",
+    copy: "A short daily wind-down that brings cortisol down so your body can recover overnight.",
+  },
+  {
+    Icon: Salad,
+    name: "Eat.",
+    copy: "Daily food habits timed to your hormones — nothing cut out, nothing weighed.",
+  },
+];
 
 // Diagnosis-step CTA (the doorstep to the paywall). She's already convinced she
 // wants the outcome - the only thing left is fear of committing/being charged.
@@ -4738,13 +4798,36 @@ function RegisterPageContent() {
               </div>
             </motion.div>
 
+            {/* The headline is the *reframe*, not the symptom. It read "You
+                don't feel like yourself anymore." until 2026-08-30, which was a
+                strong mirror opening and the wrong job for this screen: the ad
+                she just clicked already put that sentence in her head, so
+                restating it spends the fold on repetition. The mirror is still
+                on the screen — it is the speech bubble in the photo above, in
+                her own voice — which leaves the headline free to answer it.
+
+                It is written to be universal across all four live creatives.
+                Ad 1 sells a symptom grid, Ad 2 the 3pm crash, Ad 3 cortisol, Ad
+                4 estrogen and bone: the one thing every one of them argues is
+                that this is biology rather than a personal failure, so that is
+                the sentence that has to be here whichever one she came from.
+                Two clauses, because "not in your head" answers the symptom ads
+                and "not a lack of discipline" answers the habit ads, and a
+                woman who arrived by either has to see her own objection named.
+
+                The sub-line keeps "your hormones changed the rules" and adds
+                the half that makes it a reason to keep reading: nobody gave her
+                the new ones. That is the gap the card below fills. The old
+                sub-line ended on a statement of fact with no forward motion. */}
             <motion.h1
               initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: prefersReducedMotion ? 0 : 0.15, duration: 0.4 }}
               className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] leading-tight px-2"
             >
-              You don&apos;t feel like yourself anymore.
+              It isn&apos;t in your head.
+              <br />
+              It isn&apos;t a lack of discipline.
             </motion.h1>
 
             {/* The reframe. It has to land before she is asked to do any work -
@@ -4762,10 +4845,45 @@ function RegisterPageContent() {
               transition={{ delay: prefersReducedMotion ? 0 : 0.28, duration: 0.4 }}
               className="mt-2.5 text-sm sm:text-base text-[#5A5A5A] leading-snug px-2"
             >
-              It isn&apos;t in your head, and it isn&apos;t your fault.{" "}
-              <span className="font-semibold text-[#3D3D3D]">Your hormones changed the
-              rules.</span>
+              After 40, <span className="font-semibold text-[#3D3D3D]">your hormones
+              changed the rules</span> — and nobody handed you the new ones.
             </motion.p>
+
+            {/* The cost of entry, stated before she decides whether to keep
+                reading (2026-08-30).
+
+                All three facts were already on this screen and all three were
+                12px grey text *under* the button, in the fixed bar at the very
+                bottom — i.e. the last thing she reads, on a screen most of the
+                traffic never scrolls. "No email needed" in particular is the
+                funnel's strongest unused fact: she genuinely gives no address
+                until Stripe (see "Anonymous accounts" in CLAUDE.md), and "will
+                they spam me" is a top objection on a cold ad click from a
+                45-60 audience. It belongs where the decision is made.
+
+                A pill rather than a line of text because it has to read as a
+                label on the offer, not as more body copy — she is meant to take
+                it in without reading it word by word. Ink on a tinted ground,
+                not rose or green: this is a fact about the transaction, and the
+                funnel's colour rule reserves rose for the load she carries and
+                green for what closes it. Pink stays on the CTA and nothing
+                else.
+
+                The bar under the button now echoes only the two-word version,
+                so the promise is restated at the tap without printing the same
+                sentence twice on one screen. */}
+            <motion.div
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: prefersReducedMotion ? 0 : 0.34, duration: 0.4 }}
+              className="mt-3 inline-flex flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-full bg-foreground/5 px-3.5 py-1.5 text-xs sm:text-sm font-semibold text-[#3D3D3D]"
+            >
+              <span>Free</span>
+              <span aria-hidden className="text-[#9A9A9A]">·</span>
+              <span>2 minutes</span>
+              <span aria-hidden className="text-[#9A9A9A]">·</span>
+              <span>No email needed</span>
+            </motion.div>
 
             {/* What she actually walks away with - the product, in one card.
 
@@ -4819,26 +4937,56 @@ function RegisterPageContent() {
 
                   Check 2 still answers "can I actually do this" with "a few
                   small daily habits"; it now also names the three pillars, which
-                  is what the ad body promised she would get. */}
+                  is what the ad body promised she would get.
+
+                  2026-08-30 finished that job. Folding three pillars into one
+                  clause was the compromise; naming them as three rows is the
+                  fix, and the reasoning (including why the "two checks, not
+                  three" call was reversed) is on START_PILLARS. The closing
+                  line restores the time answer the 2026-08-20 pass cut - at one
+                  line rather than a three-column row plus a sentence, and at
+                  the volume the catalog actually prescribes rather than the
+                  flat "about 15 minutes a day" it used to assert. */}
               <p className="text-base sm:text-lg font-bold text-[#3D3D3D] leading-snug">
                 Your <HighlightSweep>personalized {PLAN_WEEKS}-week reset plan</HighlightSweep> to
                 feel like yourself again
               </p>
-              <ul className="mt-3 flex flex-col gap-2 text-left">
-                <li className="flex items-start gap-2">
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#16A34A]" strokeWidth={3} />
-                  <span className="text-sm text-[#5A5A5A] leading-snug">
-                    Built around the symptoms hitting you hardest
-                  </span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#16A34A]" strokeWidth={3} />
-                  <span className="text-sm text-[#5A5A5A] leading-snug">
-                    A few small daily habits — movement, food, and a wind-down
-                    that lowers cortisol
-                  </span>
-                </li>
+              <p className="mt-1.5 text-xs sm:text-sm text-[#5A5A5A] leading-snug">
+                Built around the symptoms hitting you hardest, across the three
+                things that actually move after 40:
+              </p>
+              <ul className="mt-3 flex flex-col gap-2.5 text-left">
+                {START_PILLARS.map(({ Icon, name, copy }) => (
+                  <li key={name} className="flex items-start gap-2.5">
+                    <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#16A34A]/10">
+                      <Icon className="h-4 w-4 text-[#16A34A]" strokeWidth={2.5} />
+                    </span>
+                    <span className="text-sm text-[#5A5A5A] leading-snug">
+                      <span className="font-semibold text-[#3D3D3D]">{name}</span>{" "}
+                      {copy}
+                    </span>
+                  </li>
+                ))}
               </ul>
+              {/* The "can I actually do this" answer, which the three rows
+                  above raise by naming three pillars: three things sounds like
+                  three commitments.
+
+                  It is the real beginner prescription, not a softer one -
+                  MOVEMENT_VOLUME.beginner is 2 sessions of 20-25 min and
+                  CARDIO_VOLUME.beginner is a 15-25 min walk every day, and
+                  beginner is the modal customer (see the 2026-08-28 note in
+                  CLAUDE.md). Do not shrink it to "a few minutes a day": even
+                  the lightest level, movement_snacks, is a flat 20-minute daily
+                  walk on top of its bursts, so there is no level where that
+                  sentence is true. A time promise she discovers is wrong on day
+                  1 is a refund, and the refund guarantee is what this funnel
+                  sells against. */}
+              <p className="mt-3 border-t border-foreground/10 pt-2.5 text-xs sm:text-sm text-[#5A5A5A] leading-snug">
+                Built around the time you actually have. For most women that&apos;s
+                a daily walk and two short sessions a week —{" "}
+                <span className="font-semibold text-[#3D3D3D]">no gym needed.</span>
+              </p>
             </motion.div>
 
           </motion.div>
@@ -4862,12 +5010,18 @@ function RegisterPageContent() {
           The sub-line answers "what does this cost me" at a size she can
           actually read (13px #5A5A5A is 6.9:1; the 11px #9A9A9A it replaces was
           2.85:1, i.e. the hardest text on the page belonged to the audience
-          least able to resolve it). "Free quiz" rather than "free to take",
-          which sat one line under the plan promise and could be read as the plan
-          being free 90 seconds before a $59 paywall. "No email needed" is the
-          funnel's strongest unused fact: she genuinely gives no address until
-          Stripe (see "Anonymous accounts"), and "will they spam me" is a top
-          objection on a cold ad click.
+          least able to resolve it).
+
+          It is now a two-word echo. The full version - free, two minutes, no
+          email - moved up under the headline on 2026-08-30, because down here
+          it was the last thing she reads on a screen most ad traffic never
+          scrolls, and "no email needed" is the strongest objection-killer the
+          funnel owns (she genuinely gives no address until Stripe - see
+          "Anonymous accounts"). What stays here is the restatement at the tap,
+          which is worth having and is not worth printing the same sentence
+          twice for. Note "free" has to keep meaning *the quiz*: it sits 90
+          seconds before a $59 paywall, so never let this line grow into
+          anything that could be read as the plan being free.
 
           It read "Free quiz - 2 minutes - {QUESTION_STEPS.length} taps - no
           email needed" until 2026-08-20. The count was the only pure *cost* in
@@ -4892,11 +5046,11 @@ function RegisterPageContent() {
               className={cn(CTA_GRADIENT_CLASS, "min-h-13 cursor-pointer")}
               style={CTA_GRADIENT_STYLE}
             >
-              Build my {PLAN_WEEKS}-week plan
+              Build my {PLAN_WEEKS}-week reset plan
               <ArrowRight className="w-4 h-4" />
             </button>
             <p className="text-xs text-[#5A5A5A] text-center mt-2 leading-snug">
-              Free 2-minute habit audit · no email needed
+              Free · no email needed
             </p>
             {/* The funnel linked neither, on the one screen that is the entry
                 point for paid traffic ending at a $59 charge - so the two
