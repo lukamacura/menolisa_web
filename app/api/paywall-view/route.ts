@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { getAuthenticatedUser } from "@/lib/getAuthenticatedUser";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendMetaViewContent } from "@/lib/metaCapi";
+import { hasGpcOptOut } from "@/lib/privacySignals";
 import { META_CURRENCY, PLAN_VALUE, viewContentEventId } from "@/lib/metaPixel";
 
 export const runtime = "nodejs";
@@ -57,6 +58,13 @@ export async function POST(request: NextRequest) {
   // Bearer auth is the clean signal - a funnel visitor authenticates by cookie.
   if (request.headers.get("authorization")?.startsWith("Bearer ")) {
     return NextResponse.json({ ok: true, skipped: "mobile" });
+  }
+
+  // Global Privacy Control — see /privacy §6.4. Answered `ok` rather than an
+  // error: the beacon is fire-and-forget and the browser has nothing to do with
+  // the answer, so a failure here would only produce noise in her console.
+  if (hasGpcOptOut(request)) {
+    return NextResponse.json({ ok: true, skipped: "gpc" });
   }
 
   // Her first name, for `fn`. `save-quiz` runs several screens before the

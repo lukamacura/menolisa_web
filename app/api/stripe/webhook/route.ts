@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { gpcOptOutFromMetadata } from "@/lib/privacySignals";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { writeSubscription } from "@/lib/subscriptionWrite";
 import { sendChargeConfirmedEmail, sendAdminNotification } from "@/lib/resend";
@@ -147,7 +148,18 @@ async function handleCheckoutSessionCompleted(
     //
     // Not sent for a checkout started in the Expo app - no web ad drove it, and
     // it carries none of the browser match data anyway.
-    if (result.written && !isMobileCheckout(session.metadata)) {
+    //
+    // Nor for a woman whose browser sent Global Privacy Control. `create-checkout`
+    // saw that header and wrote the answer onto the session, because by the time
+    // this runs her request is long over. /privacy §6.4 promises this, and
+    // Purchase is the event where honoring it actually costs us something -
+    // which is exactly why it has to be honored here rather than only on the
+    // three cheap ones.
+    if (
+      result.written &&
+      !isMobileCheckout(session.metadata) &&
+      !gpcOptOutFromMetadata(session.metadata)
+    ) {
       after(() =>
         sendMetaPurchase({
           eventId: purchaseEventId(session.id),

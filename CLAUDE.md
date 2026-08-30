@@ -747,6 +747,81 @@ one inflates the campaign with sales no ad drove — the same feedback loop that
 moved `Lead` server-side (`save-quiz` already excludes Bearer callers). So Meta's
 Purchase count is deliberately ≤ Stripe's; reconcile the *web* ones only.
 
+### Legal pages, and the rule that governs them
+
+`app/terms/page.tsx` and `app/privacy/page.tsx` are **not prose, they are a set
+of factual claims about this codebase**, and every one is checkable by anyone
+who can read the repo. Edit them the way you would edit a route: verify the
+claim before you write it.
+
+Rewritten 2026-08-30 because the previous versions failed that test. They
+described magic-link sign-in (it is a 6-digit OTP), claimed collection of
+`physical_limits` (column dropped 2026-08-29), stated categorically that nothing
+is ever billed through Apple or Google (`app/api/iap/` is live code and
+`getAccountState` honors `provider === "apple" | "google"`), omitted
+`safety_flags` / `hrt_status` / `menopause_type` / height / weight from the
+privacy inventory entirely, had **no disclaimer of warranties at all**, and
+omitted the Meta pixel while promising in bold that health data is never used
+for advertising — which was false. Three rules came out of it:
+
+- **Every figure comes from `lib/pricing.ts`.** Terms imports `PLAN_PRICE`,
+  `PLAN_WEEKS`, `PLAN_ADHERENCE_PCT` and `RENEWAL_NOTICE_DAYS`. A Terms page
+  stating a price Stripe does not charge is not a stale doc, it is a
+  misrepresentation about money.
+- **The guarantee is a contract.** Terms §12 must stay true to the card in
+  `components/PaywallView.tsx`, and its measurement must be one
+  `POST /api/plan/complete` actually supports. §12.3's contemporaneous-recording
+  rule is the disclosure for `MAX_BACKFILL_DAYS` in that route — change one and
+  you must change the other.
+- **A promise in the policy is a feature you have to build.** Privacy §6.4 says
+  we honor Global Privacy Control, so `lib/privacySignals.ts` exists.
+
+### Nothing about her health goes to an advertising platform
+
+**No value derived from her symptoms, quiz answers, health profile, plan or logs
+may be sent to Meta, in any parameter, on any event.** Match parameters (`fn`,
+`country`, `external_id`, `_fbp`/`_fbc`) are identity, not health, and are fine;
+`value`/`currency` is the one price every buyer pays and discloses nothing.
+
+`Lead` carried `symptom_count` and `goal` until 2026-08-30. That is health data
+about an identified person, sent to an ad platform, against a bold promise in our
+own policy that we do not do it — the whole of the FTC's GoodRx, BetterHelp and
+Cerebral actions, and Washington's My Health My Data Act attaches a **private
+right of action** to it. They bought nothing: `custom_data` on a Lead is
+reporting metadata, not an optimization signal, so delivery is identical without
+them. `sendMetaLead` now sends no `custom_data` at all.
+
+### Global Privacy Control (`lib/privacySignals.ts`)
+
+GPC is a browser-level opt-out from sharing for cross-context behavioral
+advertising. We share the identifiers in Privacy §6.1 with Meta, which puts us in
+scope, and the policy says we honor it — so this is a compliance control, not a
+courtesy. The California AG's first CCPA action (Sephora, $1.2M) was largely
+about a policy that claimed to honor GPC while the pixels kept firing.
+
+It arrives two ways and **both are wired**: `Sec-GPC: 1` on the request
+(`hasGpcOptOut`) and `navigator.globalPrivacyControl` in the browser. All five
+sites are gated — `save-quiz` (Lead), `paywall-view` (ViewContent),
+`create-checkout` (InitiateCheckout), the Stripe webhook (Purchase), and
+`MetaPixel` itself.
+
+Two things that are easy to get wrong:
+
+- **`MetaPixel` must not install the snippet**, rather than installing it and
+  declining to call `fbq`. fbevents.js sets cookies and contacts Meta on load, so
+  a loaded-but-unused pixel is still the sharing she opted out of. It reads the
+  flag through `useSyncExternalStore` — an effect-plus-setState is a cascading
+  render and a hydration mismatch.
+- **The webhook cannot see her headers.** `create-checkout` reads the signal
+  inside her own request and writes it onto the Checkout Session metadata
+  (`GPC_METADATA_KEY`), exactly as it does for `_fbp`/`_fbc`. Skip that and the
+  opt-out silently stops the three cheap events and lets `Purchase` — the one
+  that matters — through.
+
+Suppression is advertising only. Sign-in, billing and plan generation are
+untouched; the opt-out must cost her nothing, which is itself a CPRA
+non-discrimination requirement.
+
 ### Styling
 Tailwind CSS v4. Utility function for merging classes:
 ```typescript
@@ -1062,9 +1137,48 @@ below reads like a rule, it is a pointer to one of those.
 | Install Meta's "parameter builder" SDK add-on | The `fbc` coverage prompt is already answered by `captureFbClickId()`. Coverage is capped by how much traffic arrives with an `fbclid` at all — a campaign volume question, not a code one. |
 | Send a server-side `PageView` | Highest volume on the site, not an optimization target, not in AEM. It buys nothing in the auction. |
 | Put AI cost, MRR or the full client table back on `/admin` | None of them changed a decision, and together they buried the two figures that do. `llm_usage` still records every call — a cost question is a query, not a permanent tile. |
+| Put `symptom_count` or `goal` back on the Meta `Lead` | Health data about an identified person, sent to an ad platform, against our own policy's bold promise. FTC brought GoodRx/BetterHelp/Cerebral on exactly this, and WA's MHMDA gives a private right of action. `custom_data` on a Lead is reporting metadata, not an optimization signal — it bought nothing. |
+| Bypass `lib/privacySignals.ts` on any Meta call site | Privacy §6.4 states we honor GPC. A policy that claims it while pixels fire is the Sephora fine ($1.2M, first CCPA action). |
+| Write a figure into `/terms` or `/privacy` by hand | Both import from `lib/pricing.ts`. A Terms page stating a price Stripe does not charge is a misrepresentation about money, not a stale doc. |
 | Hardcode `$59` in a component | `lib/pricing.ts` is the single source for the price, the plan id sent as `plan`, and every displayed figure. |
 
 ### Recent work
+
+**2026-08-30 (later) — terms, privacy and the guarantee, rewritten against the
+code.** Both legal pages were largely LLM-generated and described a product that
+had drifted away from them; the full list of what was wrong, and the three rules
+that now govern edits, are in §4 "Legal pages". Beyond the documents, four code
+changes:
+
+- **`Lead` stopped sending `symptom_count` and `goal` to Meta.** See §4 —
+  this was the one with real exposure behind it.
+- **Global Privacy Control is honored** across all five advertising call sites
+  (`lib/privacySignals.ts`, §4). It was added because the rewritten policy says
+  we do it; the alternative was to delete the sentence, and we are in scope for
+  the obligation either way.
+- **`POST /api/plan/complete` bounds its `date`.** It was client-supplied and
+  unchecked, so all 56 days could be ticked in one afternoon of week eight and
+  clear the 90% refund threshold with no sessions performed — the guarantee was
+  trivially gameable. `MAX_BACKFILL_DAYS` is 7, which covers every honest offline
+  case, with a day of headroom for users ahead of UTC. `date` is her local
+  calendar day, `updated_at` is when we received it, and the guarantee reads
+  both.
+- **Terms and Privacy import from `lib/pricing.ts`** so the legal text cannot
+  drift from what Stripe charges.
+
+Guarantee changes worth knowing: the period is now defined (56 days from plan
+availability, not "eight continuous weeks"), completions must be recorded
+contemporaneously, it is scoped to the first period and to Stripe-billed
+subscriptions, it is once per *person* rather than per account, and a chargeback
+forfeits it. The outcome condition is unchanged and deliberately so — her own
+assessment, no evidence, no justification.
+
+Terms additions that were simply missing: a disclaimer of warranties, an
+assumption-of-risk and release for the exercise plan (the quiz screens nothing
+and the plan prescribes plyometrics and all-out sprints), a ROSCA-shaped
+auto-renewal block, a chargeback clause, and an arbitration section with a 30-day
+opt-out, class and jury waivers, and mass-arbitration batching. Governing law
+moved Delaware → Wyoming to match the entity.
 
 **2026-08-30 — the quiz's first payoff rebuilt; it was the only one that gave
 her nothing.** `reward_symptoms` sat at step 7 of 17 — the screen where she

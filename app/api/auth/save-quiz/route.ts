@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getAuthenticatedUser } from "@/lib/getAuthenticatedUser";
 import { sendMetaLead } from "@/lib/metaCapi";
 import { leadEventId } from "@/lib/metaPixel";
+import { hasGpcOptOut } from "@/lib/privacySignals";
 
 export const runtime = "nodejs";
 
@@ -227,7 +228,10 @@ export async function POST(request: NextRequest) {
       .get("authorization")
       ?.startsWith("Bearer ");
 
-    if (isNewProfile && !isMobileCaller) {
+    // A Global Privacy Control signal is an opt-out of sharing for behavioral
+    // advertising, and /privacy §6.4 tells her we honor it. Suppressing the
+    // event is the whole of honoring it — nothing else about her signup changes.
+    if (isNewProfile && !isMobileCaller && !hasGpcOptOut(request)) {
       // fbp/fbc/IP/UA are the only things tying this server event back to the ad
       // click; they exist here because save-quiz runs inside her browser's own
       // request. Awaited rather than fired-and-forgotten so the serverless
@@ -250,8 +254,9 @@ export async function POST(request: NextRequest) {
         clientIp: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
         clientUa: request.headers.get("user-agent") ?? undefined,
         eventSourceUrl: request.headers.get("referer"),
-        symptomCount: quizAnswers.top_problems?.length ?? null,
-        goal: goalValue,
+        // Nothing about her symptoms or her goal goes on this event. It used to
+        // carry both as `custom_data`; see the "No `custom_data`" note on
+        // `sendMetaLead` for why that must not come back.
       });
     }
 

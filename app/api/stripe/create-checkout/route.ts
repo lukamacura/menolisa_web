@@ -4,6 +4,7 @@ import { getAuthenticatedUser } from "@/lib/getAuthenticatedUser";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { PLAN_ID, isPlanId } from "@/lib/pricing";
 import { sendMetaInitiateCheckout } from "@/lib/metaCapi";
+import { GPC_METADATA_KEY, hasGpcOptOut } from "@/lib/privacySignals";
 import { META_CURRENCY, PLAN_VALUE, isValidMetaEventId } from "@/lib/metaPixel";
 
 export const runtime = "nodejs";
@@ -202,6 +203,15 @@ export async function POST(req: NextRequest) {
     if (clientUa) metaMetadata.fb_client_ua = clientUa;
     if (eventSourceUrl) metaMetadata.fb_event_source_url = eventSourceUrl;
 
+    // Global Privacy Control (/privacy §6.4). Read here, inside her own request,
+    // and written onto the session because the webhook that fires `Purchase` is
+    // server-to-server and will never see her headers — the same reason
+    // `_fbp`/`_fbc` are stashed above. Without this the opt-out would silently
+    // stop three of the four events and let the fourth, the one that matters
+    // most, through.
+    const gpcOptOut = hasGpcOptOut(req);
+    if (gpcOptOut) metaMetadata[GPC_METADATA_KEY] = "1";
+
     // Which surface started this checkout, recorded for the webhook.
     //
     // A checkout begun in the Expo app is not a web ad conversion, and reporting
@@ -255,7 +265,7 @@ export async function POST(req: NextRequest) {
     // the server copy rather than inventing one: an unpaired event_id would
     // double-count her against the browser pixel.
     const metaEventId = body?.meta_event_id;
-    if (isValidMetaEventId(metaEventId)) {
+    if (isValidMetaEventId(metaEventId) && !gpcOptOut) {
       const eventTimeSec = Math.floor(Date.now() / 1000);
       after(async () => {
         // Her first name, hashed as `fn` — the same identity parameter `Lead`

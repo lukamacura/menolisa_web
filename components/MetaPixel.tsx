@@ -2,7 +2,7 @@
 
 import Script from "next/script";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { META_PIXEL_ID } from "@/lib/metaPixel";
 import { captureFbClickId, trackFb } from "@/lib/metaPixelClient";
 
@@ -27,13 +27,60 @@ import { captureFbClickId, trackFb } from "@/lib/metaPixelClient";
  */
 const PIXEL_ENABLED = process.env.NODE_ENV === "production";
 
+/**
+ * Global Privacy Control, browser side.
+ *
+ * `navigator.globalPrivacyControl` is the DOM half of the same signal the server
+ * reads as `Sec-GPC` (see `lib/privacySignals.ts`). Under the CPRA it is a valid
+ * opt-out request from sharing for cross-context behavioral advertising, and
+ * /privacy §6.4 states that we honor it.
+ *
+ * Honoring it means **not installing the snippet at all**, rather than
+ * installing it and declining to call `fbq` afterwards: fbevents.js sets cookies
+ * and contacts Meta on load, so a loaded-but-unused pixel is still the sharing
+ * she opted out of. With no snippet installed every `trackFb` and
+ * `identifyMetaUser` call site in the app is already a no-op, so this one gate
+ * covers the browser copies of all four events.
+ *
+ * It has to be read in an effect. The property exists only in the browser, and
+ * deciding during render would either crash SSR or hydrate a mismatched tree —
+ * so the snippet mounts one tick later, which `afterInteractive` already implies.
+ */
+function gpcEnabled(): boolean {
+  return (
+    typeof navigator !== "undefined" &&
+    (navigator as Navigator & { globalPrivacyControl?: boolean })
+      .globalPrivacyControl === true
+  );
+}
+
+/**
+ * Read through `useSyncExternalStore` rather than an effect-plus-setState.
+ *
+ * `navigator.globalPrivacyControl` is a browser value that does not change for
+ * the life of the page, which is precisely the shape this hook exists for: the
+ * server snapshot is `false` (render nothing), the client snapshot is the real
+ * answer, and React reconciles the two without a hydration mismatch and without
+ * the cascading re-render that setState-in-an-effect causes.
+ */
+const NEVER_CHANGES = () => () => {};
+const clientSnapshot = () => PIXEL_ENABLED && !gpcEnabled();
+const serverSnapshot = () => false;
+
 export default function MetaPixel() {
   const pathname = usePathname();
   // The base snippet already fires the first PageView, so skip the initial run
   const isFirstRender = useRef(true);
+  // False until the browser has been consulted, so nothing renders until we
+  // know. Guessing wrong here means firing an event she opted out of.
+  const allowed = useSyncExternalStore(
+    NEVER_CHANGES,
+    clientSnapshot,
+    serverSnapshot
+  );
 
   useEffect(() => {
-    if (!PIXEL_ENABLED) return;
+    if (!allowed) return;
     // Before anything else: persist the ad click id off the landing URL, so the
     // Conversions API can still match this visit if fbevents.js never loads.
     // See `captureFbClickId` - this is the one match signal a blocked pixel
@@ -45,9 +92,9 @@ export default function MetaPixel() {
       return;
     }
     trackFb("PageView");
-  }, [pathname]);
+  }, [pathname, allowed]);
 
-  if (!PIXEL_ENABLED) return null;
+  if (!allowed) return null;
 
   return (
     <>

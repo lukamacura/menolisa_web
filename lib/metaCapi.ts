@@ -495,9 +495,6 @@ export type SendMetaLeadParams = MetaMatchData & {
   /** Two-letter ISO country, from the edge's geo header. Hashed as `country`. */
   country?: string | null;
   eventSourceUrl?: string | null;
-  /** Segment carried on the event so a Lead audience can be split in Meta. */
-  symptomCount?: number | null;
-  goal?: string | null;
 };
 
 /**
@@ -529,9 +526,31 @@ export type SendMetaLeadParams = MetaMatchData & {
  *   an identity we were never told, about a real person, for one bit of match
  *   value is a bad trade. If it is ever wanted, ask on the quiz and send the
  *   answer.
+ *
+ * ## No `custom_data`, and this event must never grow one
+ *
+ * Lead used to carry `symptom_count` (how many menopause symptoms she ticked)
+ * and `goal` (what she wants fixed) as audience-splitting metadata. Both were
+ * removed on 2026-08-30 and must not come back.
+ *
+ * They were health data about an identified person, sent to an advertising
+ * platform, while our own Privacy Policy promised in bold that we do not use
+ * health data for advertising. That specific contradiction — a health app
+ * telling users one thing and telling Meta another — is the whole of the FTC's
+ * GoodRx, BetterHelp and Cerebral actions, and Washington's My Health My Data
+ * Act gives the user a private right of action over it. The parameters bought
+ * nothing in return: `custom_data` on a Lead is reporting metadata, not an
+ * optimization signal, so delivery is identical without them.
+ *
+ * The rule this leaves: **nothing derived from her symptoms, her quiz answers,
+ * her health profile or her logs may be sent to Meta, in any parameter, on any
+ * event.** Match parameters (`fn`, `country`, `external_id`, `_fbp`/`_fbc`) are
+ * identity, not health, and are fine. `value`/`currency` on the money events is
+ * the price of one product every buyer pays, and reveals nothing about her.
+ * Anything else needs a lawyer, not a commit.
  */
 export async function sendMetaLead(params: SendMetaLeadParams): Promise<void> {
-  const { eventId, eventTimeSec, eventSourceUrl, symptomCount, goal } = params;
+  const { eventId, eventTimeSec, eventSourceUrl } = params;
 
   await postEvent(
     {
@@ -541,10 +560,6 @@ export async function sendMetaLead(params: SendMetaLeadParams): Promise<void> {
       action_source: "website",
       ...(eventSourceUrl ? { event_source_url: eventSourceUrl } : {}),
       user_data: buildUserData(params),
-      custom_data: {
-        ...(typeof symptomCount === "number" ? { symptom_count: symptomCount } : {}),
-        ...(goal ? { goal } : {}),
-      },
     },
     `Lead ${eventId}`
   );

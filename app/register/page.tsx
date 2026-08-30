@@ -4898,7 +4898,7 @@ function RegisterPageContent() {
               <HighlightSweep variant="rose">in your head</HighlightSweep>.
               <br />
               It isn&apos;t{" "}
-              <HighlightSweep variant="rose">a lack of discipline</HighlightSweep>.
+              <HighlightSweep variant="rose">a lack of discipline.</HighlightSweep>
             </motion.h1>
 
             {/* The reframe. It has to land before she is asked to do any work -
