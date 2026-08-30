@@ -66,8 +66,28 @@ export const PLAN_DISCOUNT_PCT = Math.round(
  *
  * The full reasoning, and what must not be "fixed", is at the bottom of
  * `components/PaywallView.tsx`.
+ *
+ * **Thirty minutes, not ten (2026-08-30).** Ten was long enough to decide and
+ * far too short to *read*. The paywall is ~2000px — headline, finish board,
+ * price card, the included list with three screenshots, the trust grid, the
+ * guarantee, a testimonial and three outcome cards — and it is read on a phone,
+ * in an in-app browser, by a woman in her fifties deciding on $59. She routinely
+ * spent longer than the window on the page, and what she got for reading
+ * carefully was the displayed price doubling to {@link PLAN_ANCHOR_PRICE} and a
+ * CTA quoting $2.11/day. The considered reader is the buyer; the clock was
+ * punishing her specifically.
+ *
+ * The return-from-Stripe path made it worse. The deadline is persisted in
+ * `sessionStorage`, so a woman who tapped through to the card form, hesitated,
+ * and came back found the price had doubled at the exact moment she was closest
+ * to paying.
+ *
+ * An expired countdown converts at roughly nothing, so the risk here is
+ * one-sided: thirty minutes gives up a sliver of urgency and removes the state
+ * that was costing whole sales. Do not lower it back without measuring how long
+ * the paywall actually takes to read.
  */
-export const PLAN_DISCOUNT_WINDOW_MINUTES = 10;
+export const PLAN_DISCOUNT_WINDOW_MINUTES = 30;
 export const PLAN_DISCOUNT_WINDOW_MS = PLAN_DISCOUNT_WINDOW_MINUTES * 60 * 1000;
 
 /**

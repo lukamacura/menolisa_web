@@ -1141,8 +1141,66 @@ below reads like a rule, it is a pointer to one of those.
 | Bypass `lib/privacySignals.ts` on any Meta call site | Privacy §6.4 states we honor GPC. A policy that claims it while pixels fire is the Sephora fine ($1.2M, first CCPA action). |
 | Write a figure into `/terms` or `/privacy` by hand | Both import from `lib/pricing.ts`. A Terms page stating a price Stripe does not charge is a misrepresentation about money, not a stale doc. |
 | Hardcode `$59` in a component | `lib/pricing.ts` is the single source for the price, the plan id sent as `plan`, and every displayed figure. |
+| Put the refund back in the paywall headline | It spends the largest type on the page introducing the possibility of failure, at the moment belief is highest. Risk reversal answers a question she only has after she wants the thing. The guarantee card 400px below states it in full. |
+| Shorten `PLAN_DISCOUNT_WINDOW_MINUTES` back to 10 | The paywall is ~2000px and is read by a woman in her fifties on a phone. Ten minutes expired mid-read, doubled the displayed price to `PLAN_ANCHOR_PRICE`, and did it to the careful reader — who is the buyer. It also fired on the return-from-Stripe path. An expired countdown converts at roughly nothing. |
+| Move her symptoms back behind age, stage and menopause type | Every live creative is a symptom or mechanism argument and Ad 1 ends on "tap your symptom". Three categorising screens before the funnel mentions what she came for is a form, not the audit she was promised. |
+| Store the relief check-in answer | A self-report taken thirty seconds after one breathing exercise is not a baseline. Its whole job is the sentence she reads next; writing it to `user_profiles` makes it look clinical. |
+| Send anything from her symptoms, plan or check-in to Meta | Already covered above, and the check-in is the newest thing that looks harmless and isn't. |
 
 ### Recent work
+
+**2026-08-30 (last) — the funnel audited against the emotional ladder, before
+the first campaign.** `docs/marketing/emotional-ladder.md` is the internal model;
+this was the first pass that read the funnel *as* a climb rather than as a set of
+screens. The finding was that the climb is right — guilt reframe on the start
+screen, the quiz click as the Courage step, results at Acceptance, the plan
+screen at Reason — and that it **never comes back down**. The two screens before
+the card were a breathing exercise that lowers her arousal and a headline leading
+with a refund clause, i.e. the close was being made from a resting heart rate.
+Six changes, each named in the "Decided against" table above where it carries a
+rule:
+
+- **The relief exercise now collects her own verdict.** A `checkin` stage sits
+  between the last exhale and the toolkit reward: *"Notice a difference?"* →
+  Calmer / A little / Not yet, and the reward line answers whatever she tapped
+  (`getReliefRewardCopy`). This is the one moment in the funnel where the product
+  works on her body before any money, and it was being spent telling her what had
+  happened instead of letting her say it. Skipping the timer skips the question —
+  she has nothing to have noticed. Nothing is stored.
+- **The relief CTA closes the loop `<ToolkitStack />` opens** ("3 more tools
+  waiting inside") instead of framing the paywall as a browse ("No card needed to
+  look"). The tap-fear that line was written for is gone by then; what it was
+  actually doing was walking her into the decision screen in the lowest-commitment
+  state available.
+- **Anger, the one rung the funnel never used**, is one sentence on the results
+  card under the estrogen node: *"Nobody sat you down and explained this. That
+  part isn't on you."* It names the silence, never a clinician — anger at a gap
+  converts, anger at her GP is a liability — and it hands straight back to "this
+  is biology and it responds", because a negative state without the exit in the
+  same breath collapses into apathy.
+- **Her symptoms are question 2**, behind the age tile only. Status and menopause
+  type moved back two slots; safe because every answer a reward board prints is
+  still collected before the board renders (`COHORT_PHRASE`, `STAGE_PRIDE_LINE`).
+- **The paywall headline is the outcome and a date**, the refund lives in its own
+  green card, and the price is anchored against one hour of personal training —
+  a comparison she can check, unlike a "regular price" set at exactly 2x. A
+  personal trainer and not a consultation: framing the price against medical care
+  implies a substitution `/terms` disclaims.
+- **A "what happens next" strip closes the paywall scroll** (checkout → download
+  → Day 1 waiting). The last unanswered objection there is mechanical, not
+  financial: she is paying on a web page for something that lives in an app she
+  has not downloaded.
+
+**Not done, and both are business calls rather than copy:** `PLAN_ADHERENCE_PCT`
+is still 90 — see "Product calls nobody has made" above, where the argument that
+it costs more in belief than it saves in refunds now has a second voice — and the
+paywall's "4.9 · 12,800+ women" needs to be something the launch can substantiate.
+It sits directly above the guarantee, which is the worst place on the page to
+have a claim a buyer can pull on.
+
+**Still unmeasured, and the same caveat as the 2026-08-30 reward-board pass:**
+there are no funnel step analytics, so every one of these is a judgment about
+where the ladder breaks, not a fix for an observed drop-off.
 
 **2026-08-30 (later) — terms, privacy and the guarantee, rewritten against the
 code.** Both legal pages were largely LLM-generated and described a product that

@@ -175,12 +175,37 @@ type Step =
   | "reward_social_proof"
   | "q8_name";
 
+// The order is a message-match decision before it is a data-collection one.
+//
+// **Her symptoms are question 2 (2026-08-30).** They were question 4, behind
+// age, menopausal status and how menopause began - three screens that
+// categorise her and none of which is the thing the ad she just clicked was
+// about. Every live creative is a symptom or a mechanism argument, and Ad 1
+// ends on a literal instruction: *tap your symptom to begin the audit*. A woman
+// who arrives on that promise and is asked her age, her stage and whether she
+// had surgery has been handed a form instead of the audit, three screens before
+// the funnel says anything she came for.
+//
+// So symptoms and their severity move up behind the age tile. Age stays first
+// on purpose: it is one tap, it is genuinely used (the results benchmark is
+// keyed off the band, `getScoreBenchmark`), and it is the warm-up that makes
+// the second question feel like a conversation rather than an opening demand.
+// Status and menopause type simply move back two slots - nothing downstream
+// notices, because everything they feed is read after this point:
+//
+//   - `COHORT_PHRASE[hereFor]` on `reward_symptoms`, still four steps later
+//   - `MENOPAUSE_TYPE`/`hrt` in save-quiz, read at the end
+//   - `STAGE_PRIDE_LINE[hereFor]` on `reward_progress`, near the end
+//
+// If a question ever moves in front of `reward_symptoms` again, check those
+// three: this reorder is only safe because every answer a reward board prints
+// is still collected before the board renders.
 const STEPS: Step[] = [
   "q1_age",
-  "q2_here_for",
-  "q_menopause_type",
   "q4_symptoms",
   "q_symptom_impact",
+  "q2_here_for",
+  "q_menopause_type",
   "q3_goals",
   "reward_symptoms",
   "q_body",
@@ -1284,8 +1309,24 @@ const CTA_GRADIENT_CLASS =
 // tier that does not exist - so the price reads as a bait rather than as the
 // offer. Naming what the next screen actually contains (the plan *and* the
 // price) sets her up to see exactly what she then sees.
+//
+// **It stopped being about the price on 2026-08-30.** "See your plan and the
+// price. No card needed to look." was written to answer the fear of the tap,
+// and by the time she reads it that fear is already gone: she has finished the
+// quiz, read the diagnosis, breathed for thirty-six seconds and watched a
+// toolkit open with one of four entries unlocked. What the line was doing
+// instead was framing the next screen as a browse - and "just looking" is the
+// lowest-commitment state you can walk someone into the one screen that needs
+// the highest.
+//
+// The screen it sits on has just opened a loop (<ToolkitStack /> renders three
+// locked rows), so the line closes it. That is the same forward motion in a
+// state she is already in, rather than a reassurance about a risk she has
+// stopped weighing. The paywall states the price in full, immediately, in its
+// own headline and price card - nothing here is hidden by not naming it, and
+// the "no card needed" promise is kept by the screen itself.
 function getCtaCopy(): { sub: string } {
-  return { sub: "See your plan and the price. No card needed to look." };
+  return { sub: `${RELIEF_TOOLKIT_SIZE - 1} more tools waiting inside.` };
 }
 // First-person CTA label driven by her #1 goal (multi-select; first = primary).
 // Used on the results screen, where the next tap is still about what she wants.
@@ -1419,6 +1460,94 @@ function getUnlockedToolUse(topProblems: string[]): string {
   const first = topProblems[0];
   const label = first ? (SYMPTOM_LABELS[first] || first).toLowerCase() : "";
   return label ? `For ${label} - anywhere, no equipment` : "Anywhere, no equipment";
+}
+
+// ─── The check-in: her own read on what just happened ───────────────────────
+// See the `ReliefStage` note in the component for why this exists at all. The
+// rules for the three options:
+//
+// - **Three, and they are a scale.** Two would be a yes/no, and "no" on a
+//   yes/no reads as a verdict on the product thirty seconds before the price.
+//   Three lets the middle answer be the honest one for most people, which is
+//   also the one that is true: one round of paced breathing takes the edge off,
+//   it does not fix an afternoon.
+// - **None of them is wrong, and the copy must not treat one as the good
+//   answer.** She is being asked to notice, not to grade us. "Not yet" gets the
+//   warmest reply of the three.
+// - **They describe her body, not her opinion.** "Calmer" is something she can
+//   check; "It works!" is a review, and asking a stranger for a review before
+//   she has paid is the tell that this is a sales screen.
+type ReliefFeedback = "calmer" | "little" | "not_yet";
+
+const RELIEF_CHECKIN_OPTIONS: { id: ReliefFeedback; label: string }[] = [
+  { id: "calmer", label: "Calmer" },
+  { id: "little", label: "A little" },
+  { id: "not_yet", label: "Not yet" },
+];
+
+/**
+ * The reward line, answering whatever she just said.
+ *
+ * The heading stops being a celebration of *us* and becomes a reply to *her*,
+ * which is the whole point of asking. And every branch lands on the same place
+ * - one round is the sample, the eight weeks are the product - because that is
+ * the true sentence in all three cases, not a recovery written for the bad one.
+ *
+ * `null` is the skip path and the resumed-from-Stripe path (`reliefStage` is
+ * pinned to `reward` there, with no answer). It keeps the original line, which
+ * is the one that never needed her to have said anything.
+ */
+function getReliefRewardCopy(
+  answer: ReliefFeedback | null,
+  name: string
+): { heading: string; body: React.ReactNode } {
+  const suffix = name ? `, ${name}` : "";
+  switch (answer) {
+    case "calmer":
+      return {
+        heading: `You did that${suffix}.`,
+        body: (
+          <>
+            Not a pill, not a doctor&apos;s appointment -{" "}
+            <span className="font-bold text-[#3D3D3D]">{BREATH_TOTAL_SECONDS} seconds</span> and
+            your own breath. That was one tool, on one symptom.
+          </>
+        ),
+      };
+    case "little":
+      return {
+        heading: `That's a start${suffix}.`,
+        body: (
+          <>
+            A little, from{" "}
+            <span className="font-bold text-[#3D3D3D]">{BREATH_TOTAL_SECONDS} seconds</span> on
+            your first go. It goes deeper with practice - and that was one tool, on one symptom.
+          </>
+        ),
+      };
+    case "not_yet":
+      return {
+        heading: `That's honest${suffix}.`,
+        body: (
+          <>
+            One round rarely does it. Paced breathing works the way training works -{" "}
+            <span className="font-bold text-[#3D3D3D]">a little, most days</span>. That is exactly
+            what the next {PLAN_WEEKS} weeks are.
+          </>
+        ),
+      };
+    default:
+      return {
+        heading: `Hooray${suffix}!`,
+        body: (
+          <>
+            You calmed your body in{" "}
+            <span className="font-bold text-[#3D3D3D]">{BREATH_TOTAL_SECONDS} seconds</span> - and
+            unlocked your first tool.
+          </>
+        ),
+      };
+  }
 }
 
 // Confetti for the finish moment. Precomputed (not random) so the burst is
@@ -2115,8 +2244,34 @@ function ScoreCauseCard({
           </div>
 
           {/* The line that turns the cause into permission. It is not her
-              fault, and - the half that matters commercially - it moves. */}
+              fault, and - the half that matters commercially - it moves.
+
+              **The first sentence was added on 2026-08-30, and it is the one
+              rung this funnel never used.** The screens run guilt (the start
+              screen's reframe) to fear (the score) to acceptance (this card) -
+              and skip anger, which sits directly below the line and is the
+              highest-energy state available in this market. Being told to wait
+              it out, or that it's just her age, is close to universal for a
+              woman of 45-60, and this is the exact instant it becomes visible
+              to her: she has just learned there was one explanation the whole
+              time.
+
+              Two constraints on how it is written, and both are load-bearing:
+
+              - **It names the silence, not a person.** "Nobody sat you down" is
+                a fact about her experience. "Your doctor missed this" is a
+                clinical claim about a consultation we know nothing about, it
+                pushes a wellness product into second-guessing medical care that
+                /terms disclaims, and it is the version that gets a health
+                funnel reported. Anger at a gap converts; anger at her GP is a
+                liability.
+              - **It does not end on the grievance.** Per the emotional-ladder
+                rule this funnel is built on, a negative state has to hand her
+                the exit in the same breath or it collapses into "nothing works".
+                So the sentence that follows it is unchanged and does the
+                lifting, and the green card immediately below is the door. */}
           <p className="mt-3 text-[13px] leading-relaxed text-[#5A5A5A]">
+            Nobody sat you down and explained this. That part isn&apos;t on you.{" "}
             <span className="font-bold text-[#3D3D3D]">This is biology and it responds.</span>
           </p>
         </div>
@@ -3331,8 +3486,38 @@ function RegisterPageContent() {
    * It never rewinds past `reward` once reached, so coming back from the paywall
    * doesn't make her breathe through the exercise a second time.
    */
-  type ReliefStage = "intro" | "running" | "reward";
+  /**
+   * `checkin` sits between the last exhale and the reward, and it is the only
+   * place in the funnel where the claim is made by her instead of by us.
+   *
+   * Everything else on the way to the paywall is an assertion we make and she
+   * evaluates - the score, the mechanism, the plan, the testimonial. The
+   * breathing exercise is the one moment the product does something to her body
+   * in front of her, before any money, and until now the funnel spent it
+   * telling her what had happened: "You calmed your body in 36 seconds." She
+   * never got to say it. A benefit she states herself is worth more than the
+   * same sentence in our voice, and once she has said it the eight weeks are
+   * consistent with a position she already took rather than a promise she is
+   * being asked to believe.
+   *
+   * There is no wrong answer and no answer that costs us the sale. "Not yet" is
+   * the honest reply for plenty of first attempts at paced breathing, and it
+   * hands us the better argument anyway: one round is not the intervention, the
+   * eight weeks are.
+   *
+   * It is not stored. Nothing downstream reads it, `save-quiz` never sees it
+   * and it is deliberately absent from the resume ticket - the answer's whole
+   * job is the sentence she reads next. Adding it to `user_profiles` would make
+   * a self-report taken thirty seconds after one breathing exercise look like a
+   * clinical baseline.
+   *
+   * Skipping the timer skips the question too (see `skipRelief`): a woman who
+   * didn't do the exercise has nothing to notice, and asking her anyway is the
+   * funnel putting words in her mouth.
+   */
+  type ReliefStage = "intro" | "running" | "checkin" | "reward";
   const [reliefStage, setReliefStage] = useState<ReliefStage>("intro");
+  const [reliefFeedback, setReliefFeedback] = useState<ReliefFeedback | null>(null);
   // Single source of truth: seconds elapsed since she tapped start. Round, step and
   // the countdown are all *derived* from it, so the interval's updater stays pure
   // (StrictMode double-invokes updaters in dev - anything stateful in there advances twice).
@@ -3370,7 +3555,7 @@ function RegisterPageContent() {
 
   useEffect(() => {
     if (reliefStage === "running" && reliefElapsed >= BREATH_TOTAL_SECONDS) {
-      setReliefStage("reward");
+      setReliefStage("checkin");
     }
   }, [reliefStage, reliefElapsed]);
 
@@ -3379,10 +3564,18 @@ function RegisterPageContent() {
     setReliefStage("running");
   }, []);
 
+  const answerCheckin = useCallback((answer: ReliefFeedback) => {
+    setReliefFeedback(answer);
+    setReliefStage("reward");
+  }, []);
+
   // Lets her bail out of the timer without losing the reward - jumps straight
   // to the reward as if she'd finished, so the toolkit unlock still lands.
+  // Past the check-in too, and with no answer recorded: she didn't do the
+  // exercise, so there is nothing for her to have noticed.
   const skipRelief = useCallback(() => {
     setReliefElapsed(BREATH_TOTAL_SECONDS);
+    setReliefFeedback(null);
     setReliefStage("reward");
   }, []);
 
@@ -6017,6 +6210,64 @@ function RegisterPageContent() {
                     </button>
                   )}
                 </motion.div>
+              ) : reliefStage === "checkin" ? (
+                /* ── Check-in: she says what just happened, before we do. ──
+                    Why this screen exists at all is at `ReliefStage` in the
+                    component; the option rules are at RELIEF_CHECKIN_OPTIONS.
+
+                    Presentation notes, all of them about not turning it into a
+                    thirteenth quiz question:
+
+                    - No progress bar, no "Question N", no Next button. One tap
+                      moves her on, the way the single-choice quiz steps do.
+                    - The three chips are equal in weight - same size, same
+                      border, same ink. The moment one of them is styled as the
+                      preferred answer, this stops being a question and becomes
+                      a leading one, and she can feel that.
+                    - No illustration. The screen she just left was a circle
+                      breathing at her; the quiet is the point, and anything
+                      decorative here reads as the funnel getting going again. */
+                <motion.div
+                  key="relief-checkin"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="flex-1 flex flex-col justify-center items-center text-center gap-5 px-1"
+                >
+                  <motion.div
+                    initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: prefersReducedMotion ? 0 : 0.1, duration: 0.4 }}
+                    className="space-y-2"
+                  >
+                    <h1 className="text-3xl sm:text-4xl font-normal text-[#3D3D3D] leading-tight">
+                      Notice a{" "}
+                      <span className="font-bold">difference</span>?
+                    </h1>
+                    <p className="text-xs text-[#5A5A5A] leading-relaxed max-w-[17rem] mx-auto">
+                      Take a second before you answer. There&apos;s no wrong one.
+                    </p>
+                  </motion.div>
+
+                  <motion.div
+                    initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: prefersReducedMotion ? 0 : 0.22, duration: 0.4 }}
+                    className="w-full max-w-xs flex flex-col gap-2.5"
+                  >
+                    {RELIEF_CHECKIN_OPTIONS.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => answerCheckin(option.id)}
+                        className="w-full min-h-13 rounded-2xl border-2 border-[#E8DDD9] bg-card px-4 text-base font-semibold text-[#3D3D3D] transition-all hover:border-primary/60 hover:bg-primary/5 active:scale-[0.98] cursor-pointer"
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </motion.div>
+                </motion.div>
               ) : (
                 /* ── Reward: she keeps the tool she just used, and sees the
                     three she doesn't have yet - felt first, read second. ── */
@@ -6071,23 +6322,30 @@ function RegisterPageContent() {
                     </div>
                   </motion.div>
 
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3, duration: 0.4 }}
-                    className="space-y-2"
-                  >
-                    <h1 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight">
-                      Hooray{firstName.trim() ? `, ${firstName.trim()}` : ""}!
-                    </h1>
-                    <p className="text-xs text-[#5A5A5A] leading-relaxed max-w-xs mx-auto">
-                      You calmed your body in{" "}
-                      <span className="font-bold text-[#3D3D3D]">
-                        {BREATH_TOTAL_SECONDS} seconds
-                      </span>{" "}
-                      - and unlocked your first tool.
-                    </p>
-                  </motion.div>
+                  {/* Answers whatever she just tapped - see
+                      getReliefRewardCopy(). The skip and resume paths pass
+                      `null` and get the original line back. */}
+                  {(() => {
+                    const rewardCopy = getReliefRewardCopy(
+                      reliefFeedback,
+                      firstName.trim()
+                    );
+                    return (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.3, duration: 0.4 }}
+                        className="space-y-2"
+                      >
+                        <h1 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight">
+                          {rewardCopy.heading}
+                        </h1>
+                        <p className="text-xs text-[#5A5A5A] leading-relaxed max-w-xs mx-auto">
+                          {rewardCopy.body}
+                        </p>
+                      </motion.div>
+                    );
+                  })()}
 
                   {/* Tool 1 of 4: what she keeps, then what she doesn't have yet. */}
                   <ToolkitStack unlockedCount={1} topProblems={topProblems} />
@@ -6096,11 +6354,16 @@ function RegisterPageContent() {
             </AnimatePresence>
           </div>
 
-          {/* Fixed bottom CTA. Absent during the exercise itself, so the ask
-              always lands after the reward and never during a breath. It is the
-              paywall doorstep now that nothing sits between, so it carries the
-              no-charge reassurance. The 0.9s delay lets the confetti, the
-              headline and the toolkit land first. */}
+          {/* Fixed bottom CTA. Absent during the exercise itself *and during
+              the check-in*, so the ask always lands after the reward and never
+              during a breath or on top of a question - the check-in's three
+              options are its only way forward, and a paywall button sitting
+              under them would turn a question into a skip. The 0.9s delay lets
+              the confetti, the headline and the toolkit land first.
+
+              Its sub-line (getCtaCopy) closes the loop <ToolkitStack /> just
+              opened rather than reassuring her about the price; the reasoning
+              is at that function. */}
           {reliefStage === "reward" && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}

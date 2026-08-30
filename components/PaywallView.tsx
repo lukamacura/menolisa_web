@@ -11,8 +11,10 @@ import {
   Lock,
   ShieldAlert,
   ShieldCheck,
+  Smartphone,
   Sparkles,
   Star,
+  Sunrise,
   Zap,
   CreditCard,
 } from "lucide-react";
@@ -411,16 +413,40 @@ export function PaywallView({
               getOfferPromise), so the headline and the chart name the same thing.
               Price cut and refund move to a subline underneath: still on screen
               with the price card, still the terms of the deal, just not what she
-              reads first. */}
+              reads first.
+
+              **The refund left the headline on 2026-08-30.** It read "{promise}
+              in 8 weeks or a full refund if it doesn't work", which spent the
+              largest type on the page introducing the *possibility of failure*
+              at the one moment belief is highest - she has just watched a plan
+              built from her own answers and done a breathing exercise that
+              worked. Risk reversal is a closer, not an opener: it answers "what
+              if this doesn't work for me", and that question only exists after
+              she wants it. The guarantee card ~400px below states the whole
+              promise in full, on green, under a shield - which is where a
+              sceptic goes looking for it anyway.
+
+              What replaces it is the outcome and a date she can picture. "8
+              weeks from today" rather than "in 8 weeks" for the same reason the
+              finish board draws a calendar instead of writing "8 weeks": a
+              duration is an abstraction and a deadline is an appointment. */}
           <h1 className="text-2xl sm:text-2xl font-bold text-[#3D3D3D] leading-tight text-balance">
-            <HighlightSweep variant="green">{promise}</HighlightSweep> in{" "}
-            {PLAN_WEEKS} weeks or a full refund if it doesn’t work
+            <HighlightSweep variant="green">{promise}</HighlightSweep>.
+            <br />
+            {PLAN_WEEKS} weeks from today.
           </h1>
           {/* The discount is only claimed while it is still on the card. Once
               the badge reads REGULAR PRICE, a headline shouting "50% off" is the
-              screen contradicting itself. */}
+              screen contradicting itself.
+
+              It opened on "Start today" until the headline above ended on "from
+              today" - the same word twice inside 20px, which reads as a typo
+              rather than as emphasis. "Starts the moment you join" keeps the
+              immediacy the line was there for and is the literal truth: the
+              plan is generated during checkout, so it exists before she has
+              finished downloading the app. */}
           <p className="text-sm text-[#5A5A5A] mt-1">
-            Start today
+            Starts the moment you join
             {!expired && (
               <>
                 ,{" "}
@@ -558,6 +584,33 @@ export function PaywallView({
               )}
               <span className="text-sm text-[#5A5A5A] font-medium">/ day</span>
             </div>
+
+            {/* The only anchor on this card that exists outside this card.
+
+                The strikethrough above it is {@link PLAN_ANCHOR_PRICE} - a
+                "regular price" nothing is ever billed at, set at exactly twice
+                the real one. It works on some readers and reads as invented to
+                the rest, and the rest are the audience this product has: a
+                round doubling is the shape of a made-up discount.
+
+                So the price is also anchored against something she can check
+                without us. A personal trainer is the right comparison and a
+                doctor is the wrong one: the plan sells movement, food and
+                wind-down coaching, and the moment the price is framed against a
+                consultation the page is implying substitution for medical care -
+                which /terms explicitly disclaims and which is not what she is
+                buying. US personal training runs $60-100 an hour, so "more than
+                the whole {PLAN_WEEKS} weeks" is true at the bottom of the range
+                and true by a distance at the top.
+
+                Quiet type, under the number rather than beside it. It is the
+                justification she hands herself after she has already decided,
+                not an argument competing with the figure. */}
+            <p className="mt-1.5 text-xs text-[#5A5A5A]">
+              Less than <b className="text-[#3D3D3D]">one hour with a personal trainer</b> — for
+              all {PLAN_WEEKS} weeks.
+            </p>
+
             {/* The renewal is stated at the price, not in the small print under
                 the button. She is agreeing to a subscription; burying that is
                 how a week-8 charge turns into a chargeback. */}
@@ -719,6 +772,66 @@ export function PaywallView({
             never saw the diagnosis screen this session). */}
         <SocialProofPolaroid />
         <SymptomOutcomeCards topProblems={topProblems} />
+
+        {/* What actually happens when she taps the button.
+
+            The last unanswered objection on this page is not price and not
+            trust - both are argued at length above. It is mechanical: she is
+            about to pay $59 on a web page for a product that lives in an app
+            she has not downloaded, and nothing here has told her how the one
+            becomes the other. For a 45-60 audience "will I be able to actually
+            set this up" is a real reason not to tap, and it is the cheapest
+            objection in the funnel to kill because the answer is three steps
+            long and entirely true.
+
+            Deliberately last, at the foot of the scroll. It is the wrong thing
+            to lead with (nobody needs setup instructions before they want the
+            product) and the right thing to end on: it converts "should I buy
+            this" into "what happens next", which is the question of someone who
+            has already decided. It also gives a very long page an ending rather
+            than a stop.
+
+            Step 3 is the promise the download screen then has to keep - see the
+            `download` phase in app/register/page.tsx, which names the email
+            Stripe collected and sends her to /get-the-app. Do not write a step
+            here that the post-checkout screen does not deliver. */}
+        <div className="mb-4 rounded-2xl border border-[#E8DDD9] bg-white px-4 py-3.5">
+          <p className="mb-2.5 text-center text-[11px] font-extrabold uppercase tracking-[0.12em] text-[#B5ADA9]">
+            What happens next
+          </p>
+          <ol className="space-y-2.5">
+            {[
+              {
+                Icon: Lock,
+                bold: "Secure checkout",
+                sub: "Stripe takes the payment — we never see your card.",
+              },
+              {
+                Icon: Smartphone,
+                bold: "Download the app",
+                sub: "iPhone or Android. Sign in with the email you just used.",
+              },
+              {
+                Icon: Sunrise,
+                bold: "Day 1 is waiting",
+                sub: "Your plan is already built. Start it tonight or tomorrow.",
+              },
+            ].map((step, i) => (
+              <li key={step.bold} className="flex items-start gap-2.5">
+                <span className="relative mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#16A34A]/10">
+                  <step.Icon className="h-3.5 w-3.5 text-[#15803D]" strokeWidth={2.4} />
+                  <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#16A34A] text-[9px] font-extrabold text-white">
+                    {i + 1}
+                  </span>
+                </span>
+                <span className="min-w-0 text-sm leading-snug text-[#3D3D3D]">
+                  <strong>{step.bold}</strong>
+                  <span className="block text-xs text-[#6B6B6B]">{step.sub}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
 
         {error && (
           <div className="mb-3 rounded-xl border border-error/30 bg-error/10 p-3 text-sm text-error">
