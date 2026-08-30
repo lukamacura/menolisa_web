@@ -54,7 +54,7 @@ Fitness level is the only filter left. See `allowedExercises()` in `lib/plan/cat
 | `L16` | Supported reverse lunge | Wall or counter | 2 | — | timed, per side | 60s |
 | `L17` | Supported lateral lunge | Wall or counter | 2 | — | timed, per side | 60s |
 
-### Plyometrics & Force Absorption (I01–I09) — 9
+### Plyometrics & Force Absorption (I01–I08) — 8
 
 | ID | Exercise | Props | Level | Snack | Dose | Rest |
 |---|---|---|---|---|---|---|
@@ -66,7 +66,6 @@ Fitness level is the only filter left. See `allowedExercises()` in `lib/plan/cat
 | `I06` | Pogo jump, multi-directional | None | 3 | — | timed | 90s |
 | `I07` | Lateral step and stick | None | 2 | — | timed, per side | 60s |
 | `I08` | Plyometric skip | None | 3 | — | timed | 90s |
-| `I09` | Supported heel drop | Wall or counter | 1 | yes | timed | 45s |
 
 ### Upper Body Strength (U01–U13) — 13
 
@@ -113,7 +112,7 @@ Fitness level is the only filter left. See `allowedExercises()` in `lib/plan/cat
 | ID | Exercise | Props | Level | Snack | Dose | Rest |
 |---|---|---|---|---|---|---|
 | `W01` | Lateral leg swings | Wall or counter | 1 | — | timed, per side · 20s | 15s |
-| `W02` | Dynamic movement prep | None | 1 | — | timed · 60s | 15s |
+| `W02` | Spiderman lunge w/ rotation | None | 1 | — | timed, per side · 20s | 15s |
 | `W03` | PVC around the world | Broomstick or PVC pipe | 1 | — | timed · 40s | 15s |
 | `W04` | Shoulder mobility | None | 1 | — | timed · 40s | 15s |
 | `W05` | Open book cross | Mat | 1 | — | timed, per side · 20s | 15s |
@@ -175,11 +174,11 @@ minutes. Level 2, so a beginner never sees it.
   Right for progression, worth remembering when a "use N different ids" rule is
   satisfied by four squats. `L17` is the eighth and the only frontal-plane one:
   every other split position in the catalog travels forward or back.
-- **`I01` and `I09` are the whole beginner power pool.** They are the two level-1
-  rows in the plyometric series (the stomping march and the supported heel drop
-  keep a foot on the floor), so a beginner's bone-loading block alternates two
-  movements for eight weeks. A third level-1 `I` row is the cheapest variety win
-  in the catalog.
+- **`I01` is the whole beginner power pool.** It is the only level-1 row left in
+  the plyometric series since `I09` (supported heel drop) was deleted on
+  2026-08-30, so a beginner's bone-loading block is one movement, repeated for
+  eight weeks. A second level-1 `I` row is now the single cheapest variety win in
+  the catalog.
 - **`C09` is the only balance row.**
 - **`L13` and `P03` are the only hinges**, alongside the glute bridges
   (`P01`/`P02`) in the posterior chain.

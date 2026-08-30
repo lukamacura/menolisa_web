@@ -15,7 +15,7 @@ mapping is not one-to-one and both halves are deliberate:
 | Shoot series | Catalog ids | n | Role |
 | --- | --- | --- | --- |
 | Lower Body Strength | `L01`–`L17` | 17 | Main work |
-| Plyometrics & Force Absorption | `I01`–`I09` | 9 | The power block — bone loading |
+| Plyometrics & Force Absorption | `I01`–`I08` | 8 | The power block — bone loading |
 | Upper Body Strength | `U01`–`U13` | 13 | Main work |
 | Core & Posterior Stability | `C01`–`C09` + `P01`–`P03` | 12 | Main work |
 | Warm-up & Mobility | `W01`–`W15` | 15 | Bookend, front |
@@ -23,14 +23,15 @@ mapping is not one-to-one and both halves are deliberate:
 | Post-Upper Body Routine | `S07`–`S11` | 5 | Bookend, back |
 | *(not filmed)* Cardio | `K01`–`K02` | 2 | Cardio tasks — the aerobic pillar |
 
-77 clips, 79 catalog rows. The bucket has no orphans and no ghosts; the two
-extra rows are the `K` cardio block, which carries no `clip` on purpose — see
-below. `npm run clips audit` lists them under "catalog ids with no clip" and
-passes.
+77 clips, 78 catalog rows. Two `K` cardio rows carry no `clip` on purpose (see
+below), and since `I09` was deleted on 2026-08-30 its file
+(`Plyo09 - Supported Heel Drop.mp4`) is an orphan in the bucket. `npm run clips
+audit` names all three and is expected to.
 
 The 2026-08-29 top-up added four of those clips — `L17` supported lateral lunge,
 `I09` supported heel drop, `U13` standing dumbbell biceps curl, `C09` supported
-single-leg stand — and closed the bone-loading gap this file used to end on. A
+single-leg stand. Three of them stand; `I09` was deleted again on 2026-08-30,
+which re-opens the beginner bone-loading gap this file used to end on. A
 fifth row had been drafted for a band pull-apart; it was not shot, so it was
 **deleted rather than left clipless**, and the id it was holding went to the
 curl. That is the line between it and the `K` rows: "walk at a pace where you

@@ -402,8 +402,8 @@ style — a plan digest belongs beside it, not in a second system message.
    filtered subset — 22 for a beginner, 43 at medium, all 59 at advanced, 25 for
    movement snacks. Anything outside it was excluded for a reason.
 2. **Never restate a nutrition row as advice.** She already has ten rows to tick
-   with ten streaks. "Try walking after meals" is a duplicate of
-   `post_meal_walk`, not a suggestion. The generator strips these out of habit
+   with ten streaks. "Try some squats after a meal" is a duplicate of
+   `post_meal_squats`, not a suggestion. The generator strips these out of habit
    tasks; an agent that adds them back in conversation reverses that.
 3. **Never contradict `nutritionWhy`.** It is what she read in the app. If the
    mechanism the agent gives differs from the one on her row, one of them is

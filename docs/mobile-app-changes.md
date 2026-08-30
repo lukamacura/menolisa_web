@@ -1138,8 +1138,8 @@ tester who notices does not file them as bugs.
   session *counts* are unchanged — 7 a week at medium, 6 at advanced — so
   `w{n}_cardio` simply carries all of them in weeks 1-2.
 - **The power block stays on the ground in weeks 1-2.** Those weeks draw only
-  `I01` / `I07` / `I09` (stomping march, lateral step and stick, supported heel
-  drop); the pogo jumps and drops arrive in week 3. Same fields, same
+  `I01` / `I07` (stomping march and lateral step and stick); the pogo jumps and
+  drops arrive in week 3. Same fields, same
   `powerSessions`, same shape.
 
 ### One disclaimer, at the start, saying everything
@@ -1169,6 +1169,40 @@ App Store release — and it is the right way round for a consent gate, which ha
 to show before there is anything to authenticate against.
 
 ---
+
+## 24. Catalog edits — one nutrition id changed, one exercise deleted, one renamed — 2026-08-30
+
+Four small changes, none of them a shape change. Nothing in any response gained
+or lost a field; the app needs no new rendering, only the two lines noted below.
+
+**`post_meal_walk` is now `post_meal_squats`** — "20 squats after eating",
+`group: "Every meal"`, `target: 3`, unchanged in every other respect. Same
+mechanism (blunt the rise the meal just caused), two minutes instead of ten. The
+log key changed with it: `nut_post_meal_walk` → `nut_post_meal_squats`. Any tick
+history under the old key is **orphaned, not migrated** — it stops being counted
+rather than being read as squats she never did. Labels and groups already come
+from the response, so the only thing to change on the device is the local icon
+map (`src/lib/planIconMapping.ts`), which is decoration and keyed by id.
+
+**`I09` (supported heel drop) is deleted.** It was a level-1 plyometric, so the
+practical effect is that a **beginner's power block is now one movement, `I01`
+(stomping march), for all eight weeks** — the block still renders exactly as it
+did, just with a single row in it. It was also the only `I` row marked `snack`,
+so a movement-snack pool lost one of its impact moves (23 → 22). Its clip is
+still in the bucket and is now an orphan; a plan generated before today may
+still name `I09`, and the app should keep doing what it already does with an id
+it cannot resolve.
+
+**`W02` is renamed** from "Dynamic movement prep" to **"Spiderman lunge w/
+rotation"** — the movement the clip actually shows. Its dose changed with the
+name, from a 60-second block to `timed, per side · 20s`, which is where the
+other single-movement warm-ups sit. Same id, same clip URL, same shape.
+
+**The "This week" chip is gone from the nutrition row.** `NutritionItem.focus`
+is still sent and still true for the rows this week pushes on — nothing renders
+it. Beside a cadence hint ("Every meal") and a streak chip it read as a third
+status about the row rather than as emphasis, and there was nothing on the
+screen that told her what it was claiming.
 
 ## Quick checklist
 
@@ -1226,3 +1260,5 @@ to show before there is anything to authenticate against.
 - [ ] Keep exactly one medical disclaimer — the "Before you begin" gate; never add a second inline one (§23)
 - [ ] Bump `@menolisa:consent_vN_accepted` whenever that modal gains something she has not agreed to (§23)
 - [ ] Expect no interval sessions in weeks 1-2 at any level, and no jumping in the week 1-2 power block (§23)
+- [ ] Nutrition: send `nut_post_meal_squats`; expect no history under `nut_post_meal_walk` (§24)
+- [ ] Expect a one-movement power block at beginner level — `I01` alone (§24)

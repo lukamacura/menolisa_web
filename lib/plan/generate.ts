@@ -577,7 +577,7 @@ export function buildPrompt(
       : []),
     `- She also gets ${cardio.daily ? `a ${cardio.zone2.minutes}-minute walk every day` : `${cardio.zone2.sessions + cardio.intervals} cardio sessions a week — walks, bike, swim, whatever she has —`} that the app schedules beside your sessions. You do not write them. Never put walking, cardio, running, cycling or intervals into an exercises array, a title, a "why" or a habit; it is already there.`,
     `- Habit tasks are yours to write: one small, concrete daily action she starts doing (e.g. "Cool the room before bed"). Cadence "daily". Name the action itself — never begin the title with "Add". Never write a habit about quitting something — that is what resist_suggestions is for.`,
-    `- Never write a habit or movement task that repeats a nutrition row — no walks after meals, no water, no protein, no meal timing. She already ticks those every day; put the id in nutrition_focus instead.`,
+    `- Never write a habit or movement task that repeats a nutrition row — no squats after eating, no water, no protein, no meal timing. She already ticks those every day; put the id in nutrition_focus instead.`,
     `- Relaxation tasks need item_id and cadence "daily" (or "per_day" with a target). Match the item to her worst symptom: hot flashes get breath_hotflash, night waking gets breath_sleep, anxiety or palpitations get breath_sigh.`,
     `- Movement tasks need an exercises array of ${minEx === maxEx ? `exactly ${minEx}` : `${minEx}-${maxEx}`} DIFFERENT ids — a session, not one move. Fewer than ${minEx} is a failed week.`,
     ...(vol.perDay
@@ -1729,7 +1729,7 @@ function sanitize(
  *
  * This is a **separate call** from the plan. Asked for as one more clause of
  * the plan prompt, gpt-4o-mini returned ten interchangeable stock lines
- * ("Walking after meals can aid digestion and support weight management") no
+ * ("Squats after meals can aid digestion and support weight management") no
  * matter how firmly the tone rules were worded — there is too much else in that
  * prompt for them to survive. On its own, with the catalog sentence in front of
  * it as the standard, it writes to her instead.
@@ -1760,9 +1760,9 @@ function buildWhyPrompt(profile: Profile): string {
     `- Connect it to her symptoms and goals where it honestly connects. Where it`,
     `  doesn't, say the mechanism plainly rather than forcing a link.`,
     `- Write to her, as "you". 120-220 characters. One or two real sentences.`,
-    `- Say the specific thing. "Ten minutes of walking gives the meal you just ate`,
-    `  somewhere to go, so the rise is a slope instead of a spike" is the standard.`,
-    `  "Walking after meals can aid digestion and support weight management" is a`,
+    `- Say the specific thing. "Twenty squats send the meal you just ate straight`,
+    `  into the biggest muscles you own, so the rise is a slope instead of a spike"`,
+    `  is the standard. "Squats after meals aid digestion and weight management" is a`,
     `  failure — vague, stock, and it tells her nothing she hadn't assumed.`,
     `- Never write "can help", "supports", "is essential", "is important",`,
     `  "promotes", "boosts", "overall health" or "overall well-being". Those are`,

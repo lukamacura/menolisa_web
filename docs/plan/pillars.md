@@ -55,11 +55,14 @@ three ticks.
 | `healthy_fats` | Healthy fats | 3 |
 | `high_fiber` | High-fiber food | 3 |
 | `low_gi_fruit` | Low-glycemic fruit only | 1 |
-| `post_meal_walk` | 10-min walk after eating | 3 |
+| `post_meal_squats` | 20 squats after eating | 3 |
 
-`post_meal_walk` is nutrition, not movement — it exists to blunt the rise the
+`post_meal_squats` is nutrition, not movement — it exists to blunt the rise the
 meal just caused, and the plan prompt forbids the LLM from writing a movement or
-habit task that duplicates it.
+habit task that duplicates it. It was `post_meal_walk` ("10-min walk after
+eating") until 2026-08-30: same mechanism, two minutes instead of ten. The id
+changed with the label, so ticks logged under `nut_post_meal_walk` are orphaned
+rather than recounted.
 
 ### Timing & fasting
 | id | Label | target |

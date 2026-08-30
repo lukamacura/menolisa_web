@@ -998,8 +998,11 @@ below reads like a rule, it is a pointer to one of those.
   the Supabase org is on the **Free plan**, so Smart CDN is off and the public
   endpoint returns `cache-control: no-cache` whatever the metadata says. It
   starts working on upgrade to Pro with nothing further to do.
-- `I09` (supported heel drop) is 1792 kbps against the 1600 budget. One
-  re-export fixes it.
+- `Plyo09 - Supported Heel Drop.mp4` is an **orphan**: `I09` was deleted from
+  the catalog on 2026-08-30, so the file has no row pointing at it and
+  `npm run clips audit` names it. Deleting it from the bucket closes this and
+  also retires the one clip that was over the bitrate budget (1792 kbps against
+  1600). Nothing in the app reads it in the meantime.
 - The library is ~25MB. It should be downloaded to the device once and played
   from `file://`, which also makes clips work in a gym with no signal. Mobile
   work — nothing about the API contract changes for it.
@@ -1119,7 +1122,7 @@ all of it into build failures.
   out as four squat variants — one exercise, as far as she is concerned, in the
   session she judges the whole $59 on.
 - **Nothing maximal in weeks 1-2.** `POWER_RAMP_WEEKS` holds the power block to
-  `I01`/`I07`/`I09` (nothing leaves the ground) and `CARDIO_VOLUME.intervals`
+  `I01`/`I07` (nothing leaves the ground) and `CARDIO_VOLUME.intervals`
   opens at `0` for medium and advanced. The funnel screens nothing, so this is
   the only brake there is. Costs two hard sessions out of fourteen.
 - **Cardio is scheduled by code, on both paths**, as its own tasks rather than

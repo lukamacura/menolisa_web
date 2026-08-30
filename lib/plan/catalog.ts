@@ -64,7 +64,7 @@ export type Exercise = {
   why?: string;
 };
 
-// 79 rows in five roles, all told apart by id prefix: the strength work the
+// 78 rows in five roles, all told apart by id prefix: the strength work the
 // model picks from (`L`/`U`/`C`/`P`), the bone-loading block code appends to a
 // session (`I`), the cardio sessions code schedules beside it (`K`), and the two
 // bookend families — 15 warm-ups (`W`) and 11 stretches (`S`). Everything is an
@@ -75,11 +75,11 @@ export type Exercise = {
 // **This table is a superset of the bucket.** It was rebuilt on 2026-08-27
 // against a shoot that replaced the library wholesale, and topped up on
 // 2026-08-29 with four clips that close the gaps the rebuild left (`L17`, `I09`,
-// `U13`, `C09` — see each row) — every clip in `exercise-clips` has a row here,
-// and `npm run clips audit` proves it in both directions. The converse stopped
-// holding on 2026-08-28: the two `K` cardio rows carry no `clip`, deliberately
-// and permanently, because a walk does not need a video. `audit` lists them as
-// "catalog ids with no clip" and passes.
+// `U13`, `C09` — see each row). Two exceptions to "every clip has a row", both
+// deliberate: the two `K` cardio rows carry no `clip` at all, because a walk
+// does not need a video (2026-08-28), and `Plyo09 - Supported Heel Drop.mp4` is
+// still in the bucket with no row here, because `I09` was cut on 2026-08-30 and
+// the file was left behind. `npm run clips audit` names both and is expected to.
 //
 // Anything you remember from the previous catalog is gone; git history is the
 // record, not a commented-out block.
@@ -91,7 +91,7 @@ export type Exercise = {
 //   | Shoot series                          | Prefix    | n  |
 //   |---------------------------------------|-----------|----|
 //   | Lower Body Strength                   | `L01-L17` | 17 |
-//   | Plyometrics & Force Absorption        | `I01-I09` |  9 |
+//   | Plyometrics & Force Absorption        | `I01-I08` |  8 |
 //   | Upper Body Strength                   | `U01-U13` | 13 |
 //   | Core & Posterior Stability            | `C01-C09` + `P01-P03` | 12 |
 //   | Warm-up & Mobility                    | `W01-W15` | 15 |
@@ -161,12 +161,12 @@ const E: [string, string, string, 1 | 2 | 3, boolean, string?][] = [
   // L16 is.
   ["L17", "Supported lateral lunge", "Wall or counter", 2, false, "L17 - Supported Lateral Lunge.mp4"],
 
-  // ─── Plyometrics & Force Absorption (9) ───────────────────────────────────
+  // ─── Plyometrics & Force Absorption (8) ───────────────────────────────────
   //
   // The bone-loading family, reserved for the power block `buildPowerBlock()`
   // appends to every strength session — see `allowedPower()`. Only her fitness
-  // level filters it: level 1 is the two floor-contact movements (`I01`, `I09`),
-  // level 2 adds the pogo family, level 3 the drops and skips.
+  // level filters it: level 1 is the one floor-contact movement (`I01`), level 2
+  // adds the pogo family and the step-and-stick, level 3 the drops and skips.
   ["I01", "Stomping march", "None", 1, true, "Plyo01 - Stomping March.mp4"],
   ["I02", "Box drop deceleration", "Low box or bottom stair", 3, false, "Plyo02 - Box Drop Deceleration.mp4"],
   ["I03", "Pogo jump, vertical", "None", 2, true, "Plyo03 - Vertical Pogo Jumps.mp4"],
@@ -175,11 +175,6 @@ const E: [string, string, string, 1 | 2 | 3, boolean, string?][] = [
   ["I06", "Pogo jump, multi-directional", "None", 3, false, "Plyo06 - Multi Directional Pogo Jumps.mp4"],
   ["I07", "Lateral step and stick", "None", 2, false, "Plyo07 - Lateral Step And Stick.mp4"],
   ["I08", "Plyometric skip", "None", 3, false, "Plyo08 - Plyometric Skips.mp4"],
-  // Level 1 and `snack: true`, which no other `I` row is — this is the one piece
-  // of bone loading that fits in a five-minute burst beside a counter. Its clip
-  // keeps the shoot's `Plyo` prefix while the id takes `I`; that mismatch is
-  // what the `clip` field exists for, so do not rename the file to match.
-  ["I09", "Supported heel drop", "Wall or counter", 1, true, "Plyo09 - Supported Heel Drop.mp4"],
 
   // ─── Upper Body Strength (13) ─────────────────────────────────────────────
   //
@@ -235,10 +230,14 @@ const E: [string, string, string, 1 | 2 | 3, boolean, string?][] = [
   // `allowedExercises()` drops — see `isWarmupId`. That is the whole mechanism:
   // one table, one lookup, one prefix rule.
   //
-  // W02, W12 and W13 are sequences rather than single movements, so they carry
+  // W12 and W13 are sequences rather than single movements, so they carry
   // longer doses in `DOSE` below and read as one block on the session screen.
   ["W01", "Lateral leg swings", "Wall or counter", 1, false, "W01 - Lateral Leg Swings.mp4"],
-  ["W02", "Dynamic movement prep", "None", 1, false, "W02 - Dynamic Movement Prep.mp4"],
+  // Renamed 2026-08-30 from "Dynamic movement prep" to the movement the clip
+  // actually shows, which also moved it out of the sequence doses below and into
+  // the per-side twenties beside `W08`. The bucket filename keeps the old name —
+  // that mismatch is what the `clip` field exists for, so do not rename the file.
+  ["W02", "Spiderman lunge w/ rotation", "None", 1, false, "W02 - Dynamic Movement Prep.mp4"],
   ["W03", "PVC around the world", "Broomstick or PVC pipe", 1, false, "W03 - Pvc Around The World.mp4"],
   ["W04", "Shoulder mobility", "None", 1, false, "W04 - Shoulder Mobility Protocol.mp4"],
   ["W05", "Open book cross", "Mat", 1, false, "W05 - Open Book Cross.mp4"],
@@ -397,6 +396,7 @@ const DOSE: Record<string, [DoseUnit, boolean, number?]> = {
   // warm-up movement cost the same forty seconds, whichever column it is in.
   W01: ["timed", true, 20],
   W05: ["timed", true, 20],
+  W02: ["timed", true, 20],
   W06: ["timed", true, 20],
   W08: ["timed", true, 20],
   W09: ["timed", true, 20],
@@ -407,10 +407,9 @@ const DOSE: Record<string, [DoseUnit, boolean, number?]> = {
   W04: ["timed", false, 40],
   W07: ["timed", false, 40],
   W14: ["timed", false, 40],
-  // The three sequences. They walk through several positions in one clip, so a
+  // The two sequences. They walk through several positions in one clip, so a
   // 40-second dose would cut the flow off partway; they get a block long enough
   // to finish once.
-  W02: ["timed", false, 60],
   W12: ["timed", false, 90],
   W13: ["timed", false, 90],
   // Stretches. Every one is a `hold` — the hold IS the stretch — and uniform for
@@ -505,7 +504,6 @@ const WHY: Record<string, string> = {
   I06: "Hopping in every direction, so your bones and your balance are loaded from every angle instead of only straight down.",
   I07: "Step out, land, and freeze. Catching yourself on one leg is exactly what you would need to do on ice — practised here, on your terms.",
   I08: "Skipping like a child, because your bones cannot tell the difference and it loads them beautifully. It also makes you laugh, which is not nothing.",
-  I09: "Rise onto your toes, then let your heels drop to the floor. A hand on the counter, nothing leaves the ground, and your leg bones still get the message.",
 
   // ─── Upper body ───────────────────────────────────────────────────────────
   U01: "Pushing against a wall is a push-up your shoulders can do today. Everything above it starts here, including the floor one day.",
@@ -538,7 +536,7 @@ const WHY: Record<string, string> = {
 
   // ─── Warm-ups ─────────────────────────────────────────────────────────────
   W01: "Swinging your leg across your body opens your hips before you load them. Warm hips squat deeper and complain less the next day.",
-  W02: "A short sequence that wakes up everything you are about to use. Two minutes here is why the session feels good instead of stiff.",
+  W02: "Step one foot up beside your hand, then open your chest to the ceiling. It buys back the hip and the mid-back you are about to ask to move.",
   W03: "Taking a broomstick around your shoulders finds the range you will need overhead — before there is any weight in your hands.",
   W04: "Shoulders stiffen from sitting, not from age. A minute of this gives you back the range that pressing and reaching ask for.",
   W05: "Opening your chest and turning through your upper back. This is the direct antidote to a day spent facing a screen.",
@@ -1255,7 +1253,6 @@ const POWER_MIN_SETS = 2;
 const LOW_IMPACT_POWER_IDS: ReadonlySet<string> = new Set([
   "I01", // Stomping march
   "I07", // Lateral step and stick
-  "I09", // Supported heel drop
 ]);
 
 /**
@@ -1263,8 +1260,8 @@ const LOW_IMPACT_POWER_IDS: ReadonlySet<string> = new Set([
  *
  * Two, and it is a safety floor rather than a training preference. Bone
  * responds to impact, which is why the block exists at all — but a 54-year-old
- * who has not jumped since school should land a stomping march and a heel drop
- * for a fortnight before she leaves the floor, and the plan has no way to know
+ * who has not jumped since school should land a stomping march and a step-and-
+ * stick for a fortnight before she leaves the floor, and the plan has no way to know
  * whether she can. It cannot ask: the limitations question was removed and is
  * not coming back, so the ramp is the whole of the protection.
  *
@@ -1286,7 +1283,7 @@ export const POWER_RAMP_WEEKS = 2;
  * Ten minutes at medium and advanced, five at beginner — and five is not a
  * compromise, it is what her pool and her session can carry. A twenty-minute
  * beginner session with ten minutes of plyo in it has six minutes left for
- * strength, which is not a strength session, and her pool is two movements.
+ * strength, which is not a strength session, and her pool is one movement.
  */
 export function powerMinutes(vol: (typeof MOVEMENT_VOLUME)[string]): number {
   return Math.max(0, vol.maxMinutes - vol.minutes);
@@ -1348,7 +1345,7 @@ export function buildPowerBlock(
   const budget = budgetMinutes * 60;
   const { sets: topSets, seconds } = powerDoseForWeek(week);
   // Rotate by the week so the eight blocks are not the same three movements,
-  // and so a two-id pool at least alternates which one leads.
+  // and so a thin pool at least alternates which one leads.
   const offset = week % source.length;
   const movements = [...source.slice(offset), ...source.slice(0, offset)].slice(0, POWER_MAX_EXERCISES);
 
@@ -1531,10 +1528,10 @@ export function exerciseMedia(id: string): ExerciseMedia | undefined {
  *
  *   | Level            | main | power |
  *   |------------------|------|-------|
- *   | beginner         |   16 |     2 |
- *   | medium           |   42 |     6 |
- *   | advanced         |   44 |     9 |
- *   | movement_snacks  |   23 |     0 |
+ *   | beginner         |   15 |     1 |
+ *   | medium           |   40 |     5 |
+ *   | advanced         |   42 |     8 |
+ *   | movement_snacks  |   22 |     0 |
  */
 export function allowedExercises(fitnessLevel: string | null): Exercise[] {
   const maxLevel = fitnessLevel === "advanced" ? 3 : fitnessLevel === "medium" ? 2 : 1;
@@ -1723,14 +1720,19 @@ export const NUTRITION: NutritionItem[] = [
     why: "Fruit is still sugar. Berries, apples and pears give you the sweetness without the rise-and-crash your afternoon doesn't need.",
   },
   // The paper log repeats this under all three meals, and it is the one line
-  // that makes the meal structure work — the walk is what flattens the glucose
+  // that makes the meal structure work — the squats are what flatten the glucose
   // rise the meal just caused, so it lives with the meal, not with movement.
+  //
+  // It was a 10-minute post-meal walk until 2026-08-30. Same mechanism, two
+  // minutes instead of ten, and nothing to change into — which is the whole
+  // reason it moved. The id changed with the label, so any tick history under
+  // `nut_post_meal_walk` is orphaned rather than silently recounted as squats.
   {
-    id: "post_meal_walk",
-    label: "10-min walk after eating",
+    id: "post_meal_squats",
+    label: "20 squats after eating",
     group: "Every meal",
     target: 3,
-    why: "Ten minutes of walking gives the meal you just ate somewhere to go, so the rise is a slope instead of a spike.",
+    why: "Twenty squats send the meal you just ate straight into the biggest muscles you own, so the rise is a slope instead of a spike.",
   },
   {
     id: "fast_12h",
