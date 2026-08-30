@@ -394,55 +394,98 @@ Supabase (PostgreSQL) — no ORM, raw SQL queries via Supabase JS client:
 | `user_trials` | `user_id`, `account_status` ("pending_payment"/"paid"/"expired"), `subscription_ends_at`, `subscription_canceled`, `payment_failed_at`, `dispute_flagged_at`, `provider`, `plan_type`, `plan_amount`, `fulfilled_at` (one-time-side-effect claim — see "Checkout fulfillment"), `renewal_notice_sent_for` (the `subscription_ends_at` the renewal email already covered). No trial columns — see below. The table name is legacy; it holds subscriptions. |
 | `documents` | Vector store — `id`, `content`, `metadata` (JSONB), `embedding` (vector 1536) |
 | `notifications` | `user_id`, `type`, `content`, `metadata` (JSONB), `is_read`, `created_at` |
+| `ad_spend` | One row per calendar day of Meta ad spend, typed into `/admin` — `day` (PK), `amount_usd`. Service-role only: RLS on, no policies, no grants. |
 | `llm_usage` | One row per OpenAI call — `user_id`, `run_id`, `kind`, `model`, `prompt_tokens`, `cached_prompt_tokens`, `completion_tokens`, `cost_usd`, `duration_ms`. Service-role only: RLS on, no policies, no grants. |
 
 ### Admin panel (`/admin`) — the sales desk
 
 Password-gated by `ADMIN_PANEL_PASSWORD` (unset = closed, deliberately). One
-endpoint, `POST /api/admin/stats`. It answers exactly one question — is the
-campaign making money? — in five blocks: money collected, campaign economics,
-quiz → paid, the latest sales, and anything that needs a human.
+endpoint, `POST /api/admin/stats`. Rebuilt 2026-08-30 around a sharper question
+than before: not "is money arriving?" but **"should I spend more on ads
+tomorrow?"** — which is the only question a $59 auto-renewing plan sold on Meta
+ever really asks. Six blocks: the verdict, cash in, unit economics, where they
+stop, latest sales, needs a human.
 
-- **Revenue comes from Stripe charges, never from `user_trials`.** The table
-  holds one row per person, overwritten on every renewal, so it can say who is
-  paying but not how many times or how much came in last month. The charge list
-  is the ledger; a customer's first successful charge is a new sale and the rest
-  are renewals, which is why no second API call is needed to split them. The
-  panel prints `livemode` loudly — test-mode figures look exactly like revenue.
-- **Conversion is Supabase-only on both sides** (accounts that ever paid ÷ quiz
-  finishers). Dividing Stripe purchases by quiz finishers mixes populations —
-  renewals and mobile IAP are in one and not the other — and reads over 100%.
-- **"Collected today" is the operator's day, not UTC's.** The browser sends
-  `tzOffsetMinutes` and the server cuts the window there (clamped to ±840, so a
-  crafted value can't move it somewhere meaningless). On a UTC boundary the
-  headline figure would still show yesterday's sales through a European morning,
-  which is the one number on the screen that has to be right.
-- **Ad spend is typed in, and stamped with the day it was typed.** There is no
-  Meta API here and nobody enters a figure daily, so it lives in `localStorage`
-  as `{amount, updatedAt}` and anything older than 3 days is called out — a
-  stale spend number makes cost-per-sale look better than it is. Everything the
-  panel can compute without it (money collected, break-even spend, the funnel,
-  the sales list) works with the field left empty forever, which is why
-  **"you can afford to have spent" (`sales × keptPerSale`) leads the block**
-  rather than cost-per-sale.
-- **`keptPerSale` is measured, not assumed** — the real fee rate off the
-  balance transactions, falling back to Stripe's published 2.9% + 30¢ only at
-  zero volume. It is the break-even unit the whole block is built on.
+- **Money is Stripe. People are Supabase. Never mixed.** Every dollar comes from
+  `stripe.charges.list()`; names, quiz finishers, renewal dates, plan status and
+  cancellations come from Supabase. `user_trials` holds one row per person,
+  overwritten on every renewal, so it can say who is paying but never how many
+  times or how much arrived last month — that history is destroyed on each
+  update. Both the route and the page say so at the top, and every block on
+  screen carries a source tag, because this is the thing people forget first.
+- **A customer's first successful charge is a new sale; the rest are renewals.**
+  One charge list gives revenue, the new-vs-renewal split, the new-customer
+  count, the renewal rate and the guarantee exposure — no second API call.
+- **Cost per customer divides by *new* customers only.** Ads do not buy
+  renewals. The old panel divided ad spend by every charge, which flattered CAC
+  and got worse every cycle as the renewal base grew.
+- **Renewal rate and LTV are the point of the block.** Without them, CAC vs the
+  first $59 is the strictest possible bar and will tell you to switch off
+  campaigns that make money. The cohort is customers whose first charge is older
+  than `PLAN_WEEKS*7 + RENEWAL_GRACE_DAYS`; the grace exists because Stripe
+  dunning retries for several days and scoring those as churned understates the
+  rate exactly when it matters. `ltv` caps the `1/(1-r)` multiplier so a tiny
+  all-renewed cohort can't print an infinite customer.
+- **Dates are the operator's day, not UTC's.** The browser sends
+  `tzOffsetMinutes` (clamped to ±840); `isoDay()` **must** be passed it. Both
+  halves of this were live bugs on 2026-08-30: `toISOString()` renders the UTC
+  date, so local midnight east of Greenwich filed today's ad spend under
+  yesterday; and the daily series indexed backwards from midnight, which floors
+  to −1 for anything later than midnight today — dropping every charge taken
+  today and shifting yesterday's into today's slot. The series must sum to
+  `money.last30.net` exactly; that equality is the test.
+- **Ad spend lives in the `ad_spend` table, one row per day.** It was
+  `localStorage` until 2026-08-30 — one browser, one "total to date" number.
+  That is unwindowable, so 30-day cost-per-sale was contaminated by every dollar
+  ever spent, and opening `/admin` on a phone showed an empty box. The write
+  rides the same `POST /api/admin/stats` (one endpoint, one password check) and
+  returns recalculated stats in the same round trip; `amount: null` clears a day.
+  Missing days in the last 7 are surfaced — today is excluded, since you type it
+  in at the end of the day. Migration: `scripts/sql/2026-08-30-ad-spend.sql`.
+- **`keptPerSale` is measured, not assumed** — the real fee rate off the balance
+  transactions, falling back to Stripe's published 2.9% + 30¢ only at zero
+  volume. `kept` (net less fees) is the only figure it is honest to compare
+  against ad spend, and it is what contribution is built from.
+- **The funnel is three steps, all windowed to the same 30 days:** quiz finished
+  (Supabase) → opened the card form (Stripe Checkout Sessions, mobile excluded
+  via `checkout_surface`) → new paying customers (Stripe first charges). The
+  middle step is the one that splits "the offer screen is weak" from "checkout is
+  leaking" — two problems with completely different fixes. Windowing is also what
+  ages out the pre-launch test accounts without a toggle. Mixing a Supabase
+  numerator with a Stripe denominator is only sound because both are web-only
+  today (the Expo app is downloaded *after* checkout); if mobile signup ever
+  becomes real traffic, split the denominator before trusting the percentage.
+  The bar width is clamped to 100% — a later step can legitimately exceed the
+  first when leftover test-mode sessions meet a handful of real quiz rows.
+- **The verdict sentence is computed server-side**, so the panel and any future
+  alert can never disagree about what the numbers mean.
+- **`ADMIN_FIXED_MONTHLY_USD`** is hosting + database + email + domain. Unset
+  reads as 0 and the panel says so, rather than reporting a contribution figure
+  that quietly ignores the bills.
 
 The endpoint reads `auth.users` for emails via `listUsers` (PostgREST can't see
-that schema and there is no bulk get-by-ids), and caps its Stripe walk and
+that schema and there is no bulk get-by-ids), and caps its Stripe walks and
 client list — each cap surfaces in the response rather than silently truncating
-(`salesTotal` is what lets the list say "newest 60 of 112"). Read `user_trials`
+(`salesTotal` is what lets the list say "newest 40 of 113"). Read `user_trials`
 through `TRIAL_SELECT_COLS`, never a hand-written column list.
 
-**What was deliberately removed (2026-08-29), and why not to re-add it:** AI
+**What was deliberately removed, and why not to re-add it.** From 2026-08-29: AI
 cost per plan, token counts, generation duration, MRR, the six-card
 account-state grid, the by-month bar chart, the gross/net/fees split, and the
-table of every account with a billing row. None of them changed a decision at
-this stage; together they buried the two figures that do. `llm_usage` is still
-written on every OpenAI call and `lib/llmCost.ts` still prices it — a cost
-question is a query against that table, not a permanent tile. Migration:
-`scripts/sql/2026-08-11-llm-usage.sql`.
+table of every account with a billing row. `llm_usage` is still written on every
+OpenAI call and `lib/llmCost.ts` still prices it — a cost question is a query
+against that table, not a permanent tile. (The one survivor is the *measured*
+serving cost per customer, an input to contribution. It counts plan generation
+only; Lisa chat is unmetered, so it is a floor and the UI says so.) From
+2026-08-30: **"Profit"** — all-time revenue minus a hand-typed spend total, no
+fees, no fixed costs, two windows that never lined up; **the "Her plan" column**
+— an ops signal in a money table, already duplicated by the alert under it;
+**the refund and declined-card banners** — figures, not emergencies, so they
+moved into Cash and the alert block stays alarming; and **"collected today" as
+the headline** — at two sales a day it swings 100% on noise, so seven days leads
+and today is a cell. Migrations: `scripts/sql/2026-08-11-llm-usage.sql`,
+`scripts/sql/2026-08-30-ad-spend.sql`.
+
 
 ### Access control (who gets in)
 
@@ -1136,6 +1179,11 @@ below reads like a rule, it is a pointer to one of those.
 | Delete `lib/rag/`, `knowledge-base/` or an API route because "the web page is gone" | That is the Expo app's backend. `/api/langchain-rag` *is* Lisa on the phone. |
 | Install Meta's "parameter builder" SDK add-on | The `fbc` coverage prompt is already answered by `captureFbClickId()`. Coverage is capped by how much traffic arrives with an `fbclid` at all — a campaign volume question, not a code one. |
 | Send a server-side `PageView` | Highest volume on the site, not an optimization target, not in AEM. It buys nothing in the auction. |
+| Read revenue from `user_trials` instead of Stripe charges | The table is one row per person, overwritten on every renewal. It can say who is paying, never how many times or how much arrived last month — that history does not exist to read. |
+| Divide ad spend by every charge to get cost per customer | Ads do not buy renewals. It flatters CAC and gets worse every cycle as the renewal base grows. Divide by *new* customers only. |
+| Judge a campaign on CAC vs the first $59 alone | That is the strictest possible bar on an auto-renewing plan, and it will tell you to switch off campaigns that make money. Renewal rate and LTV are what make the verdict honest. |
+| Put ad spend back in `localStorage` | One browser, one number, no history — so no windowed cost per sale, and an empty box the moment you open `/admin` on your phone. |
+| Call `isoDay()` without the timezone offset | `toISOString()` renders the UTC date, so local midnight east of Greenwich files today's ad spend under yesterday. It shipped broken once already. |
 | Put AI cost, MRR or the full client table back on `/admin` | None of them changed a decision, and together they buried the two figures that do. `llm_usage` still records every call — a cost question is a query, not a permanent tile. |
 | Put `symptom_count` or `goal` back on the Meta `Lead` | Health data about an identified person, sent to an ad platform, against our own policy's bold promise. FTC brought GoodRx/BetterHelp/Cerebral on exactly this, and WA's MHMDA gives a private right of action. `custom_data` on a Lead is reporting metadata, not an optimization signal — it bought nothing. |
 | Bypass `lib/privacySignals.ts` on any Meta call site | Privacy §6.4 states we honor GPC. A policy that claims it while pixels fire is the Sephora fine ($1.2M, first CCPA action). |
@@ -1148,6 +1196,42 @@ below reads like a rule, it is a pointer to one of those.
 | Send anything from her symptoms, plan or check-in to Meta | Already covered above, and the check-in is the newest thing that looks harmless and isn't. |
 
 ### Recent work
+
+**2026-08-30 (latest) — `/admin` rebuilt to answer "should I spend more
+tomorrow?"** The panel answered "did money arrive?", which is a bookkeeping
+question, not the one a paid-acquisition subscription asks. Full contract in §4;
+the four findings that drove it:
+
+- **"Profit" was all-time revenue minus a hand-typed spend total** — no Stripe
+  fees, no fixed costs, and two windows that only lined up by accident. Replaced
+  by contribution over one stated window with every deduction named on screen.
+- **Cost per sale divided by every charge, renewals included.** Ads do not buy
+  renewals, so it flattered itself, and worse each cycle.
+- **No renewal rate, therefore no LTV.** The panel could only test CAC against
+  the first $59 — the strictest bar there is on an 8-week auto-renewing plan.
+  Both now come out of the same charge walk that was already happening.
+- **Nothing looked forward.** `subscription_ends_at` was already in the database;
+  booked revenue for the next 30 days and cancels-at-risk are one pass over rows
+  the endpoint already had.
+
+Added: the verdict line, checkout abandonment as a real funnel step (Stripe
+Checkout Sessions — the middle step that splits "the offer is weak" from "the
+checkout is leaking"), fixed costs, and refund-guarantee exposure. Dropped: the
+"Her plan" column, the refund/declined banners, and "collected today" as the
+headline.
+
+**Two bugs were only found by running it against live data**, not by the build,
+and both are now rules in §4: `isoDay()` rendered the *UTC* date, so a user east
+of Greenwich filed today's ad spend under yesterday; and the daily series
+indexed backwards from midnight, dropping every charge taken today and shifting
+yesterday's into today's slot. The series summing to `money.last30.net` exactly
+is the check that catches the second one.
+
+**Still open, and both are the operator's to do, not the code's:** the 3 `paid`
+rows in `user_trials` are test checkouts and will sit in the funnel until they
+age out of the 30-day window (or are wiped with `delete-test-user.ts`), and
+`ADMIN_FIXED_MONTHLY_USD` needs a real figure in Vercel or contribution ignores
+the bills.
 
 **2026-08-30 (last) — the funnel audited against the emotional ladder, before
 the first campaign.** `docs/marketing/emotional-ladder.md` is the internal model;
