@@ -74,7 +74,7 @@ const ROTATE_MS = 8000;
  *
  * Opening a story used to stop the card dead, forever - which sounds
  * considerate and is not: the one woman who has shown she wants to read these
- * is the one the card then guarantees never meets the other two. So it keeps
+ * is the one the card then guarantees never meets the others. So it keeps
  * going, three times slower.
  *
  * **This number is a reading-speed bet and it is the weakest thing on the
@@ -182,8 +182,8 @@ function Swap({
  *
  * **Opening a story slows the card, it no longer stops it** (`ROTATE_OPEN_MS`).
  * Freezing on expand had the same shape as the touch bug: the most engaged
- * reader on the block was the one guaranteed never to meet members two and
- * three.
+ * reader on the block was the one guaranteed never to meet the members after
+ * the first.
  *
  * **Once she steers, the timer never starts again** (`took`). Tapping a dot or
  * swiping the card is her saying which woman she wants to read, and a carousel
@@ -318,16 +318,17 @@ function useSwipe(onSwipe: (direction: 1 | -1) => void) {
  * Why this shape and not the alternatives:
  *
  *  - **Dots, not arrows.** Arrows say "there is more in that direction" and
- *    nothing about how much; dots say "three, and you are on the first", which
- *    is the fact that decides whether she waits. At three members the whole set
- *    fits with room to spare.
+ *    nothing about how much; dots say "four, and you are on the first", which
+ *    is the fact that decides whether she waits. At four members the whole set
+ *    still fits with room to spare; past about six it would not, and this
+ *    becomes an arrows-and-a-counter problem rather than a dots one.
  *  - **The active dot fills.** A static dot tells her where she is, a filling
  *    one tells her what is about to happen - which is what turns an
  *    unannounced swap into an expected one. When the timer is not running the
  *    same bar is simply full: "this is the one you are on", with no countdown
  *    being claimed. It never freezes part-filled, because a paused bar implies
  *    it will resume from there and a resumed timer here starts over.
- *  - **Names in the label, not on screen.** Rendering "Mary / Sally / …" as
+ *  - **Names in the label, not on screen.** Rendering "Mara / Taryn / …" as
  *    tabs would out-shout the note card and grow the block; the screen reader
  *    gets the names anyway, where a bare "slide 2" is useless.
  *
@@ -474,7 +475,7 @@ function Tape({ className }: { className: string }) {
  *
  * Three parts, in the order she reads them:
  *
- *   1. the print - a square photo, taped to the page, of a member. Mary's is
+ *   1. the print - a square photo, taped to the page, of a member. Mara's is
  *      also a product shot, taken holding the app, which is why the print is
  *      the hero of the block and why it is never cropped to a portrait.
  *   2. the quote - one sentence, big. If she reads nothing else on this block,
@@ -535,8 +536,8 @@ export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) 
    * woman's story and clip the next one, or leave a slab of blank paper under
    * it. A number changes when the story changes, so the card follows it.
    *
-   * Reset to null on every toggle: while folded the story `Swap` renders all
-   * three stacked, so what is measured is the tallest, not the active one.
+   * Reset to null on every toggle: while folded the story `Swap` renders every
+   * member stacked, so what is measured is the tallest, not the active one.
    * Null means "animate to auto for one frame and let the observer correct
    * it", which is right on the way open and harmless on the way closed.
    */

@@ -20,10 +20,10 @@ import { PLAN_WEEKS } from "@/lib/pricing";
 //  - `pullQuote` must be a sentence that also appears in `story`. It is a
 //    magazine pull-quote, not a second, stronger claim bolted on top.
 //  - Nothing here may assert a timeline, a weight lost or a symptom resolved
-//    that her own words do not. The copy Mary's card replaced said "finished
+//    that her own words do not. The copy Mara's card replaced said "finished
 //    her plan last week"; hers does not say she has finished.
 //  - `alt` describes the photograph that exists, not the one we wish we had.
-//    Mary is holding her phone with the plan open; do not copy that sentence
+//    Mara is holding her phone with the plan open; do not copy that sentence
 //    onto a print where nobody is holding anything.
 //  - **`draft: true` until her words are hers.** A face is a real person, and
 //    words we wrote under one are fabricated proof - the single most expensive
@@ -47,11 +47,11 @@ export type SocialProofMember = {
 
 export const SOCIAL_PROOF_MEMBERS: SocialProofMember[] = [
   {
-    id: "mary",
-    name: "Mary",
+    id: "mara",
+    name: "Mara",
     age: 49,
     photo: "/proof/social.webp",
-    alt: "Mary, a MenoLisa member, holding her phone with her plan open",
+    alt: "Mara, a MenoLisa member, holding her phone with her plan open",
     context: "Menopause overnight, after a hysterectomy",
     pullQuote:
       "I finally feel like I have a plan instead of just trying to figure everything out on my own.",
@@ -66,12 +66,12 @@ export const SOCIAL_PROOF_MEMBERS: SocialProofMember[] = [
     ],
   },
   {
-    id: "sally",
-    name: "Sally",
+    id: "taryn",
+    name: "Taryn",
     age: 46,
     photo: "/proof/social2.webp",
-    alt: "Sally, a MenoLisa member",
-    // Her own framing of how it started, condensed the way Mary's is. It stops
+    alt: "Taryn, a MenoLisa member",
+    // Her own framing of how it started, condensed the way Mara's is. It stops
     // short of the clinician on purpose: her story says "my doctor never
     // brought it up" in her own words, which is hers to say, but printing it as
     // our caption turns a member's experience into our claim about her care.
@@ -86,11 +86,11 @@ export const SOCIAL_PROOF_MEMBERS: SocialProofMember[] = [
     ],
   },
   {
-    id: "julie",
-    name: "Julie",
+    id: "lindsey",
+    name: "Lindsey",
     age: 50,
     photo: "/proof/social3.webp",
-    alt: "Julie, a MenoLisa member",
+    alt: "Lindsey, a MenoLisa member",
     // Her story names insulin resistance and a lab result. That is hers to
     // say and it stays verbatim - but the caption is *our* voice, so it stops
     // at the weight and the disbelief and never repeats the diagnosis. A
@@ -104,6 +104,29 @@ export const SOCIAL_PROOF_MEMBERS: SocialProofMember[] = [
       "For the first time in my life, I had to buy jeans one size up\u2026 and then another. I started asking MenoLisa questions, and that\u2019s when I began connecting the dots. I learned that insulin resistance could be playing a role, so I decided to get my labs checked. And sure enough, my results confirmed it.",
       "That was my turning point. Instead of feeling frustrated and helpless, I decided to take control of my health. I started learning better eating habits and making movement a regular part of my routine.",
       "MenoLisa keeps me accountable with its nutrition and movement trackers, helping me turn what I\u2019ve learned into everyday habits. For the first time, I feel like I\u2019m working with my body\u2014not fighting against it.",
+    ],
+  },
+  {
+    id: "jillian",
+    name: "Jillian",
+    age: 51,
+    photo: "/proof/social4.webp",
+    alt: "Jillian, a MenoLisa member",
+    // She is the one member on HRT, and the caption says so because the rest
+    // of her story only makes sense once you know it - she is not choosing
+    // between a prescription and the app, she is doing the part the
+    // prescription does not do. It stops at "what else would help": her
+    // specialist\u2019s advice is hers to quote in her own words below, and
+    // reprinting it as our caption would turn one clinician\u2019s counsel into
+    // MenoLisa\u2019s claim about what HRT does or does not achieve.
+    context: "On HRT, and looking for what else would help",
+    pullQuote:
+      "MenoLisa helped me turn what I was learning into small, consistent habits\u2014and that made all the difference.",
+    story: [
+      "I was lucky enough to find a menopause-trained specialist who took the time to thoroughly assess me and put me on HRT. But she also gave me some advice that really stayed with me: without making changes to my lifestyle, I might not feel as much better as I hoped.",
+      "That\u2019s when I discovered MenoLisa. I started learning about the different pieces that support my wellbeing during menopause\u2014from nutrition and movement to sleep and relaxation.",
+      "The habit tracker has been especially useful. When you\u2019re trying to change the way you\u2019ve lived for years, knowing what to do is one thing; actually making it part of your everyday life is another.",
+      "MenoLisa helped me turn what I was learning into small, consistent habits\u2014and that made all the difference.",
     ],
   },
 ];
