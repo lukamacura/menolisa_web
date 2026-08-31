@@ -91,8 +91,8 @@ export default function PrivacyPage() {
         <section className="mb-8">
           <h2 className="text-2xl font-semibold mb-4">1. Introduction</h2>
           <p>
-            Macura Solutions LLC (“MenoLisa,” “we,” “us,” or “our”), a Wyoming limited liability
-            company, operates MenoLisa — a consumer wellness product for women in perimenopause and
+            Macura Solutions LLC (“MenoLisa,” “we,” “us,” or “our”), a Wyoming, USA limited
+            liability company, operates MenoLisa — a consumer wellness product for women in perimenopause and
             menopause, comprising a personalized 8-week plan, a symptom tracker, an AI
             assistant called Lisa, and summaries you may share with a healthcare professional.
           </p>
@@ -793,7 +793,7 @@ export default function PrivacyPage() {
         <section className="mb-8">
           <h2 className="text-2xl font-semibold mb-4">11. International Transfers</h2>
           <p>
-            We are based in the United States and our providers store and process information there.
+            We are based in Wyoming, USA, and our providers store and process information there.
             If you use the Service from elsewhere, your information will be transferred to and processed
             in the United States, which may not offer the same protections as your home country. Where
             required, we rely on appropriate safeguards such as the European Commission’s Standard

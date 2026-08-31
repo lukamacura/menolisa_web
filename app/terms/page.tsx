@@ -90,8 +90,8 @@ export default function TermsPage() {
           <h2 className="text-2xl font-semibold mb-4">1. Agreement to These Terms</h2>
           <p>
             These Terms and Conditions (the “Terms”) form a legally binding contract between you
-            (“you” or “your”) and <strong>Macura Solutions LLC</strong>, a Wyoming limited liability
-            company (“MenoLisa,” “we,” “us,” or “our”), governing your access to and use of the
+            (“you” or “your”) and <strong>Macura Solutions LLC</strong>, a Wyoming, USA limited
+            liability company (“MenoLisa,” “we,” “us,” or “our”), governing your access to and use of the
             MenoLisa mobile application, our website at menolisa.com, our application programming
             interfaces, and all related content and services (together, the “Service”).
           </p>

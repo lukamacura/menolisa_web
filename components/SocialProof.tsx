@@ -1,6 +1,15 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type TouchEvent as ReactTouchEvent,
+} from "react";
 import Image from "next/image";
 import { motion, MotionConfig, useReducedMotion, type Variants } from "framer-motion";
 import { Check, ChevronDown, Star } from "lucide-react";
@@ -11,6 +20,7 @@ import {
   DEFAULT_SYMPTOM_TRANSFORM_IDS,
   getSocialProofMembers,
   getSymptomTransforms,
+  type SocialProofMember,
 } from "@/lib/testimonials";
 
 /** Hand-drawn arrow curving down-right, from the caption into the photo. */
@@ -46,8 +56,19 @@ const PAPER_TRANSPARENT = "rgba(253, 248, 245, 0)";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
-/** How long one member holds the card before the next one fades in. */
-const ROTATE_MS = 5000;
+/**
+ * How long one member holds the card before the next one fades in.
+ *
+ * Eight seconds, not five. The slot she is actually reading is the pull quote
+ * - a full sentence, set at 17px, above a name, an age and a line of context -
+ * and five seconds is a glance, not a read. For the audience this card is
+ * written for it was fast enough to swap *mid-sentence*, which does not read
+ * as a second woman arriving; it reads as the page having lost her place. The
+ * cost of the longer hold is that fewer women reach the third member on the
+ * clock alone, and that is precisely what the dots below are for: they say how
+ * many there are and let her go and get them.
+ */
+const ROTATE_MS = 8000;
 /** The crossfade itself. Long enough not to blink, short enough not to muddy. */
 const CROSSFADE_S = 0.6;
 
@@ -123,11 +144,27 @@ function Swap({
  * member's, exactly as it was before this rotated. Any of those resets the
  * clock rather than resuming a part-spent one, so leaving the card always
  * buys a full read of the next woman.
+ *
+ * **Once she steers, the timer never starts again** (`took`). Tapping a dot or
+ * swiping the card is her saying which woman she wants to read, and a carousel
+ * that pulls the page out from under that is the single most-complained-about
+ * behaviour of the pattern. It is also what makes this card conform to WCAG
+ * 2.2.2: auto-updating content needs a mechanism to stop it, and pausing on
+ * hover and focus alone gives a touch user - most of this traffic - no
+ * mechanism at all. The controls are that mechanism, and they are the only
+ * mechanism, which is why they are always visible rather than revealed on
+ * hover.
+ *
+ * A resumed timer is a *fresh* `ROTATE_MS`, never the remainder of the
+ * interrupted one, so `running` is exported for the progress fill in
+ * `MemberDots` to restart on. A bar that picked up where it stopped would be
+ * lying about when the card moves.
  */
 function useMemberRotation(count: number, frozen: boolean, still: boolean) {
   const [index, setIndex] = useState(0);
   const [hidden, setHidden] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [took, setTook] = useState(false);
 
   useEffect(() => {
     const onVisibility = () => setHidden(document.visibilityState === "hidden");
@@ -136,7 +173,7 @@ function useMemberRotation(count: number, frozen: boolean, still: boolean) {
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, []);
 
-  const running = count > 1 && !frozen && !still && !paused && !hidden;
+  const running = count > 1 && !took && !frozen && !still && !paused && !hidden;
 
   useEffect(() => {
     if (!running) return;
@@ -151,9 +188,21 @@ function useMemberRotation(count: number, frozen: boolean, still: boolean) {
   // must never leave the card pointing at nothing.
   const safeIndex = index % Math.max(count, 1);
 
+  // Wraps, so the arrow keys and a swipe past either end land somewhere real.
+  const goTo = useCallback(
+    (next: number) => {
+      if (count < 1) return;
+      setTook(true);
+      setIndex(((next % count) + count) % count);
+    },
+    [count]
+  );
+
   return {
     index: safeIndex,
     running,
+    steered: took,
+    goTo,
     hold: {
       onPointerEnter: () => setPaused(true),
       onPointerLeave: () => setPaused(false),
@@ -161,6 +210,150 @@ function useMemberRotation(count: number, frozen: boolean, still: boolean) {
       onBlurCapture: () => setPaused(false),
     },
   };
+}
+
+/** Far enough that a tap, or the horizontal drift of a vertical scroll, is
+ *  never mistaken for a swipe. */
+const SWIPE_MIN_PX = 48;
+
+/** A horizontal swipe on the card, and nothing else.
+ *
+ *  Deliberately touch-only and deliberately not framer's `drag`: the card must
+ *  not move under her thumb, because the print is taped to the page and a
+ *  taped photograph that slides is a carousel pretending to be a scrapbook.
+ *  The gesture only has to be *available* - the dots are what advertise that
+ *  there is more than one woman. Nothing calls `preventDefault`, so vertical
+ *  scrolling through the paywall is untouched, and the axis test rejects the
+ *  diagonal drift of a scroll that happens to start on the card. */
+function useSwipe(onSwipe: (direction: 1 | -1) => void) {
+  const start = useRef<{ x: number; y: number } | null>(null);
+  return {
+    onTouchStart: (e: ReactTouchEvent) => {
+      const t = e.touches[0];
+      start.current = t ? { x: t.clientX, y: t.clientY } : null;
+    },
+    onTouchEnd: (e: ReactTouchEvent) => {
+      const from = start.current;
+      start.current = null;
+      const t = e.changedTouches[0];
+      if (!from || !t) return;
+      const dx = t.clientX - from.x;
+      const dy = t.clientY - from.y;
+      if (Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dx) < Math.abs(dy) * 1.3) return;
+      onSwipe(dx < 0 ? 1 : -1);
+    },
+  };
+}
+
+/**
+ * The one piece of furniture on the card that is a control rather than a
+ * decoration: how many women there are, which one this is, and how to get to
+ * the others.
+ *
+ * The card used to swap in silence. A crossfade with nothing around it does not
+ * read as "here is the next member" - it reads as the page having changed its
+ * mind, and it strands anyone who looked up mid-quote with no way back to the
+ * woman she was reading. Three failures in one, and all three are the same
+ * missing thing: no indication that the content is a set.
+ *
+ * Why this shape and not the alternatives:
+ *
+ *  - **Dots, not arrows.** Arrows say "there is more in that direction" and
+ *    nothing about how much; dots say "three, and you are on the first", which
+ *    is the fact that decides whether she waits. At three members the whole set
+ *    fits with room to spare.
+ *  - **The active dot fills.** A static dot tells her where she is, a filling
+ *    one tells her what is about to happen - which is what turns an
+ *    unannounced swap into an expected one. When the timer is not running the
+ *    same bar is simply full: "this is the one you are on", with no countdown
+ *    being claimed. It never freezes part-filled, because a paused bar implies
+ *    it will resume from there and a resumed timer here starts over.
+ *  - **Names in the label, not on screen.** Rendering "Mary / Sally / …" as
+ *    tabs would out-shout the note card and grow the block; the screen reader
+ *    gets the names anyway, where a bare "slide 2" is useless.
+ *
+ * Every control clears the 24x24px minimum target size by a comfortable
+ * margin - this is a 45-60 audience on a phone - which is why the button is a
+ * transparent 24x36 box around a 6px dot rather than a 6px button.
+ */
+function MemberDots({
+  members,
+  index,
+  running,
+  onSelect,
+  className,
+}: {
+  members: SocialProofMember[];
+  index: number;
+  running: boolean;
+  onSelect: (next: number) => void;
+  className?: string;
+}) {
+  if (members.length < 2) return null;
+
+  return (
+    <div
+      role="group"
+      aria-label="Member stories"
+      onKeyDown={(e) => {
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          onSelect(index + 1);
+        } else if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          onSelect(index - 1);
+        }
+      }}
+      className={cn("flex items-center justify-center", className)}
+    >
+      {members.map((m, i) => {
+        const active = i === index;
+        return (
+          <button
+            key={m.id}
+            type="button"
+            onClick={() => onSelect(i)}
+            aria-label={`${m.name}, ${m.age} \u2014 story ${i + 1} of ${members.length}`}
+            aria-current={active ? "true" : undefined}
+            className="group flex h-9 min-w-6 items-center justify-center px-1 focus-visible:outline-none"
+          >
+            <span
+              className={cn(
+                "relative block h-1.5 overflow-hidden rounded-full",
+                "transition-[width,background-color] duration-300 ease-out",
+                "ring-offset-2 group-focus-visible:ring-2 group-focus-visible:ring-primary/50",
+                active
+                  ? "w-7 bg-[#E8DDD9]"
+                  : "w-1.5 bg-[#DDD2CC] group-hover:bg-[#C4B5AD]"
+              )}
+            >
+              {active && (
+                /* One element in both states, differing only in how long it
+                   takes to fill: `initial` is what gets serialized, so a
+                   reduced-motion client renders the identical first frame the
+                   server did and this cannot mismatch on hydration. The key is
+                   the restart - a resumed timer is a fresh `ROTATE_MS`, so the
+                   fill has to begin again rather than sit where the pause left
+                   it, and keys are not markup. */
+                <motion.span
+                  key={`${index}-${running}`}
+                  initial={{ scaleX: 0 }}
+                  animate={{ scaleX: 1 }}
+                  transition={
+                    running
+                      ? { duration: ROTATE_MS / 1000, ease: "linear" }
+                      : { duration: 0 }
+                  }
+                  style={{ transformOrigin: "left" }}
+                  className="absolute inset-0 block rounded-full bg-primary"
+                />
+              )}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 const stage: Variants = {
@@ -226,6 +419,13 @@ function Tape({ className }: { className: string }) {
  *      Long-form proof converts the sceptic and costs the scanner nothing, but
  *      only while it is folded: 200 words of body copy dropped into a paywall
  *      scroll is a wall she scrolls past, not a story she reads.
+ *   4. the controls - one dot per member under the card, the live one filling
+ *      over
+ *      `ROTATE_MS`. They exist because the rotation was otherwise
+ *      unannounced:
+ *      nothing said the card was a set of women rather than one, nothing
+ *      warned her a swap was coming, and nothing got her back to the woman she
+ *      had been half-way through. See `MemberDots`.
  *
  * **What rotates and what does not.** The paper, the tape, the stars, the
  * divider, the button and the footnote are furniture and never move; only the
@@ -237,10 +437,11 @@ function Tape({ className }: { className: string }) {
  * `AnimatePresence` swap, an animated `height`) both move the page.
  *
  * It stops when moving would interrupt her: story open, pointer or focus
- * inside the card, tab in the background, or reduced motion - see
- * `useMemberRotation`. With one member (a production build where every other
- * entry is still `draft`) there is no timer at all and this is byte-for-byte
- * the card it was before.
+ * inside the card, tab in the background, or reduced motion - and for the rest
+ * of the visit the moment she picks a woman herself, by dot, arrow key or
+ * swipe. See `useMemberRotation`. With one member (a production build where
+ * every other entry is still `draft`) there is no timer and no dots at all,
+ * and this is byte-for-byte the card it was before.
  *
  * Reduced motion is honored through `<MotionConfig reducedMotion="user">`,
  * which drops the transform half of every animation below and keeps the fades.
@@ -260,7 +461,13 @@ export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) 
   const storyId = useId();
 
   const members = useMemo(() => getSocialProofMembers(), []);
-  const { index, hold } = useMemberRotation(members.length, open, still);
+  const { index, running, steered, goTo, hold } = useMemberRotation(
+    members.length,
+    open,
+    still
+  );
+  const swipe = useSwipe((direction) => goTo(index + direction));
+  const member = members[index];
 
   return (
     <MotionConfig reducedMotion="user">
@@ -289,7 +496,7 @@ export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) 
           <CaptionArrow className="relative z-10 w-8 h-10 sm:w-9 sm:h-11 shrink-0 -mb-1 text-primary" />
         </motion.div>
 
-        <div className="mx-auto mt-2 w-full max-w-[360px]">
+        <div className="mx-auto mt-2 w-full max-w-[360px]" {...swipe}>
           {/* The print. Square, so it gets a square print's frame: even borders
               and a deep chin for the caption. It sits above the note card and
               overlaps it, which is what makes the two read as one object lying
@@ -464,7 +671,35 @@ export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) 
             </button>
           </motion.div>
 
-          <motion.div variants={rise} className="mt-2 px-1">
+          {/* Which woman this is, how many there are, and how to reach the
+              others. Below the card rather than over the print: it is a
+              control, and controls laid over a photograph read as a gallery
+              widget, which is the one thing this block must not look like. */}
+          <motion.div variants={rise}>
+            <MemberDots
+              members={members}
+              index={index}
+              running={running}
+              onSelect={goTo}
+              className="mt-1"
+            />
+          </motion.div>
+
+          {/* Silent while the card is driving itself - a live region that
+              announces every automatic swap is a screen reader talking over
+              the page. It speaks only once she has taken the wheel, which is
+              exactly when she is owed the answer to "who did I just land on?".
+              Keyed to `steered` rather than `running`: `running` folds in
+              reduced motion, and reduced motion differs between the server
+              render and the first client one. `steered` starts `false` on both
+              sides and only ever changes after hydration, in response to her. */}
+          {members.length > 1 && member && (
+            <p className="sr-only" aria-live={steered ? "polite" : "off"}>
+              {`${member.name}, ${member.age} \u2014 story ${index + 1} of ${members.length}`}
+            </p>
+          )}
+
+          <motion.div variants={rise} className="mt-1 px-1">
             <Swap
               index={index}
               still={still}

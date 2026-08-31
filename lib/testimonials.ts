@@ -6,7 +6,7 @@
  */
 import { PLAN_WEEKS } from "@/lib/pricing";
 
-// ─── Social proof: the members, in their own words ──────────────────────────
+// \u2500\u2500\u2500 Social proof: the members, in their own words \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 // One square print of a member, plus the story she sent. The
 // card rotates through this list (see `SocialProofPolaroid`), so the order here
 // is the order she meets them. Two prints of the *same* face would be a
@@ -85,6 +85,27 @@ export const SOCIAL_PROOF_MEMBERS: SocialProofMember[] = [
       "I don\u2019t feel like I just have to suffer through menopause anymore. MenoLisa helped me take back control.",
     ],
   },
+  {
+    id: "julie",
+    name: "Julie",
+    age: 50,
+    photo: "/proof/social3.webp",
+    alt: "Julie, a MenoLisa member",
+    // Her story names insulin resistance and a lab result. That is hers to
+    // say and it stays verbatim - but the caption is *our* voice, so it stops
+    // at the weight and the disbelief and never repeats the diagnosis. A
+    // member describing her own labs is a testimonial; us printing it over her
+    // photograph is a claim about what the app finds.
+    context: "Weight gain in her 40s, sure she was too young",
+    pullQuote:
+      "For the first time, I feel like I\u2019m working with my body\u2014not fighting against it.",
+    story: [
+      "I first heard about MenoLisa from a friend. At the time, I thought I was too young for perimenopause\u2014even though I was gaining weight so easily that I barely recognized what was happening to my body.",
+      "For the first time in my life, I had to buy jeans one size up\u2026 and then another. I started asking MenoLisa questions, and that\u2019s when I began connecting the dots. I learned that insulin resistance could be playing a role, so I decided to get my labs checked. And sure enough, my results confirmed it.",
+      "That was my turning point. Instead of feeling frustrated and helpless, I decided to take control of my health. I started learning better eating habits and making movement a regular part of my routine.",
+      "MenoLisa keeps me accountable with its nutrition and movement trackers, helping me turn what I\u2019ve learned into everyday habits. For the first time, I feel like I\u2019m working with my body\u2014not fighting against it.",
+    ],
+  },
 ];
 
 /**
@@ -99,7 +120,7 @@ export function getSocialProofMembers(): SocialProofMember[] {
   return SOCIAL_PROOF_MEMBERS.length > 0 ? SOCIAL_PROOF_MEMBERS : live;
 }
 
-// ─── Before/after transformations, keyed by symptom ─────────────────────────
+// \u2500\u2500\u2500 Before/after transformations, keyed by symptom \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 // Each image in /public/testimonials is one side-by-side shot: left = the hard
 // "before", right = the calmer "after". Keyed by PROBLEM_OPTIONS ids so the
 // cards shown match the symptoms she actually selected.
