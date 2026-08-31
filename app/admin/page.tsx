@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * The sales desk.
@@ -149,18 +149,46 @@ const shortDate = (iso: string) =>
 const dayLabel = (day: string) =>
   new Date(`${day}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
+const weekdayLabel = (day: string) =>
+  new Date(`${day}T12:00:00`).toLocaleDateString("en-US", { weekday: "short" });
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** The last `n` days ending at `todayIso`, oldest first. */
+function lastNDays(todayIso: string, n: number): string[] {
+  const [y, m, d] = todayIso.split("-").map(Number);
+  const base = Date.UTC(y, m - 1, d, 12);
+  return Array.from({ length: n }, (_, i) => {
+    const dt = new Date(base - (n - 1 - i) * DAY_MS);
+    return dt.toISOString().slice(0, 10);
+  });
+}
+
+const SPEND_STRIP_DAYS = 14;
+
+/** What's already saved for `day`, so a redundant keystroke skips the round trip. */
+function savedAmountFor(stats: Stats, day: string): number | null {
+  if (day === stats.costs.todayIso) return stats.costs.todaySpend;
+  return stats.costs.loggedDays.find((d) => d.day === day)?.amount ?? null;
+}
+
 export default function AdminPage() {
   const [password, setPassword] = useState("");
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [spendDay, setSpendDay] = useState("");
-  const [spendAmount, setSpendAmount] = useState("");
-  const [savingSpend, setSavingSpend] = useState(false);
+
+  // Ad spend: one draft string per day, auto-saved — see AdSpendStrip below.
+  const [spendDrafts, setSpendDrafts] = useState<Record<string, string>>({});
+  const [savingDays, setSavingDays] = useState<Record<string, boolean>>({});
+  const [savedDays, setSavedDays] = useState<Record<string, boolean>>({});
+  const [spendDayErrors, setSpendDayErrors] = useState<Record<string, string>>({});
+  const touchedDays = useRef<Set<string>>(new Set());
+  const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const savedFlashTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const load = useCallback(async (pw: string, spend?: { day: string; amount: number | null }) => {
-    if (spend) setSavingSpend(true);
-    else setLoading(true);
+    if (!spend) setLoading(true);
     setError(null);
     try {
       const res = await fetch("/api/admin/stats", {
@@ -177,24 +205,23 @@ export default function AdminPage() {
         sessionStorage.removeItem(SESSION_KEY);
         setStats(null);
         setError("Wrong password.");
-        return;
+        return null;
       }
       if (!res.ok) {
         setError("Couldn't load the numbers. Try again.");
-        return;
+        return null;
       }
       const data: Stats = await res.json();
       sessionStorage.setItem(SESSION_KEY, pw);
       setStats(data);
-      if (!spendDay) setSpendDay(data.costs.todayIso);
-      if (spend) setSpendAmount("");
+      return data;
     } catch {
       setError("Network error. Try again.");
+      return null;
     } finally {
       setLoading(false);
-      setSavingSpend(false);
     }
-  }, [spendDay]);
+  }, []);
 
   // Restore session on mount so a refresh keeps you in.
   useEffect(() => {
@@ -203,13 +230,71 @@ export default function AdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const saveSpend = () => {
-    const pw = sessionStorage.getItem(SESSION_KEY);
-    if (!pw || !spendDay) return;
-    const digits = spendAmount.replace(/[^0-9.]/g, "");
-    const amount = digits === "" ? null : Math.round(parseFloat(digits) * 100) / 100;
-    if (amount !== null && !Number.isFinite(amount)) return;
-    load(pw, { day: spendDay, amount });
+  // Seed drafts for days the operator hasn't touched yet — a save triggered by
+  // one day's debounce must never clobber what's mid-edit in another day's box.
+  useEffect(() => {
+    if (!stats) return;
+    setSpendDrafts((prev) => {
+      const next = { ...prev };
+      for (const day of lastNDays(stats.costs.todayIso, SPEND_STRIP_DAYS)) {
+        if (touchedDays.current.has(day)) continue;
+        const amt = savedAmountFor(stats, day);
+        next[day] = amt === null ? "" : String(amt);
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stats?.refreshedAt]);
+
+  const commitSpend = useCallback(
+    async (day: string, raw: string) => {
+      const pw = sessionStorage.getItem(SESSION_KEY);
+      if (!pw) return;
+      const digits = raw.replace(/[^0-9.]/g, "");
+      const amount = digits === "" ? null : Math.round(parseFloat(digits) * 100) / 100;
+      if (amount !== null && !Number.isFinite(amount)) return;
+      if (stats && savedAmountFor(stats, day) === amount) return; // nothing changed
+
+      setSavingDays((p) => ({ ...p, [day]: true }));
+      setSpendDayErrors((p) => {
+        if (!(day in p)) return p;
+        const next = { ...p };
+        delete next[day];
+        return next;
+      });
+      const data = await load(pw, { day, amount });
+      setSavingDays((p) => {
+        const next = { ...p };
+        delete next[day];
+        return next;
+      });
+      if (data?.spendWriteError) {
+        setSpendDayErrors((p) => ({ ...p, [day]: data.spendWriteError as string }));
+        return;
+      }
+      setSavedDays((p) => ({ ...p, [day]: true }));
+      clearTimeout(savedFlashTimers.current[day]);
+      savedFlashTimers.current[day] = setTimeout(() => {
+        setSavedDays((p) => {
+          const next = { ...p };
+          delete next[day];
+          return next;
+        });
+      }, 1600);
+    },
+    [load, stats]
+  );
+
+  const handleSpendChange = (day: string, value: string) => {
+    setSpendDrafts((p) => ({ ...p, [day]: value }));
+    touchedDays.current.add(day);
+    clearTimeout(debounceTimers.current[day]);
+    debounceTimers.current[day] = setTimeout(() => commitSpend(day, value), 700);
+  };
+
+  const handleSpendBlur = (day: string) => {
+    clearTimeout(debounceTimers.current[day]);
+    commitSpend(day, spendDrafts[day] ?? "");
   };
 
   // ── Password gate ─────────────────────────────────────────────────────────
@@ -473,75 +558,15 @@ export default function AdminPage() {
           </div>
 
           {/* Log ad spend */}
-          <div className="flex flex-wrap items-end gap-3 border-t border-[#E6DCE2] bg-[#FBF8F9] px-6 py-4">
-            <div>
-              <Label className="mb-1 block">Log ad spend</Label>
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="date"
-                  value={spendDay}
-                  max={costs.todayIso}
-                  onChange={(e) => setSpendDay(e.target.value)}
-                  className="rounded border border-[#D6CBD2] bg-white px-2.5 py-1.5 text-[13px] tabular-nums outline-none focus:border-[#A8336E]"
-                />
-                <div className="flex items-center rounded border border-[#D6CBD2] bg-white pl-2.5">
-                  <span className="text-[13px] text-[#948B9B]">$</span>
-                  <input
-                    value={spendAmount}
-                    onChange={(e) => setSpendAmount(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") saveSpend();
-                    }}
-                    inputMode="decimal"
-                    placeholder={
-                      spendDay === costs.todayIso && costs.todaySpend !== null
-                        ? String(costs.todaySpend)
-                        : "0.00"
-                    }
-                    aria-label="Ad spend for the selected day"
-                    className="w-24 bg-transparent px-1.5 py-1.5 text-[13px] tabular-nums outline-none"
-                  />
-                </div>
-                <button
-                  onClick={saveSpend}
-                  disabled={savingSpend || !spendDay}
-                  className="rounded bg-[#1C181F] px-3.5 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-[#A8336E] disabled:opacity-50"
-                >
-                  {savingSpend ? "Saving…" : "Save"}
-                </button>
-              </div>
-            </div>
-            <p className="max-w-[42ch] text-[12px] leading-snug text-[#948B9B]">
-              One number per day, copied from Meta Ads Manager. Leave the amount blank and save to
-              clear a day.
-            </p>
-            {stats.spendWriteError && (
-              <p className="text-[12.5px] text-[#A02219]">{stats.spendWriteError}</p>
-            )}
-            {costs.loggedDays.length > 0 && (
-              <div className="w-full">
-                <Label className="mb-1.5 block">Logged, last 30 days — tap a day to edit it</Label>
-                <div className="flex flex-wrap gap-1.5">
-                  {costs.loggedDays.map((d) => (
-                    <button
-                      key={d.day}
-                      onClick={() => {
-                        setSpendDay(d.day);
-                        setSpendAmount(String(d.amount));
-                      }}
-                      className={`rounded border px-2 py-1 text-[12px] tabular-nums transition-colors ${
-                        spendDay === d.day
-                          ? "border-[#A8336E] bg-[#F7E7EF] text-[#A8336E]"
-                          : "border-[#D6CBD2] bg-white text-[#5F5566] hover:border-[#A8336E]"
-                      }`}
-                    >
-                      {dayLabel(d.day)} · {money(d.amount)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+          <AdSpendStrip
+            stats={stats}
+            drafts={spendDrafts}
+            saving={savingDays}
+            saved={savedDays}
+            errors={spendDayErrors}
+            onChange={handleSpendChange}
+            onBlur={handleSpendBlur}
+          />
 
           {/* Chart */}
           <div className="border-t border-[#E6DCE2] px-6 pb-3 pt-4">
@@ -859,6 +884,111 @@ function Row({
   );
 }
 
+/**
+ * Ad spend, auto-saved per day — no calendar picker, no Save button.
+ *
+ * A row of the last {@link SPEND_STRIP_DAYS} days, each with its own box.
+ * Typing debounces a save 700ms after the last keystroke; tabbing or clicking
+ * away saves immediately. Today is pink, a box in the last 7 days with nothing
+ * logged is amber, a box that failed to save is red — so what needs attention
+ * is visible without reading every cell.
+ */
+function AdSpendStrip({
+  stats,
+  drafts,
+  saving,
+  saved,
+  errors,
+  onChange,
+  onBlur,
+}: {
+  stats: Stats;
+  drafts: Record<string, string>;
+  saving: Record<string, boolean>;
+  saved: Record<string, boolean>;
+  errors: Record<string, string>;
+  onChange: (day: string, value: string) => void;
+  onBlur: (day: string) => void;
+}) {
+  const days = lastNDays(stats.costs.todayIso, SPEND_STRIP_DAYS);
+  const firstError = Object.entries(errors)[0];
+
+  return (
+    <div className="border-t border-[#E6DCE2] bg-[#FBF8F9] px-6 py-4">
+      <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <Label>Ad spend, last {SPEND_STRIP_DAYS} days</Label>
+        <span className="text-[11.5px] text-[#948B9B]">
+          Copied from Meta Ads Manager · saves as you type
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {days.map((day) => {
+          const isToday = day === stats.costs.todayIso;
+          const isMissing = stats.costs.missingDays.includes(day);
+          const isSaving = !!saving[day];
+          const isSaved = !!saved[day];
+          const err = errors[day];
+          return (
+            <div
+              key={day}
+              className={`flex w-[74px] shrink-0 flex-col items-center gap-1 rounded-md border px-1.5 py-2 transition-colors ${
+                err
+                  ? "border-[#A02219]/60 bg-[#FDF1F0]"
+                  : isToday
+                    ? "border-[#A8336E] bg-[#FCEEF5]"
+                    : isMissing
+                      ? "border-[#E3B96B]/70 bg-[#FEFBF3]"
+                      : "border-[#E6DCE2] bg-white"
+              }`}
+            >
+              <span
+                className={`text-[9.5px] font-semibold uppercase tracking-[0.08em] ${
+                  isToday ? "text-[#A8336E]" : "text-[#948B9B]"
+                }`}
+              >
+                {isToday ? "Today" : weekdayLabel(day)}
+              </span>
+              <span className="text-[11px] tabular-nums text-[#5F5566]">{dayLabel(day)}</span>
+              <label className="flex w-full items-center rounded border border-[#D6CBD2] bg-white px-1 focus-within:border-[#A8336E]">
+                <span className="text-[11px] text-[#948B9B]">$</span>
+                <input
+                  value={drafts[day] ?? ""}
+                  onChange={(e) => onChange(day, e.target.value)}
+                  onBlur={() => onBlur(day)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.currentTarget.blur();
+                  }}
+                  inputMode="decimal"
+                  placeholder="0"
+                  aria-label={`Ad spend for ${dayLabel(day)}`}
+                  className="w-full min-w-0 bg-transparent px-1 py-1 text-[12.5px] tabular-nums outline-none"
+                />
+              </label>
+              <span className="h-3 text-[9.5px] leading-none">
+                {isSaving ? (
+                  <span className="text-[#948B9B]">saving…</span>
+                ) : isSaved ? (
+                  <span className="text-[#146B4E]">saved ✓</span>
+                ) : err ? (
+                  <span className="text-[#A02219]">failed</span>
+                ) : null}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {firstError && (
+        <p className="mt-2 text-[12px] text-[#A02219]">
+          {dayLabel(firstError[0])}: {firstError[1]}
+        </p>
+      )}
+      <p className="mt-2.5 max-w-[62ch] text-[12px] leading-snug text-[#948B9B]">
+        Clear a box to remove that day. Amber means one of the last 7 days has nothing logged yet.
+      </p>
+    </div>
+  );
+}
+
 function EmptyPoint({ children }: { children: React.ReactNode }) {
   return (
     <li className="flex gap-2.5">
@@ -1020,7 +1150,7 @@ function CashChart({ revenue, spend }: { revenue: number[]; spend: number[] }) {
  *
  * The middle step is the one the old panel didn't have, and it is the one that
  * splits two problems with completely different fixes: women who never reach
- * the card form are an offer-screen problem, women who reach it and don't pay
+ * Stripe Checkout are an offer-screen problem, women who reach it and don't pay
  * are a checkout problem.
  */
 function Funnel({
@@ -1045,7 +1175,7 @@ function Funnel({
   const steps = [
     { label: "Finished the quiz", value: quiz, width: quiz > 0 ? 100 : 0, fill: "bg-[#A8336E]/35" },
     {
-      label: "Opened the card form",
+      label: "Started Stripe Checkout",
       value: checkout,
       width: w(checkout),
       fill: "bg-[#A8336E]/65",
@@ -1080,7 +1210,7 @@ function Funnel({
                     ? "—"
                     : pct(paid, checkout)}
               </b>{" "}
-              {i === 0 ? "reach the card form — that's the offer screen's job" : "of those pay — that's checkout abandonment"}
+              {i === 0 ? "reach Stripe Checkout — that's the offer screen's job" : "of those pay — that's checkout abandonment"}
             </p>
           )}
         </div>
