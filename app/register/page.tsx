@@ -5715,19 +5715,34 @@ function RegisterPageContent() {
                 // playing long before she arrived, and she scrolled onto a still.
                 // Blocks 3 and 4 already worked this way; 2, 5 and the trust
                 // strip did not, which is why the page went from arriving to
-                // already-arrived halfway down. The cards inside keep their own
-                // mount stagger: they are behind this fade until it runs, and
-                // per-card `whileInView` would leave the off-screen carousel
-                // cards - including the sliver that says it *is* a carousel -
-                // invisible.
+                // already-arrived halfway down.
+                //
+                // The cards are variant children rather than per-card
+                // `whileInView` for the reason the carousel exists: only the
+                // first card and a sliver of the second are ever on screen, so
+                // an observer per card would leave the rest - including the
+                // sliver that is the whole signal there *is* a carousel -
+                // permanently invisible. They ran their own mount stagger until
+                // 2026-08-31, which is the same bug one level down: they
+                // animated behind this fade, finished before she arrived, and
+                // she scrolled onto a still inside a block that had just moved.
                 <motion.div
-                  initial={{ opacity: 0, y: 16 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, amount: 0.15 }}
-                  transition={{
-                    duration: prefersReducedMotion ? 0 : 0.5,
-                    ease: [0.16, 1, 0.3, 1],
+                  variants={{
+                    hidden: { opacity: 0, y: 16 },
+                    show: {
+                      opacity: 1,
+                      y: 0,
+                      transition: {
+                        duration: prefersReducedMotion ? 0 : 0.5,
+                        ease: [0.16, 1, 0.3, 1],
+                        staggerChildren: prefersReducedMotion ? 0 : 0.09,
+                        delayChildren: prefersReducedMotion ? 0 : 0.12,
+                      },
+                    },
                   }}
+                  initial="hidden"
+                  whileInView="show"
+                  viewport={{ once: true, amount: 0.15 }}
                   className="mb-5"
                 >
                   <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] leading-tight mb-3">
@@ -5740,12 +5755,20 @@ function RegisterPageContent() {
                     onScroll={transformCarousel.onScroll}
                     className="flex overflow-x-auto snap-x snap-mandatory gap-3 -mx-4 sm:-mx-6 px-4 sm:px-6 pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
                   >
-                    {transforms.map((t, i) => (
+                    {transforms.map((t) => (
                       <motion.div
                         key={t.image}
-                        initial={{ opacity: 0, y: 12 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.15 + i * 0.08 }}
+                        variants={{
+                          hidden: { opacity: 0, y: 12 },
+                          show: {
+                            opacity: 1,
+                            y: 0,
+                            transition: {
+                              duration: prefersReducedMotion ? 0 : 0.45,
+                              ease: [0.16, 1, 0.3, 1],
+                            },
+                          },
+                        }}
                         className="rounded-2xl bg-card border-2 border-[#E8DDD9] overflow-hidden shadow-sm shrink-0 snap-center w-[82%]"
                       >
                         {/* Image with red/green tint halves and matching labels */}
@@ -7094,8 +7117,8 @@ function RegisterPageContent() {
                   viewport must cut off nothing.
 
                   The framed line under it is her progress, not a second telling
-                  of Mary's story - the print's own caption already introduces
-                  her, and restating it 40px lower is the duplicate
+                  of the member's story - the print's own caption already
+                  introduces her, and restating it 40px lower is the duplicate
                   payoff the results screen's count-up was fixed for. The count
                   is `activeQuestionIndex + 1`, i.e. questions actually
                   answered; `stepIndex` would bill her for the reward screens

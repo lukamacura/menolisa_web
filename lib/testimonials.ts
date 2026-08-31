@@ -1,44 +1,103 @@
 /**
  * Social-proof and before/after data shared by the /register diagnosis screen
  * and the paywall (`components/SocialProof.tsx`). One copy so both surfaces
- * show the same woman, the same photo, and the same symptom copy rather than
- * drifting apart.
+ * show the same members, the same photos, and the same symptom copy rather
+ * than drifting apart.
  */
 import { PLAN_WEEKS } from "@/lib/pricing";
 
-// ─── Social proof: one woman, in her own words ──────────────────────────────
-// One square print of a member holding her plan, plus the story she sent.
-// It replaced a Day-1/Week-9 pair on 2026-08-30: two prints of the same face is
-// a transformation claim we cannot substantiate, and a photograph of a woman
-// holding *this app* on *her* phone is the only proof on the page that is also
-// a product shot.
+// ─── Social proof: the members, in their own words ──────────────────────────
+// One square print of a member, plus the story she sent. The
+// card rotates through this list (see `SocialProofPolaroid`), so the order here
+// is the order she meets them. Two prints of the *same* face would be a
+// transformation claim we cannot substantiate - these are different women, each
+// speaking only for herself, which is why every card carries its own name, age
+// and context rather than one caption over a slideshow.
 //
-// Rules for editing this block:
+// Rules for editing this list:
 //  - `story` is verbatim. It is a person's testimonial, not copy - tighten it
 //    with her, never in the repo.
 //  - `pullQuote` must be a sentence that also appears in `story`. It is a
 //    magazine pull-quote, not a second, stronger claim bolted on top.
 //  - Nothing here may assert a timeline, a weight lost or a symptom resolved
-//    that her own words do not. The copy this replaced said "finished her plan
-//    last week"; hers does not say she has finished.
-export const SOCIAL_PROOF = {
-  name: "Mary",
-  age: 49,
-  photo: "/proof/social.webp",
-  alt: "Mary, a MenoLisa member, holding her phone with her plan open",
+//    that her own words do not. The copy Mary's card replaced said "finished
+//    her plan last week"; hers does not say she has finished.
+//  - `alt` describes the photograph that exists, not the one we wish we had.
+//    Mary is holding her phone with the plan open; do not copy that sentence
+//    onto a print where nobody is holding anything.
+//  - **`draft: true` until her words are hers.** A face is a real person, and
+//    words we wrote under one are fabricated proof - the single most expensive
+//    thing to be caught doing on the one screen whose whole job is credibility.
+//    `getSocialProofMembers()` drops draft entries from production builds, so
+//    an unfinished card can be previewed in `npm run dev` and cannot ship.
+export type SocialProofMember = {
+  /** Stable key for the crossfade. Never rendered. */
+  id: string;
+  name: string;
+  age: number;
+  photo: string;
+  alt: string;
   /** One line under her name on the print - her own framing of how it started. */
-  context: "Menopause overnight, after a hysterectomy",
-  pullQuote:
-    "I finally feel like I have a plan instead of just trying to figure everything out on my own.",
-  // `PLAN_WEEKS` is interpolated rather than typed out as "8-week" so the quote
-  // can never name a plan length Stripe no longer sells. Same words today.
-  story: [
-    "I entered menopause suddenly after a hysterectomy, and I felt completely overwhelmed by all the symptoms I was dealing with. I was frustrated by how unprepared I was for such a challenging physical and emotional transition.",
-    `Then I discovered the MenoLisa app. I started asking questions, and for the first time, I began to understand what was actually happening to my body. I got a personalized ${PLAN_WEEKS}-week plan to help me work toward losing the 20 pounds I gained in the year after surgery.`,
-    "Because I was struggling with fatigue, I started with movement snacks but gradually moved to the beginner program from there. The habit tracker has been a game-changer\u2014it helps me stay consistent with the everyday choices that matter, from nutrition and movement to relaxation.",
-    "I finally feel like I have a plan instead of just trying to figure everything out on my own. I honestly don\u2019t think I could have stayed on track without MenoLisa.",
-  ],
+  context: string;
+  pullQuote: string;
+  story: string[];
+  /** Her words are not confirmed yet. Dev-only; never rendered in production. */
+  draft?: boolean;
 };
+
+export const SOCIAL_PROOF_MEMBERS: SocialProofMember[] = [
+  {
+    id: "mary",
+    name: "Mary",
+    age: 49,
+    photo: "/proof/social.webp",
+    alt: "Mary, a MenoLisa member, holding her phone with her plan open",
+    context: "Menopause overnight, after a hysterectomy",
+    pullQuote:
+      "I finally feel like I have a plan instead of just trying to figure everything out on my own.",
+    // `PLAN_WEEKS` is interpolated rather than typed out as "8-week" so the
+    // quote can never name a plan length Stripe no longer sells. Same words
+    // today.
+    story: [
+      "I entered menopause suddenly after a hysterectomy, and I felt completely overwhelmed by all the symptoms I was dealing with. I was frustrated by how unprepared I was for such a challenging physical and emotional transition.",
+      `Then I discovered the MenoLisa app. I started asking questions, and for the first time, I began to understand what was actually happening to my body. I got a personalized ${PLAN_WEEKS}-week plan to help me work toward losing the 20 pounds I gained in the year after surgery.`,
+      "Because I was struggling with fatigue, I started with movement snacks but gradually moved to the beginner program from there. The habit tracker has been a game-changer\u2014it helps me stay consistent with the everyday choices that matter, from nutrition and movement to relaxation.",
+      "I finally feel like I have a plan instead of just trying to figure everything out on my own. I honestly don\u2019t think I could have stayed on track without MenoLisa.",
+    ],
+  },
+  {
+    id: "sally",
+    name: "Sally",
+    age: 46,
+    photo: "/proof/social2.webp",
+    alt: "Sally, a MenoLisa member",
+    // Her own framing of how it started, condensed the way Mary's is. It stops
+    // short of the clinician on purpose: her story says "my doctor never
+    // brought it up" in her own words, which is hers to say, but printing it as
+    // our caption turns a member's experience into our claim about her care.
+    context: "Hot flashes and anxiety in her mid-40s, out of nowhere",
+    pullQuote:
+      "I don\u2019t feel like I just have to suffer through menopause anymore.",
+    story: [
+      "I was in my mid-40s when I suddenly started experiencing hot flashes, night sweats, and anxiety that seemed to come out of nowhere. I thought I was too young for menopause, and my doctor never brought it up.",
+      "Then I discovered MenoLisa and decided to start tracking my symptoms and learning more about what was happening. For the first time, I understood what could be behind my symptoms, what I could do to manage them, and\u2014most importantly\u2014how to advocate for myself when talking to my doctor about HRT.",
+      "I no longer feel confused or helpless when my symptoms show up. I understand my body better, I know what steps I can take, and I feel much more confident speaking up for myself.",
+      "I don\u2019t feel like I just have to suffer through menopause anymore. MenoLisa helped me take back control.",
+    ],
+  },
+];
+
+/**
+ * The members safe to show in this build. Draft entries - a real face with
+ * copy nobody has confirmed she said - are visible while developing and
+ * stripped from production. `process.env.NODE_ENV` is inlined identically on
+ * both sides of the render, so this cannot cause a hydration mismatch.
+ */
+export function getSocialProofMembers(): SocialProofMember[] {
+  const live = SOCIAL_PROOF_MEMBERS.filter((m) => !m.draft);
+  if (process.env.NODE_ENV === "production") return live;
+  return SOCIAL_PROOF_MEMBERS.length > 0 ? SOCIAL_PROOF_MEMBERS : live;
+}
 
 // ─── Before/after transformations, keyed by symptom ─────────────────────────
 // Each image in /public/testimonials is one side-by-side shot: left = the hard

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import Image from "next/image";
 import { motion, MotionConfig, useReducedMotion, type Variants } from "framer-motion";
 import { Check, ChevronDown, Star } from "lucide-react";
@@ -9,7 +9,7 @@ import { HighlightSweep } from "@/components/HighlightSweep";
 import { PLAN_WEEKS } from "@/lib/pricing";
 import {
   DEFAULT_SYMPTOM_TRANSFORM_IDS,
-  SOCIAL_PROOF,
+  getSocialProofMembers,
   getSymptomTransforms,
 } from "@/lib/testimonials";
 
@@ -45,6 +45,123 @@ const PAPER = "#FDF8F5";
 const PAPER_TRANSPARENT = "rgba(253, 248, 245, 0)";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
+
+/** How long one member holds the card before the next one fades in. */
+const ROTATE_MS = 5000;
+/** The crossfade itself. Long enough not to blink, short enough not to muddy. */
+const CROSSFADE_S = 0.6;
+
+/**
+ * Crossfades one slot of the card between members without moving anything.
+ *
+ * Every member's copy is rendered at once, stacked in a single CSS grid cell,
+ * and only `opacity` changes - so the slot is permanently as tall and as wide
+ * as its longest occupant and the swap costs the browser one composited layer
+ * per member, no layout, no reflow. That is the whole reason the print, the
+ * caption, the quote and the button label can change while the card around
+ * them does not so much as twitch: an `AnimatePresence` swap would collapse
+ * the slot to nothing between the two, and animating `height` would drag the
+ * note card, the divider and the footnote with it on every tick.
+ *
+ * The cost is that the inactive copy is in the DOM, so it is `aria-hidden` and
+ * inert - a screen reader gets exactly one testimonial, the visible one.
+ *
+ * `only` renders the active member alone, for the one slot where the stack
+ * would show: the expanded story, whose height is `auto` and would otherwise
+ * take the tallest story's height with a gap under the shorter one. Safe
+ * because rotation is paused for as long as the story is open.
+ */
+function Swap({
+  index,
+  items,
+  className,
+  cellClassName,
+  only = false,
+  still = false,
+  scale = false,
+}: {
+  index: number;
+  items: { key: string; node: ReactNode }[];
+  className?: string;
+  cellClassName?: string;
+  /** Render only the active member (see above). */
+  only?: boolean;
+  still?: boolean;
+  /** Add a hair of scale to the incoming copy. For the print only. */
+  scale?: boolean;
+}) {
+  const shown = only ? [items[index]] : items;
+  return (
+    <div className={cn("grid", className)}>
+      {shown.map((item, i) => {
+        const active = only || i === index;
+        return (
+          <motion.div
+            key={item.key}
+            style={{ gridArea: "1 / 1" }}
+            initial={false}
+            animate={{ opacity: active ? 1 : 0, scale: scale && !active ? 1.03 : 1 }}
+            transition={still ? { duration: 0 } : { duration: CROSSFADE_S, ease: EASE }}
+            aria-hidden={active ? undefined : true}
+            className={cn(cellClassName, !active && "pointer-events-none")}
+          >
+            {item.node}
+          </motion.div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Which member the card is showing, and when it is allowed to move on.
+ *
+ * It holds still whenever moving would interrupt her rather than reward her:
+ * while she has the full story open, while the pointer or keyboard focus is
+ * inside the card, while the tab is in the background, and permanently for
+ * anyone who asked for reduced motion - for whom the card is simply the first
+ * member's, exactly as it was before this rotated. Any of those resets the
+ * clock rather than resuming a part-spent one, so leaving the card always
+ * buys a full read of the next woman.
+ */
+function useMemberRotation(count: number, frozen: boolean, still: boolean) {
+  const [index, setIndex] = useState(0);
+  const [hidden, setHidden] = useState(false);
+  const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    const onVisibility = () => setHidden(document.visibilityState === "hidden");
+    onVisibility();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+
+  const running = count > 1 && !frozen && !still && !paused && !hidden;
+
+  useEffect(() => {
+    if (!running) return;
+    const id = window.setInterval(
+      () => setIndex((i) => (i + 1) % count),
+      ROTATE_MS
+    );
+    return () => window.clearInterval(id);
+  }, [running, count]);
+
+  // A member removed under us (a draft entry stripped from a production build)
+  // must never leave the card pointing at nothing.
+  const safeIndex = index % Math.max(count, 1);
+
+  return {
+    index: safeIndex,
+    running,
+    hold: {
+      onPointerEnter: () => setPaused(true),
+      onPointerLeave: () => setPaused(false),
+      onFocusCapture: () => setPaused(true),
+      onBlurCapture: () => setPaused(false),
+    },
+  };
+}
 
 const stage: Variants = {
   hidden: {},
@@ -91,22 +208,39 @@ function Tape({ className }: { className: string }) {
 }
 
 /**
- * The one human face on the page. Everything around it is her own numbers and
- * her own plan; this is the only block that says someone else already walked
- * it. Deliberately one woman rather than a wall of five-star cards - a wall
- * reads as marketing, one print reads as a person.
+ * The human faces on the page. Everything around it is her own numbers and her
+ * own plan; this is the only block that says someone else already walked it.
+ * Deliberately one woman at a time rather than a wall of five-star cards - a
+ * wall reads as marketing, one print reads as a person - and the card rotates
+ * through `getSocialProofMembers()` so she meets more than one of them without
+ * the block growing a second inch.
  *
  * Three parts, in the order she reads them:
  *
- *   1. the print - a square photo, taped to the page, of a member holding the
- *      app. Proof and product shot in one frame, which is why it is the hero
- *      and why it is never cropped to a portrait.
+ *   1. the print - a square photo, taped to the page, of a member. Mary's is
+ *      also a product shot, taken holding the app, which is why the print is
+ *      the hero of the block and why it is never cropped to a portrait.
  *   2. the quote - one sentence, big. If she reads nothing else on this block,
  *      this is the sentence she leaves with.
  *   3. the story - the full testimonial, folded to four lines behind a fade.
  *      Long-form proof converts the sceptic and costs the scanner nothing, but
  *      only while it is folded: 200 words of body copy dropped into a paywall
  *      scroll is a wall she scrolls past, not a story she reads.
+ *
+ * **What rotates and what does not.** The paper, the tape, the stars, the
+ * divider, the button and the footnote are furniture and never move; only the
+ * print, the name, the caption, the quote, the story and the button's name
+ * change, and they all change together on one clock so the card reads as one
+ * woman being replaced by another rather than six independent tickers. Every
+ * changing slot is a `<Swap>`, i.e. a fixed-size grid cell crossfading on
+ * `opacity` alone - see that component for why the alternatives (an
+ * `AnimatePresence` swap, an animated `height`) both move the page.
+ *
+ * It stops when moving would interrupt her: story open, pointer or focus
+ * inside the card, tab in the background, or reduced motion - see
+ * `useMemberRotation`. With one member (a production build where every other
+ * entry is still `draft`) there is no timer at all and this is byte-for-byte
+ * the card it was before.
  *
  * Reduced motion is honored through `<MotionConfig reducedMotion="user">`,
  * which drops the transform half of every animation below and keeps the fades.
@@ -115,7 +249,8 @@ function Tape({ className }: { className: string }) {
  * - a different `initial`, a variant swapped for `undefined`, an element
  * rendered only one way - is a guaranteed hydration mismatch. The hook and the
  * `reduced` prop may drive `transition` (never serialized, never compared) and
- * nothing else. Do not reintroduce a `still ? ... : ...` on a rendered prop.
+ * the rotation timer, and nothing else. Do not reintroduce a
+ * `still ? ... : ...` on a rendered prop.
  */
 export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) {
   const prefersReducedMotion = useReducedMotion();
@@ -123,6 +258,9 @@ export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) 
 
   const [open, setOpen] = useState(false);
   const storyId = useId();
+
+  const members = useMemo(() => getSocialProofMembers(), []);
+  const { index, hold } = useMemberRotation(members.length, open, still);
 
   return (
     <MotionConfig reducedMotion="user">
@@ -132,11 +270,22 @@ export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) 
         whileInView="show"
         viewport={{ once: true, amount: 0.2 }}
         className="mb-5"
+        {...hold}
       >
         <motion.div variants={rise} className="flex items-end gap-1.5 px-1">
-          <p className="flex-1 font-script text-2xl sm:text-3xl leading-tight text-[#3D3D3D]">
-            This is {SOCIAL_PROOF.name}. She started right where you are.
-          </p>
+          <Swap
+            index={index}
+            still={still}
+            className="flex-1"
+            items={members.map((m) => ({
+              key: m.id,
+              node: (
+                <p className="font-script text-2xl sm:text-3xl leading-tight text-[#3D3D3D]">
+                  This is {m.name}. She started right where you are.
+                </p>
+              ),
+            }))}
+          />
           <CaptionArrow className="relative z-10 w-8 h-10 sm:w-9 sm:h-11 shrink-0 -mb-1 text-primary" />
         </motion.div>
 
@@ -144,7 +293,10 @@ export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) 
           {/* The print. Square, so it gets a square print's frame: even borders
               and a deep chin for the caption. It sits above the note card and
               overlaps it, which is what makes the two read as one object lying
-              on a page rather than two stacked components. */}
+              on a page rather than two stacked components. It lands once, on
+              view; the women after the first arrive by crossfade inside the
+              frame, because re-dropping the print every five seconds would
+              turn one photograph handed to you into a slideshow. */}
           <motion.figure
             variants={drop}
             className="relative z-10 mx-auto w-[228px] sm:w-[248px] rounded-[3px] bg-white p-2.5 pb-1.5 shadow-[0_18px_34px_-14px_rgba(0,0,0,0.45)] ring-1 ring-black/5"
@@ -153,12 +305,28 @@ export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) 
             <Tape className="-top-2.5 -right-4 rotate-[19deg]" />
 
             <div className="relative aspect-square overflow-hidden rounded-[2px] bg-[#E8DDD9] ring-1 ring-black/[0.07]">
-              <Image
-                src={SOCIAL_PROOF.photo}
-                alt={SOCIAL_PROOF.alt}
-                fill
-                sizes="230px"
-                className="object-cover"
+              {/* Every print is mounted, so the next one is decoded long
+                  before its turn - a crossfade into an image that has not
+                  loaded is a grey square, on the one element that is the
+                  proof. */}
+              <Swap
+                index={index}
+                still={still}
+                scale
+                className="absolute inset-0"
+                cellClassName="relative"
+                items={members.map((m) => ({
+                  key: m.id,
+                  node: (
+                    <Image
+                      src={m.photo}
+                      alt={m.alt}
+                      fill
+                      sizes="248px"
+                      className="object-cover"
+                    />
+                  ),
+                }))}
               />
               {/* One slow gloss across the print as it settles - the light
                   moving on a photograph you have just picked up. Once, on view,
@@ -174,12 +342,23 @@ export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) 
             </div>
 
             <figcaption className="px-1 pt-2 pb-0.5 text-center">
-              <span className="block font-script text-xl leading-none text-[#3D3D3D]">
-                {SOCIAL_PROOF.name}, {SOCIAL_PROOF.age}
-              </span>
-              <span className="mt-1.5 block text-[9.5px] font-semibold uppercase leading-[1.4] tracking-[0.07em] text-[#9A9A9A]">
-                {SOCIAL_PROOF.context}
-              </span>
+              <Swap
+                index={index}
+                still={still}
+                items={members.map((m) => ({
+                  key: m.id,
+                  node: (
+                    <>
+                      <span className="block font-script text-xl leading-none text-[#3D3D3D]">
+                        {m.name}, {m.age}
+                      </span>
+                      <span className="mt-1.5 block text-[9.5px] font-semibold uppercase leading-[1.4] tracking-[0.07em] text-[#9A9A9A]">
+                        {m.context}
+                      </span>
+                    </>
+                  ),
+                }))}
+              />
             </figcaption>
           </motion.figure>
 
@@ -197,18 +376,29 @@ export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) 
               ))}
             </motion.div>
 
-            <motion.p
-              variants={rise}
-              className="mt-2.5 text-balance text-center text-[17px] sm:text-lg font-bold leading-[1.4] text-[#3D3D3D]"
-            >
-              &ldquo;{SOCIAL_PROOF.pullQuote}&rdquo;
-            </motion.p>
+            <motion.div variants={rise} className="mt-2.5">
+              <Swap
+                index={index}
+                still={still}
+                items={members.map((m) => ({
+                  key: m.id,
+                  node: (
+                    <p className="text-balance text-center text-[17px] sm:text-lg font-bold leading-[1.4] text-[#3D3D3D]">
+                      &ldquo;{m.pullQuote}&rdquo;
+                    </p>
+                  ),
+                }))}
+              />
+            </motion.div>
 
             <div className="mx-auto my-3 h-px w-12 bg-[#E8DDD9]" />
 
             {/* The story, collapsed. framer measures `height: "auto"`, so the
                 paragraphs stay in the DOM in both states - a screen reader and a
-                crawler get the whole testimonial either way. */}
+                crawler get the whole testimonial either way. `only={open}`
+                keeps the expanded card honest about its own height: the stack
+                is as tall as the longest story, which is invisible behind an
+                86px clamp and a gap of dead paper once she opens it. */}
             <motion.div
               id={storyId}
               initial={false}
@@ -216,11 +406,21 @@ export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) 
               transition={still ? { duration: 0 } : { duration: 0.5, ease: EASE }}
               className="relative overflow-hidden"
             >
-              <div className="space-y-2.5 text-[13.5px] leading-[1.65] text-[#5A5A5A]">
-                {SOCIAL_PROOF.story.map((para) => (
-                  <p key={para.slice(0, 24)}>{para}</p>
-                ))}
-              </div>
+              <Swap
+                index={index}
+                still={still}
+                only={open}
+                items={members.map((m) => ({
+                  key: m.id,
+                  node: (
+                    <div className="space-y-2.5 text-[13.5px] leading-[1.65] text-[#5A5A5A]">
+                      {m.story.map((para) => (
+                        <p key={para.slice(0, 24)}>{para}</p>
+                      ))}
+                    </div>
+                  ),
+                }))}
+              />
               <motion.span
                 aria-hidden="true"
                 animate={{ opacity: open ? 0 : 1 }}
@@ -239,7 +439,21 @@ export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) 
               aria-controls={storyId}
               className="mx-auto mt-3 flex items-center gap-1.5 rounded-full border border-[#E8DDD9] bg-white px-3.5 py-1.5 text-[12.5px] font-bold text-[#5A5A5A] shadow-xs transition-colors hover:bg-[#F7F0EC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
-              {open ? "Show less" : `Read ${SOCIAL_PROOF.name}’s full story`}
+              {/* Swapped rather than interpolated so the pill does not resize
+                  under her thumb mid-crossfade: the label slot is always as
+                  wide as the longest name. */}
+              {open ? (
+                "Show less"
+              ) : (
+                <Swap
+                  index={index}
+                  still={still}
+                  items={members.map((m) => ({
+                    key: m.id,
+                    node: <span>Read {m.name}&rsquo;s full story</span>,
+                  }))}
+                />
+              )}
               <motion.span
                 animate={{ rotate: open ? 180 : 0 }}
                 transition={still ? { duration: 0 } : { duration: 0.3, ease: EASE }}
@@ -250,12 +464,20 @@ export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) 
             </button>
           </motion.div>
 
-          <motion.p
-            variants={rise}
-            className="mt-2 px-1 text-center text-[10px] leading-snug text-[#9A9A9A]"
-          >
-            {SOCIAL_PROOF.name}&rsquo;s own words. Individual experiences vary.
-          </motion.p>
+          <motion.div variants={rise} className="mt-2 px-1">
+            <Swap
+              index={index}
+              still={still}
+              items={members.map((m) => ({
+                key: m.id,
+                node: (
+                  <p className="text-center text-[10px] leading-snug text-[#9A9A9A]">
+                    {m.name}&rsquo;s own words. Individual experiences vary.
+                  </p>
+                ),
+              }))}
+            />
+          </motion.div>
         </div>
       </motion.div>
     </MotionConfig>

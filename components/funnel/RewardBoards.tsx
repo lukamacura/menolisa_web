@@ -103,6 +103,19 @@ function RewardPaper({
 const LINE_STEP = 0.13;
 
 /**
+ * The grey label strip that heads a section on a board.
+ *
+ * It is what makes a payoff read as a filled-in document rather than a card:
+ * every block on <FirstSessionBoard /> and <StartingPointBoard /> opens with
+ * one, and every row under it carries a value in the same right-hand column.
+ * <FirstSessionBoard /> uses it free-standing for the warm-up and cool-down
+ * bookends, so that one adds its own rounding; <StartingPointBoard /> uses it
+ * as the head of a bordered block, where rounding is the block's job.
+ */
+const SECTION_BAR =
+  "flex items-center justify-between gap-2 bg-[#F3EDE9] px-2 py-[3px] text-[10.5px] font-bold uppercase tracking-wide text-[#8C8279]";
+
+/**
  * One line of a board, written in.
  *
  * The stagger is the whole effect: four rows arriving together is a card, four
@@ -252,6 +265,16 @@ function Signoff({ delay, children }: { delay: number; children: React.ReactNode
  * thing she does tonight. Ranking by daily cost is a statement about the
  * symptom (SYMPTOM_IMPACT, the same model behind her score), never a
  * measurement of her.
+ *
+ * **Laid out as a ledger, 2026-08-31.** The content above was right and the
+ * shape was not: boards 2 and 3 are ruled lists where every row is an identity
+ * on the left and a value on the right, bracketed by grey SECTION_BAR strips,
+ * and this one was four chips over two loose paragraphs with a green box
+ * stapled underneath. Same three beats, now in that idiom - hairline-ruled
+ * rows each ending in a boxed rank (#1 is the START HERE chip, which is the
+ * value this screen exists to produce), then two headed blocks for the why and
+ * the payload. Nothing was added or removed to do it; the prevalence line just
+ * moved inside the block it is a footnote to.
  */
 export type StartingPointRow = { id: string; label: string; Icon: LucideIcon };
 
@@ -276,33 +299,36 @@ export function StartingPointBoard({
 
   /* The reveal, written out rather than derived from a running index.
    *
-   * This board is four blocks that have to arrive in a reading order - the list,
-   * then the verdict on the list, then why, then the thing she does about it -
-   * and a shared `base + i * LINE_STEP` cursor put two pairs of them on the same
-   * frame: the START HERE chip landed with the mechanism line, and the payload
-   * landed with the prevalence line. Two things moving at once on a 320px board
-   * is one thing nobody reads.
+   * This board is three sections that have to arrive in a reading order - the
+   * ranking, the verdict on the ranking, then the thing she does about it - and
+   * a shared `base + i * LINE_STEP` cursor put pairs of them on the same frame.
+   * Two things moving at once on a 320px board is one thing nobody reads.
    *
    * The steps are tighter than the other two boards' 0.13 (0.10 between rows,
-   * and the rows are single-line now) because the meter has already spent 1.7s
-   * in front of this. The payload is legible at ~1.0s and the whole page has
+   * and the rows are single-line) because the meter has already spent 1.7s in
+   * front of this. The payload is legible at ~1.0s and the whole page has
    * settled by ~1.2s, against ~1.3s for <TrainingWeekBoard />.
    */
   const ROWS_BASE = 0.14;
   const ROW_STEP = 0.1;
   const rowsEnd = ROWS_BASE + rows.length * ROW_STEP;
   const chipAt = rowsEnd;
-  const mechAt = rowsEnd + 0.14;
-  const pctAt = mechAt + 0.11;
+  const whyBarAt = rowsEnd + 0.12;
+  const mechAt = whyBarAt + 0.09;
+  const pctAt = mechAt + 0.09;
   // The payload gets a beat of air in front of it. It is the only block on the
   // board she is asked to act on, and arriving on the same cadence as the rows
   // above would file it as one more line of the same list.
-  const moveAt = pctAt + 0.18;
+  const moveAt = pctAt + 0.16;
   const signAt = moveAt + 0.22;
 
   return (
     <RewardPaper title="Where to start" meta="worst first">
-      <div className="mt-2 space-y-1">
+      {/* Section 1 - the ranking, as a ruled list. Hairlines and a boxed value
+          on every row are what make this read as a filled-in form rather than a
+          stack of chips; it is the same skeleton as <FirstSessionBoard />'s
+          movement rows, which is the point. */}
+      <div className="mt-1.5">
         {rows.map((row, n) => {
           const isTop = n === 0;
           return (
@@ -310,17 +336,17 @@ export function StartingPointBoard({
               key={row.id}
               i={n}
               delay={ROWS_BASE + n * ROW_STEP}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 border-b border-dashed border-[#EFE6E1] py-[3px] last:border-0"
             >
               <span
                 className={cn(
-                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border",
+                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border",
                   isTop
                     ? "border-primary bg-primary text-white"
                     : "border-[#E8DDD9] bg-white text-[#B5ADA9]"
                 )}
               >
-                <row.Icon className="h-4 w-4" strokeWidth={isTop ? 2.2 : 1.9} aria-hidden />
+                <row.Icon className="h-3.5 w-3.5" strokeWidth={isTop ? 2.2 : 1.9} aria-hidden />
               </span>
               <span
                 className={cn(
@@ -332,7 +358,7 @@ export function StartingPointBoard({
               </span>
               {isTop ? (
                 /* The one beat of theatre on the board, and it lands after all
-                   four names have arrived — the eye reads the list, then the
+                   four names have arrived - the eye reads the list, then the
                    list is decided. A chip that animated in with its own row
                    would just be a label. */
                 <motion.span
@@ -348,8 +374,8 @@ export function StartingPointBoard({
                   Start here
                 </motion.span>
               ) : (
-                <span className="shrink-0 text-[10.5px] font-extrabold tabular-nums text-[#C6BDB9]">
-                  {n + 1}
+                <span className="shrink-0 rounded-md border border-[#E0D5D0] bg-white px-1.5 py-[1px] text-[10.5px] font-extrabold tabular-nums text-[#8C8279]">
+                  #{n + 1}
                 </span>
               )}
             </Line>
@@ -357,28 +383,48 @@ export function StartingPointBoard({
         })}
       </div>
 
-      {/* Why the top one is the top one, then the crowd — in that order and at
-          that weight. The physiology is the argument; the percentage is the
-          reassurance underneath it. */}
+      {/* Section 2 - why the top one is the top one, then the crowd, in that
+          order and at that weight. The physiology is the argument; the
+          percentage is the reassurance underneath it, on its own ruled line so
+          it reads as a footnote to the block rather than a second claim. */}
       {(mechanism || top) && (
-        <div className="mt-2 border-t border-dashed border-[#E0D5D0] pt-1.5">
-          {mechanism && (
-            <Line i={0} delay={mechAt} className="text-[11.5px] leading-snug text-[#5A5A5A]">
-              {mechanism}
-            </Line>
-          )}
-          {top && (
-            <Line i={0} delay={pctAt} className="mt-1 text-[10px] leading-snug text-[#9A9A9A]">
-              {topPct}% of {cohort} report {top.label.toLowerCase()} too.
-            </Line>
-          )}
+        <div className="mt-2 overflow-hidden rounded-xl border border-[#E8DDD9]">
+          <Line i={0} delay={whyBarAt} className={cn(SECTION_BAR, "px-2.5")}>
+            <span className="truncate">Why it&apos;s first</span>
+          </Line>
+          <div className="px-2.5 py-1.5">
+            {mechanism && (
+              <Line i={0} delay={mechAt} className="text-[11.5px] leading-snug text-[#5A5A5A]">
+                {mechanism}
+              </Line>
+            )}
+            {top && (
+              <Line
+                i={0}
+                delay={pctAt}
+                className={cn(
+                  "text-[10px] leading-snug text-[#9A9A9A]",
+                  mechanism && "mt-1 border-t border-dashed border-[#EFE6E1] pt-1"
+                )}
+              >
+                <span className="font-bold tabular-nums text-[#7A7A7A]">{topPct}%</span> of {cohort}{" "}
+                report {top.label.toLowerCase()} too.
+              </Line>
+            )}
+          </div>
         </div>
       )}
 
-      {/* The payload. It is the only block on any of the three boards that asks
-          her to do something rather than showing her something, so it is the
-          only one drawn as a panel — and it arrives last, on its own spring,
-          because it is the reason the screen exists. */}
+      {/* Section 3 - the payload, in the same headed-block idiom as section 2 so
+          the board reads as one document with three parts. It is the only block
+          on any of the three boards that asks her to do something rather than
+          showing her something, so it arrives last, on its own spring, and it
+          is the one block drawn in green.
+
+          Green rather than the primary tint the rest of the board uses is the
+          funnel's colour rule read straight: green is the gap and the thing
+          that closes it, and this is the first moment in the funnel that
+          anything closes any of it. */}
       {firstMove && (
         <motion.div
           initial={reduced ? false : { opacity: 0, y: 8, scale: 0.985 }}
@@ -388,25 +434,24 @@ export function StartingPointBoard({
               ? { duration: 0 }
               : { type: "spring", stiffness: 300, damping: 24, delay: moveAt }
           }
-          className="mt-2 rounded-xl border border-[#16A34A]/30 bg-[#16A34A]/[0.07] px-3 py-2"
+          className="mt-2 overflow-hidden rounded-xl border border-[#16A34A]/30"
         >
-          <p className="flex items-center gap-1.5 text-[9.5px] font-extrabold uppercase tracking-[0.12em] text-[#15803D]">
-            <Moon className="h-3 w-3" strokeWidth={2.6} aria-hidden />
-            Do this tonight
-            <span className="ml-auto rounded bg-[#16A34A] px-1.5 py-[1px] text-[9px] tracking-normal text-white">
+          <div className="flex items-center justify-between gap-2 bg-[#16A34A]/[0.12] px-2.5 py-[3px] text-[10.5px] font-bold uppercase tracking-wide text-[#15803D]">
+            <span className="flex min-w-0 items-center gap-1">
+              <Moon className="h-3 w-3 shrink-0" strokeWidth={2.6} aria-hidden />
+              <span className="truncate">Do this tonight</span>
+            </span>
+            <span className="shrink-0 rounded bg-[#16A34A] px-1.5 py-[1px] text-[9.5px] font-extrabold tracking-normal text-white">
               Free
             </span>
-          </p>
-          <p className="mt-1 text-[12.5px] font-bold leading-snug text-[#3D3D3D]">{firstMove.do}</p>
-          <p className="mt-0.5 text-[11px] leading-snug text-[#5A5A5A]">{firstMove.why}</p>
+          </div>
+          <div className="bg-[#16A34A]/[0.05] px-2.5 py-1.5">
+            <p className="text-[12.5px] font-bold leading-snug text-[#3D3D3D]">{firstMove.do}</p>
+            <p className="mt-0.5 text-[11px] leading-snug text-[#5A5A5A]">{firstMove.why}</p>
+          </div>
         </motion.div>
       )}
 
-      {/* The payload panel above is green rather than the primary tint the rest
-          of the board uses, and that is the funnel's colour rule read straight:
-          green is the gap and the thing that closes it, and this is the first
-          moment in the funnel that anything closes any of it. The sign-off
-          below stays the shared pill, so the boards still end the same way. */}
       <Signoff delay={signAt}>
         One thing, tonight.{" "}
         {rest > 0 ? (
@@ -567,8 +612,7 @@ export function FirstSessionBoard({
   poolCount: number;
   sessionsTotal: string;
 }) {
-  const bookendCls =
-    "flex items-center justify-between gap-2 rounded-md bg-[#F3EDE9] px-2 py-[3px] text-[10.5px] font-bold uppercase tracking-wide text-[#8C8279]";
+  const bookendCls = cn(SECTION_BAR, "rounded-md");
   let i = 0;
   return (
     <RewardPaper title={heading} meta={minutesLabel}>

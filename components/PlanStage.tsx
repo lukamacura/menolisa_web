@@ -128,8 +128,29 @@ const BOTTOM_ROLL_CLIP = `inset(${BOTTOM_ROLL_TOP_PCT}% 0 0 0)`;
 
 /** How long the scroll takes to open, in ms. Long enough to read as paper
     rather than a swipe, short enough that act 1 still has its full 3.4s hold to
-    write her name in afterwards. */
-const UNROLL_MS = 780;
+    write her name in afterwards.
+
+    Raised from 780 on 2026-08-31, with ARM_AMOUNT and UNROLL_DELAY_MS: at 780
+    against a 0.3 threshold the scroll had already flicked open by the time she
+    had finished scrolling to it, which is the same "arrived on a still" problem
+    the entrance was built to fix, one step earlier. */
+const UNROLL_MS = 1000;
+
+/** How much of the scroll has to be on screen before it opens.
+
+    0.3 fired on a sliver - roughly the moment the top roll cleared the fold,
+    with the paper still under her thumb - so the unroll played at the bottom
+    edge of the screen while she was still scrolling towards it. Half the
+    illustration is ~255px, which puts the paper properly in front of her before
+    it does anything. It has to stay reachable on the shortest viewport the
+    funnel supports (375x557, less the fixed CTA), which it is by ~200px. */
+const ARM_AMOUNT = 0.5;
+
+/** A held beat between arriving and opening. Nothing on screen moves during it,
+    which is the point: an animation that starts on the same frame the element
+    crosses the threshold reads as triggered, and this one has to read as
+    something she came upon. */
+const UNROLL_DELAY_MS = 220;
 
 /** How far the bottom roll sits above its resting place while the scroll is
     still shut, as a % of the illustration's height. It stops at 21% down, which
@@ -191,7 +212,7 @@ export function PlanStage({
       what pauses the act clock. And re-sealing the scroll every time she
       scrolls off it would turn the one personal moment on the page into a loop.
       Two IntersectionObservers on one element is what `once` is for. */
-  const armed = useInView(stageRef, { once: true, amount: 0.3 });
+  const armed = useInView(stageRef, { once: true, amount: ARM_AMOUNT });
 
   /** True once the paper is flat. Under reduced motion there is no unroll to
       wait on, so it derives straight off `armed` - which is also why the effect
@@ -210,6 +231,7 @@ export function PlanStage({
     }
     const controls = animate(unroll, 1, {
       duration: UNROLL_MS / 1000,
+      delay: UNROLL_DELAY_MS / 1000,
       // Gentle in, steady through, soft settle. The ease used everywhere else
       // in this file ([0.16, 1, 0.3, 1]) is deliberately front-loaded, which is
       // right for UI that should feel instant and wrong for paper: it spent 80%
