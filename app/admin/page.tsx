@@ -1160,9 +1160,14 @@ function SaveState({
  * One amber underline you type a number into, and nothing else.
  *
  * No box, no ring, no outline on focus — the rule under the figure thickens
- * into {@link PALETTE} amber and that is the whole focus state. `outline-none`
- * plus `focus:ring-0` kills both the browser default and Tailwind's, which is
- * what made the old bordered version look like a form field.
+ * into {@link PALETTE} amber and that is the whole focus state.
+ *
+ * Three things have to be turned off for that, not one. `outline-none` kills
+ * the browser default and `focus:ring-0` Tailwind's, but the pink one comes
+ * from **`input:focus` in `app/globals.css`**, which paints a 2px
+ * `var(--ring)` box-shadow on every input in the app. An element selector
+ * loses to a class, so `focus:[box-shadow:none]` overrides it here without
+ * touching the funnel and login fields that rule was written for.
  */
 function SpendInput({
   day,
@@ -1192,7 +1197,7 @@ function SpendInput({
         inputMode="decimal"
         placeholder="0"
         aria-label={`Ad spend for ${dayLabel(day)}`}
-        className={`w-full min-w-0 border-0 border-b border-[var(--spend-line)] bg-transparent py-0.5 font-semibold tabular-nums text-[var(--spend-deep)] outline-none transition-colors placeholder:font-normal placeholder:text-[var(--ink-3)] hover:border-[var(--spend)]/60 focus:border-b-2 focus:border-[var(--spend)] focus:outline-none focus:ring-0 ${size}`}
+        className={`w-full min-w-0 border-0 border-b border-[var(--spend-line)] bg-transparent py-0.5 font-semibold tabular-nums text-[var(--spend-deep)] shadow-none outline-none transition-colors placeholder:font-normal placeholder:text-[var(--ink-3)] hover:border-[var(--spend)]/60 focus:border-b-2 focus:border-[var(--spend)] focus:outline-none focus:ring-0 focus:[box-shadow:none] ${size}`}
       />
     </label>
   );
@@ -1417,6 +1422,30 @@ function CashChart({ revenue, spend }: { revenue: number[]; spend: number[] }) {
     }
   }
 
+  /*
+   * The band, as one polygon per contiguous ahead/behind run rather than one
+   * per day. Abutting polygons antialias into a hairline seam along every
+   * shared edge, so 29 of them drew 28 faint vertical stripes across the fill —
+   * reading as structure in data that has none. The sign only changes at a
+   * crossing, so in practice this is one or two shapes.
+   */
+  const bands: { ahead: boolean; from: number; to: number }[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    const ahead = cumRev[i + 1] >= cumSpend[i + 1];
+    const last = bands[bands.length - 1];
+    if (last && last.ahead === ahead) last.to = i + 1;
+    else bands.push({ ahead, from: i, to: i + 1 });
+  }
+  const bandPoints = ({ from, to }: { from: number; to: number }) => {
+    const top: string[] = [];
+    const bottom: string[] = [];
+    for (let i = from; i <= to; i++) {
+      top.push(`${x(i).toFixed(1)},${y(cumRev[i]).toFixed(1)}`);
+      bottom.unshift(`${x(i).toFixed(1)},${y(cumSpend[i]).toFixed(1)}`);
+    }
+    return [...top, ...bottom].join(" ");
+  };
+
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
@@ -1424,22 +1453,44 @@ function CashChart({ revenue, spend }: { revenue: number[]; spend: number[] }) {
       role="img"
       aria-label={`Running total over 30 days: ${money(a)} collected against ${money(b)} of ad spend.`}
     >
+      {/*
+       * `gradientUnits="userSpaceOnUse"` is not optional here. The band is 29
+       * separate polygons, and under the default objectBoundingBox each one
+       * rescales the ramp to its own height — so a tall segment and a short one
+       * shade completely differently and the fill comes out as vertical stripes
+       * that look like erratic data. In user space every segment samples the
+       * same ramp, top of plot to baseline, and the band reads as one wash.
+       */}
       <defs>
-        <linearGradient id="cashAhead" x1="0" y1="0" x2="0" y2="1">
+        <linearGradient
+          id="cashAhead"
+          gradientUnits="userSpaceOnUse"
+          x1={0}
+          y1={PADT}
+          x2={0}
+          y2={H - PADB}
+        >
           <stop offset="0%" stopColor="var(--cash)" stopOpacity="0.22" />
           <stop offset="100%" stopColor="var(--cash)" stopOpacity="0.06" />
         </linearGradient>
-        <linearGradient id="cashBehind" x1="0" y1="0" x2="0" y2="1">
+        <linearGradient
+          id="cashBehind"
+          gradientUnits="userSpaceOnUse"
+          x1={0}
+          y1={PADT}
+          x2={0}
+          y2={H - PADB}
+        >
           <stop offset="0%" stopColor="var(--stop)" stopOpacity="0.2" />
           <stop offset="100%" stopColor="var(--stop)" stopOpacity="0.05" />
         </linearGradient>
       </defs>
       <line x1={PADL} y1={y(0)} x2={W - PADR} y2={y(0)} stroke="var(--line)" strokeWidth={1} />
-      {Array.from({ length: n - 1 }, (_, i) => (
+      {bands.map((b) => (
         <polygon
-          key={i}
-          points={`${x(i)},${y(cumRev[i])} ${x(i + 1)},${y(cumRev[i + 1])} ${x(i + 1)},${y(cumSpend[i + 1])} ${x(i)},${y(cumSpend[i])}`}
-          fill={cumRev[i + 1] >= cumSpend[i + 1] ? "url(#cashAhead)" : "url(#cashBehind)"}
+          key={b.from}
+          points={bandPoints(b)}
+          fill={b.ahead ? "url(#cashAhead)" : "url(#cashBehind)"}
         />
       ))}
       {crossAt !== null && (
