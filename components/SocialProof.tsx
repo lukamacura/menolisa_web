@@ -8,6 +8,8 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type FocusEvent as ReactFocusEvent,
+  type PointerEvent as ReactPointerEvent,
   type TouchEvent as ReactTouchEvent,
 } from "react";
 import Image from "next/image";
@@ -57,18 +59,34 @@ const PAPER_TRANSPARENT = "rgba(253, 248, 245, 0)";
 const EASE = [0.22, 1, 0.36, 1] as const;
 
 /**
- * How long one member holds the card before the next one fades in.
+ * How long one member holds the card before the next one fades in, folded.
  *
  * Eight seconds, not five. The slot she is actually reading is the pull quote
  * - a full sentence, set at 17px, above a name, an age and a line of context -
  * and five seconds is a glance, not a read. For the audience this card is
  * written for it was fast enough to swap *mid-sentence*, which does not read
- * as a second woman arriving; it reads as the page having lost her place. The
- * cost of the longer hold is that fewer women reach the third member on the
- * clock alone, and that is precisely what the dots below are for: they say how
- * many there are and let her go and get them.
+ * as a second woman arriving; it reads as the page having lost her place.
  */
 const ROTATE_MS = 8000;
+
+/**
+ * And how long it holds with the full story open.
+ *
+ * Opening a story used to stop the card dead, forever - which sounds
+ * considerate and is not: the one woman who has shown she wants to read these
+ * is the one the card then guarantees never meets the other two. So it keeps
+ * going, three times slower.
+ *
+ * **This number is a reading-speed bet and it is the weakest thing on the
+ * block.** The stories run 600-900 characters; at the 200 wpm a 45-60 audience
+ * reads unfamiliar prose at, that is 40-60 seconds, so 25 will move the card
+ * on a woman who is still in paragraph three - the exact mid-sentence swap
+ * `ROTATE_MS` was raised to avoid. It is set low deliberately, because the
+ * cost of being wrong is asymmetric: too slow and she simply reads on and taps
+ * a dot, too fast and she loses her place. Raise it to 45000 the moment
+ * anything suggests women are reading to the end.
+ */
+const ROTATE_OPEN_MS = 25000;
 /** The crossfade itself. Long enough not to blink, short enough not to muddy. */
 const CROSSFADE_S = 0.6;
 
@@ -120,7 +138,13 @@ function Swap({
           <motion.div
             key={item.key}
             style={{ gridArea: "1 / 1" }}
-            initial={false}
+            /* `only` renders one node, so a member change is an unmount and a
+               remount rather than two stacked opacities - which without an
+               enter animation is a hard cut, and the card now advances
+               underneath an open story. Safe to branch on: `only` is passed
+               `open`, which is `false` on the server and on the first client
+               render, so the serialized `initial` is the same either way. */
+            initial={only ? { opacity: 0 } : false}
             animate={{ opacity: active ? 1 : 0, scale: scale && !active ? 1.03 : 1 }}
             transition={still ? { duration: 0 } : { duration: CROSSFADE_S, ease: EASE }}
             aria-hidden={active ? undefined : true}
@@ -138,12 +162,28 @@ function Swap({
  * Which member the card is showing, and when it is allowed to move on.
  *
  * It holds still whenever moving would interrupt her rather than reward her:
- * while she has the full story open, while the pointer or keyboard focus is
- * inside the card, while the tab is in the background, and permanently for
- * anyone who asked for reduced motion - for whom the card is simply the first
- * member's, exactly as it was before this rotated. Any of those resets the
- * clock rather than resuming a part-spent one, so leaving the card always
- * buys a full read of the next woman.
+ * while a *mouse* is over the card or keyboard focus is inside it, while the
+ * tab is in the background, and permanently for anyone who asked for reduced
+ * motion - for whom the card is simply the first member's, exactly as it was
+ * before this rotated. Any of those resets the clock rather than resuming a
+ * part-spent one, so leaving the card always buys a full read of the next
+ * woman.
+ *
+ * **The hover pause is mouse-only, and that is a bug fix, not a nicety.**
+ * Pointer events fire for touch, so on a phone every scroll that began with a
+ * finger on the card was a `pointerenter` followed by a `pointerleave` - a
+ * pause and a resume, and because a resume restarts the full `ROTATE_MS`, the
+ * clock went back to zero each time. A woman reading the card on the device
+ * most of this traffic arrives on could scroll it into view, read it, and
+ * never once see the second woman. Worse, mobile browsers hold the hover state
+ * after a tap until something else is tapped, so a single tap could stop the
+ * rotation for good. `pointerType` is the whole fix: a mouse means she is
+ * hovering to read, a finger means she is scrolling past.
+ *
+ * **Opening a story slows the card, it no longer stops it** (`ROTATE_OPEN_MS`).
+ * Freezing on expand had the same shape as the touch bug: the most engaged
+ * reader on the block was the one guaranteed never to meet members two and
+ * three.
  *
  * **Once she steers, the timer never starts again** (`took`). Tapping a dot or
  * swiping the card is her saying which woman she wants to read, and a carousel
@@ -160,7 +200,7 @@ function Swap({
  * `MemberDots` to restart on. A bar that picked up where it stopped would be
  * lying about when the card moves.
  */
-function useMemberRotation(count: number, frozen: boolean, still: boolean) {
+function useMemberRotation(count: number, expanded: boolean, still: boolean) {
   const [index, setIndex] = useState(0);
   const [hidden, setHidden] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -173,16 +213,17 @@ function useMemberRotation(count: number, frozen: boolean, still: boolean) {
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, []);
 
-  const running = count > 1 && !took && !frozen && !still && !paused && !hidden;
+  const running = count > 1 && !took && !still && !paused && !hidden;
+  const intervalMs = expanded ? ROTATE_OPEN_MS : ROTATE_MS;
 
   useEffect(() => {
     if (!running) return;
     const id = window.setInterval(
       () => setIndex((i) => (i + 1) % count),
-      ROTATE_MS
+      intervalMs
     );
     return () => window.clearInterval(id);
-  }, [running, count]);
+  }, [running, count, intervalMs]);
 
   // A member removed under us (a draft entry stripped from a production build)
   // must never leave the card pointing at nothing.
@@ -201,12 +242,30 @@ function useMemberRotation(count: number, frozen: boolean, still: boolean) {
   return {
     index: safeIndex,
     running,
+    intervalMs,
     steered: took,
     goTo,
     hold: {
-      onPointerEnter: () => setPaused(true),
-      onPointerLeave: () => setPaused(false),
-      onFocusCapture: () => setPaused(true),
+      // See the note above: a finger is not a hover.
+      onPointerEnter: (e: ReactPointerEvent) => {
+        if (e.pointerType === "mouse") setPaused(true);
+      },
+      onPointerLeave: (e: ReactPointerEvent) => {
+        if (e.pointerType === "mouse") setPaused(false);
+      },
+      // Keyboard focus pauses; a *click* must not. Without the
+      // `:focus-visible` test, clicking "Read her full story" left focus
+      // parked on that button, which pinned `paused` true for the rest of the
+      // visit - so the slow expanded cadence below would never have run on a
+      // desktop at all. A mouse user is already covered by the hover pause
+      // above, and it releases when she moves off the card, which is exactly
+      // when the slow clock should start.
+      onFocusCapture: (e: ReactFocusEvent) => {
+        const t = e.target as HTMLElement;
+        if (typeof t.matches === "function" && t.matches(":focus-visible")) {
+          setPaused(true);
+        }
+      },
       onBlurCapture: () => setPaused(false),
     },
   };
@@ -280,12 +339,15 @@ function MemberDots({
   members,
   index,
   running,
+  durationMs,
   onSelect,
   className,
 }: {
   members: SocialProofMember[];
   index: number;
   running: boolean;
+  /** The live interval, so the fill and the swap finish together. */
+  durationMs: number;
   onSelect: (next: number) => void;
   className?: string;
 }) {
@@ -334,14 +396,16 @@ function MemberDots({
                    server did and this cannot mismatch on hydration. The key is
                    the restart - a resumed timer is a fresh `ROTATE_MS`, so the
                    fill has to begin again rather than sit where the pause left
-                   it, and keys are not markup. */
+                   it - and so does opening a story, which stretches the same
+                   bar over `ROTATE_OPEN_MS`. Keys are not markup, so none of
+                   this can mismatch on hydration. */
                 <motion.span
-                  key={`${index}-${running}`}
+                  key={`${index}-${running}-${durationMs}`}
                   initial={{ scaleX: 0 }}
                   animate={{ scaleX: 1 }}
                   transition={
                     running
-                      ? { duration: ROTATE_MS / 1000, ease: "linear" }
+                      ? { duration: durationMs / 1000, ease: "linear" }
                       : { duration: 0 }
                   }
                   style={{ transformOrigin: "left" }}
@@ -460,8 +524,44 @@ export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) 
   const [open, setOpen] = useState(false);
   const storyId = useId();
 
+  /**
+   * The expanded height, measured rather than left to `height: "auto"`.
+   *
+   * "auto" was fine while opening a story stopped the card: the target changed
+   * once, framer measured once, done. Now that the card advances underneath an
+   * open story, the target would stay the string "auto" across a member change
+   * and framer has no reason to re-run an animation whose target did not
+   * change - so the container would keep the pixel height of the *previous*
+   * woman's story and clip the next one, or leave a slab of blank paper under
+   * it. A number changes when the story changes, so the card follows it.
+   *
+   * Reset to null on every toggle: while folded the story `Swap` renders all
+   * three stacked, so what is measured is the tallest, not the active one.
+   * Null means "animate to auto for one frame and let the observer correct
+   * it", which is right on the way open and harmless on the way closed.
+   */
+  const [openHeight, setOpenHeight] = useState<number | null>(null);
+  const storyRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = storyRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    // setState in an observer callback, not in the effect body - this is the
+    // subscribe-to-an-external-system shape, not a cascading render.
+    const ro = new ResizeObserver(([entry]) => {
+      if (entry) setOpenHeight(entry.contentRect.height);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const toggleStory = () => {
+    setOpenHeight(null);
+    setOpen((v) => !v);
+  };
+
   const members = useMemo(() => getSocialProofMembers(), []);
-  const { index, running, steered, goTo, hold } = useMemberRotation(
+  const { index, running, intervalMs, steered, goTo, hold } = useMemberRotation(
     members.length,
     open,
     still
@@ -598,7 +698,37 @@ export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) 
               />
             </motion.div>
 
-            <div className="mx-auto my-3 h-px w-12 bg-[#E8DDD9]" />
+            {/* The dots stand where the hairline divider used to, and do its
+                job as well as their own.
+
+                They were under the whole card, which on the phone this block
+                is designed for put them off the bottom of the screen: the
+                print alone is ~300px, the note card another ~230, so by the
+                time she could see the control telling her there were two more
+                women, she had already scrolled past the two more women. A
+                control that only appears after the content it controls is not
+                a control. Here they sit in the note card's own furniture band,
+                a few lines under the quote, visible the moment the card is.
+
+                It is the divider slot and not somewhere higher because
+                everything above it is load-bearing: the print is the hero and
+                must not be pushed down the fold, and the stars are the
+                credibility furniture the quote reads out of. This was the one
+                piece of pure decoration on the card, and a row of dots
+                separates a quote from a story at least as well as a 12px
+                hairline did. */}
+            {members.length > 1 ? (
+              <MemberDots
+                members={members}
+                index={index}
+                running={running}
+                durationMs={intervalMs}
+                onSelect={goTo}
+                className="my-1.5"
+              />
+            ) : (
+              <div className="mx-auto my-3 h-px w-12 bg-[#E8DDD9]" />
+            )}
 
             {/* The story, collapsed. framer measures `height: "auto"`, so the
                 paragraphs stay in the DOM in both states - a screen reader and a
@@ -609,25 +739,27 @@ export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) 
             <motion.div
               id={storyId}
               initial={false}
-              animate={{ height: open ? "auto" : STORY_COLLAPSED_PX }}
+              animate={{ height: open ? openHeight ?? "auto" : STORY_COLLAPSED_PX }}
               transition={still ? { duration: 0 } : { duration: 0.5, ease: EASE }}
               className="relative overflow-hidden"
             >
-              <Swap
-                index={index}
-                still={still}
-                only={open}
-                items={members.map((m) => ({
-                  key: m.id,
-                  node: (
-                    <div className="space-y-2.5 text-[13.5px] leading-[1.65] text-[#5A5A5A]">
-                      {m.story.map((para) => (
-                        <p key={para.slice(0, 24)}>{para}</p>
-                      ))}
-                    </div>
-                  ),
-                }))}
-              />
+              <div ref={storyRef}>
+                <Swap
+                  index={index}
+                  still={still}
+                  only={open}
+                  items={members.map((m) => ({
+                    key: m.id,
+                    node: (
+                      <div className="space-y-2.5 text-[13.5px] leading-[1.65] text-[#5A5A5A]">
+                        {m.story.map((para) => (
+                          <p key={para.slice(0, 24)}>{para}</p>
+                        ))}
+                      </div>
+                    ),
+                  }))}
+                />
+              </div>
               <motion.span
                 aria-hidden="true"
                 animate={{ opacity: open ? 0 : 1 }}
@@ -641,7 +773,7 @@ export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) 
 
             <button
               type="button"
-              onClick={() => setOpen((v) => !v)}
+              onClick={toggleStory}
               aria-expanded={open}
               aria-controls={storyId}
               className="mx-auto mt-3 flex items-center gap-1.5 rounded-full border border-[#E8DDD9] bg-white px-3.5 py-1.5 text-[12.5px] font-bold text-[#5A5A5A] shadow-xs transition-colors hover:bg-[#F7F0EC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
@@ -671,20 +803,6 @@ export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) 
             </button>
           </motion.div>
 
-          {/* Which woman this is, how many there are, and how to reach the
-              others. Below the card rather than over the print: it is a
-              control, and controls laid over a photograph read as a gallery
-              widget, which is the one thing this block must not look like. */}
-          <motion.div variants={rise}>
-            <MemberDots
-              members={members}
-              index={index}
-              running={running}
-              onSelect={goTo}
-              className="mt-1"
-            />
-          </motion.div>
-
           {/* Silent while the card is driving itself - a live region that
               announces every automatic swap is a screen reader talking over
               the page. It speaks only once she has taken the wheel, which is
@@ -699,7 +817,7 @@ export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) 
             </p>
           )}
 
-          <motion.div variants={rise} className="mt-1 px-1">
+          <motion.div variants={rise} className="mt-2 px-1">
             <Swap
               index={index}
               still={still}
