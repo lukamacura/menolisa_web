@@ -4876,22 +4876,32 @@ function RegisterPageContent() {
                   hero and a no-scroll page, so it gets the hero and ~90px of
                   scroll; the CTA is pinned, so scrolling never costs the tap.
 
-                  **The asset's own aspect ratio is the other ceiling, and today
-                  it is the binding one.** `start.webp` is 900x504, so at
-                  `w-full h-auto` it draws 191px tall at 375 wide and 222px at
-                  430 - under the budget everywhere, which means this formula is
-                  currently doing nothing on most phones and `object-cover` is
-                  cropping nothing. It is here so that a taller source (4:5, or
-                  3:4) is actually *used* instead of being cropped back to a
-                  number someone picked. If the photo needs to be bigger, that
-                  is the change - not this class.
+                  **The formula is the binding ceiling now** (2026-08-31).
+                  `start.webp` was 900x504 and at that ratio drew ~200px tall
+                  everywhere - under the budget on every real phone, so this
+                  class did nothing and 217px of a 390x844 sat empty around a
+                  small photo. The asset is 768x960 (4:5) now, which at
+                  `w-full h-auto` would draw 449px at 375 wide - over budget on
+                  everything but the tallest phones - so `object-cover` at
+                  `object-[50%_35%]` crops it to the budget and the screen
+                  fills the fold instead of centering fragments in pink.
 
-                  Which makes the crop band the thing to design the next asset
-                  against: the tightest common case is 390x664 at 221px against
-                  a 358px width, so anything essential - both faces, the phone,
-                  and room for the bubble and the NOW/WITH YOUR PLAN bar - has
-                  to survive a centre band of roughly 1:0.62. The focal point is
-                  35% rather than centred because the faces sit high in frame.
+                  Which makes the crop band the thing to design any future
+                  asset against: at the `short:` floor of 180px against 359px
+                  wide, only ~50% of the frame's height survives, anchored at
+                  the 65% focal line - both faces, the phone, and room for the
+                  bubble and the NOW/WITH YOUR PLAN bar all have to live in
+                  that band. 65% because both faces sit in the lower half of
+                  this frame (chosen by rendering the 180px strip at 35/45/55/
+                  65 on 2026-08-31 - 35% showed sofa where the "before" face
+                  should be); what it crops at tall viewports is ceiling and
+                  window, which cost nothing. The full 4:5 frame only shows on
+                  viewports taller than ~880px.
+
+                  The `short:` override lowers the floor 190 -> 180: ten more
+                  pixels for the card's closing line at 375x557, where the
+                  photo is cropped to a strip either way (see the short
+                  variant's note in globals.css).
 
                   If the 329px below ever changes, re-measure and move the 457.
                   It is a measurement, not a guess, and it is only worth having
@@ -4899,11 +4909,11 @@ function RegisterPageContent() {
               <Image
                 src="/illustrations/start.webp"
                 alt="The same woman twice: searching on her phone alone, then following her plan in the app."
-                width={900}
-                height={504}
+                width={768}
+                height={960}
                 priority
                 sizes="(max-width: 480px) 92vw, 420px"
-                className="w-full h-auto max-h-[max(190px,calc(100vh-457px))] object-cover object-[50%_35%]"
+                className="w-full h-auto max-h-[max(190px,calc(100vh-457px))] short:max-h-[max(180px,calc(100vh-457px))] object-cover object-[50%_65%]"
               />
 
 
@@ -5107,11 +5117,22 @@ function RegisterPageContent() {
               initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: prefersReducedMotion ? 0 : 0.28, duration: 0.4 }}
-              className="mt-2 text-sm sm:text-base text-[#5A5A5A] leading-snug px-2"
+              className="mt-2 short:mt-1.5 text-sm sm:text-base text-[#5A5A5A] leading-snug px-2"
             >
               After 40, <span className="font-semibold text-[#3D3D3D]">your hormones
               changed the rules.</span>
             </motion.p>
+
+            {/* The `short:` classes from here down are one pass with one job:
+                at 375x557 (the ad traffic's in-app webview) the offer card
+                ended at 527px behind a bar that starts at 459px, so its
+                closing line - the only sentence on the screen that says why
+                the quiz is worth two minutes - was fully hidden, and the
+                near-opaque bar left no cue that anything was cut. ~42px of
+                rhythm (these margins, the pill, the card's paddings, the icon
+                circles, the hero floor) brings the divider and the closing
+                line's first words above the bar: a visibly cut sentence is
+                its own scroll cue. Taller viewports are untouched. */}
 
             {/* The cost of entry, stated before she decides whether to keep
                 reading (2026-08-30).
@@ -5140,7 +5161,7 @@ function RegisterPageContent() {
               initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: prefersReducedMotion ? 0 : 0.34, duration: 0.4 }}
-              className="mt-2.5 inline-flex flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-full bg-foreground/5 px-3.5 py-1.5 text-xs sm:text-sm font-semibold text-[#3D3D3D]"
+              className="mt-2.5 short:mt-1.5 inline-flex flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-full bg-foreground/5 px-3.5 py-1.5 short:py-1 text-xs sm:text-sm font-semibold text-[#3D3D3D]"
             >
               <span>Free</span>
               <span aria-hidden className="text-[#9A9A9A]">·</span>
@@ -5185,7 +5206,7 @@ function RegisterPageContent() {
               initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: prefersReducedMotion ? 0 : 0.4, duration: 0.4 }}
-              className="mt-3 w-full rounded-2xl border border-foreground/10 bg-card px-4 py-3.5 shadow-sm"
+              className="mt-3 short:mt-2 w-full rounded-2xl border border-foreground/10 bg-card px-4 py-3.5 short:py-2.5 shadow-sm"
             >
               {/* Message match with the live creatives, 2026-08-24. Three of the
                   four ads sell a *mechanism* - cortisol, the nervous system,
@@ -5214,10 +5235,10 @@ function RegisterPageContent() {
               <p className="text-base sm:text-lg font-bold text-[#3D3D3D] leading-snug">
                 Your <HighlightSweep>personalized {PLAN_WEEKS}-week plan</HighlightSweep>
               </p>
-              <ul className="mt-3 grid grid-cols-3 gap-1">
+              <ul className="mt-3 short:mt-2 grid grid-cols-3 gap-1">
                 {START_PILLARS.map(({ Icon, name, what }) => (
                   <li key={name} className="flex flex-col items-center gap-1">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#16A34A]/10">
+                    <span className="flex h-9 w-9 short:h-8 short:w-8 items-center justify-center rounded-full bg-[#16A34A]/10">
                       <Icon className="h-[18px] w-[18px] text-[#16A34A]" strokeWidth={2.5} />
                     </span>
                     <span className="text-sm font-bold leading-none text-[#3D3D3D]">
@@ -5262,7 +5283,7 @@ function RegisterPageContent() {
 
                   One line, centred, because at one line centred is right and
                   this must not grow back into a paragraph. */}
-              <p className="mt-3 border-t border-foreground/10 pt-2.5 text-xs sm:text-sm text-[#5A5A5A] leading-snug">
+              <p className="mt-3 short:mt-2 border-t border-foreground/10 pt-2.5 short:pt-2 text-xs sm:text-sm text-[#5A5A5A] leading-snug">
                 <span className="font-semibold text-[#3D3D3D]">Built from your
                 answers</span> — a daily walk and two short sessions a week. No
                 gym, nothing cut out.

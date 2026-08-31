@@ -1,6 +1,14 @@
 @import "tailwindcss";
 @config "../tailwind.config.ts";
 
+/* Short viewports: the Instagram/Facebook in-app webview on a small phone
+   (375x557 is the measured worst case the /register funnel actually gets).
+   The start screen tightens its vertical rhythm under this variant so the
+   offer card's closing line surfaces above the fixed CTA bar instead of
+   hiding behind it. 600px, not the 647px where the hero's height formula
+   starts to bite: real browsers at 375x667 already fit untightened. */
+@custom-variant short (@media (max-height: 600px));
+
 /* Tweakcn Theme Variables - Light Mode */
 :root {
   --background: oklch(0.9399 0.0203 345.6985);
