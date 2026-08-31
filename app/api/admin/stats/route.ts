@@ -62,6 +62,8 @@ const FIXED_MONTHLY_USD = Number(process.env.ADMIN_FIXED_MONTHLY_USD ?? 0) || 0;
 const MAX_CHARGES = 1000;
 /** Checkout sessions accumulate faster than charges — one per paywall tap. */
 const MAX_SESSIONS = 1000;
+/** Subscriptions to the MenoLisa price — roughly one per customer, ever. */
+const MAX_SUBS = 1000;
 /** Same idea for the account table. */
 const MAX_CLIENTS = 500;
 /** How many charges the sales list shows. Totals still cover the whole walk. */
@@ -178,25 +180,60 @@ function emptyRevenue(error: string | null): Revenue {
 /**
  * Revenue, renewals and acquisition, all from one charge list.
  *
- * Renewals are identified without a second API call: the oldest successful
+ * **The Stripe account is shared with other products**, so `charges.list()`
+ * returns every business's money and nothing on this screen may read it raw.
+ * The MenoLisa price id is the product boundary: every MenoLisa payment is a
+ * subscription to `STRIPE_PRICE_8WEEK`, so the customers holding such a
+ * subscription — any status, canceled included — are exactly the customers
+ * whose charges belong here. One subscriptions walk builds that set; every
+ * other product's charges are dropped before they touch a bucket.
+ *
+ * Renewals are identified without a further API call: the oldest successful
  * charge per customer is her first purchase and everything after it is a
  * renewal. That same map gives the renewal rate (customers past their first
  * period who have a second charge), the new-customer count that cost-per-sale
  * divides by, and the refund-guarantee exposure.
  */
 async function loadRevenue(stripe: Stripe, startOfToday: number): Promise<Revenue> {
+  const priceId = process.env.STRIPE_PRICE_8WEEK;
+  if (!priceId) {
+    // Fail closed: without the price id there is no way to tell MenoLisa's
+    // charges from the other products' on this account, and account-wide
+    // figures presented as MenoLisa revenue are worse than no figures.
+    return emptyRevenue("STRIPE_PRICE_8WEEK is not set, so MenoLisa's charges can't be told apart");
+  }
+
   let charges: Stripe.Charge[];
+  let subs: Stripe.Subscription[];
   try {
-    charges = await stripe.charges
-      .list({ limit: 100, expand: ["data.balance_transaction"] })
-      .autoPagingToArray({ limit: MAX_CHARGES });
+    [charges, subs] = await Promise.all([
+      stripe.charges
+        .list({ limit: 100, expand: ["data.balance_transaction"] })
+        .autoPagingToArray({ limit: MAX_CHARGES }),
+      stripe.subscriptions
+        .list({ price: priceId, status: "all", limit: 100 })
+        .autoPagingToArray({ limit: MAX_SUBS }),
+    ]);
   } catch (err) {
-    console.error("Admin stats: Stripe charge list failed:", err);
-    return emptyRevenue("Could not reach Stripe");
+    console.error("Admin stats: Stripe charge/subscription list failed:", err);
+    // A bad STRIPE_PRICE_8WEEK ("No such price") is a config problem, not an
+    // outage — say which it was, or the fix is a wild goose chase.
+    const msg =
+      err instanceof Stripe.errors.StripeInvalidRequestError
+        ? `Stripe rejected the request — ${err.message}`
+        : "Could not reach Stripe";
+    return emptyRevenue(msg);
+  }
+
+  /** Customers who have ever held a MenoLisa subscription. */
+  const ownCustomers = new Set<string>();
+  for (const s of subs) {
+    const cid = typeof s.customer === "string" ? s.customer : s.customer?.id;
+    if (cid) ownCustomers.add(cid);
   }
 
   const rev = emptyRevenue(null);
-  rev.truncated = charges.length >= MAX_CHARGES;
+  rev.truncated = charges.length >= MAX_CHARGES || subs.length >= MAX_SUBS;
   rev.livemode = charges[0]?.livemode ?? null;
 
   const now = Date.now();
@@ -209,6 +246,11 @@ async function loadRevenue(stripe: Stripe, startOfToday: number): Promise<Revenu
   let fees = 0;
 
   const succeeded = charges.filter((c) => {
+    const customerId = typeof c.customer === "string" ? c.customer : c.customer?.id ?? null;
+    // Another product's charge, or a customerless one-off we can't attribute.
+    // A card declined *inside* Checkout leaves a customer with no subscription,
+    // so those declines are invisible here — declined30 is a floor.
+    if (!customerId || !ownCustomers.has(customerId)) return false;
     if (c.status === "failed") {
       if (c.created * 1000 >= now - 30 * DAY_MS) rev.failedLast30 += 1;
       return false;
@@ -267,8 +309,8 @@ async function loadRevenue(stripe: Stripe, startOfToday: number): Promise<Revenu
       if (dayIndex >= 0 && dayIndex < 30) rev.daily[dayIndex] += net;
     }
 
-    // A charge with no customer can't be attributed, so it counts as a first
-    // purchase — that is the conservative reading for a one-off payment.
+    // The filter above guarantees a customer id, so first-vs-renewal is just
+    // "is this her oldest charge".
     const firstAt = customerId ? byCustomer.get(customerId)?.[0] : undefined;
     const isFirst = !customerId || firstAt === at;
     if (isFirst && customerId) firstChargeNet.set(customerId, net);
@@ -339,8 +381,11 @@ async function loadRevenue(stripe: Stripe, startOfToday: number): Promise<Revenu
  * with completely different fixes. A Checkout Session exists the moment
  * `create-checkout` runs, whether or not she ever types a card.
  *
- * Mobile sessions are excluded: `create-checkout` stamps `checkout_surface`, and
- * a purchase begun in the Expo app is not a step in the web funnel.
+ * Only sessions stamped `checkout_surface: "web"` count. `create-checkout`
+ * stamps it on every MenoLisa session, so the check does two jobs at once: it
+ * drops the Expo app's checkouts (a purchase begun in the app is not a step in
+ * the web funnel) and it drops every session the *other products* on this
+ * shared Stripe account create, which carry no such key.
  */
 async function loadCheckoutStarts(
   stripe: Stripe,
@@ -351,7 +396,7 @@ async function loadCheckoutStarts(
       .list({ limit: 100, created: { gte: Math.floor(since / 1000) } })
       .autoPagingToArray({ limit: MAX_SESSIONS });
     const started = sessions.filter(
-      (s) => s.metadata?.checkout_surface !== "mobile"
+      (s) => s.metadata?.checkout_surface === "web"
     ).length;
     return { started, error: null, truncated: sessions.length >= MAX_SESSIONS };
   } catch (err) {
@@ -581,6 +626,11 @@ export async function POST(req: NextRequest) {
   }
   const lastLoggedDay =
     [...spendByDay.keys()].sort().pop() ?? null;
+
+  /** Every day logged in the 30-day window, newest first — the per-day editor. */
+  const loggedDays = [...spendByDay.entries()]
+    .sort(([a], [b]) => (a < b ? 1 : -1))
+    .map(([day, amount]) => ({ day, amount }));
 
   // ─── Serving cost, measured ───────────────────────────────────────────────
 
@@ -819,6 +869,7 @@ export async function POST(req: NextRequest) {
       adSpend30,
       adSpend7,
       lastLoggedDay,
+      loggedDays,
       missingDays,
       todayIso: isoDay(startOfToday, tzOffsetMinutes),
       todaySpend: spendByDay.get(isoDay(startOfToday, tzOffsetMinutes)) ?? null,

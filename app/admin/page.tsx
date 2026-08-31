@@ -64,6 +64,7 @@ type Stats = {
     adSpend30: number;
     adSpend7: number;
     lastLoggedDay: string | null;
+    loggedDays: { day: string; amount: number }[];
     missingDays: string[];
     todayIso: string;
     todaySpend: number | null;
@@ -139,6 +140,14 @@ const stamp = (iso: string) =>
 
 const shortDate = (iso: string) =>
   new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+/**
+ * For date-only strings like "2026-08-30". `new Date("2026-08-30")` parses as
+ * UTC midnight, so west of Greenwich `shortDate` would print the previous day;
+ * noon is inside the same calendar day in every timezone.
+ */
+const dayLabel = (day: string) =>
+  new Date(`${day}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
 export default function AdminPage() {
   const [password, setPassword] = useState("");
@@ -357,7 +366,7 @@ export default function AdminPage() {
                 label="Meta ad spend, 30 days"
                 hint={
                   costs.lastLoggedDay
-                    ? `Last logged ${shortDate(costs.lastLoggedDay)}${
+                    ? `Last logged ${dayLabel(costs.lastLoggedDay)}${
                         costs.missingDays.length
                           ? ` · ${costs.missingDays.length} of the last 7 days missing`
                           : ""
@@ -508,6 +517,29 @@ export default function AdminPage() {
             </p>
             {stats.spendWriteError && (
               <p className="text-[12.5px] text-[#A02219]">{stats.spendWriteError}</p>
+            )}
+            {costs.loggedDays.length > 0 && (
+              <div className="w-full">
+                <Label className="mb-1.5 block">Logged, last 30 days — tap a day to edit it</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {costs.loggedDays.map((d) => (
+                    <button
+                      key={d.day}
+                      onClick={() => {
+                        setSpendDay(d.day);
+                        setSpendAmount(String(d.amount));
+                      }}
+                      className={`rounded border px-2 py-1 text-[12px] tabular-nums transition-colors ${
+                        spendDay === d.day
+                          ? "border-[#A8336E] bg-[#F7E7EF] text-[#A8336E]"
+                          : "border-[#D6CBD2] bg-white text-[#5F5566] hover:border-[#A8336E]"
+                      }`}
+                    >
+                      {dayLabel(d.day)} · {money(d.amount)}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
 
