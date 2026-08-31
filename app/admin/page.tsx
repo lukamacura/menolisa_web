@@ -10,6 +10,33 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * what came in, what she cost against what she's worth, where they stop, who
  * bought, what's broken.
  *
+ * ── Colour is a legend, not decoration ──────────────────────────────────────
+ *
+ * Five colours, one meaning each, defined once in {@link PALETTE} and used
+ * nowhere else in the file as a raw hex. The key is printed in the footer, so
+ * the screen explains itself:
+ *
+ *   **Green — money that arrived.** Collected, kept, lifetime value,
+ *   contribution, a new sale, the last funnel step. If it is green, Stripe has
+ *   it.
+ *
+ *   **Amber — money going out.** Ad spend, fixed costs, serving cost. Every
+ *   amber figure is a deduction from a green one.
+ *
+ *   **Violet — money on the calendar.** Booked renewals, the renewal rate, the
+ *   renewal tag, the refund guarantee still owed. Real, not yet collected.
+ *
+ *   **Rose — the women.** Quiz finishers, funnel steps, customer names. The
+ *   brand colour, reserved for people rather than money, so a rose figure is
+ *   never a dollar figure.
+ *
+ *   **Red — something is wrong.** Refunds, declined cards, disputes, a cost per
+ *   customer above what she is worth.
+ *
+ * The rule that keeps it honest: a number is coloured by *what it is*, never by
+ * which block it happens to sit in. Ad spend is amber in the cost column, in the
+ * chart, and in its own entry strip.
+ *
  * ── Every number says where it came from ────────────────────────────────────
  *
  * Each block carries a source tag, because the split is load-bearing and easy
@@ -37,6 +64,51 @@ import { useCallback, useEffect, useRef, useState } from "react";
  *   * **Ad spend in localStorage** — one browser, one number, no history, and
  *     therefore no windowed cost per sale. It lives in `ad_spend` now.
  */
+
+/**
+ * The only place a colour is written down. Set on the page root as custom
+ * properties, so every class below reads `var(--cash)` and a palette change is
+ * a one-line edit — including inside the SVG chart, which inherits them.
+ */
+const PALETTE = {
+  "--ink": "#1C181F",
+  "--ink-2": "#5F5566",
+  "--ink-3": "#948B9B",
+  "--line": "#E6DCE2",
+  "--line-soft": "#F0E9ED",
+  "--paper": "#F7F3F5",
+  "--quiet": "#FBF8F9",
+
+  // Money that arrived.
+  "--cash": "#0E7A55",
+  "--cash-deep": "#0A5A3F",
+  "--cash-bg": "#E8F5EF",
+  "--cash-line": "#B4E0CB",
+
+  // Money going out.
+  "--spend": "#B26A00",
+  "--spend-deep": "#8A5200",
+  "--spend-bg": "#FDF3E1",
+  "--spend-line": "#EFD5A3",
+
+  // Money on the calendar.
+  "--ahead": "#5B4BC4",
+  "--ahead-deep": "#453A9E",
+  "--ahead-bg": "#EDEBFB",
+  "--ahead-line": "#CAC3F0",
+
+  // The women.
+  "--her": "#A8336E",
+  "--her-deep": "#872556",
+  "--her-bg": "#FBEAF2",
+  "--her-line": "#F0C6DC",
+
+  // Something is wrong.
+  "--stop": "#B02A20",
+  "--stop-deep": "#8C1F18",
+  "--stop-bg": "#FBE8E6",
+  "--stop-line": "#F2C3BD",
+} as unknown as React.CSSProperties;
 
 type Bucket = { count: number; net: number; kept: number };
 
@@ -300,34 +372,49 @@ export default function AdminPage() {
   // ── Password gate ─────────────────────────────────────────────────────────
   if (!stats) {
     return (
-      <main className="flex min-h-dvh items-center justify-center bg-[#F7F3F5] p-6">
+      <main
+        style={PALETTE}
+        className="flex min-h-dvh items-center justify-center bg-[var(--paper)] p-6"
+      >
         <form
           onSubmit={(e) => {
             e.preventDefault();
             if (password.trim()) load(password.trim());
           }}
-          className="w-full max-w-sm space-y-4 rounded border border-[#E6DCE2] bg-white p-8 shadow-sm"
+          className="w-full max-w-sm overflow-hidden rounded-xl border border-[var(--line)] bg-white shadow-sm"
         >
-          <div>
-            <h1 className="text-lg font-semibold tracking-tight text-[#1C181F]">MenoLisa</h1>
-            <p className="text-[11px] uppercase tracking-[0.14em] text-[#948B9B]">Sales desk</p>
-          </div>
-          <input
-            type="password"
-            autoFocus
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
-            className="w-full rounded border border-[#D6CBD2] px-4 py-3 text-[#1C181F] outline-none focus:border-[#A8336E] focus:ring-2 focus:ring-[#A8336E]/20"
+          <div
+            className="h-[3px] w-full"
+            style={{
+              background:
+                "linear-gradient(90deg, var(--cash), var(--spend), var(--ahead), var(--her), var(--stop))",
+            }}
+            aria-hidden
           />
-          {error && <p className="text-sm text-[#A02219]">{error}</p>}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded bg-[#1C181F] py-3 font-medium text-white transition-colors hover:bg-[#A8336E] disabled:opacity-50"
-          >
-            {loading ? "Checking…" : "Enter"}
-          </button>
+          <div className="space-y-4 p-8">
+            <div>
+              <h1 className="text-lg font-semibold tracking-tight text-[var(--ink)]">MenoLisa</h1>
+              <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--ink-3)]">
+                Sales desk
+              </p>
+            </div>
+            <input
+              type="password"
+              autoFocus
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              className="w-full rounded-lg border border-[var(--line)] px-4 py-3 text-[var(--ink)] outline-none transition-colors focus:border-[var(--her)] focus:ring-2 focus:ring-[var(--her-line)]"
+            />
+            {error && <p className="text-sm text-[var(--stop)]">{error}</p>}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-lg bg-[var(--ink)] py-3 font-medium text-white transition-colors hover:bg-[var(--her)] disabled:opacity-50"
+            >
+              {loading ? "Checking…" : "Enter"}
+            </button>
+          </div>
         </form>
       </main>
     );
@@ -336,31 +423,36 @@ export default function AdminPage() {
   const { money: m, costs, acq, retention, forward, funnel, verdict, sales, alerts } = stats;
 
   return (
-    <main className="min-h-dvh bg-[#F7F3F5] px-5 pb-20 pt-10 text-[#1C181F] sm:px-8">
+    <main
+      style={PALETTE}
+      className="min-h-dvh bg-[var(--paper)] px-5 pb-20 pt-10 text-[var(--ink)] sm:px-8"
+    >
       <div className="mx-auto max-w-[1060px]">
         {/* ── Masthead ────────────────────────────────────────────────────── */}
         <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="text-xl font-semibold tracking-tight">MenoLisa</h1>
-            <p className="mt-0.5 text-[10.5px] font-semibold uppercase tracking-[0.13em] text-[#948B9B]">
+            <p className="mt-0.5 text-[10.5px] font-semibold uppercase tracking-[0.13em] text-[var(--ink-3)]">
               Sales desk
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3 text-xs text-[#5F5566]">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--ink-2)]">
             {stats.livemode === false && (
-              <span className="rounded border border-[#8E5A0E]/35 bg-[#FAEEDA] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#8E5A0E]">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--spend-line)] bg-[var(--spend-bg)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--spend-deep)]">
+                <i className="block size-1.5 rounded-full bg-[var(--spend)]" />
                 Stripe test mode
               </span>
             )}
             {stats.livemode === true && (
-              <span className="rounded border border-[#146B4E]/30 bg-[#E1F0E9] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#146B4E]">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--cash-line)] bg-[var(--cash-bg)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--cash-deep)]">
+                <i className="block size-1.5 animate-pulse rounded-full bg-[var(--cash)]" />
                 Live
               </span>
             )}
             <button
               onClick={() => load(sessionStorage.getItem(SESSION_KEY) ?? "")}
               disabled={loading}
-              className="underline underline-offset-4 hover:text-[#1C181F] disabled:opacity-50"
+              className="underline underline-offset-4 transition-colors hover:text-[var(--her)] disabled:opacity-50"
             >
               {loading ? "Refreshing…" : "Refresh"}
             </button>
@@ -370,7 +462,7 @@ export default function AdminPage() {
                 setStats(null);
                 setPassword("");
               }}
-              className="underline underline-offset-4 hover:text-[#1C181F]"
+              className="underline underline-offset-4 transition-colors hover:text-[var(--her)]"
             >
               Lock
             </button>
@@ -378,7 +470,7 @@ export default function AdminPage() {
         </header>
 
         {stats.revenueError && (
-          <p className="mb-5 rounded border border-[#8E5A0E]/30 bg-[#FAEEDA] px-4 py-3 text-sm text-[#8E5A0E]">
+          <p className="mb-5 rounded-lg border border-[var(--spend-line)] bg-[var(--spend-bg)] px-4 py-3 text-sm text-[var(--spend-deep)]">
             Stripe unavailable: {stats.revenueError}. Everything that comes from Supabase still
             reads correctly below.
           </p>
@@ -388,22 +480,30 @@ export default function AdminPage() {
         <Verdict verdict={verdict} />
 
         {/* ── 1. Cash in ──────────────────────────────────────────────────── */}
-        <SectionHead title="Cash in" source="Stripe" note="Charges, net of refunds" />
-        <div className="overflow-hidden rounded border border-[#E6DCE2] bg-white shadow-sm">
+        <SectionHead title="Cash in" dot="var(--cash)" source="Stripe" note="Charges, net of refunds" />
+        <Panel accent="var(--cash)">
           <div className="grid grid-cols-1 md:grid-cols-[1.05fr_1.35fr]">
-            <div className="border-b border-[#E6DCE2] px-6 py-5 md:border-b-0 md:border-r">
-              <Label>Collected, last 7 days</Label>
+            <div className="border-b border-[var(--line)] bg-[var(--cash-bg)]/50 px-6 py-5 md:border-b-0 md:border-r">
+              <Label className="text-[var(--cash-deep)]">Collected, last 7 days</Label>
               <p
                 className={`mt-2 font-serif text-5xl leading-none tracking-tight tabular-nums sm:text-6xl ${
-                  m.last7.net > 0 ? "" : "text-[#948B9B]"
+                  m.last7.net > 0 ? "text-[var(--cash-deep)]" : "text-[var(--ink-3)]"
                 }`}
               >
                 {money(m.last7.net)}
               </p>
-              <p className="mt-2 text-[13px] text-[#5F5566]">
-                {m.last7.count > 0
-                  ? `${plural(m.last7.count, "sale")} · ${money(m.last7.kept)} kept after Stripe's fee`
-                  : "No sales in the last 7 days"}
+              <p className="mt-2 text-[13px] text-[var(--ink-2)]">
+                {m.last7.count > 0 ? (
+                  <>
+                    {plural(m.last7.count, "sale")} ·{" "}
+                    <b className="font-semibold text-[var(--cash-deep)] tabular-nums">
+                      {money(m.last7.kept)}
+                    </b>{" "}
+                    kept after Stripe&rsquo;s fee
+                  </>
+                ) : (
+                  "No sales in the last 7 days"
+                )}
               </p>
             </div>
             <div className="grid grid-cols-3">
@@ -412,41 +512,52 @@ export default function AdminPage() {
               <Cell label="All time" bucket={m.allTime} bordered />
             </div>
           </div>
-          <div className="flex flex-wrap items-baseline gap-x-7 gap-y-2 border-t border-[#E6DCE2] bg-[#FBF8F9] px-6 py-3 text-[12.5px] text-[#5F5566]">
-            <span>
+          <div className="flex flex-wrap items-baseline gap-x-7 gap-y-2 border-t border-[var(--line)] bg-[var(--quiet)] px-6 py-3 text-[12.5px] text-[var(--ink-2)]">
+            <Footnote dot="var(--ahead)">
               Already on the calendar, next 30 days{" "}
-              <b className="font-semibold tabular-nums text-[#A8336E]">
+              <b className="font-semibold tabular-nums text-[var(--ahead-deep)]">
                 {money(forward.booked30)}
               </b>{" "}
-              <span className="text-[#948B9B]">
+              <span className="text-[var(--ink-3)]">
                 ({plural(forward.bookedCount, "renewal")} scheduled
                 {forward.cancelsPending > 0 && `, ${forward.cancelsPending} already cancelled`})
               </span>
-            </span>
-            <span>
+            </Footnote>
+            <Footnote dot="var(--stop)">
               Refunded, 30 days{" "}
-              <b className="font-semibold tabular-nums text-[#1C181F]">
+              <b
+                className={`font-semibold tabular-nums ${
+                  forward.refunds30.amount > 0 ? "text-[var(--stop)]" : "text-[var(--ink)]"
+                }`}
+              >
                 {money(forward.refunds30.amount)}
               </b>
-            </span>
-            <span>
+            </Footnote>
+            <Footnote dot="var(--stop)">
               Cards declined at checkout, 30 days{" "}
-              <b className="font-semibold tabular-nums text-[#1C181F]">{forward.declined30}</b>
-            </span>
+              <b
+                className={`font-semibold tabular-nums ${
+                  forward.declined30 > 0 ? "text-[var(--stop)]" : "text-[var(--ink)]"
+                }`}
+              >
+                {forward.declined30}
+              </b>
+            </Footnote>
           </div>
-        </div>
+        </Panel>
 
         {/* ── 2. Unit economics ───────────────────────────────────────────── */}
         <SectionHead
           title="What she costs, what she's worth"
+          dot="linear-gradient(90deg, var(--spend), var(--cash))"
           source="Stripe + your ad spend"
           note="Last 30 days"
         />
-        <div className="overflow-hidden rounded border border-[#E6DCE2] bg-white shadow-sm">
+        <Panel accent="linear-gradient(90deg, var(--spend) 0%, var(--spend) 45%, var(--cash) 55%, var(--cash) 100%)">
           <div className="grid grid-cols-1 lg:grid-cols-2">
-            {/* Costs */}
+            {/* Costs — everything here is amber, because everything here leaves. */}
             <div className="px-6 py-4">
-              <Label className="mb-2 block">Cost to get her</Label>
+              <ColumnHead color="var(--spend)">Cost to get her</ColumnHead>
               <Row
                 label="Meta ad spend, 30 days"
                 hint={
@@ -459,12 +570,13 @@ export default function AdminPage() {
                     : "Nothing logged yet"
                 }
                 value={costs.adSpend30 > 0 ? money(costs.adSpend30) : "—"}
-                tone={costs.adSpend30 > 0 ? undefined : "mute"}
+                tone={costs.adSpend30 > 0 ? "spend" : "mute"}
               />
               <Row
                 label="New customers, 30 days"
                 hint="Renewals excluded — ads don't buy those"
                 value={String(acq.newCustomers30)}
+                tone="her"
               />
               <Row
                 label="Cost per new customer"
@@ -478,9 +590,7 @@ export default function AdminPage() {
                       : `Over the ${money(acq.keptPerSale)} you keep on the first sale`
                 }
                 value={acq.cac === null ? "—" : money(acq.cac)}
-                tone={
-                  acq.cac === null ? "mute" : acq.cac <= acq.keptPerSale ? "good" : "bad"
-                }
+                tone={acq.cac === null ? "mute" : acq.cac <= acq.keptPerSale ? "good" : "bad"}
                 big
               />
               <Row
@@ -491,7 +601,7 @@ export default function AdminPage() {
                     : "Not set — add ADMIN_FIXED_MONTHLY_USD to the env"
                 }
                 value={costs.fixedMonthly > 0 ? money(costs.fixedMonthly) : "—"}
-                tone={costs.fixedMonthly > 0 ? undefined : "mute"}
+                tone={costs.fixedMonthly > 0 ? "spend" : "mute"}
               />
               <Row
                 label="Serving cost per customer"
@@ -501,13 +611,14 @@ export default function AdminPage() {
               />
             </div>
 
-            {/* Value */}
-            <div className="border-t border-[#E6DCE2] px-6 py-4 lg:border-l lg:border-t-0">
-              <Label className="mb-2 block">What she returns</Label>
+            {/* Value — green for collected, violet for what renewal brings. */}
+            <div className="border-t border-[var(--line)] px-6 py-4 lg:border-l lg:border-t-0">
+              <ColumnHead color="var(--cash)">What she returns</ColumnHead>
               <Row
                 label="Kept per sale"
                 hint={`$59 less Stripe's measured fee (${(acq.feeRate * 100).toFixed(2)}%)`}
                 value={money(acq.keptPerSale)}
+                tone="cash"
               />
               <Row
                 label="Renewal rate"
@@ -521,7 +632,7 @@ export default function AdminPage() {
                 value={
                   retention.renewalRate === null ? "Not yet known" : `${retention.renewalRate}%`
                 }
-                tone={retention.renewalRate === null ? "mute" : undefined}
+                tone={retention.renewalRate === null ? "mute" : "ahead"}
               />
               <Row
                 label="Lifetime value, kept"
@@ -531,7 +642,7 @@ export default function AdminPage() {
                     : "What one woman is worth across all the periods she stays"
                 }
                 value={retention.ltv === null ? "—" : money(retention.ltv)}
-                tone={retention.ltv === null ? "mute" : undefined}
+                tone={retention.ltv === null ? "mute" : "cash"}
                 big
               />
               <Row
@@ -544,15 +655,13 @@ export default function AdminPage() {
                       ? "Immediate"
                       : `${Math.ceil(acq.cac / acq.keptPerSale)} periods`
                 }
-                tone={acq.cac === null ? "mute" : undefined}
+                tone={acq.cac === null ? "mute" : acq.cac <= acq.keptPerSale ? "good" : "ahead"}
               />
               <Row
                 label="Return on every ad dollar"
                 hint="Lifetime value ÷ cost per customer. Above 2× is room to scale."
                 value={retention.roas === null ? "—" : `${retention.roas.toFixed(2)}×`}
-                tone={
-                  retention.roas === null ? "mute" : retention.roas >= 2 ? "good" : "bad"
-                }
+                tone={retention.roas === null ? "mute" : retention.roas >= 2 ? "good" : "bad"}
               />
             </div>
           </div>
@@ -569,16 +678,16 @@ export default function AdminPage() {
           />
 
           {/* Chart */}
-          <div className="border-t border-[#E6DCE2] px-6 pb-3 pt-4">
+          <div className="border-t border-[var(--line)] px-6 pb-3 pt-4">
             <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
               <Label>Running total, cash collected vs ad spend, 30 days</Label>
-              <div className="flex gap-4 text-[12px] text-[#5F5566]">
-                <span className="inline-flex items-center gap-1.5">
-                  <i className="block h-[2.5px] w-3.5 rounded-sm bg-[#A8336E]" />
+              <div className="flex gap-4 text-[12px]">
+                <span className="inline-flex items-center gap-1.5 font-medium text-[var(--cash-deep)]">
+                  <i className="block h-[3px] w-4 rounded-sm bg-[var(--cash)]" />
                   Collected
                 </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <i className="block w-3.5 border-t-[2.5px] border-dashed border-[#948B9B]" />
+                <span className="inline-flex items-center gap-1.5 font-medium text-[var(--spend-deep)]">
+                  <i className="block w-4 border-t-[3px] border-dashed border-[var(--spend)]" />
                   Ad spend
                 </span>
               </div>
@@ -587,30 +696,50 @@ export default function AdminPage() {
           </div>
 
           {/* Contribution */}
-          <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-2 border-t border-[#E6DCE2] bg-[#FBF8F9] px-6 py-4">
-            <p className="max-w-[62ch] text-[13px] text-[#5F5566]">
-              <b className="font-semibold text-[#1C181F]">Contribution, last 30 days.</b>{" "}
-              {money(m.last30.kept)} kept, less {money(costs.adSpend30)} ads,{" "}
-              {money(costs.fixedMonthly)} fixed and{" "}
-              {money(m.last30.count * costs.servingPerCustomer, 2)} serving cost.
+          <div
+            className={`flex flex-wrap items-baseline justify-between gap-x-5 gap-y-2 border-t px-6 py-4 ${
+              stats.contribution30 >= 0
+                ? "border-[var(--cash-line)] bg-[var(--cash-bg)]"
+                : "border-[var(--stop-line)] bg-[var(--stop-bg)]"
+            }`}
+          >
+            <p className="max-w-[62ch] text-[13px] text-[var(--ink-2)]">
+              <b className="font-semibold text-[var(--ink)]">Contribution, last 30 days.</b>{" "}
+              <b className="font-semibold text-[var(--cash-deep)] tabular-nums">
+                {money(m.last30.kept)}
+              </b>{" "}
+              kept, less{" "}
+              <b className="font-semibold text-[var(--spend-deep)] tabular-nums">
+                {money(costs.adSpend30)}
+              </b>{" "}
+              ads,{" "}
+              <b className="font-semibold text-[var(--spend-deep)] tabular-nums">
+                {money(costs.fixedMonthly)}
+              </b>{" "}
+              fixed and{" "}
+              <b className="font-semibold text-[var(--spend-deep)] tabular-nums">
+                {money(m.last30.count * costs.servingPerCustomer, 2)}
+              </b>{" "}
+              serving cost.
             </p>
             <p
               className={`font-serif text-3xl tracking-tight tabular-nums ${
-                stats.contribution30 >= 0 ? "text-[#146B4E]" : "text-[#A02219]"
+                stats.contribution30 >= 0 ? "text-[var(--cash-deep)]" : "text-[var(--stop-deep)]"
               }`}
             >
               {money(stats.contribution30, 2)}
             </p>
           </div>
-        </div>
+        </Panel>
 
         {/* ── 3. Funnel ───────────────────────────────────────────────────── */}
         <SectionHead
           title="Where they stop"
+          dot="linear-gradient(90deg, var(--her), var(--cash))"
           source="Supabase + Stripe"
           note="Last 30 days"
         />
-        <div className="overflow-hidden rounded border border-[#E6DCE2] bg-white shadow-sm">
+        <Panel accent="linear-gradient(90deg, var(--her) 0%, var(--her) 55%, var(--cash) 90%)">
           <div className="px-6 py-5">
             <Funnel
               quiz={funnel.quizFinished30}
@@ -619,11 +748,11 @@ export default function AdminPage() {
               sessionsError={funnel.sessionsError}
             />
           </div>
-          <div className="border-t border-[#E6DCE2] bg-[#FBF8F9] px-6 py-3 text-[12.5px] text-[#5F5566]">
+          <div className="border-t border-[var(--line)] bg-[var(--quiet)] px-6 py-3 text-[12.5px] text-[var(--ink-2)]">
             {funnel.quizFinished30 > 0 ? (
               <>
                 Every 100 quiz finishers are worth{" "}
-                <b className="font-semibold tabular-nums text-[#1C181F]">
+                <b className="font-semibold tabular-nums text-[var(--cash-deep)]">
                   {money((funnel.paidNew30 / funnel.quizFinished30) * 100 * acq.keptPerSale, 0)}
                 </b>{" "}
                 kept. That is what a click is allowed to cost.
@@ -632,11 +761,12 @@ export default function AdminPage() {
               "Nobody has finished the quiz in the last 30 days."
             )}
           </div>
-        </div>
+        </Panel>
 
         {/* ── 4. Latest sales ─────────────────────────────────────────────── */}
         <SectionHead
           title="Latest sales"
+          dot="var(--her)"
           source="Stripe + Supabase"
           note={
             sales.length === 0
@@ -646,15 +776,15 @@ export default function AdminPage() {
                 : `${plural(sales.length, "charge")} Stripe cleared`
           }
         />
-        <div className="overflow-hidden rounded border border-[#E6DCE2] bg-white shadow-sm">
+        <Panel accent="var(--her)">
           {sales.length === 0 ? (
             <div className="px-6 py-12 text-center">
               <h3 className="text-base font-semibold">No sales yet</h3>
-              <p className="mx-auto mt-1.5 max-w-[48ch] text-sm text-[#5F5566]">
+              <p className="mx-auto mt-1.5 max-w-[48ch] text-sm text-[var(--ink-2)]">
                 The first row lands here the moment Stripe clears a charge. Nothing is broken — this
                 is what the screen looks like before anyone has paid.
               </p>
-              <ul className="mx-auto mt-5 grid max-w-[48ch] gap-1.5 text-left text-[13px] text-[#5F5566]">
+              <ul className="mx-auto mt-5 grid max-w-[48ch] gap-1.5 text-left text-[13px] text-[var(--ink-2)]">
                 <EmptyPoint>
                   {funnel.quizFinished30 > 0
                     ? `${plural(funnel.quizFinished30, "woman")} finished the quiz in 30 days, so traffic is arriving`
@@ -672,7 +802,7 @@ export default function AdminPage() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[640px] text-left text-sm">
                 <thead>
-                  <tr className="border-b border-[#E6DCE2] text-[10.5px] uppercase tracking-[0.11em] text-[#948B9B]">
+                  <tr className="border-b border-[var(--line)] text-[10.5px] uppercase tracking-[0.11em] text-[var(--ink-3)]">
                     <th className="px-5 py-3 font-semibold">When</th>
                     <th className="px-5 py-3 font-semibold">Customer</th>
                     <th className="px-5 py-3 font-semibold" />
@@ -684,15 +814,19 @@ export default function AdminPage() {
                   {sales.map((s) => (
                     <tr
                       key={s.id}
-                      className="border-b border-[#F0E9ED] last:border-0 hover:bg-[#FBF8F9]"
+                      className="border-b border-[var(--line-soft)] transition-colors last:border-0 hover:bg-[var(--her-bg)]/45"
                     >
                       <td className="whitespace-nowrap px-5 py-3 text-[13px]">
                         {relative(s.at)}
-                        <span className="block text-[11.5px] text-[#948B9B]">{stamp(s.at)}</span>
+                        <span className="block text-[11.5px] text-[var(--ink-3)]">
+                          {stamp(s.at)}
+                        </span>
                       </td>
                       <td className="px-5 py-3">
-                        <span className="font-semibold">{s.name ?? "—"}</span>
-                        <span className="block text-[12.5px] text-[#5F5566]">
+                        <span className="font-semibold text-[var(--her-deep)]">
+                          {s.name ?? "—"}
+                        </span>
+                        <span className="block text-[12.5px] text-[var(--ink-2)]">
                           {s.email ?? "no email on the charge"}
                         </span>
                       </td>
@@ -701,15 +835,19 @@ export default function AdminPage() {
                       </td>
                       <td className="whitespace-nowrap px-5 py-3 text-right font-semibold tabular-nums">
                         {s.refunded ? (
-                          <span className="text-[#A02219]">
+                          <span className="text-[var(--stop)]">
                             {s.net > 0 ? money(s.net) : `−${money(s.gross)}`}
                           </span>
                         ) : (
-                          money(s.net)
+                          <span className="text-[var(--cash-deep)]">{money(s.net)}</span>
                         )}
                       </td>
-                      <td className="whitespace-nowrap px-5 py-3 text-[13px] tabular-nums text-[#5F5566]">
-                        {s.renewsAt ? shortDate(s.renewsAt) : "—"}
+                      <td className="whitespace-nowrap px-5 py-3 text-[13px] tabular-nums">
+                        {s.renewsAt ? (
+                          <span className="text-[var(--ahead-deep)]">{shortDate(s.renewsAt)}</span>
+                        ) : (
+                          <span className="text-[var(--ink-3)]">—</span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -717,38 +855,51 @@ export default function AdminPage() {
               </table>
             </div>
           )}
-        </div>
+        </Panel>
 
         {/* ── 5. Needs a human ────────────────────────────────────────────── */}
         {alerts.length > 0 && (
           <>
             <SectionHead
               title="Needs a human"
+              dot="var(--stop)"
               note="Only here when something is actually wrong"
             />
             <div className="grid gap-1.5">
               {alerts.map((a, i) => (
                 <div
                   key={i}
-                  className={`flex items-start gap-3 rounded border px-4 py-2.5 text-[13.5px] ${
+                  className={`flex items-start gap-3 overflow-hidden rounded-lg border px-4 py-2.5 text-[13.5px] ${
                     a.tone === "bad"
-                      ? "border-[#A02219]/28 bg-[#FAE5E3] text-[#A02219]"
+                      ? "border-[var(--stop-line)] bg-[var(--stop-bg)] text-[var(--stop-deep)]"
                       : a.tone === "warn"
-                        ? "border-[#8E5A0E]/28 bg-[#FAEEDA] text-[#8E5A0E]"
-                        : "border-[#A8336E]/28 bg-[#F7E7EF] text-[#A8336E]"
+                        ? "border-[var(--spend-line)] bg-[var(--spend-bg)] text-[var(--spend-deep)]"
+                        : "border-[var(--ahead-line)] bg-[var(--ahead-bg)] text-[var(--ahead-deep)]"
                   }`}
                 >
                   <span className="min-w-[52px] shrink-0 pt-0.5 text-[10.5px] font-bold uppercase tracking-[0.07em]">
                     {a.label}
                   </span>
-                  <p>{a.text}</p>
+                  <p className="text-[var(--ink)]">{a.text}</p>
                 </div>
               ))}
             </div>
           </>
         )}
 
-        <footer className="mt-8 flex flex-wrap gap-x-6 gap-y-1.5 border-t border-[#E6DCE2] pt-3.5 text-[11.5px] text-[#948B9B]">
+        {/* ── The key ─────────────────────────────────────────────────────── */}
+        <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-[var(--line)] bg-white px-4 py-3 text-[11.5px] text-[var(--ink-2)]">
+          <span className="text-[10.5px] font-semibold uppercase tracking-[0.13em] text-[var(--ink-3)]">
+            Colour key
+          </span>
+          <KeyChip color="var(--cash)">Money in</KeyChip>
+          <KeyChip color="var(--spend)">Money out</KeyChip>
+          <KeyChip color="var(--ahead)">On the calendar</KeyChip>
+          <KeyChip color="var(--her)">The women</KeyChip>
+          <KeyChip color="var(--stop)">Needs you</KeyChip>
+        </div>
+
+        <footer className="mt-3 flex flex-wrap gap-x-6 gap-y-1.5 border-t border-[var(--line)] pt-3.5 text-[11.5px] text-[var(--ink-3)]">
           <span>Every dollar on this page comes from Stripe charges.</span>
           <span>Names, quiz finishers and renewal dates come from Supabase.</span>
           <span>Ad spend is what you typed in.</span>
@@ -762,11 +913,78 @@ export default function AdminPage() {
 
 // ─── Presentational bits ────────────────────────────────────────────────────
 
+/**
+ * A block, with a coloured spine across the top naming what kind of numbers are
+ * inside it. `accent` is any CSS background — a single var for one-subject
+ * blocks, a gradient where the block runs from one subject to another (cost →
+ * value, women → money).
+ */
+function Panel({
+  accent,
+  children,
+  className = "",
+}: {
+  accent: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`overflow-hidden rounded-xl border border-[var(--line)] bg-white shadow-sm ${className}`}
+    >
+      <div className="h-[3px] w-full" style={{ background: accent }} aria-hidden />
+      {children}
+    </div>
+  );
+}
+
 function Label({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
     <span
-      className={`text-[10.5px] font-semibold uppercase tracking-[0.13em] text-[#948B9B] ${className}`}
+      className={`text-[10.5px] font-semibold uppercase tracking-[0.13em] text-[var(--ink-3)] ${className}`}
     >
+      {children}
+    </span>
+  );
+}
+
+function ColumnHead({
+  color,
+  children,
+  className = "mb-2",
+}: {
+  color: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <span
+      className={`flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-[0.13em] ${className}`}
+    >
+
+      <i className="block size-2 rounded-full" style={{ background: color }} aria-hidden />
+      <span style={{ color }}>{children}</span>
+    </span>
+  );
+}
+
+function Footnote({ dot, children }: { dot: string; children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-baseline gap-1.5">
+      <i
+        className="relative top-[-1px] block size-1.5 shrink-0 rounded-full"
+        style={{ background: dot }}
+        aria-hidden
+      />
+      <span>{children}</span>
+    </span>
+  );
+}
+
+function KeyChip({ color, children }: { color: string; children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <i className="block size-2.5 rounded-full" style={{ background: color }} aria-hidden />
       {children}
     </span>
   );
@@ -774,77 +992,121 @@ function Label({ children, className = "" }: { children: React.ReactNode; classN
 
 function Verdict({ verdict }: { verdict: Stats["verdict"] }) {
   const tone = verdict.tone;
-  const bar =
+  const color =
     tone === "good"
-      ? "bg-[#146B4E]"
+      ? "var(--cash)"
       : tone === "warn"
-        ? "bg-[#8E5A0E]"
+        ? "var(--spend)"
         : tone === "bad"
-          ? "bg-[#A02219]"
-          : "bg-[#948B9B]";
+          ? "var(--stop)"
+          : "var(--ink-3)";
   const bg =
     tone === "good"
-      ? "bg-[#F1F8F5]"
+      ? "var(--cash-bg)"
       : tone === "warn"
-        ? "bg-[#FDF7EC]"
+        ? "var(--spend-bg)"
         : tone === "bad"
-          ? "bg-[#FDF1F0]"
-          : "bg-white";
+          ? "var(--stop-bg)"
+          : "#FFFFFF";
+  const line =
+    tone === "good"
+      ? "var(--cash-line)"
+      : tone === "warn"
+        ? "var(--spend-line)"
+        : tone === "bad"
+          ? "var(--stop-line)"
+          : "var(--line)";
   const word =
     tone === "good"
-      ? "text-[#146B4E]"
+      ? "var(--cash-deep)"
       : tone === "warn"
-        ? "text-[#8E5A0E]"
+        ? "var(--spend-deep)"
         : tone === "bad"
-          ? "text-[#A02219]"
-          : "text-[#5F5566]";
+          ? "var(--stop-deep)"
+          : "var(--ink-2)";
   return (
     <div
-      className={`relative mb-8 flex flex-wrap items-baseline gap-x-4 gap-y-1.5 overflow-hidden rounded border border-[#E6DCE2] px-6 py-4 shadow-sm ${bg}`}
+      className="relative mb-8 flex flex-wrap items-baseline gap-x-4 gap-y-1.5 overflow-hidden rounded-xl border py-4 pl-7 pr-6 shadow-sm"
+      style={{ background: bg, borderColor: line }}
     >
-      <span className={`absolute inset-y-0 left-0 w-[3px] ${bar}`} aria-hidden />
-      <span className={`font-serif text-2xl leading-none tracking-tight ${word}`}>
+      <span className="absolute inset-y-0 left-0 w-[4px]" style={{ background: color }} aria-hidden />
+      <span
+        className="font-serif text-2xl leading-none tracking-tight"
+        style={{ color: word }}
+      >
         {verdict.word}
       </span>
-      <span className="max-w-[76ch] text-[14.5px] text-[#1C181F]">{verdict.text}</span>
+      <span className="max-w-[76ch] text-[14.5px] text-[var(--ink)]">{verdict.text}</span>
     </div>
   );
 }
 
 function SectionHead({
   title,
+  dot,
   source,
   note,
 }: {
   title: string;
+  dot?: string;
   source?: string;
   note?: string;
 }) {
   return (
-    <div className="mb-2.5 mt-8 flex items-center gap-3.5">
+    <div className="mb-2.5 mt-8 flex items-center gap-3">
+      {dot && (
+        <i
+          className="block size-2.5 shrink-0 rounded-full"
+          style={{ background: dot }}
+          aria-hidden
+        />
+      )}
       <h2 className="whitespace-nowrap text-[13px] font-semibold">{title}</h2>
       {source && (
-        <span className="whitespace-nowrap rounded border border-[#E6DCE2] bg-white px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[#948B9B]">
+        <span className="whitespace-nowrap rounded-full border border-[var(--line)] bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--ink-3)]">
           {source}
         </span>
       )}
-      <span className="h-px flex-1 bg-[#E6DCE2]" />
-      {note && <span className="hidden whitespace-nowrap text-[11.5px] text-[#948B9B] sm:inline">{note}</span>}
+      <span className="h-px flex-1 bg-[var(--line)]" />
+      {note && (
+        <span className="hidden whitespace-nowrap text-[11.5px] text-[var(--ink-3)] sm:inline">
+          {note}
+        </span>
+      )}
     </div>
   );
 }
 
 function Cell({ label, bucket, bordered }: { label: string; bucket: Bucket; bordered?: boolean }) {
   return (
-    <div className={`px-5 py-4 ${bordered ? "border-l border-[#F0E9ED]" : ""}`}>
+    <div className={`px-5 py-4 ${bordered ? "border-l border-[var(--line-soft)]" : ""}`}>
       <Label>{label}</Label>
-      <p className="mt-1 font-serif text-2xl leading-tight tracking-tight tabular-nums">
+      <p
+        className={`mt-1 font-serif text-2xl leading-tight tracking-tight tabular-nums ${
+          bucket.net > 0 ? "text-[var(--cash-deep)]" : "text-[var(--ink-3)]"
+        }`}
+      >
         {money(bucket.net)}
       </p>
-      <p className="text-[12px] text-[#948B9B]">{plural(bucket.count, "sale")}</p>
+      <p className="text-[12px] text-[var(--ink-3)]">{plural(bucket.count, "sale")}</p>
     </div>
   );
 }
+
+/**
+ * `tone` says what the figure *is*, and the colour follows from that — cash in,
+ * spend out, on the calendar, a woman, or a pass/fail judgement. Never pick one
+ * for contrast.
+ */
+const ROW_TONE: Record<string, string> = {
+  good: "text-[var(--cash-deep)]",
+  bad: "text-[var(--stop)]",
+  cash: "text-[var(--cash-deep)]",
+  spend: "text-[var(--spend-deep)]",
+  ahead: "text-[var(--ahead-deep)]",
+  her: "text-[var(--her-deep)]",
+  mute: "font-normal text-[var(--ink-3)]",
+};
 
 function Row({
   label,
@@ -856,27 +1118,21 @@ function Row({
   label: string;
   hint: string;
   value: string;
-  tone?: "good" | "bad" | "mute";
+  tone?: "good" | "bad" | "mute" | "cash" | "spend" | "ahead" | "her";
   big?: boolean;
 }) {
-  const toneClass =
-    tone === "good"
-      ? "text-[#146B4E]"
-      : tone === "bad"
-        ? "text-[#A02219]"
-        : tone === "mute"
-          ? "font-normal text-[#948B9B]"
-          : "";
   return (
-    <div className="flex items-baseline justify-between gap-4 border-b border-dotted border-[#E6DCE2] py-2 last:border-0">
-      <span className="text-[13px] text-[#5F5566]">
+    <div className="flex items-baseline justify-between gap-4 border-b border-dotted border-[var(--line)] py-2 last:border-0">
+      <span className="text-[13px] text-[var(--ink-2)]">
         {label}
-        <small className="mt-0.5 block text-[11.5px] leading-snug text-[#948B9B]">{hint}</small>
+        <small className="mt-0.5 block text-[11.5px] leading-snug text-[var(--ink-3)]">
+          {hint}
+        </small>
       </span>
       <span
         className={`whitespace-nowrap font-semibold tabular-nums tracking-tight ${
           big ? "text-[19px]" : "text-[16px]"
-        } ${toneClass}`}
+        } ${tone ? ROW_TONE[tone] : ""}`}
       >
         {value}
       </span>
@@ -884,14 +1140,78 @@ function Row({
   );
 }
 
+/** Saving / saved / failed, in the smallest space that reads. */
+function SaveState({
+  saving,
+  saved,
+  failed,
+}: {
+  saving: boolean;
+  saved: boolean;
+  failed: boolean;
+}) {
+  if (saving) return <span className="text-[var(--ink-3)]">saving…</span>;
+  if (saved) return <span className="font-semibold text-[var(--cash)]">saved ✓</span>;
+  if (failed) return <span className="font-semibold text-[var(--stop)]">failed</span>;
+  return null;
+}
+
 /**
- * Ad spend, auto-saved per day — no calendar picker, no Save button.
+ * One amber underline you type a number into, and nothing else.
  *
- * A row of the last {@link SPEND_STRIP_DAYS} days, each with its own box.
+ * No box, no ring, no outline on focus — the rule under the figure thickens
+ * into {@link PALETTE} amber and that is the whole focus state. `outline-none`
+ * plus `focus:ring-0` kills both the browser default and Tailwind's, which is
+ * what made the old bordered version look like a form field.
+ */
+function SpendInput({
+  day,
+  value,
+  onChange,
+  onBlur,
+  className = "w-24",
+  size = "text-[15px]",
+}: {
+  day: string;
+  value: string;
+  onChange: (day: string, value: string) => void;
+  onBlur: (day: string) => void;
+  className?: string;
+  size?: string;
+}) {
+  return (
+    <label className={`group inline-flex items-baseline gap-1 ${className}`}>
+      <span className={`${size} font-medium text-[var(--spend)]/70`}>$</span>
+      <input
+        value={value}
+        onChange={(e) => onChange(day, e.target.value)}
+        onBlur={() => onBlur(day)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+        inputMode="decimal"
+        placeholder="0"
+        aria-label={`Ad spend for ${dayLabel(day)}`}
+        className={`w-full min-w-0 border-0 border-b border-[var(--spend-line)] bg-transparent py-0.5 font-semibold tabular-nums text-[var(--spend-deep)] outline-none transition-colors placeholder:font-normal placeholder:text-[var(--ink-3)] hover:border-[var(--spend)]/60 focus:border-b-2 focus:border-[var(--spend)] focus:outline-none focus:ring-0 ${size}`}
+      />
+    </label>
+  );
+}
+
+/**
+ * Ad spend, auto-saved — no calendar picker, no Save button, and no wall of
+ * boxes.
+ *
+ * **Today is the only field on screen.** It is the only one you type on a
+ * normal day: you read the number off Meta Ads Manager at the end of the day
+ * and enter it once. The other {@link SPEND_STRIP_DAYS} days are a backfill
+ * job, so they live behind the `⋯` and open as a plain list. If any of the last
+ * 7 days is still empty the toggle says so in amber, because that is the one
+ * state where opening it actually matters — cost per customer is understated
+ * until those are filled in.
+ *
  * Typing debounces a save 700ms after the last keystroke; tabbing or clicking
- * away saves immediately. Today is pink, a box in the last 7 days with nothing
- * logged is amber, a box that failed to save is red — so what needs attention
- * is visible without reading every cell.
+ * away saves immediately. Clearing a field removes that day.
  */
 function AdSpendStrip({
   stats,
@@ -910,81 +1230,108 @@ function AdSpendStrip({
   onChange: (day: string, value: string) => void;
   onBlur: (day: string) => void;
 }) {
-  const days = lastNDays(stats.costs.todayIso, SPEND_STRIP_DAYS);
+  const [open, setOpen] = useState(false);
+  const today = stats.costs.todayIso;
+  const earlier = lastNDays(today, SPEND_STRIP_DAYS)
+    .filter((d) => d !== today)
+    .reverse(); // newest first — yesterday is the one you actually reach for
+  const missing = stats.costs.missingDays.filter((d) => d !== today).length;
   const firstError = Object.entries(errors)[0];
 
   return (
-    <div className="border-t border-[#E6DCE2] bg-[#FBF8F9] px-6 py-4">
-      <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <Label>Ad spend, last {SPEND_STRIP_DAYS} days</Label>
-        <span className="text-[11.5px] text-[#948B9B]">
-          Copied from Meta Ads Manager · saves as you type
-        </span>
+    <div className="border-t border-[var(--line)] bg-[var(--spend-bg)] px-6 py-4">
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+        <div className="flex items-baseline gap-4">
+          <ColumnHead color="var(--spend)" className="">
+            Ad spend
+          </ColumnHead>
+          <span className="flex items-baseline gap-2">
+            <SpendInput
+              day={today}
+              value={drafts[today] ?? ""}
+              onChange={onChange}
+              onBlur={onBlur}
+              className="w-28"
+              size="text-[17px]"
+            />
+            <span className="text-[11.5px] text-[var(--spend-deep)]/70">today</span>
+          </span>
+          <span className="text-[10px] leading-none">
+            <SaveState
+              saving={!!saving[today]}
+              saved={!!saved[today]}
+              failed={!!errors[today]}
+            />
+          </span>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <span className="text-[11.5px] text-[var(--spend-deep)]/70">
+            Copied from Meta Ads Manager · saves as you type
+          </span>
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold leading-none transition-colors ${
+              missing > 0 && !open
+                ? "border-[var(--spend)] bg-white text-[var(--spend-deep)] hover:bg-[var(--spend-bg)]"
+                : "border-[var(--spend-line)] bg-white text-[var(--spend-deep)]/80 hover:border-[var(--spend)]"
+            }`}
+          >
+            {open ? "Hide earlier days" : missing > 0 ? `⋯ ${missing} day${missing === 1 ? "" : "s"} missing` : "⋯ Earlier days"}
+          </button>
+        </div>
       </div>
-      <div className="flex flex-wrap gap-1.5">
-        {days.map((day) => {
-          const isToday = day === stats.costs.todayIso;
-          const isMissing = stats.costs.missingDays.includes(day);
-          const isSaving = !!saving[day];
-          const isSaved = !!saved[day];
-          const err = errors[day];
-          return (
-            <div
-              key={day}
-              className={`flex w-[74px] shrink-0 flex-col items-center gap-1 rounded-md border px-1.5 py-2 transition-colors ${
-                err
-                  ? "border-[#A02219]/60 bg-[#FDF1F0]"
-                  : isToday
-                    ? "border-[#A8336E] bg-[#FCEEF5]"
-                    : isMissing
-                      ? "border-[#E3B96B]/70 bg-[#FEFBF3]"
-                      : "border-[#E6DCE2] bg-white"
-              }`}
-            >
-              <span
-                className={`text-[9.5px] font-semibold uppercase tracking-[0.08em] ${
-                  isToday ? "text-[#A8336E]" : "text-[#948B9B]"
-                }`}
+
+      {open && (
+        <div className="mt-4 grid gap-x-8 gap-y-0 border-t border-[var(--spend-line)] pt-2 sm:grid-cols-2 lg:grid-cols-3">
+          {earlier.map((day) => {
+            const isMissing = stats.costs.missingDays.includes(day);
+            return (
+              <div
+                key={day}
+                className="flex items-baseline justify-between gap-3 border-b border-dotted border-[var(--spend-line)] py-1.5"
               >
-                {isToday ? "Today" : weekdayLabel(day)}
-              </span>
-              <span className="text-[11px] tabular-nums text-[#5F5566]">{dayLabel(day)}</span>
-              <label className="flex w-full items-center rounded border border-[#D6CBD2] bg-white px-1 focus-within:border-[#A8336E]">
-                <span className="text-[11px] text-[#948B9B]">$</span>
-                <input
-                  value={drafts[day] ?? ""}
-                  onChange={(e) => onChange(day, e.target.value)}
-                  onBlur={() => onBlur(day)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") e.currentTarget.blur();
-                  }}
-                  inputMode="decimal"
-                  placeholder="0"
-                  aria-label={`Ad spend for ${dayLabel(day)}`}
-                  className="w-full min-w-0 bg-transparent px-1 py-1 text-[12.5px] tabular-nums outline-none"
-                />
-              </label>
-              <span className="h-3 text-[9.5px] leading-none">
-                {isSaving ? (
-                  <span className="text-[#948B9B]">saving…</span>
-                ) : isSaved ? (
-                  <span className="text-[#146B4E]">saved ✓</span>
-                ) : err ? (
-                  <span className="text-[#A02219]">failed</span>
-                ) : null}
-              </span>
-            </div>
-          );
-        })}
-      </div>
+                <span className="flex items-baseline gap-2 text-[12.5px] text-[var(--ink-2)]">
+                  <span className="w-8 font-semibold text-[var(--spend-deep)]">
+                    {weekdayLabel(day)}
+                  </span>
+                  <span className="tabular-nums text-[var(--ink-3)]">{dayLabel(day)}</span>
+                  {isMissing && (
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--spend)]">
+                      missing
+                    </span>
+                  )}
+                </span>
+                <span className="flex items-baseline gap-2">
+                  <span className="text-[9.5px] leading-none">
+                    <SaveState
+                      saving={!!saving[day]}
+                      saved={!!saved[day]}
+                      failed={!!errors[day]}
+                    />
+                  </span>
+                  <SpendInput
+                    day={day}
+                    value={drafts[day] ?? ""}
+                    onChange={onChange}
+                    onBlur={onBlur}
+                    className="w-20"
+                    size="text-[13.5px]"
+                  />
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {firstError && (
-        <p className="mt-2 text-[12px] text-[#A02219]">
+        <p className="mt-2 text-[12px] text-[var(--stop)]">
           {dayLabel(firstError[0])}: {firstError[1]}
         </p>
       )}
-      <p className="mt-2.5 max-w-[62ch] text-[12px] leading-snug text-[#948B9B]">
-        Clear a box to remove that day. Amber means one of the last 7 days has nothing logged yet.
-      </p>
     </div>
   );
 }
@@ -992,22 +1339,23 @@ function AdSpendStrip({
 function EmptyPoint({ children }: { children: React.ReactNode }) {
   return (
     <li className="flex gap-2.5">
-      <span className="text-[#A8336E]">→</span>
+      <span className="text-[var(--her)]">→</span>
       <span>{children}</span>
     </li>
   );
 }
 
+/** New = money arrived. Renewal = the calendar paying out. Refunded = wrong. */
 const TAG: Record<string, string> = {
-  new: "border-[#146B4E]/30 bg-[#E1F0E9] text-[#146B4E]",
-  renewal: "border-[#A8336E]/30 bg-[#F7E7EF] text-[#A8336E]",
-  refunded: "border-[#A02219]/30 bg-[#FAE5E3] text-[#A02219]",
+  new: "border-[var(--cash-line)] bg-[var(--cash-bg)] text-[var(--cash-deep)]",
+  renewal: "border-[var(--ahead-line)] bg-[var(--ahead-bg)] text-[var(--ahead-deep)]",
+  refunded: "border-[var(--stop-line)] bg-[var(--stop-bg)] text-[var(--stop-deep)]",
 };
 
 function Tag({ kind }: { kind: "new" | "renewal" | "refunded" }) {
   return (
     <span
-      className={`inline-block rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.07em] ${TAG[kind]}`}
+      className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.07em] ${TAG[kind]}`}
     >
       {kind}
     </span>
@@ -1020,7 +1368,9 @@ function Tag({ kind }: { kind: "new" | "renewal" | "refunded" }) {
  * Running totals rather than daily bars because daily revenue on a $59 product
  * is lumpy — two sales one day and none the next says nothing. The crossing
  * point is the whole picture: the day the month's ads paid for themselves. The
- * band between the lines is the gap, tinted by which line is on top.
+ * band between the lines is the gap, green while collected is ahead of spend
+ * and red while it is behind. Green line = money in, amber dashed = money out,
+ * the same two colours they carry everywhere else on the page.
  */
 function CashChart({ revenue, spend }: { revenue: number[]; spend: number[] }) {
   const n = Math.min(revenue.length, spend.length);
@@ -1039,9 +1389,10 @@ function CashChart({ revenue, spend }: { revenue: number[]; spend: number[] }) {
 
   if (a === 0 && b === 0) {
     return (
-      <p className="py-8 text-center text-[13px] text-[#948B9B]">
+      <p className="py-8 text-center text-[13px] text-[var(--ink-3)]">
         Nothing spent and nothing collected in 30 days. This is the chart to watch on day one — the
-        two lines start together and you want the pink one on top.
+        two lines start together and you want the{" "}
+        <b className="font-semibold text-[var(--cash-deep)]">green</b> one on top.
       </p>
     );
   }
@@ -1073,12 +1424,22 @@ function CashChart({ revenue, spend }: { revenue: number[]; spend: number[] }) {
       role="img"
       aria-label={`Running total over 30 days: ${money(a)} collected against ${money(b)} of ad spend.`}
     >
-      <line x1={PADL} y1={y(0)} x2={W - PADR} y2={y(0)} stroke="#E6DCE2" strokeWidth={1} />
+      <defs>
+        <linearGradient id="cashAhead" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--cash)" stopOpacity="0.22" />
+          <stop offset="100%" stopColor="var(--cash)" stopOpacity="0.06" />
+        </linearGradient>
+        <linearGradient id="cashBehind" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--stop)" stopOpacity="0.2" />
+          <stop offset="100%" stopColor="var(--stop)" stopOpacity="0.05" />
+        </linearGradient>
+      </defs>
+      <line x1={PADL} y1={y(0)} x2={W - PADR} y2={y(0)} stroke="var(--line)" strokeWidth={1} />
       {Array.from({ length: n - 1 }, (_, i) => (
         <polygon
           key={i}
           points={`${x(i)},${y(cumRev[i])} ${x(i + 1)},${y(cumRev[i + 1])} ${x(i + 1)},${y(cumSpend[i + 1])} ${x(i)},${y(cumSpend[i])}`}
-          fill={cumRev[i + 1] >= cumSpend[i + 1] ? "rgba(20,107,78,.13)" : "rgba(160,34,25,.13)"}
+          fill={cumRev[i + 1] >= cumSpend[i + 1] ? "url(#cashAhead)" : "url(#cashBehind)"}
         />
       ))}
       {crossAt !== null && (
@@ -1088,11 +1449,11 @@ function CashChart({ revenue, spend }: { revenue: number[]; spend: number[] }) {
             y1={PADT}
             x2={x(crossAt)}
             y2={H - PADB}
-            stroke="#146B4E"
+            stroke="var(--cash)"
             strokeWidth={1}
             strokeDasharray="2 3"
           />
-          <text x={x(crossAt) + 6} y={PADT + 11} fontSize={11} fill="#146B4E">
+          <text x={x(crossAt) + 6} y={PADT + 11} fontSize={11} fontWeight={600} fill="var(--cash)">
             paid for itself
           </text>
         </>
@@ -1100,7 +1461,7 @@ function CashChart({ revenue, spend }: { revenue: number[]; spend: number[] }) {
       <path
         d={path(cumSpend)}
         fill="none"
-        stroke="#948B9B"
+        stroke="var(--spend)"
         strokeWidth={2}
         strokeDasharray="5 4"
         strokeLinecap="round"
@@ -1108,37 +1469,37 @@ function CashChart({ revenue, spend }: { revenue: number[]; spend: number[] }) {
       <path
         d={path(cumRev)}
         fill="none"
-        stroke="#A8336E"
+        stroke="var(--cash)"
         strokeWidth={2.5}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <circle cx={x(n - 1)} cy={y(b)} r={3.5} fill="#948B9B" stroke="#fff" strokeWidth={2} />
+      <circle cx={x(n - 1)} cy={y(b)} r={3.5} fill="var(--spend)" stroke="#fff" strokeWidth={2} />
       <text
         x={x(n - 1) + 9}
         y={y(b) + 4}
         fontSize={11.5}
         fontWeight={600}
-        fill="#948B9B"
+        fill="var(--spend-deep)"
         className="tabular-nums"
       >
         {money(b, 0)}
       </text>
-      <circle cx={x(n - 1)} cy={y(a)} r={3.5} fill="#A8336E" stroke="#fff" strokeWidth={2} />
+      <circle cx={x(n - 1)} cy={y(a)} r={3.5} fill="var(--cash)" stroke="#fff" strokeWidth={2} />
       <text
         x={x(n - 1) + 9}
         y={y(a) + 4}
         fontSize={11.5}
         fontWeight={600}
-        fill="#A8336E"
+        fill="var(--cash-deep)"
         className="tabular-nums"
       >
         {money(a, 0)}
       </text>
-      <text x={PADL} y={H - 6} fontSize={10.5} fill="#948B9B">
+      <text x={PADL} y={H - 6} fontSize={10.5} fill="var(--ink-3)">
         30 days ago
       </text>
-      <text x={W - PADR} y={H - 6} fontSize={10.5} fill="#948B9B" textAnchor="end">
+      <text x={W - PADR} y={H - 6} fontSize={10.5} fill="var(--ink-3)" textAnchor="end">
         Today
       </text>
     </svg>
@@ -1152,6 +1513,9 @@ function CashChart({ revenue, spend }: { revenue: number[]; spend: number[] }) {
  * splits two problems with completely different fixes: women who never reach
  * Stripe Checkout are an offer-screen problem, women who reach it and don't pay
  * are a checkout problem.
+ *
+ * The bars run rose → green: they arrive as women and leave as money, so the
+ * last step is the only one wearing the colour Stripe figures wear.
  */
 function Funnel({
   quiz,
@@ -1173,14 +1537,27 @@ function Funnel({
   const pct = (num: number, den: number) => (den > 0 ? `${((num / den) * 100).toFixed(1)}%` : "—");
 
   const steps = [
-    { label: "Finished the quiz", value: quiz, width: quiz > 0 ? 100 : 0, fill: "bg-[#A8336E]/35" },
+    {
+      label: "Finished the quiz",
+      value: quiz,
+      width: quiz > 0 ? 100 : 0,
+      fill: "linear-gradient(90deg, color-mix(in srgb, var(--her) 26%, white), color-mix(in srgb, var(--her) 42%, white))",
+      color: "var(--her-deep)",
+    },
     {
       label: "Started Stripe Checkout",
       value: checkout,
       width: w(checkout),
-      fill: "bg-[#A8336E]/65",
+      fill: "linear-gradient(90deg, color-mix(in srgb, var(--her) 62%, white), var(--her))",
+      color: "var(--her-deep)",
     },
-    { label: "Paid", value: paid, width: w(paid), fill: "bg-[#A8336E]" },
+    {
+      label: "Paid",
+      value: paid,
+      width: w(paid),
+      fill: "linear-gradient(90deg, var(--cash), var(--cash-deep))",
+      color: "var(--cash-deep)",
+    },
   ];
 
   return (
@@ -1188,20 +1565,23 @@ function Funnel({
       {steps.map((s, i) => (
         <div key={s.label}>
           <div className="grid grid-cols-[118px_1fr] items-center gap-3 py-1.5 sm:grid-cols-[140px_1fr]">
-            <span className="text-[12.5px] leading-tight text-[#5F5566]">
+            <span className="text-[12.5px] leading-tight text-[var(--ink-2)]">
               {s.label}
-              <b className="block text-[19px] font-semibold tracking-tight tabular-nums text-[#1C181F]">
+              <b
+                className="block text-[19px] font-semibold tracking-tight tabular-nums"
+                style={{ color: s.color }}
+              >
                 {i === 1 && sessionsError ? "—" : s.value.toLocaleString("en-US")}
               </b>
             </span>
             <span
-              className={`h-[26px] min-w-[2px] rounded-sm transition-[width] duration-500 ${s.fill}`}
-              style={{ width: `${s.width}%` }}
+              className="h-[26px] min-w-[2px] rounded-md transition-[width] duration-500"
+              style={{ width: `${s.width}%`, background: s.fill }}
             />
           </div>
           {i < 2 && (
-            <p className="col-start-2 pb-1 pl-[130px] text-[11.5px] text-[#948B9B] sm:pl-[152px]">
-              <b className="font-semibold text-[#5F5566] tabular-nums">
+            <p className="col-start-2 pb-1 pl-[130px] text-[11.5px] text-[var(--ink-3)] sm:pl-[152px]">
+              <b className="font-semibold tabular-nums text-[var(--her-deep)]">
                 {i === 0
                   ? sessionsError
                     ? "—"
@@ -1210,13 +1590,15 @@ function Funnel({
                     ? "—"
                     : pct(paid, checkout)}
               </b>{" "}
-              {i === 0 ? "reach Stripe Checkout — that's the offer screen's job" : "of those pay — that's checkout abandonment"}
+              {i === 0
+                ? "reach Stripe Checkout — that's the offer screen's job"
+                : "of those pay — that's checkout abandonment"}
             </p>
           )}
         </div>
       ))}
       {sessionsError && (
-        <p className="mt-2 text-[12px] text-[#8E5A0E]">
+        <p className="mt-2 text-[12px] text-[var(--spend-deep)]">
           {sessionsError}, so the middle step is blank. The two ends are still correct.
         </p>
       )}
