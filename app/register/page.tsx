@@ -5091,17 +5091,33 @@ function RegisterPageContent() {
                 decoration - at which point the highlight stops meaning
                 anything, which is the failure mode the variant table in
                 components/HighlightSweep.tsx exists to prevent. */}
+            {/* Each clause is one unbreakable line. The sweep renders as an
+                inline-block, which cannot break mid-phrase - so at any width
+                where "It isn't a lack of discipline." misses the fit, the whole
+                swept phrase dropped to its own row ("It isn't" / "a lack of
+                discipline."). At text-2xl that line needs 314px and a 360px
+                phone gives it 312. The clamp sizes the type to the clause
+                instead: 6.2vw keeps ~20px of slack at every width from 320 up
+                (22.3px at 360, capped at text-2xl from ~387px), and the nowrap
+                spans state the two-line shape instead of leaving it to a <br/>
+                plus luck. The period lives inside the sweep on both lines -
+                outside it, the dot is its own break opportunity and can wrap
+                alone. */}
             <motion.h1
               initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: prefersReducedMotion ? 0 : 0.15, duration: 0.4 }}
-              className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] leading-tight px-2"
+              className="text-[clamp(1.25rem,6.2vw,1.5rem)] sm:text-3xl font-bold text-[#3D3D3D] leading-tight px-2"
             >
-              It isn&apos;t{" "}
-              <HighlightSweep variant="rose">in your head</HighlightSweep>.
+              <span className="whitespace-nowrap">
+                It isn&apos;t{" "}
+                <HighlightSweep variant="rose">in your head.</HighlightSweep>
+              </span>
               <br />
-              It isn&apos;t{" "}
-              <HighlightSweep variant="rose">a lack of discipline.</HighlightSweep>
+              <span className="whitespace-nowrap">
+                It isn&apos;t{" "}
+                <HighlightSweep variant="rose">a lack of discipline.</HighlightSweep>
+              </span>
             </motion.h1>
 
             {/* The reframe. It has to land before she is asked to do any work -
