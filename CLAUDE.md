@@ -404,8 +404,8 @@ Password-gated by `ADMIN_PANEL_PASSWORD` (unset = closed, deliberately). One
 endpoint, `POST /api/admin/stats`. Rebuilt 2026-08-30 around a sharper question
 than before: not "is money arriving?" but **"should I spend more on ads
 tomorrow?"** — which is the only question a $59 auto-renewing plan sold on Meta
-ever really asks. Six blocks: the verdict, cash in, unit economics, where they
-stop, latest sales, needs a human.
+ever really asks. Five blocks: the verdict, cash in, unit economics, the funnel
+top to bottom, latest sales, needs a human.
 
 - **Money is Stripe. People are Supabase. Never mixed.** Every dollar comes from
   `stripe.charges.list()`; names, quiz finishers, renewal dates, plan status and
@@ -464,7 +464,30 @@ stop, latest sales, needs a human.
   transactions, falling back to Stripe's published 2.9% + 30¢ only at zero
   volume. `kept` (net less fees) is the only figure it is honest to compare
   against ad spend, and it is what contribution is built from.
-- **The funnel is three steps, all windowed to the same 30 days:** quiz finished
+- **The funnel is one block with two bands, not two panels.** Until 2026-09-02
+  the three money steps and the screen-by-screen curve were separate sections
+  answering halves of the same question, and reading them meant holding the last
+  bar of one against the first bar of the other. They are merged into "The
+  funnel, top to bottom" — but **the bands keep separate bases, and that is the
+  whole discipline of the block**: the top is `funnel_events`, counted by
+  *visit*, and the bottom is Supabase profiles plus Stripe charges, counted by
+  *woman*. Flattening them onto one denominator is the only real mistake
+  available here. Each band states its unit and its source, the seam between
+  them is drawn rather than hidden, and one sentence at the bottom reads the
+  chain out in words. Two artefacts the block must keep explaining, because both
+  look like a broken panel and neither is: `trackingSince` later than the window
+  start means the top band covers fewer days than the bottom one (true for as
+  long as the campaign floor predates 2026-09-02), and a later money step
+  outrunning an earlier one is undeleteable test-mode Checkout Sessions, not a
+  miscount. When the bands are not comparable the chain sentence drops the visit
+  count rather than implying a completion rate it cannot support.
+- **The money band is never coloured orange.** Losing most of the room between
+  the quiz and the card form is what that step does on a healthy funnel, so a
+  cliff threshold there sits orange permanently and teaches the eye to ignore the
+  colour that names a *screen*. The two rates it prints instead —
+  finishers→card form, card form→paid — are what split "the offer screen is
+  weak" from "checkout is leaking".
+- **The three money steps are windowed to the same 30 days:** quiz finished
   (Supabase) → opened the card form (Stripe Checkout Sessions, mobile excluded
   via `checkout_surface`) → new paying customers (Stripe first charges). The
   middle step is the one that splits "the offer screen is weak" from "checkout is
@@ -475,11 +498,11 @@ stop, latest sales, needs a human.
   becomes real traffic, split the denominator before trusting the percentage.
   The bar width is clamped to 100% — a later step can legitimately exceed the
   first when leftover test-mode sessions meet a handful of real quiz rows.
-- **"Which screen loses them" is the inside of the funnel's first bar.** The
-  three-step funnel above it begins at the profile insert — step 17 of 17 — so
-  it can say the quiz leaked but never where. This block reads `funnel_events`
-  through the `funnel_dropoff(since)` RPC over the *same* `funnelSince`, so the
-  two are always comparable. Two rules that are measurement rules, not styling:
+- **The top band is the inside of the money band's first bar.** The three money
+  steps begin at the profile insert — step 17 of 17 — so they can say the quiz
+  leaked but never where. The band reads `funnel_events` through the
+  `funnel_dropoff(since)` RPC over the *same* `funnelSince`, so the two are
+  always measured over one window. Two rules that are measurement rules, not styling:
   the bar is share-of-entry, but **the called-out number is the loss against the
   previous screen** — a cumulative curve falls monotonically, so every late step
   looks bad by construction and none of them is accused of anything; and only

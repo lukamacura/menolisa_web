@@ -593,6 +593,7 @@ export async function POST(req: NextRequest) {
     checkout,
     emails,
     dropoffResult,
+    trackingStartResult,
   ] = await Promise.all([
     supabaseAdmin
       .from("user_trials")
@@ -641,6 +642,19 @@ export async function POST(req: NextRequest) {
     supabaseAdmin.rpc("funnel_dropoff", {
       since: new Date(funnelSince).toISOString(),
     }),
+    // When screen tracking actually began inside this window.
+    //
+    // The window is `funnelSince` for every block on the panel, but
+    // `funnel_events` only exists from 2026-09-02 — so for the first month the
+    // screen counts cover less time than the three steps beside them, and a
+    // funnel that reads "2 reached the paywall" above "10 finished the quiz"
+    // looks broken when it is merely younger. One indexed row answers it.
+    supabaseAdmin
+      .from("funnel_events")
+      .select("created_at")
+      .gte("created_at", new Date(funnelSince).toISOString())
+      .order("created_at", { ascending: true })
+      .limit(1),
   ]);
 
   if (trialsResult.error) {
@@ -852,6 +866,14 @@ export async function POST(req: NextRequest) {
       significant: previous !== null && previous >= MIN_CLIFF_BASE,
     };
   });
+  /**
+   * The oldest screen ping in the window, or null if there are none. The page
+   * compares it against `funnelSince` to decide whether the screen band and the
+   * money band below it really cover the same days.
+   */
+  const trackingSince =
+    (trackingStartResult.data?.[0]?.created_at as string | undefined) ?? null;
+
   const worstStep =
     entrySessions >= MIN_VERDICT_ENTRY
       ? (dropoff
@@ -1076,6 +1098,9 @@ export async function POST(req: NextRequest) {
       entrySessions,
       /** How many the verdict needs before it will name a screen. */
       minVerdictEntry: MIN_VERDICT_ENTRY,
+      /** First screen ping inside the window — null when there are none. Later
+       *  than `since` means the two bands cover different spans of days. */
+      trackingSince,
       dropoffError: dropoffResult.error ? "Could not read funnel steps" : null,
     },
     contribution30,

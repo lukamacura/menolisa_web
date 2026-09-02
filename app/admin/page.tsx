@@ -200,6 +200,7 @@ type Stats = {
     /** What `entrySessions` has to clear before a screen is named. */
     minVerdictEntry: number;
     dropoffError: string | null;
+    trackingSince: string | null;
   };
   contribution30: number;
   sales: Sale[];
@@ -770,9 +771,15 @@ export default function AdminPage() {
           </div>
         </Panel>
 
-        {/* ── 3. Funnel ───────────────────────────────────────────────────── */}
+        {/* ── 3. The funnel, end to end ───────────────────────────────────
+            One block, deliberately. This was two panels answering halves of the
+            same question: the three money steps, and the screen-by-screen curve
+            inside the first of them. The bands keep separate bases because they
+            are measured differently (visits vs women, Supabase vs Stripe) — see
+            WholeFunnel — but they are read as one falling line, which is how the
+            question is actually asked. */}
         <SectionHead
-          title="Where they stop"
+          title="The funnel, top to bottom"
           dot="linear-gradient(90deg, var(--her), var(--cash))"
           source="Supabase + Stripe"
           // Never say "30 days" when the campaign floor cut it shorter — the
@@ -784,51 +791,19 @@ export default function AdminPage() {
           }
         />
         <Panel accent="linear-gradient(90deg, var(--her) 0%, var(--her) 55%, var(--cash) 90%)">
-          <div className="px-6 py-5">
-            <Funnel
-              quiz={funnel.quizFinished30}
-              checkout={funnel.checkoutStarted30}
-              paid={funnel.paidNew30}
-              sessionsError={funnel.sessionsError}
-            />
-          </div>
-          <div className="border-t border-[var(--line)] bg-[var(--quiet)] px-6 py-3 text-[12.5px] text-[var(--ink-2)]">
-            {funnel.quizFinished30 > 0 ? (
-              <>
-                Every 100 quiz finishers are worth{" "}
-                <b className="font-semibold tabular-nums text-[var(--cash-deep)]">
-                  {money((funnel.paidNew30 / funnel.quizFinished30) * 100 * acq.keptPerSale, 0)}
-                </b>{" "}
-                kept. That is what a click is allowed to cost.
-              </>
-            ) : (
-              "Nobody has finished the quiz in the last 30 days."
-            )}
-          </div>
-        </Panel>
-
-        {/* The same question, one screen at a time. The block above starts at
-            the profile insert — step 17 of 17 — so it can only ever say that
-            the quiz leaked, never where. This one is the inside of that first
-            bar, and it is Supabase alone: no Stripe figure appears in it, so
-            there is no window to reconcile. */}
-        <SectionHead
-          title="Which screen loses them"
-          dot="var(--her)"
-          source="Supabase"
-          note={
-            funnel.clamped
-              ? `Since ${shortDate(funnel.since)} · ${plural(funnel.days, "day")}`
-              : "Last 30 days"
-          }
-        />
-        <Panel accent="linear-gradient(90deg, var(--her), #FB923C)">
-          <StepDropoff
+          <WholeFunnel
             rows={funnel.dropoff}
             worst={funnel.worstStep}
             entrySessions={funnel.entrySessions}
             minVerdictEntry={funnel.minVerdictEntry}
+            trackingSince={funnel.trackingSince}
             error={funnel.dropoffError}
+            quiz={funnel.quizFinished30}
+            checkout={funnel.checkoutStarted30}
+            paid={funnel.paidNew30}
+            sessionsError={funnel.sessionsError}
+            keptPerSale={acq.keptPerSale}
+            since={funnel.since}
           />
         </Panel>
 
@@ -1673,82 +1648,193 @@ const STEP_LABELS: Record<string, string> = {
 };
 
 /**
- * The drop-off curve inside the funnel — the block that answers "which screen".
+ * The whole funnel in one block: the landing screen down to the charge.
  *
- * Every other funnel figure on this panel begins at the profile insert, which
- * happens on step 17 of 17, so a woman who left on question 4 used to be
- * indistinguishable from one who never clicked the ad. This is the only view
- * that can see inside the quiz.
+ * This was two panels — "Where they stop" (quiz finished -> checkout -> paid)
+ * and "Which screen loses them" (the screen-by-screen curve) — stacked one above
+ * the other, answering halves of the same question. Reading them meant holding
+ * the last bar of one against the first bar of the other, which is work the
+ * panel should be doing.
  *
- * Two presentation rules that are really measurement rules:
+ * They are merged, but deliberately **not flattened onto one base**, because the
+ * two halves are not measured the same way and pretending otherwise is the only
+ * real mistake available here:
  *
- * - **The bar is share-of-entry; the red number is loss-since-the-previous
- *   screen.** They answer different questions and the second one is the reason
- *   this block exists: a cumulative curve falls monotonically, so every late
- *   step looks bad by construction and none of them is accused of anything. The
- *   step-to-step loss is what names a screen.
- * - **A loss is only coloured when it sits on a base worth dividing by.** The
- *   first live render of this panel painted `4 -> 2` and `2 -> 1` bright orange
- *   as 50% cliffs, which is noise wearing the costume of a finding. The row's
- *   `significant` flag comes from the route so the bar, the figure and the
- *   verdict all use one rule.
- * - **Below `minVerdictEntry` visits the block states observations and refuses
- *   to give an instruction.** "Fix that screen before any other" off a base of
- *   ten is worse than saying nothing: it is confident, specific and wrong, and
- *   it costs a day of work on a screen chosen by three people.
+ *   - **Inside the quiz** is `funnel_events`, counted by *visit*. One woman
+ *     across two tabs is two. It exists at all only because the funnel mints her
+ *     account on step 17 of 17, so nothing before that has a person attached.
+ *   - **After the quiz** is Supabase profiles and Stripe charges, counted by
+ *     *woman*, and it is the only half where money appears.
+ *
+ * So each band carries its own unit, its own source and its own 100%, and the
+ * seam between them is drawn rather than hidden. The line at the bottom reads
+ * the chain out in plain English, which is the sentence the panel exists to
+ * produce.
+ *
+ * Two presentation rules that are really measurement rules, both carried over
+ * from the block this replaces:
+ *
+ *   - **The bar is share of that band's first row; the coloured figure is the
+ *     loss against the row directly above.** They answer different questions and
+ *     the second is the reason this exists: a cumulative curve falls
+ *     monotonically, so every late step looks bad by construction and none of
+ *     them is accused of anything. The step-to-step loss is what names a screen.
+ *   - **A loss is only coloured when it sits on a base worth dividing by.** The
+ *     first live render of this painted `4 -> 2` and `2 -> 1` bright orange as
+ *     50% cliffs, which is noise wearing the costume of a finding. Both
+ *     thresholds come from the route so the bar, the figure and the verdict can
+ *     never use different rules.
  */
 const CLIFF_PCT = 25;
 
-function StepDropoff({
+/** One row of either band. Identical geometry in both, so the eye reads the
+ *  whole thing as a single falling curve even though the base changes once. */
+function FunnelRow({
+  label,
+  count,
+  width,
+  drop,
+  cliff,
+  fill,
+  strong = false,
+  note,
+}: {
+  label: string;
+  count: string;
+  width: number;
+  drop: number | null;
+  cliff: boolean;
+  fill: string;
+  strong?: boolean;
+  note?: string;
+}) {
+  return (
+    <div className="grid grid-cols-[136px_1fr_40px_52px] items-center gap-x-3 sm:grid-cols-[172px_1fr_44px_56px]">
+      <span
+        className={`truncate leading-tight ${
+          strong ? "text-[12.5px] font-medium text-[var(--ink)]" : "text-[12px] text-[var(--ink-2)]"
+        }`}
+        title={note}
+      >
+        {label}
+      </span>
+      <span className={`flex items-center ${strong ? "h-[22px]" : "h-[18px]"}`}>
+        <span
+          className={`min-w-[2px] rounded transition-[width] duration-500 ${
+            strong ? "h-[18px]" : "h-[14px]"
+          }`}
+          style={{ width: `${width}%`, background: fill }}
+        />
+      </span>
+      {/* Count and delta are separate fixed columns so both scan straight down
+          the page. Sharing one cell made the counts jump left and right
+          depending on whether a step had lost anyone. */}
+      <b
+        className={`text-right font-semibold tabular-nums text-[var(--ink)] ${
+          strong ? "text-[13px]" : "text-[12px]"
+        }`}
+      >
+        {count}
+      </b>
+      <span
+        className={`text-right text-[12px] tabular-nums ${
+          cliff ? "text-[#C2410C]" : "text-[var(--ink-3)]"
+        }`}
+      >
+        {drop !== null && drop > 0 ? `−${drop}%` : ""}
+      </span>
+    </div>
+  );
+}
+
+/** The label above each band. It names the unit, because the unit changes. */
+function BandHead({ title, unit }: { title: string; unit: string }) {
+  return (
+    <div className="mb-1.5 flex items-baseline justify-between gap-3">
+      <span className="text-[10.5px] font-semibold uppercase tracking-[0.11em] text-[var(--ink-3)]">
+        {title}
+      </span>
+      <span className="text-[10.5px] text-[var(--ink-3)]">{unit}</span>
+    </div>
+  );
+}
+
+function WholeFunnel({
   rows,
   worst,
   entrySessions,
   minVerdictEntry,
+  trackingSince,
   error,
+  quiz,
+  checkout,
+  paid,
+  sessionsError,
+  keptPerSale,
+  since,
 }: {
   rows: Stats["funnel"]["dropoff"];
   worst: Stats["funnel"]["worstStep"];
   entrySessions: number;
   minVerdictEntry: number;
+  trackingSince: string | null;
   error: string | null;
+  quiz: number;
+  checkout: number;
+  paid: number;
+  sessionsError: string | null;
+  keptPerSale: number;
+  since: string;
 }) {
-  if (error) {
-    return <p className="px-6 py-5 text-[13px] text-[var(--ink-2)]">{error}</p>;
-  }
-  if (rows.length === 0) {
-    return (
-      <div className="px-6 py-10 text-center">
-        <h3 className="text-base font-semibold">No steps recorded yet</h3>
-        <p className="mx-auto mt-1.5 max-w-[52ch] text-sm text-[var(--ink-2)]">
-          This fills in once the instrumented build is live and someone opens{" "}
-          <code className="rounded bg-[var(--quiet)] px-1 py-0.5 text-[12px]">/register</code>.
-          Nothing is broken — there is simply nothing to draw yet.
-        </p>
-      </div>
-    );
-  }
-
   const entry = rows[0]?.sessions ?? 0;
-  const reachedPaywall = rows.some((r) => r.step === "paywall" && r.sessions > 0);
   const confident = entrySessions >= minVerdictEntry;
+  const hasVerdict = confident && worst && worst.dropPct !== null && worst.dropPct >= CLIFF_PCT;
+
+  // Screen tracking is younger than the window for as long as the campaign
+  // floor predates 2026-09-02. Without saying so, "2 reached the paywall" sitting
+  // above "10 finished the quiz" reads as a broken funnel rather than a young one.
+  const lagged =
+    trackingSince !== null &&
+    new Date(trackingSince).getTime() - new Date(since).getTime() > 12 * 60 * 60 * 1000;
+
+  // Band B bars share band B's own 100% (quiz finishers). Clamped, because a
+  // later step can legitimately exceed the first when leftover test-mode
+  // checkout sessions meet a handful of real quiz rows.
+  const wMoney = (v: number) =>
+    quiz > 0 ? Math.min(Math.max((v / quiz) * 100, v > 0 ? 1.5 : 0), 100) : 0;
+  const dropOf = (prev: number, now: number) =>
+    prev > 0 ? Math.round(((prev - now) / prev) * 100) : null;
+  const rate = (num: number, den: number) => (den > 0 ? `${((num / den) * 100).toFixed(1)}%` : "—");
+  // A later money step outrunning an earlier one is not impossible, it is a
+  // window artefact: a Checkout Session cannot be deleted, so test-mode taps sit
+  // in the window for a full 30 days. The bars clamp; the percentage prints the
+  // true figure and would otherwise read as "138% of those pay", which looks
+  // like a broken panel rather than an uncleared window.
+  const inverted = !sessionsError && (checkout > quiz || paid > checkout);
+
+  const HER = "linear-gradient(90deg, color-mix(in srgb, var(--her) 34%, white), var(--her))";
+  const CLIFF = "linear-gradient(90deg, #FDBA74, #FB923C)";
+  const CASH = "linear-gradient(90deg, var(--cash), var(--cash-deep))";
 
   return (
     <div className="px-6 py-5">
       {/* The instruction, or an honest account of why there isn't one yet.
           Never both, and never the instruction on a base this small. */}
-      {confident && worst && worst.dropPct !== null && worst.dropPct >= CLIFF_PCT ? (
+      {error ? (
+        <p className="mb-4 text-[13px] text-[var(--ink-2)]">{error}</p>
+      ) : hasVerdict ? (
         <p className="mb-4 rounded-lg border border-[var(--line)] bg-[var(--quiet)] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-[var(--ink-2)]">
           Biggest single drop:{" "}
           <b className="font-semibold text-[var(--ink)]">
-            {STEP_LABELS[worst.step] ?? worst.step}
+            {STEP_LABELS[worst!.step] ?? worst!.step}
           </b>{" "}
           loses{" "}
-          <b className="font-semibold tabular-nums text-[#C2410C]">{worst.dropPct}%</b> of everyone
+          <b className="font-semibold tabular-nums text-[#C2410C]">{worst!.dropPct}%</b> of everyone
           who reached the screen before it. Fix that screen before any other.
         </p>
       ) : (
         <p className="mb-4 rounded-lg border border-dashed border-[var(--line)] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-[var(--ink-3)]">
-          <b className="font-semibold text-[var(--ink-2)] tabular-nums">
+          <b className="font-semibold tabular-nums text-[var(--ink-2)]">
             {entrySessions.toLocaleString("en-US")}
           </b>{" "}
           {entrySessions === 1 ? "visit" : "visits"} so far — too few to name a screen. The shape
@@ -1757,154 +1843,151 @@ function StepDropoff({
         </p>
       )}
 
-      <div className="space-y-0.5">
-        {rows.map((r) => {
-          const width = entry > 0 ? Math.min((r.sessions / entry) * 100, 100) : 0;
-          // Both halves matter: a big percentage on a base of two is not a
-          // cliff, it is two people.
-          const cliff = r.significant && r.dropPct !== null && r.dropPct >= CLIFF_PCT;
-          return (
-            <div
-              key={r.index}
-              className="grid grid-cols-[136px_1fr_40px_52px] items-center gap-x-3 sm:grid-cols-[172px_1fr_44px_56px]"
-            >
-              <span className="truncate text-[12px] leading-tight text-[var(--ink-2)]">
-                {STEP_LABELS[r.step] ?? r.step}
-              </span>
-              <span className="flex h-[18px] items-center">
-                <span
-                  className="h-[14px] min-w-[2px] rounded transition-[width] duration-500"
-                  style={{
-                    width: `${Math.max(width, r.sessions > 0 ? 1.5 : 0)}%`,
-                    background: cliff
-                      ? "linear-gradient(90deg, #FDBA74, #FB923C)"
-                      : "linear-gradient(90deg, color-mix(in srgb, var(--her) 34%, white), var(--her))",
-                  }}
+      {/* ── Band A · inside the quiz ─────────────────────────────────────── */}
+      {rows.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-[var(--line)] px-3.5 py-4 text-center text-[12.5px] text-[var(--ink-3)]">
+          No screens recorded yet. This fills in once someone opens{" "}
+          <code className="rounded bg-[var(--quiet)] px-1 py-0.5 text-[12px]">/register</code> on the
+          instrumented build — nothing is broken.
+        </p>
+      ) : (
+        <>
+          <BandHead title="Inside the quiz" unit="visits · Supabase" />
+          <div className="space-y-0.5">
+            {rows.map((r) => {
+              // Both halves matter: a big percentage on a base of two is not a
+              // cliff, it is two people.
+              const cliff = r.significant && r.dropPct !== null && r.dropPct >= CLIFF_PCT;
+              const width = entry > 0 ? Math.min((r.sessions / entry) * 100, 100) : 0;
+              return (
+                <FunnelRow
+                  key={r.index}
+                  label={STEP_LABELS[r.step] ?? r.step}
+                  count={r.sessions.toLocaleString("en-US")}
+                  width={Math.max(width, r.sessions > 0 ? 1.5 : 0)}
+                  drop={r.dropPct}
+                  cliff={cliff}
+                  fill={cliff ? CLIFF : HER}
                 />
-              </span>
-              {/* Count and delta are separate fixed columns so both scan down
-                  the page. Sharing one cell made the counts jump left and right
-                  depending on whether a step had lost anyone. */}
-              <b className="text-right text-[12px] font-semibold tabular-nums text-[var(--ink)]">
-                {r.sessions.toLocaleString("en-US")}
-              </b>
-              <span
-                className={`text-right text-[12px] tabular-nums ${
-                  cliff ? "text-[#C2410C]" : "text-[var(--ink-3)]"
-                }`}
-              >
-                {r.dropPct !== null && r.dropPct > 0 ? `−${r.dropPct}%` : ""}
-              </span>
-            </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {/* ── The seam ─────────────────────────────────────────────────────── */}
+      <div className="my-4 border-t border-dashed border-[var(--line)]" />
+
+      {/* ── Band B · after the quiz ──────────────────────────────────────── */}
+      <BandHead title="After the quiz" unit="women · Supabase + Stripe" />
+      <div className="space-y-1">
+        <FunnelRow
+          label="Finished the quiz"
+          count={quiz.toLocaleString("en-US")}
+          width={quiz > 0 ? 100 : 0}
+          drop={null}
+          cliff={false}
+          fill={HER}
+          strong
+        />
+        <FunnelRow
+          label="Opened the card form"
+          count={sessionsError ? "—" : checkout.toLocaleString("en-US")}
+          width={sessionsError ? 0 : wMoney(checkout)}
+          drop={sessionsError ? null : dropOf(quiz, checkout)}
+          // Never coloured. Losing most of the room between the quiz and the
+          // card form is what this step does on a healthy funnel, so a
+          // threshold here would sit orange permanently and teach the eye to
+          // ignore the colour that names a screen above.
+          cliff={false}
+          fill={HER}
+          strong
+        />
+        <FunnelRow
+          label="Paid"
+          count={paid.toLocaleString("en-US")}
+          width={wMoney(paid)}
+          drop={sessionsError ? null : dropOf(checkout, paid)}
+          cliff={false}
+          fill={CASH}
+          strong
+        />
       </div>
 
-      {/* The curve stops at the last screen anyone reached, so a funnel that
-          ends early looks identical to one that was never instrumented past
-          that point. Say which it is. */}
-      {rows.length > 0 && !reachedPaywall && (
-        <p className="mt-3 text-[11.5px] text-[var(--ink-3)]">
-          No visit reached the paywall in this window — the curve ends at the last screen anyone
-          actually saw.
+      {/* The two rates this band exists to separate: a weak offer screen and a
+          leaking checkout are different problems with different fixes. */}
+      {!sessionsError && quiz > 0 && (
+        <p className="mt-2 pl-[148px] text-[11.5px] leading-relaxed text-[var(--ink-3)] sm:pl-[184px]">
+          <b className="font-semibold tabular-nums text-[var(--her-deep)]">
+            {rate(checkout, quiz)}
+          </b>{" "}
+          of finishers reach the card form — that is the offer screen&rsquo;s job.{" "}
+          <b className="font-semibold tabular-nums text-[var(--her-deep)]">
+            {rate(paid, checkout)}
+          </b>{" "}
+          of those pay — that is checkout abandonment.
         </p>
       )}
 
-      <p className="mt-4 border-t border-[var(--line)] pt-3 text-[11.5px] leading-relaxed text-[var(--ink-3)]">
-        Bar length is share of everyone who reached the first screen. The figure beside it is what
-        that one step lost against the step above it — that is the number that names a screen, and
-        it is only coloured when enough people stood on the step above for the percentage to mean
-        anything. Counted by visit, not by person: one woman across two tabs is two.
+      {/* ── The chain, in one sentence ───────────────────────────────────── */}
+      <p className="mt-4 border-t border-[var(--line)] pt-3 text-[12.5px] leading-relaxed text-[var(--ink-2)]">
+        {entrySessions > 0 && !lagged && (
+          <>
+            <b className="font-semibold tabular-nums text-[var(--ink)]">{entrySessions}</b>{" "}
+            {entrySessions === 1 ? "visit" : "visits"} →{" "}
+          </>
+        )}
+        <b className="font-semibold tabular-nums text-[var(--ink)]">{quiz}</b> finished the quiz →{" "}
+        <b className="font-semibold tabular-nums text-[var(--ink)]">
+          {sessionsError ? "—" : checkout}
+        </b>{" "}
+        opened the card form →{" "}
+        <b className="font-semibold tabular-nums text-[var(--cash-deep)]">{paid}</b>{" "}
+        {paid === 1 ? "paid" : "paid"}.
+        {quiz > 0 && (
+          <>
+            {" "}
+            Every 100 quiz finishers are worth{" "}
+            <b className="font-semibold tabular-nums text-[var(--cash-deep)]">
+              {money((paid / quiz) * 100 * keptPerSale, 0)}
+            </b>{" "}
+            kept — that is what a click is allowed to cost.
+          </>
+        )}
       </p>
-    </div>
-  );
-}
 
-function Funnel({
-  quiz,
-  checkout,
-  paid,
-  sessionsError,
-}: {
-  quiz: number;
-  checkout: number;
-  paid: number;
-  sessionsError: string | null;
-}) {
-  // Clamped to 100: a later step can legitimately exceed the first when the
-  // windows disagree (leftover test-mode checkout sessions against a handful of
-  // real quiz rows), and an unclamped bar would render wider than its track.
-  // The percentage underneath still prints the true figure.
-  const w = (v: number) =>
-    quiz > 0 ? Math.min(Math.max((v / quiz) * 100, v > 0 ? 1.5 : 0), 100) : 0;
-  const pct = (num: number, den: number) => (den > 0 ? `${((num / den) * 100).toFixed(1)}%` : "—");
-
-  const steps = [
-    {
-      label: "Finished the quiz",
-      value: quiz,
-      width: quiz > 0 ? 100 : 0,
-      fill: "linear-gradient(90deg, color-mix(in srgb, var(--her) 26%, white), color-mix(in srgb, var(--her) 42%, white))",
-      color: "var(--her-deep)",
-    },
-    {
-      label: "Started Stripe Checkout",
-      value: checkout,
-      width: w(checkout),
-      fill: "linear-gradient(90deg, color-mix(in srgb, var(--her) 62%, white), var(--her))",
-      color: "var(--her-deep)",
-    },
-    {
-      label: "Paid",
-      value: paid,
-      width: w(paid),
-      fill: "linear-gradient(90deg, var(--cash), var(--cash-deep))",
-      color: "var(--cash-deep)",
-    },
-  ];
-
-  return (
-    <div>
-      {steps.map((s, i) => (
-        <div key={s.label}>
-          <div className="grid grid-cols-[118px_1fr] items-center gap-3 py-1.5 sm:grid-cols-[140px_1fr]">
-            <span className="text-[12.5px] leading-tight text-[var(--ink-2)]">
-              {s.label}
-              <b
-                className="block text-[19px] font-semibold tracking-tight tabular-nums"
-                style={{ color: s.color }}
-              >
-                {i === 1 && sessionsError ? "—" : s.value.toLocaleString("en-US")}
-              </b>
-            </span>
-            <span
-              className="h-[26px] min-w-[2px] rounded-md transition-[width] duration-500"
-              style={{ width: `${s.width}%`, background: s.fill }}
-            />
-          </div>
-          {i < 2 && (
-            <p className="col-start-2 pb-1 pl-[130px] text-[11.5px] text-[var(--ink-3)] sm:pl-[152px]">
-              <b className="font-semibold tabular-nums text-[var(--her-deep)]">
-                {i === 0
-                  ? sessionsError
-                    ? "—"
-                    : pct(checkout, quiz)
-                  : sessionsError
-                    ? "—"
-                    : pct(paid, checkout)}
-              </b>{" "}
-              {i === 0
-                ? "reach Stripe Checkout — that's the offer screen's job"
-                : "of those pay — that's checkout abandonment"}
-            </p>
-          )}
-        </div>
-      ))}
       {sessionsError && (
         <p className="mt-2 text-[12px] text-[var(--spend-deep)]">
           {sessionsError}, so the middle step is blank. The two ends are still correct.
         </p>
       )}
+
+      {inverted && (
+        <p className="mt-2 text-[11.5px] text-[var(--ink-3)]">
+          A later step is bigger than the one above it, so a rate here reads over 100%. Stripe
+          Checkout Sessions cannot be deleted, so your own test taps stay in the window for 30 days
+          — set{" "}
+          <code className="rounded bg-[var(--quiet)] px-1 py-0.5 text-[11px]">
+            ADMIN_CAMPAIGN_START
+          </code>{" "}
+          to floor it at the day the campaign began.
+        </p>
+      )}
+
+      {lagged && (
+        <p className="mt-2 text-[11.5px] text-[var(--ink-3)]">
+          Screen tracking started {shortDate(trackingSince!)}, after this window opened — so the top
+          band covers fewer days than the bottom one, and the two counts are not yet comparable.
+        </p>
+      )}
+
+      <p className="mt-3 text-[11.5px] leading-relaxed text-[var(--ink-3)]">
+        Each band is measured against its own first row, because the units differ: the top counts
+        visits (one woman in two tabs is two) and the bottom counts women. The figure on the right is
+        what that one step lost against the step above it — the number that names a screen — and it
+        is only coloured when enough people stood on the step above for the percentage to mean
+        anything.
+      </p>
     </div>
   );
 }
