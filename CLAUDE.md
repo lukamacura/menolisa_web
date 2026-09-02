@@ -426,6 +426,23 @@ stop, latest sales, needs a human.
   dunning retries for several days and scoring those as churned understates the
   rate exactly when it matters. `ltv` caps the `1/(1-r)` multiplier so a tiny
   all-renewed cohort can't print an infinite customer.
+- **`ADMIN_CAMPAIGN_START` floors the funnel, because Stripe sessions cannot be
+  deleted.** A Checkout Session is immutable — there is no delete in the API,
+  and `loadCheckoutStarts` counts every session whatever its status — so the
+  taps you made testing the paywall sit in the 30-day window for a full 30 days
+  with no way to remove them at the source. On 2026-09-02 that was 4 live
+  sessions against a one-day-old campaign, i.e. more checkouts than visitors.
+  Deleting the Supabase side makes it *worse*: the quiz finishers go and the
+  sessions stay, so the middle funnel step exceeds the first (the bar clamp at
+  `Funnel()` exists for exactly this). The floor gates the three funnel steps
+  and `newCustomers30` (the CAC denominator — dividing this month's ad spend by
+  a customer who bought before you ran an ad reports a CAC the ads did not
+  earn). It is anchored at **local midnight** on that day: UTC midday throws
+  away launch morning, UTC midnight lets the previous evening back in east of
+  Greenwich, and both were live bugs in the first cut of it. `funnel.clamped`
+  makes the panel say "Since 1 Sep · 2 days" rather than "Last 30 days" — never
+  present a floored window as a full one. Unset = no floor; safe to delete once
+  the campaign is over 30 days old.
 - **Dates are the operator's day, not UTC's.** The browser sends
   `tzOffsetMinutes` (clamped to ±840); `isoDay()` **must** be passed it. Both
   halves of this were live bugs on 2026-08-30: `toISOString()` renders the UTC

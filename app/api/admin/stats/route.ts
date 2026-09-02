@@ -55,6 +55,56 @@ const ADMIN_PASSWORD = process.env.ADMIN_PANEL_PASSWORD;
 const FIXED_MONTHLY_USD = Number(process.env.ADMIN_FIXED_MONTHLY_USD ?? 0) || 0;
 
 /**
+ * The day paid traffic started, as `YYYY-MM-DD`. Set `ADMIN_CAMPAIGN_START`.
+ *
+ * Everything before it is you: the checkouts you opened testing the paywall,
+ * the quiz rows you filled in, the card you put through on your own support
+ * address. Stripe Checkout Sessions are **immutable and cannot be deleted**, so
+ * those taps sit in the 30-day window for a full 30 days and there is no way to
+ * remove them at the source — on 2026-09-02 that was 4 live sessions against a
+ * campaign one day old, i.e. a funnel reporting more checkouts than it had
+ * visitors.
+ *
+ * Wiping the Supabase side does not help and makes it worse: it removes the
+ * quiz finishers while leaving the Stripe sessions, so the middle step exceeds
+ * the first. The only honest fix is to refuse to count either side before this
+ * date.
+ *
+ * Unset means no floor, and every window behaves exactly as it did before. Once
+ * the campaign is more than 30 days old the floor stops binding on its own and
+ * can be deleted.
+ */
+const CAMPAIGN_START_DAY: { y: number; m: number; d: number } | null = (() => {
+  const raw = process.env.ADMIN_CAMPAIGN_START?.trim();
+  if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  const [y, m, d] = raw.split("-").map(Number);
+  // Validated by round-trip: "2026-02-31" passes the regex and would otherwise
+  // roll silently into March.
+  const probe = new Date(Date.UTC(y, m - 1, d));
+  if (probe.getUTCFullYear() !== y || probe.getUTCMonth() !== m - 1 || probe.getUTCDate() !== d) {
+    return null;
+  }
+  return { y, m, d };
+})();
+
+/**
+ * The campaign floor as a timestamp: **local midnight** on that day, using the
+ * same `+ tzOffsetMinutes` convention as `isoDay` and `startOfToday`.
+ *
+ * The day boundary has to be the operator's, not UTC's. Anchoring at UTC midday
+ * (the first version of this) throws away everything before noon on launch day —
+ * a real quiz finisher at 01:44 on the first morning — and anchoring at UTC
+ * midnight lets the last hours of the day *before* launch back in for anyone
+ * east of Greenwich. Both are wrong in the direction that matters: this figure
+ * exists to separate the campaign from what came before it.
+ */
+function campaignFloorMs(tzOffsetMinutes: number): number | null {
+  if (!CAMPAIGN_START_DAY) return null;
+  const { y, m, d } = CAMPAIGN_START_DAY;
+  return Date.UTC(y, m - 1, d) + tzOffsetMinutes * 60_000;
+}
+
+/**
  * How far back the Stripe walks go. At current volume the whole history is a
  * single page — but an unbounded auto-page would eventually make this endpoint
  * time out rather than load slowly, so it stops and says so.
@@ -194,7 +244,18 @@ function emptyRevenue(error: string | null): Revenue {
  * period who have a second charge), the new-customer count that cost-per-sale
  * divides by, and the refund-guarantee exposure.
  */
-async function loadRevenue(stripe: Stripe, startOfToday: number): Promise<Revenue> {
+/**
+ * `newCustomerSince` is the acquisition floor — 30 days, or the campaign start
+ * if later. It gates `newCustomers30` only, because that is the denominator of
+ * cost per customer: dividing this month's ad spend by a customer who bought
+ * before you ever ran an ad reports a CAC the ads did not earn. Every other
+ * figure here keeps its own window.
+ */
+async function loadRevenue(
+  stripe: Stripe,
+  startOfToday: number,
+  newCustomerSince: number
+): Promise<Revenue> {
   const priceId = process.env.STRIPE_PRICE_8WEEK;
   if (!priceId) {
     // Fail closed: without the price id there is no way to tell MenoLisa's
@@ -338,7 +399,7 @@ async function loadRevenue(stripe: Stripe, startOfToday: number): Promise<Revenu
   for (const [customerId, times] of byCustomer) {
     const first = times[0];
     rev.newCustomersAll += 1;
-    if (first >= now - 30 * DAY_MS) rev.newCustomers30 += 1;
+    if (first >= newCustomerSince) rev.newCustomers30 += 1;
 
     if (first <= maturedBefore) {
       rev.cohortSize += 1;
@@ -510,6 +571,17 @@ export async function POST(req: NextRequest) {
   const thirtyDaysAgo = startOfToday - 29 * DAY_MS;
   const thirtyDaysAgoIso = new Date(now - 30 * DAY_MS).toISOString();
 
+  /**
+   * The floor every funnel and acquisition figure is measured from: 30 days, or
+   * the campaign start if that is more recent. See {@link CAMPAIGN_START_MS} —
+   * without it the funnel counts your own pre-launch testing as customer
+   * behaviour, and Stripe sessions cannot be deleted to fix it at the source.
+   */
+  const campaignFloor = campaignFloorMs(tzOffsetMinutes);
+  const funnelSince = Math.max(now - 30 * DAY_MS, campaignFloor ?? Number.NEGATIVE_INFINITY);
+  const funnelClamped = campaignFloor !== null && funnelSince > now - 30 * DAY_MS;
+  const funnelDays = Math.max(1, Math.ceil((now - funnelSince) / DAY_MS));
+
   const [
     trialsResult,
     profilesResult,
@@ -536,7 +608,7 @@ export async function POST(req: NextRequest) {
     supabaseAdmin
       .from("user_profiles")
       .select("user_id", { count: "exact", head: true })
-      .gte("created_at", thirtyDaysAgoIso),
+      .gte("created_at", new Date(funnelSince).toISOString()),
     supabaseAdmin
       .from("ad_spend")
       .select("day, amount_usd")
@@ -546,9 +618,11 @@ export async function POST(req: NextRequest) {
     // generation is metered — Lisa chat on the phone is not — so this is a
     // floor, and the UI says so.
     supabaseAdmin.from("llm_usage").select("user_id, cost_usd"),
-    stripe ? loadRevenue(stripe, startOfToday) : Promise.resolve(emptyRevenue("STRIPE_SECRET_KEY is not set")),
     stripe
-      ? loadCheckoutStarts(stripe, now - 30 * DAY_MS)
+      ? loadRevenue(stripe, startOfToday, funnelSince)
+      : Promise.resolve(emptyRevenue("STRIPE_SECRET_KEY is not set")),
+    stripe
+      ? loadCheckoutStarts(stripe, funnelSince)
       : Promise.resolve({ started: 0, error: null, truncated: false }),
     loadEmails(),
   ]);
@@ -904,6 +978,12 @@ export async function POST(req: NextRequest) {
       checkoutStarted30,
       paidNew30,
       sessionsError: checkout.error,
+      // What the three numbers above were actually measured over. The panel
+      // labels itself from this, so a floored window can never be presented as
+      // a full 30 days.
+      since: new Date(funnelSince).toISOString(),
+      days: funnelDays,
+      clamped: funnelClamped,
     },
     contribution30,
     sales,

@@ -166,6 +166,11 @@ type Stats = {
     checkoutStarted30: number;
     paidNew30: number;
     sessionsError: string | null;
+    /** What the three figures above were measured over — see `clamped`. */
+    since: string;
+    days: number;
+    /** True when ADMIN_CAMPAIGN_START cut the window short of 30 days. */
+    clamped: boolean;
   };
   contribution30: number;
   sales: Sale[];
@@ -573,8 +578,12 @@ export default function AdminPage() {
                 tone={costs.adSpend30 > 0 ? "spend" : "mute"}
               />
               <Row
-                label="New customers, 30 days"
-                hint="Renewals excluded — ads don't buy those"
+                label={funnel.clamped ? `New customers, ${plural(funnel.days, "day")}` : "New customers, 30 days"}
+                hint={
+                  funnel.clamped
+                    ? `Renewals excluded — ads don't buy those. Counted from ${shortDate(funnel.since)}, when paid traffic started.`
+                    : "Renewals excluded — ads don't buy those"
+                }
                 value={String(acq.newCustomers30)}
                 tone="her"
               />
@@ -737,7 +746,13 @@ export default function AdminPage() {
           title="Where they stop"
           dot="linear-gradient(90deg, var(--her), var(--cash))"
           source="Supabase + Stripe"
-          note="Last 30 days"
+          // Never say "30 days" when the campaign floor cut it shorter — the
+          // whole point of the floor is that the two are different.
+          note={
+            funnel.clamped
+              ? `Since ${shortDate(funnel.since)} · ${plural(funnel.days, "day")}`
+              : "Last 30 days"
+          }
         />
         <Panel accent="linear-gradient(90deg, var(--her) 0%, var(--her) 55%, var(--cash) 90%)">
           <div className="px-6 py-5">
