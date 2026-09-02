@@ -807,36 +807,57 @@ export async function POST(req: NextRequest) {
    * first row (nothing precedes it) and any step with a trivial base, since
    * 2 → 1 is a 50% "cliff" that means nothing at launch volume.
    */
-  const MIN_CLIFF_BASE = 10;
+  /*
+   * Two different guards, and they are not the same number.
+   *
+   * `MIN_CLIFF_BASE` (25) is per row: a step is only allowed to be *called* a
+   * cliff if enough people stood on the step above it for the percentage to
+   * mean anything. Without it `2 -> 1` renders as a 50% catastrophe, which is
+   * how this first shipped and what the live panel showed on day one.
+   *
+   * `MIN_VERDICT_ENTRY` (50) gates the sentence that tells you what to do. It is
+   * higher on purpose: a coloured bar is an observation and a reader can weigh
+   * it, but "fix that screen before any other" is an instruction, and at n=10
+   * it will send you to rewrite a screen on the strength of three people. The
+   * panel says how far off it is instead of guessing, which is the same choice
+   * the empty state makes.
+   *
+   * Both are exported in the payload so the page never re-derives them and the
+   * two can never disagree — same reason the verdict sentence is computed here.
+   */
+  const MIN_CLIFF_BASE = 25;
+  const MIN_VERDICT_ENTRY = 50;
   const dropoffRows = (dropoffResult.data ?? []) as {
     step_index: number;
     step: string;
     sessions: number;
   }[];
+  const entrySessions = dropoffRows[0]?.sessions ?? 0;
   const dropoff = dropoffRows.map((row, i) => {
     const previous = i === 0 ? null : dropoffRows[i - 1].sessions;
     return {
       index: row.step_index,
       step: row.step,
       sessions: row.sessions,
-      // Share of everyone who reached the first measured screen.
-      pctOfEntry: dropoffRows.length
-        ? Math.round((row.sessions / dropoffRows[0].sessions) * 1000) / 10
-        : 0,
+      // Share of everyone who reached the first measured screen. Whole numbers:
+      // a tenth of a percent on a base of six is false precision.
+      pctOfEntry: entrySessions ? Math.round((row.sessions / entrySessions) * 100) : 0,
       // Share lost between the previous screen and this one.
       dropPct:
         previous && previous > 0
-          ? Math.round(((previous - row.sessions) / previous) * 1000) / 10
+          ? Math.round(((previous - row.sessions) / previous) * 100)
           : null,
+      // Whether that loss is measured over a base big enough to describe. The
+      // page colours from this rather than from `dropPct` alone.
+      significant: previous !== null && previous >= MIN_CLIFF_BASE,
     };
   });
   const worstStep =
-    dropoff
-      .filter(
-        (d, i) =>
-          i > 0 && d.dropPct !== null && dropoffRows[i - 1].sessions >= MIN_CLIFF_BASE
-      )
-      .sort((a, b) => (b.dropPct ?? 0) - (a.dropPct ?? 0))[0] ?? null;
+    entrySessions >= MIN_VERDICT_ENTRY
+      ? (dropoff
+          .filter((d) => d.significant && d.dropPct !== null)
+          .sort((a, b) => (b.dropPct ?? 0) - (a.dropPct ?? 0))[0] ?? null)
+      : null;
 
   // ─── Anything that needs a human ──────────────────────────────────────────
 
@@ -1050,6 +1071,11 @@ export async function POST(req: NextRequest) {
       // while — the panel says so rather than drawing an empty chart.
       dropoff,
       worstStep,
+      /** Visits that reached the first measured screen — the base every
+       *  percentage in the block divides by, and what the verdict is gated on. */
+      entrySessions,
+      /** How many the verdict needs before it will name a screen. */
+      minVerdictEntry: MIN_VERDICT_ENTRY,
       dropoffError: dropoffResult.error ? "Could not read funnel steps" : null,
     },
     contribution30,

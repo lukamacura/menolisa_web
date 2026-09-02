@@ -485,9 +485,18 @@ stop, latest sales, needs a human.
   looks bad by construction and none of them is accused of anything; and only
   losses at or above `CLIFF_PCT` (25%) are coloured, because on a 23-screen
   funnel everything below that is ordinary attrition and colouring it all
-  teaches you to ignore the colour. `worstStep` is computed server-side, beside
-  the verdict, and ignores any step whose base is under 10 — at launch volume
-  2 → 1 is a 50% "cliff" that means nothing. `STEP_LABELS` is a lookup with a
+  teaches you to ignore the colour. **Two separate sample guards, and they are
+  not the same number** — the first live render got this wrong and the panel
+  showed it: `MIN_CLIFF_BASE` (25) is per row and decides whether a loss may be
+  *called* a cliff at all, because `2 → 1` is otherwise a 50% catastrophe in
+  bright orange; `MIN_VERDICT_ENTRY` (50) gates the sentence that tells you what
+  to do, and is higher on purpose, because a coloured bar is an observation a
+  reader can weigh while "fix that screen before any other" is an instruction —
+  at n=10 it sends you to rewrite a screen chosen by three people. Below it the
+  block states the visit count and says it is too early, the same choice the
+  empty state makes. Both thresholds and the `significant` flag come from the
+  route, so the bar, the figure and the verdict can never use different rules.
+  `STEP_LABELS` is a lookup with a
   raw-name fallback on purpose: this panel must never be the reason a step
   cannot be added to `app/register/page.tsx`.
 - **The verdict sentence is computed server-side**, so the panel and any future

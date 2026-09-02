@@ -181,16 +181,24 @@ type Stats = {
       pctOfEntry: number;
       /** Share lost since the *previous* screen — null on the first row. */
       dropPct: number | null;
+      /** Whether that loss sits on a base big enough to describe. */
+      significant: boolean;
     }[];
     /** The single worst step-to-step loss, computed server-side so the panel
-     *  and any future alert can never disagree about which screen it is. */
+     *  and any future alert can never disagree about which screen it is. Null
+     *  until `entrySessions` clears `minVerdictEntry`. */
     worstStep: {
       index: number;
       step: string;
       sessions: number;
       pctOfEntry: number;
       dropPct: number | null;
+      significant: boolean;
     } | null;
+    /** Visits that reached the first measured screen. */
+    entrySessions: number;
+    /** What `entrySessions` has to clear before a screen is named. */
+    minVerdictEntry: number;
     dropoffError: string | null;
   };
   contribution30: number;
@@ -818,6 +826,8 @@ export default function AdminPage() {
           <StepDropoff
             rows={funnel.dropoff}
             worst={funnel.worstStep}
+            entrySessions={funnel.entrySessions}
+            minVerdictEntry={funnel.minVerdictEntry}
             error={funnel.dropoffError}
           />
         </Panel>
@@ -1677,19 +1687,29 @@ const STEP_LABELS: Record<string, string> = {
  *   this block exists: a cumulative curve falls monotonically, so every late
  *   step looks bad by construction and none of them is accused of anything. The
  *   step-to-step loss is what names a screen.
- * - **Only losses worth acting on are called out.** Under `CLIFF_PCT` is
- *   ordinary attrition on a 23-screen funnel, and colouring all of it red
- *   teaches you to ignore the colour.
+ * - **A loss is only coloured when it sits on a base worth dividing by.** The
+ *   first live render of this panel painted `4 -> 2` and `2 -> 1` bright orange
+ *   as 50% cliffs, which is noise wearing the costume of a finding. The row's
+ *   `significant` flag comes from the route so the bar, the figure and the
+ *   verdict all use one rule.
+ * - **Below `minVerdictEntry` visits the block states observations and refuses
+ *   to give an instruction.** "Fix that screen before any other" off a base of
+ *   ten is worse than saying nothing: it is confident, specific and wrong, and
+ *   it costs a day of work on a screen chosen by three people.
  */
 const CLIFF_PCT = 25;
 
 function StepDropoff({
   rows,
   worst,
+  entrySessions,
+  minVerdictEntry,
   error,
 }: {
   rows: Stats["funnel"]["dropoff"];
   worst: Stats["funnel"]["worstStep"];
+  entrySessions: number;
+  minVerdictEntry: number;
   error: string | null;
 }) {
   if (error) {
@@ -1709,10 +1729,14 @@ function StepDropoff({
   }
 
   const entry = rows[0]?.sessions ?? 0;
+  const reachedPaywall = rows.some((r) => r.step === "paywall" && r.sessions > 0);
+  const confident = entrySessions >= minVerdictEntry;
 
   return (
     <div className="px-6 py-5">
-      {worst && worst.dropPct !== null && worst.dropPct >= CLIFF_PCT && (
+      {/* The instruction, or an honest account of why there isn't one yet.
+          Never both, and never the instruction on a base this small. */}
+      {confident && worst && worst.dropPct !== null && worst.dropPct >= CLIFF_PCT ? (
         <p className="mb-4 rounded-lg border border-[var(--line)] bg-[var(--quiet)] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-[var(--ink-2)]">
           Biggest single drop:{" "}
           <b className="font-semibold text-[var(--ink)]">
@@ -1722,16 +1746,27 @@ function StepDropoff({
           <b className="font-semibold tabular-nums text-[#C2410C]">{worst.dropPct}%</b> of everyone
           who reached the screen before it. Fix that screen before any other.
         </p>
+      ) : (
+        <p className="mb-4 rounded-lg border border-dashed border-[var(--line)] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-[var(--ink-3)]">
+          <b className="font-semibold text-[var(--ink-2)] tabular-nums">
+            {entrySessions.toLocaleString("en-US")}
+          </b>{" "}
+          {entrySessions === 1 ? "visit" : "visits"} so far — too few to name a screen. The shape
+          below is real; the percentages are not yet worth acting on. This turns into a verdict at{" "}
+          <b className="font-semibold tabular-nums text-[var(--ink-2)]">{minVerdictEntry}</b>.
+        </p>
       )}
 
       <div className="space-y-0.5">
         {rows.map((r) => {
           const width = entry > 0 ? Math.min((r.sessions / entry) * 100, 100) : 0;
-          const cliff = r.dropPct !== null && r.dropPct >= CLIFF_PCT;
+          // Both halves matter: a big percentage on a base of two is not a
+          // cliff, it is two people.
+          const cliff = r.significant && r.dropPct !== null && r.dropPct >= CLIFF_PCT;
           return (
             <div
               key={r.index}
-              className="grid grid-cols-[136px_1fr_84px] items-center gap-3 sm:grid-cols-[172px_1fr_92px]"
+              className="grid grid-cols-[136px_1fr_40px_52px] items-center gap-x-3 sm:grid-cols-[172px_1fr_44px_56px]"
             >
               <span className="truncate text-[12px] leading-tight text-[var(--ink-2)]">
                 {STEP_LABELS[r.step] ?? r.step}
@@ -1747,23 +1782,39 @@ function StepDropoff({
                   }}
                 />
               </span>
-              <span className="text-right text-[12px] tabular-nums text-[var(--ink-2)]">
-                <b className="font-semibold text-[var(--ink)]">{r.sessions.toLocaleString("en-US")}</b>
-                {r.dropPct !== null && r.dropPct > 0 && (
-                  <span className={cliff ? "ml-1.5 text-[#C2410C]" : "ml-1.5 text-[var(--ink-3)]"}>
-                    −{r.dropPct}%
-                  </span>
-                )}
+              {/* Count and delta are separate fixed columns so both scan down
+                  the page. Sharing one cell made the counts jump left and right
+                  depending on whether a step had lost anyone. */}
+              <b className="text-right text-[12px] font-semibold tabular-nums text-[var(--ink)]">
+                {r.sessions.toLocaleString("en-US")}
+              </b>
+              <span
+                className={`text-right text-[12px] tabular-nums ${
+                  cliff ? "text-[#C2410C]" : "text-[var(--ink-3)]"
+                }`}
+              >
+                {r.dropPct !== null && r.dropPct > 0 ? `−${r.dropPct}%` : ""}
               </span>
             </div>
           );
         })}
       </div>
 
+      {/* The curve stops at the last screen anyone reached, so a funnel that
+          ends early looks identical to one that was never instrumented past
+          that point. Say which it is. */}
+      {rows.length > 0 && !reachedPaywall && (
+        <p className="mt-3 text-[11.5px] text-[var(--ink-3)]">
+          No visit reached the paywall in this window — the curve ends at the last screen anyone
+          actually saw.
+        </p>
+      )}
+
       <p className="mt-4 border-t border-[var(--line)] pt-3 text-[11.5px] leading-relaxed text-[var(--ink-3)]">
-        Bar length is share of everyone who reached the first screen. The red figure is what that
-        one step lost against the step above it — that is the number that names a screen. Counted by
-        visit, not by person: one woman across two tabs is two.
+        Bar length is share of everyone who reached the first screen. The figure beside it is what
+        that one step lost against the step above it — that is the number that names a screen, and
+        it is only coloured when enough people stood on the step above for the percentage to mean
+        anything. Counted by visit, not by person: one woman across two tabs is two.
       </p>
     </div>
   );
