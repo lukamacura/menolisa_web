@@ -395,6 +395,7 @@ Supabase (PostgreSQL) — no ORM, raw SQL queries via Supabase JS client:
 | `documents` | Vector store — `id`, `content`, `metadata` (JSONB), `embedding` (vector 1536) |
 | `notifications` | `user_id`, `type`, `content`, `metadata` (JSONB), `is_read`, `created_at` |
 | `ad_spend` | One row per calendar day of Meta ad spend, typed into `/admin` — `day` (PK), `amount_usd`. Service-role only: RLS on, no policies, no grants. |
+| `funnel_events` | One row per `/register` screen reached — `session_id` (a random per-visit uuid, **not** an account and never joined to `auth.users`), `step`, `step_index`, `created_at`. The funnel's only measurement before the profile insert at step 17. Service-role only: RLS on, no policies, no grants. Never add her answers to it — see below. |
 | `llm_usage` | One row per OpenAI call — `user_id`, `run_id`, `kind`, `model`, `prompt_tokens`, `cached_prompt_tokens`, `completion_tokens`, `cost_usd`, `duration_ms`. Service-role only: RLS on, no policies, no grants. |
 
 ### Admin panel (`/admin`) — the sales desk
@@ -474,6 +475,21 @@ stop, latest sales, needs a human.
   becomes real traffic, split the denominator before trusting the percentage.
   The bar width is clamped to 100% — a later step can legitimately exceed the
   first when leftover test-mode sessions meet a handful of real quiz rows.
+- **"Which screen loses them" is the inside of the funnel's first bar.** The
+  three-step funnel above it begins at the profile insert — step 17 of 17 — so
+  it can say the quiz leaked but never where. This block reads `funnel_events`
+  through the `funnel_dropoff(since)` RPC over the *same* `funnelSince`, so the
+  two are always comparable. Two rules that are measurement rules, not styling:
+  the bar is share-of-entry, but **the called-out number is the loss against the
+  previous screen** — a cumulative curve falls monotonically, so every late step
+  looks bad by construction and none of them is accused of anything; and only
+  losses at or above `CLIFF_PCT` (25%) are coloured, because on a 23-screen
+  funnel everything below that is ordinary attrition and colouring it all
+  teaches you to ignore the colour. `worstStep` is computed server-side, beside
+  the verdict, and ignores any step whose base is under 10 — at launch volume
+  2 → 1 is a 50% "cliff" that means nothing. `STEP_LABELS` is a lookup with a
+  raw-name fallback on purpose: this panel must never be the reason a step
+  cannot be added to `app/register/page.tsx`.
 - **The verdict sentence is computed server-side**, so the panel and any future
   alert can never disagree about what the numbers mean.
 - **`ADMIN_FIXED_MONTHLY_USD`** is hosting + database + email + domain. Unset
@@ -503,6 +519,43 @@ the headline** — at two sales a day it swings 100% on noise, so seven days lea
 and today is a cell. Migrations: `scripts/sql/2026-08-11-llm-usage.sql`,
 `scripts/sql/2026-08-30-ad-spend.sql`.
 
+
+### Funnel measurement (`POST /api/funnel-step`, `funnel_events`)
+
+The `/register` funnel mints her account at **step 17 of 17**, so until
+2026-09-02 the first sixteen screens produced no server-side record at all. The
+first paid campaign bought ~200 landing page views and produced 10 profiles, and
+nothing in the database could say which screen the other 190 left on — so every
+candidate cause was equally plausible and none was testable.
+
+`POST /api/funnel-step` fires once per screen and writes one row. Rules:
+
+- **It is unauthenticated, and that is the point.** Any session check would
+  measure only the women who already finished, which is the number we already
+  have. The payload is therefore the whole attack surface: `session_id` must
+  parse as a uuid, `step` must match `/^[a-z0-9_]{1,32}$/`, `step_index` must be
+  an integer in 0..40. Anything else is a 400 that writes nothing.
+- **No user id, ever** — not from the body (see `/api/intake`'s history) and not
+  from a session. `session_id` is minted in the browser per visit and dies with
+  the tab.
+- **Never add the answer she gave on the screen.** The safety argument for
+  storing this is that a leak would disclose that somebody reached question 9 and
+  nothing else. A symptom or a goal here makes it health data about a
+  re-identifiable visit — the exact thing `sendMetaLead` had to stop doing on
+  2026-08-30.
+- **It is not a Meta event and must not become one.** AEM caps the domain at 8
+  prioritized events; that is why the seven custom funnel events were deleted on
+  2026-08-17 and why re-adding them is in the "decided against" table. "Which
+  screen leaks" is a product question, answered in our own database.
+- Client side is `pingFunnelStep()` in `app/register/page.tsx` — `keepalive`,
+  fire-and-forget, every failure swallowed, deduped per visit by a ref. It
+  returns without a row rather than inventing a weak id when `sessionStorage` or
+  `crypto.randomUUID` is unavailable.
+
+Disclosure: covered by Privacy §2.6 ("Usage data — which features and screens
+you use"). Verified before shipping; no policy edit was needed. Retention is the
+operator's call and `created_at` is indexed so a periodic delete is cheap.
+Migration: `scripts/sql/2026-09-02-funnel-events.sql`.
 
 ### Access control (who gets in)
 
@@ -1213,6 +1266,72 @@ below reads like a rule, it is a pointer to one of those.
 | Send anything from her symptoms, plan or check-in to Meta | Already covered above, and the check-in is the newest thing that looks harmless and isn't. |
 
 ### Recent work
+
+**2026-09-02 (latest) — the first campaign audited; the funnel made measurable
+and shortened.** ~300 outbound clicks, ~200 landing page views, 10 quiz
+finishers, 0 checkouts. The first thing the audit established is what was *not*
+wrong: `auth.users` anonymous accounts and `user_profiles` rows matched exactly,
+every day (8/8, 1/1, 1/1), so `save-quiz` has a 100% success rate and the
+`/admin` figure was correct — the Aug-31 row is excluded by
+`ADMIN_CAMPAIGN_START`, which is the floor working as designed. Every CTA in the
+post-quiz sequence is fixed-bottom with no scroll gate, and every
+`sessionStorage` access in the funnel is inside try/catch, so there is no
+white-screen path in the Instagram/Facebook webview. **The loss is real, and all
+of it is inside the quiz.**
+
+- **The funnel had no measurement**, which is why nothing above could be ranked.
+  `POST /api/funnel-step` and `funnel_events` now exist — see the section above
+  — and `/admin` reads them in a **"Which screen loses them"** block, via the
+  `funnel_dropoff(since)` RPC. Collection without a reader is a table nobody
+  looks at; the block is the point of the table. This is the change that makes
+  the rest falsifiable: ship the others, then read the curve rather than
+  re-guessing.
+- **`/register` cold-starts on question 1.** The start screen was an interstitial
+  whose only job was `setPhase("quiz")` — one tap, collecting nothing, on the
+  screen that takes 100% of paid traffic. **The screen is kept, not deleted**:
+  `goBack` off question 1 still lands there. Three couplings had to move with it,
+  and each would have failed silently: the resume-ticket guard was
+  `phase !== "start"` and would have disabled the whole Back-from-Stripe restore;
+  `warmPhaseChunks` keyed on `phase === "quiz"` and would have pulled three
+  chunks during landing hydration, against the ~297KB already fighting for the
+  main thread (it takes `stepIndex` now and warms from step 1); and Terms and
+  Privacy existed **only** on the start screen's bar, where they were put because
+  it was the funnel's entrance — they are now under the question 1 card too.
+- **Imperial units are the default** (`heightUnit: "ft"`, `weightUnit: "lb"`).
+  The campaign is US-only and `q_body` — step 8 of 17, on a screen promising the
+  plan is being sized to her — showed "165 cm" and "70 kg" behind small
+  easy-to-miss toggles. Same body either way (5'5" = 165cm, 154lb = 70kg);
+  `bodyMetrics` still normalizes to cm/kg, so nothing downstream moved. If the
+  campaign ever runs outside the US, derive from `x-vercel-ip-country` rather
+  than flipping it back.
+- **`100vh` → `100dvh` on the start hero.** The shell is `h-dvh` and the hero's
+  height budget was computed against the *large* viewport — 60-90px of overshoot
+  on iOS Safari/Chrome and the in-app webview, i.e. the whole margin the 457px
+  formula exists to protect, missed on exactly the browsers the ad audience
+  arrives in. Any future height maths on that screen uses `dvh`.
+- **The start screen was the only phase missing `env(safe-area-inset-bottom)`**,
+  so ~34px of the offer card sat under the fixed CTA on notched iPhones. (Both
+  of these now matter mainly on the back-navigation path, since that screen is no
+  longer the entrance — they were still wrong.)
+- **`QUIZ_LOADER_MS` 1700 → 600.** Four reward boards carry that meter over work
+  that is synchronous — ~6.8s of the funnel spent watching a progress bar. The
+  receipt is the animation, not its length. `CALCULATING_MS` stays at 6500: it
+  has a real round trip behind it and is the one honest wait in the funnel.
+- **The relief skip moved onto the intro.** The button already existed, but only
+  while the timer was `running` — so to leave the screen she first had to start
+  36 seconds of breathing, two screens before the price. It renders on the intro
+  as well now, and `getReliefRewardCopy` grew a `"skipped"` case — the default
+  copy told her she had "calmed your body in 36 seconds", which someone who
+  skipped knows to be false, and a funnel caught inventing a result immediately
+  before the price has spent the belief it needs.
+
+**Still open, and it is the one thing the code cannot answer:** 0 checkouts is
+statistically unremarkable on 10 paywall views, but it is also *indistinguishable
+from* a broken checkout, because a failed `create-checkout` creates no Stripe
+session at all. Confirm in Vercel that `STRIPE_SECRET_KEY` and
+`STRIPE_PRICE_8WEEK` are the same mode and the price is active. Two minutes, and
+it is the only hypothesis that explains the second number completely.
+
 
 **2026-08-30 (latest) — `/admin` rebuilt to answer "should I spend more
 tomorrow?"** The panel answered "did money arrive?", which is a bookkeeping

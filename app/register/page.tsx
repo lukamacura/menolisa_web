@@ -118,8 +118,21 @@ const MetaPurchaseTracker = dynamic(loadMetaPurchaseTracker);
  * and results is a long scroll, so by the time anything here renders its code
  * has been sitting in the module cache for a minute or more.
  */
-function warmPhaseChunks(phase: Phase) {
-  if (phase === "quiz" || phase === "calculating") {
+/*
+ * `stepIndex` gates the quiz branch, and it has to since 2026-09-02.
+ *
+ * The funnel now cold-starts on `phase === "quiz"` rather than on the start
+ * screen, so warming "as soon as she is in the quiz" became "on the ad landing
+ * page, during hydration" - three extra chunk fetches competing with the ~297KB
+ * that has to parse before question 1 is tappable at all. That is the opposite
+ * of what this function is for.
+ *
+ * Warming from step 1 restores the original timing: it begins the moment she has
+ * answered something, which is where the old start-screen tap used to sit, and
+ * she then has fifteen more screens before any of it is needed.
+ */
+function warmPhaseChunks(phase: Phase, stepIndex: number) {
+  if ((phase === "quiz" && stepIndex >= 1) || phase === "calculating") {
     void loadSocialProofPolaroid();
     void loadPlanStage();
     void loadHowLisaRuns();
@@ -730,7 +743,19 @@ const CALCULATING_MAX_PCT = 99;
 const REWARD_SCROLL_SHELL = "flex-1 min-h-0 overflow-y-auto flex flex-col";
 const REWARD_PAYOFF_CENTER = "my-auto w-full shrink-0";
 
-const QUIZ_LOADER_MS = 1700;
+// 600ms, down from 1700 (2026-09-02). Four reward boards carry this meter, so
+// the old value spent ~6.8s of the funnel showing a progress bar over work that
+// does not exist - every figure on these boards is computed synchronously from
+// answers already in state. The receipt is worth keeping (a reveal with no
+// visible work in front of it reads as a poster, which is why the meter was
+// added), but the receipt is the *animation*, not its length: 600ms still reads
+// as "it computed something" and returns six seconds to a funnel that asks for
+// 26 taps before it shows a price.
+//
+// The 6.5s `CALCULATING_MS` is deliberately NOT cut to match: that one has a
+// real network round trip behind it (anonymous sign-in + save-quiz), and it is
+// the only screen in the funnel where the wait is honest.
+const QUIZ_LOADER_MS = 600;
 
 // Unlike the calculating screen this one really does reach 100: there is no
 // work in flight behind it, so stalling at 99 would be the dishonest option.
@@ -1117,11 +1142,13 @@ function readFunnelResume(): FunnelResume | null {
       userId,
       answers: {
         ageBand: resumeStr(a.ageBand),
-        heightUnit: a.heightUnit === "ft" ? "ft" : "cm",
+        // Fallbacks match the imperial state seeds above, so a ticket missing
+        // the field restores the same units she was shown.
+        heightUnit: a.heightUnit === "cm" ? "cm" : "ft",
         heightCm: resumeStr(a.heightCm) || "165",
         heightFt: resumeStr(a.heightFt) || "5",
         heightIn: resumeStr(a.heightIn) || "5",
-        weightUnit: a.weightUnit === "lb" ? "lb" : "kg",
+        weightUnit: a.weightUnit === "kg" ? "kg" : "lb",
         weightKg: resumeStr(a.weightKg) || "70",
         weightLb: resumeStr(a.weightLb) || "154",
         fitnessLevel: resumeStr(a.fitnessLevel),
@@ -1165,6 +1192,92 @@ function clearFunnelResume() {
     // Nothing to do, and nothing depends on it having worked.
   }
 }
+
+/* ─── Funnel measurement ────────────────────────────────────────────────────
+ *
+ * One ping per screen reached, to `POST /api/funnel-step`. See that route for
+ * the payload rules and why it is unauthenticated.
+ *
+ * This exists because the funnel had no measurement at all between the ad click
+ * and the profile insert at step 17 of 17. The first campaign bought ~200
+ * landing page views and produced 10 profiles, and nothing in the database could
+ * say where the other 190 went — so every candidate (the length, the metric
+ * units, the iOS viewport overshoot) was equally plausible and none of them was
+ * testable.
+ *
+ * It is not a Meta event and must not become one: AEM caps the domain at 8
+ * prioritized events, which is why the seven custom funnel events were deleted
+ * on 2026-08-17. "Which screen leaks" is a product question, answered in our own
+ * database.
+ */
+const FUNNEL_SESSION_KEY = "menolisa:funnel-session";
+
+/**
+ * A random id for this visit. Not an account and not a device id: it lives in
+ * `sessionStorage`, so it dies with the tab and never links two visits.
+ *
+ * Returns null when storage or `randomUUID` is unavailable rather than falling
+ * back to something weaker — a measurement that cannot identify a visit is not
+ * worth a row, and in-app webviews are exactly where a half-working id would
+ * quietly corrupt the drop-off curve this table exists to draw.
+ */
+function funnelSessionId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const existing = window.sessionStorage.getItem(FUNNEL_SESSION_KEY);
+    if (existing) return existing;
+    if (typeof crypto?.randomUUID !== "function") return null;
+    const id = crypto.randomUUID();
+    window.sessionStorage.setItem(FUNNEL_SESSION_KEY, id);
+    return id;
+  } catch {
+    // Private mode, storage disabled, quota. Losing the measurement costs a row;
+    // throwing here would cost her the page.
+    return null;
+  }
+}
+
+/**
+ * Fire and forget. `keepalive` so a ping started as she taps through survives
+ * the render that follows it, and every failure is swallowed: this is
+ * instrumentation, and instrumentation must never be visible to the woman being
+ * instrumented.
+ */
+function pingFunnelStep(step: string, stepIndex: number) {
+  const sessionId = funnelSessionId();
+  if (!sessionId) return;
+  try {
+    void fetch("/api/funnel-step", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, step, step_index: stepIndex }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    // Ignored, deliberately.
+  }
+}
+
+/**
+ * Where each screen sits in the funnel, as one monotonic sequence, so the
+ * drop-off curve can be read without knowing the phase machine at query time.
+ *
+ *   0        start screen (only reachable now by backing off question 1)
+ *   1..17    the quiz steps, in STEPS order
+ *   18..23   calculating -> results -> diagnosis -> relief -> paywall -> download
+ *
+ * Capped well under the route's `MAX_STEP_INDEX` of 40, which leaves room for
+ * screens to be added without the two files having to move together.
+ */
+const POST_QUIZ_PHASES: Phase[] = [
+  "calculating",
+  "results",
+  "diagnosis",
+  "relief",
+  "paywall",
+  "download",
+];
+const POST_QUIZ_BASE = 18;
 
 /**
  * `useLayoutEffect` on the client, `useEffect` on the server - the standard dodge
@@ -1477,7 +1590,10 @@ function getUnlockedToolUse(topProblems: string[]): string {
 // - **They describe her body, not her opinion.** "Calmer" is something she can
 //   check; "It works!" is a review, and asking a stranger for a review before
 //   she has paid is the tell that this is a sales screen.
-type ReliefFeedback = "calmer" | "little" | "not_yet";
+// `skipped` is not one of the three check-in answers - it is what the reward
+// screen is told when she never breathed at all, so its copy can stop claiming
+// she did. See `getReliefRewardCopy`.
+type ReliefFeedback = "calmer" | "little" | "not_yet" | "skipped";
 
 const RELIEF_CHECKIN_OPTIONS: { id: ReliefFeedback; label: string }[] = [
   { id: "calmer", label: "Calmer" },
@@ -1533,6 +1649,22 @@ function getReliefRewardCopy(
             One round rarely does it. Paced breathing works the way training works -{" "}
             <span className="font-bold text-[#3D3D3D]">a little, most days</span>. That is exactly
             what the next {PLAN_WEEKS} weeks are.
+          </>
+        ),
+      };
+    // She skipped from the intro, so she never took a breath. The old copy here
+    // told her she had calmed her body in 36 seconds, which she would know to be
+    // false - and a funnel caught inventing a result thirty seconds before the
+    // price has spent the belief it needs. She keeps the tool either way; that
+    // part is true.
+    case "skipped":
+      return {
+        heading: `It's yours anyway${suffix}.`,
+        body: (
+          <>
+            Keep it for the next time it hits -{" "}
+            <span className="font-bold text-[#3D3D3D]">{BREATH_TOTAL_SECONDS} seconds</span>,
+            anywhere, no equipment. That is one tool, on one symptom.
           </>
         ),
       };
@@ -3458,7 +3590,25 @@ function RegisterPageContent() {
     ) {
       return phaseParam;
     }
-    return "start";
+    /*
+     * **Question 1, not the start screen (2026-09-02).**
+     *
+     * The ad promises a quiz and the start screen was an interstitial between
+     * that promise and the quiz: one image, one headline, one button whose only
+     * job was `setPhase("quiz")`. It collected nothing, personalised nothing and
+     * asked for a tap before the funnel had given her anything - the single
+     * cheapest tap in the funnel to delete, on the screen that takes 100% of the
+     * traffic.
+     *
+     * The screen itself is kept, not deleted, because `goBack` off question 1
+     * still lands there (see `goBack`): backing out of the first question should
+     * reach something, not dead-end, and that is now the start screen's whole
+     * job. It is also where the Terms and Privacy links used to be the only
+     * copies in the funnel - they now sit under the quiz card as well, because a
+     * screen most visitors never see cannot be where the legal links live. If
+     * this screen is ever actually deleted, check those links first.
+     */
+    return "quiz";
   });
   // No pixel events fire anywhere in the quiz or the post-quiz screens. The
   // seven custom ones that used to (`QuizStart`, `QuizStep`, `QuizComplete`,
@@ -3573,9 +3723,14 @@ function RegisterPageContent() {
   // to the reward as if she'd finished, so the toolkit unlock still lands.
   // Past the check-in too, and with no answer recorded: she didn't do the
   // exercise, so there is nothing for her to have noticed.
-  const skipRelief = useCallback(() => {
+  //
+  // `neverStarted` separates the two ways out. Skipping mid-exercise means she
+  // breathed some of it, so the reward keeps its original wording; skipping from
+  // the intro means she breathed none of it, and the reward has to say so rather
+  // than congratulate her on 36 seconds she did not spend.
+  const skipRelief = useCallback((neverStarted = false) => {
     setReliefElapsed(BREATH_TOTAL_SECONDS);
-    setReliefFeedback(null);
+    setReliefFeedback(neverStarted ? "skipped" : null);
     setReliefStage("reward");
   }, []);
 
@@ -3621,8 +3776,38 @@ function RegisterPageContent() {
 
   // Same idea, for JavaScript. See warmPhaseChunks().
   useEffect(() => {
-    warmPhaseChunks(phase);
-  }, [phase]);
+    warmPhaseChunks(phase, stepIndex);
+  }, [phase, stepIndex]);
+
+  /**
+   * Report the screen she is on. See `pingFunnelStep`.
+   *
+   * Deduped per visit by a ref, so backing up and coming forward again does not
+   * re-send: the drop-off query counts distinct sessions per step, so a second
+   * row changes nothing and costs a request from a phone mid-funnel. The ref is
+   * the right scope — it dies with the mount, and a genuine reload is a new
+   * measurement of a page she is genuinely seeing again.
+   */
+  const funnelStepsSent = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    let step: string;
+    let index: number;
+    if (phase === "start") {
+      step = "start";
+      index = 0;
+    } else if (phase === "quiz") {
+      step = STEPS[stepIndex] ?? "unknown";
+      index = stepIndex + 1;
+    } else {
+      const position = POST_QUIZ_PHASES.indexOf(phase);
+      if (position < 0) return;
+      step = phase;
+      index = POST_QUIZ_BASE + position;
+    }
+    if (funnelStepsSent.current.has(step)) return;
+    funnelStepsSent.current.add(step);
+    pingFunnelStep(step, index);
+  }, [phase, stepIndex]);
   // Question position for the progress label/dots (reward steps excluded; during a
   // reward step we keep the last answered question's dot lit).
   const activeQuestionIndex = QUESTION_STEPS.includes(currentStep)
@@ -3643,12 +3828,28 @@ function RegisterPageContent() {
   const [ageBand, setAgeBand] = useState<string>("");
   // Height: stored per-unit as raw strings; normalized to cm on save.
   // Sliders always carry a value, so seed sensible mid-range defaults.
-  const [heightUnit, setHeightUnit] = useState<"cm" | "ft">("cm");
+  //
+  // **Imperial is the default because the traffic is US (2026-09-02).** These
+  // opened on cm/kg, so every woman the campaign buys landed on q_body - step 8
+  // of 17, on a screen whose own subhead promises the plan is being sized to
+  // her - and was shown her body as "165 cm" and "70 kg": two numbers she
+  // cannot read, on the one question that asks her to confirm something
+  // personal. The unit toggles are small, top-right, and easy to miss, so the
+  // choice was between doing arithmetic and pulling two sliders that mean
+  // nothing to her.
+  //
+  // The seeds are the same body either way (5'5" = 165 cm, 154 lb = 70 kg), so
+  // nothing downstream moves: `bodyMetrics` still normalizes to cm/kg before
+  // anything reads it. If the campaign ever runs outside the US, derive this
+  // from `x-vercel-ip-country` rather than flipping it back - a UK visitor
+  // wants stones, and a default that is wrong for everyone is worse than one
+  // that is right for the majority.
+  const [heightUnit, setHeightUnit] = useState<"cm" | "ft">("ft");
   const [heightCm, setHeightCm] = useState<string>("165");
   const [heightFt, setHeightFt] = useState<string>("5");
   const [heightIn, setHeightIn] = useState<string>("5");
   // Weight: stored per-unit as raw strings; normalized to kg on save.
-  const [weightUnit, setWeightUnit] = useState<"kg" | "lb">("kg");
+  const [weightUnit, setWeightUnit] = useState<"kg" | "lb">("lb");
   const [weightKg, setWeightKg] = useState<string>("70");
   const [weightLb, setWeightLb] = useState<string>("154");
   const [fitnessLevel, setFitnessLevel] = useState<string>("");
@@ -4551,7 +4752,15 @@ function RegisterPageContent() {
   useIsomorphicLayoutEffect(() => {
     if (resumeChecked.current) return;
     resumeChecked.current = true;
-    if (phase !== "start") return;
+    // "quiz" is the cold-start phase since 2026-09-02; "start" is still listed
+    // because backing off question 1 lands there. What this guard is really
+    // saying is "only when this load would otherwise begin the funnel from the
+    // top" - `?phase=download` and the dev-only params are decided by the
+    // initializer and outrank a ticket. Leaving it as `phase !== "start"` after
+    // the default moved would have silently disabled the whole resume path:
+    // every Back from Stripe would have dropped her on question 1 with her
+    // answers gone, which is the exact bug the ticket exists to prevent.
+    if (phase !== "start" && phase !== "quiz") return;
 
     const saved = readFunnelResume();
     if (!saved) return;
@@ -4825,8 +5034,13 @@ function RegisterPageContent() {
           real before/after - scrolling alone, then holding her plan, smiling -
           so the promise in the headline below is something she sees happen to
           someone else before she's asked to believe it for herself. */}
+      {/* The scroll column below carries `env(safe-area-inset-bottom)` for the
+          same reason every other phase does: the fixed CTA bar adds the
+          home-indicator inset to its own height, so the flat `pb-28` this used
+          to be left the last ~34px of the offer card under the bar on every
+          notched iPhone. This was the only phase missing it. */}
       {phase === "start" && (
-        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto items-center justify-start px-2 text-center pb-28">
+        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto items-center justify-start px-2 text-center pb-[calc(112px+env(safe-area-inset-bottom))]">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -4861,7 +5075,7 @@ function RegisterPageContent() {
                   identically, at every width from 375 to 430**, and the fixed
                   CTA bar plus the column's own padding accounts for a further
                   114px. So the height this hero can take without pushing the
-                  card under the bar is exactly `100vh - 457px`, and that is the
+                  card under the bar is exactly `100dvh - 457px`, and that is the
                   formula rather than a vh fraction because the part below is a
                   *constant*, not a proportion: as a fraction of the viewport
                   the budget swings from 20% on a small phone to 52% on a Pro
@@ -4875,6 +5089,15 @@ function RegisterPageContent() {
                   than a photograph. That viewport cannot have both a legible
                   hero and a no-scroll page, so it gets the hero and ~90px of
                   scroll; the CTA is pinned, so scrolling never costs the tap.
+
+                  **`dvh`, not `vh` (2026-09-02).** This read `100vh` while the
+                  shell above is `h-dvh`, so the budget was computed against the
+                  *large* viewport - the one with the URL bar hidden - inside a
+                  container sized to the current one. On iOS Safari/Chrome and
+                  the Instagram/Facebook webview that is 60-90px of overshoot,
+                  i.e. the whole margin this formula exists to protect, missed
+                  on exactly the browsers the ad audience arrives in. Any future
+                  height maths on this screen uses `dvh`.
 
                   **The formula is the binding ceiling now** (2026-08-31).
                   `start.webp` was 900x504 and at that ratio drew ~200px tall
@@ -4913,7 +5136,7 @@ function RegisterPageContent() {
                 height={960}
                 priority
                 sizes="(max-width: 480px) 92vw, 420px"
-                className="w-full h-auto max-h-[max(190px,calc(100vh-457px))] short:max-h-[max(180px,calc(100vh-457px))] object-cover object-[50%_65%]"
+                className="w-full h-auto max-h-[max(190px,calc(100dvh-457px))] short:max-h-[max(180px,calc(100dvh-457px))] object-cover object-[50%_65%]"
               />
 
 
@@ -6254,18 +6477,32 @@ function RegisterPageContent() {
                       : "Let the exhale be longer than the breath in."}
                   </p>
 
-                  {/* Skip: an escape hatch on a 60-second timer has to be
+                  {/* Skip: an escape hatch on a 36-second timer has to be
                       findable at a glance, or she waits it out or leaves. Sized
                       as a real tap target rather than an 11px underline, but
                       outlined and neutral so it never competes with the circle
-                      it sits under. */}
-                  {reliefStage === "running" && (
+                      it sits under.
+
+                      **It renders on the intro too now (2026-09-02).** It used
+                      to appear only once the exercise was `running`, which meant
+                      the intro screen offered exactly one way forward: start a
+                      36-second timer. That is a hard gate two screens before the
+                      price, on a funnel that has already asked for 26 taps, and
+                      the women it stops are the impatient ones - not obviously
+                      the ones least likely to buy. The exercise is the better
+                      path and still the prominent one; this is the door for
+                      everyone who was going to leave through it anyway.
+
+                      The label differs because the two skips mean different
+                      things: from the intro she is asking for the plan, from the
+                      middle she is ending something she started. */}
+                  {(reliefStage === "intro" || reliefStage === "running") && (
                     <button
                       type="button"
-                      onClick={skipRelief}
+                      onClick={() => skipRelief(reliefStage === "intro")}
                       className="shrink-0 inline-flex items-center gap-1 rounded-full border border-[#D8D8D8] bg-white/80 px-4 py-2 text-[13px] font-semibold text-[#5A5A5A] transition-colors hover:border-[#BDBDBD] hover:bg-white hover:text-[#3D3D3D]"
                     >
-                      Skip this step
+                      {reliefStage === "intro" ? `Skip to my ${PLAN_WEEKS}-week plan` : "Skip this step"}
                       <ChevronRight className="w-3.5 h-3.5" aria-hidden />
                     </button>
                   )}
@@ -7329,6 +7566,51 @@ function RegisterPageContent() {
               )}
             </div>
           </div>
+
+          {/* Terms and Privacy, on question 1 only.
+
+              These lived on the start screen's CTA bar, and were put there
+              because it was the funnel's entrance: the two documents Meta's ad
+              reviewers look for, and the two a cautious 45-60 visitor looks for,
+              have to be reachable from the screen the ad lands on. Since
+              2026-09-02 that screen is this one, so the links moved with the
+              entrance rather than staying on a screen most visitors now never
+              see. (The start screen keeps its copy - it is still reachable by
+              backing off this question.)
+
+              Question 1 only: repeating them under all seventeen steps is noise,
+              and the entrance is the only place the obligation attaches.
+              `target="_blank"` so reading them never costs her the funnel;
+              `prefetch={false}` because this is the ad landing page and two
+              speculative page loads is a real cost for a link most visitors
+              never tap. #5A5A5A rather than #9A9A9A - 6.9:1 against 2.85:1, and
+              small legal text is exactly where the audience least able to
+              resolve it gets punished. */}
+          {stepIndex === 0 && (
+            <p className="shrink-0 text-[11px] text-[#5A5A5A] text-center px-4 pb-1 leading-snug">
+              <Link
+                href="/terms"
+                prefetch={false}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-2 hover:text-[#3D3D3D]"
+              >
+                Terms
+              </Link>
+              <span aria-hidden className="mx-1.5">
+                ·
+              </span>
+              <Link
+                href="/privacy"
+                prefetch={false}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-2 hover:text-[#3D3D3D]"
+              >
+                Privacy
+              </Link>
+            </p>
+          )}
 
           {/* Navigation Buttons - fixed to bottom of viewport, safe-area aware.
               Absent on single-choice steps, which advance themselves, and while

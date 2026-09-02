@@ -592,6 +592,7 @@ export async function POST(req: NextRequest) {
     revenue,
     checkout,
     emails,
+    dropoffResult,
   ] = await Promise.all([
     supabaseAdmin
       .from("user_trials")
@@ -625,6 +626,21 @@ export async function POST(req: NextRequest) {
       ? loadCheckoutStarts(stripe, funnelSince)
       : Promise.resolve({ started: 0, error: null, truncated: false }),
     loadEmails(),
+    // Screen-by-screen drop-off inside the funnel — the seventeen quiz steps
+    // plus the six phases after them. This is the only block on the panel that
+    // can see *inside* the quiz: every other funnel figure here starts at the
+    // profile insert, which happens on step 17 of 17, so before 2026-09-02 a
+    // woman who left on question 4 was indistinguishable from one who never
+    // clicked the ad.
+    //
+    // Same `funnelSince` as the three-step funnel above it, so the two blocks
+    // are always measured over the same window and can be read against each
+    // other. Aggregated in Postgres (see the migration) rather than by pulling
+    // rows: PostgREST cannot express count-distinct-group-by, and the fallback
+    // would ship the whole table to a serverless function for twenty numbers.
+    supabaseAdmin.rpc("funnel_dropoff", {
+      since: new Date(funnelSince).toISOString(),
+    }),
   ]);
 
   if (trialsResult.error) {
@@ -775,6 +791,52 @@ export async function POST(req: NextRequest) {
   const quizFinished30 = quizCountResult.count ?? 0;
   const checkoutStarted30 = checkout.started;
   const paidNew30 = revenue.newCustomers30;
+
+  /*
+   * Screen-by-screen drop-off, and the single worst step.
+   *
+   * `dropPct` is measured against the *previous* screen, not against the first
+   * one, because that is the number that names a screen. A cumulative curve
+   * falls monotonically and every late step looks terrible by construction; the
+   * step-to-step loss is what says "this screen is where they go", which is the
+   * only thing this block is for.
+   *
+   * `worst` is computed here rather than in the page for the same reason the
+   * verdict sentence is: the panel and anything that ever alerts off this must
+   * not be able to disagree about which screen is the problem. It ignores the
+   * first row (nothing precedes it) and any step with a trivial base, since
+   * 2 → 1 is a 50% "cliff" that means nothing at launch volume.
+   */
+  const MIN_CLIFF_BASE = 10;
+  const dropoffRows = (dropoffResult.data ?? []) as {
+    step_index: number;
+    step: string;
+    sessions: number;
+  }[];
+  const dropoff = dropoffRows.map((row, i) => {
+    const previous = i === 0 ? null : dropoffRows[i - 1].sessions;
+    return {
+      index: row.step_index,
+      step: row.step,
+      sessions: row.sessions,
+      // Share of everyone who reached the first measured screen.
+      pctOfEntry: dropoffRows.length
+        ? Math.round((row.sessions / dropoffRows[0].sessions) * 1000) / 10
+        : 0,
+      // Share lost between the previous screen and this one.
+      dropPct:
+        previous && previous > 0
+          ? Math.round(((previous - row.sessions) / previous) * 1000) / 10
+          : null,
+    };
+  });
+  const worstStep =
+    dropoff
+      .filter(
+        (d, i) =>
+          i > 0 && d.dropPct !== null && dropoffRows[i - 1].sessions >= MIN_CLIFF_BASE
+      )
+      .sort((a, b) => (b.dropPct ?? 0) - (a.dropPct ?? 0))[0] ?? null;
 
   // ─── Anything that needs a human ──────────────────────────────────────────
 
@@ -984,6 +1046,11 @@ export async function POST(req: NextRequest) {
       since: new Date(funnelSince).toISOString(),
       days: funnelDays,
       clamped: funnelClamped,
+      // Inside the quiz. Empty until the instrumented build has been live for a
+      // while — the panel says so rather than drawing an empty chart.
+      dropoff,
+      worstStep,
+      dropoffError: dropoffResult.error ? "Could not read funnel steps" : null,
     },
     contribution30,
     sales,

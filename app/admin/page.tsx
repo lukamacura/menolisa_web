@@ -171,6 +171,27 @@ type Stats = {
     days: number;
     /** True when ADMIN_CAMPAIGN_START cut the window short of 30 days. */
     clamped: boolean;
+    /** One row per funnel screen reached, in order. Empty before the
+     *  instrumented build has been live long enough to collect anything. */
+    dropoff: {
+      index: number;
+      step: string;
+      sessions: number;
+      /** Share of everyone who reached the first measured screen. */
+      pctOfEntry: number;
+      /** Share lost since the *previous* screen — null on the first row. */
+      dropPct: number | null;
+    }[];
+    /** The single worst step-to-step loss, computed server-side so the panel
+     *  and any future alert can never disagree about which screen it is. */
+    worstStep: {
+      index: number;
+      step: string;
+      sessions: number;
+      pctOfEntry: number;
+      dropPct: number | null;
+    } | null;
+    dropoffError: string | null;
   };
   contribution30: number;
   sales: Sale[];
@@ -776,6 +797,29 @@ export default function AdminPage() {
               "Nobody has finished the quiz in the last 30 days."
             )}
           </div>
+        </Panel>
+
+        {/* The same question, one screen at a time. The block above starts at
+            the profile insert — step 17 of 17 — so it can only ever say that
+            the quiz leaked, never where. This one is the inside of that first
+            bar, and it is Supabase alone: no Stripe figure appears in it, so
+            there is no window to reconcile. */}
+        <SectionHead
+          title="Which screen loses them"
+          dot="var(--her)"
+          source="Supabase"
+          note={
+            funnel.clamped
+              ? `Since ${shortDate(funnel.since)} · ${plural(funnel.days, "day")}`
+              : "Last 30 days"
+          }
+        />
+        <Panel accent="linear-gradient(90deg, var(--her), #FB923C)">
+          <StepDropoff
+            rows={funnel.dropoff}
+            worst={funnel.worstStep}
+            error={funnel.dropoffError}
+          />
         </Panel>
 
         {/* ── 4. Latest sales ─────────────────────────────────────────────── */}
@@ -1583,6 +1627,148 @@ function CashChart({ revenue, spend }: { revenue: number[]; spend: number[] }) {
  * The bars run rose → green: they arrive as women and leave as money, so the
  * last step is the only one wearing the colour Stripe figures wear.
  */
+/**
+ * Screen names as they read to a person, not as they read in the code.
+ *
+ * Deliberately a lookup with a fallback rather than an exhaustive map: the step
+ * list lives in `app/register/page.tsx` and this panel must never be the reason
+ * a step cannot be added there. An unknown key prints its raw name, which is
+ * ugly and correct — better than a step silently missing from the curve.
+ */
+const STEP_LABELS: Record<string, string> = {
+  start: "Start screen",
+  q1_age: "Q1 · Age",
+  q4_symptoms: "Q2 · Symptoms",
+  q_symptom_impact: "Q3 · How hard it hits",
+  q2_here_for: "Q4 · Her stage",
+  q_menopause_type: "Q5 · How it began",
+  q3_goals: "Q6 · Goal",
+  reward_symptoms: "🎁 Starting point",
+  q_body: "Q7 · Height + weight",
+  q_fitness: "Q8 · Time for exercise",
+  q_training_time: "Q9 · Time of day",
+  reward_social_proof: "🎁 Someone like her",
+  q_nutrition: "Q10 · Eating",
+  q_relaxation: "Q11 · Unwinding",
+  reward_plan_shape: "🎁 Her week, sized",
+  q5_hrt: "Q12 · HRT",
+  reward_progress: "🎁 Plan rules",
+  q8_name: "Q13 · Name",
+  calculating: "Building her plan",
+  results: "Results + score",
+  diagnosis: "The plan",
+  relief: "Breathing exercise",
+  paywall: "Paywall",
+  download: "Paid · download",
+};
+
+/**
+ * The drop-off curve inside the funnel — the block that answers "which screen".
+ *
+ * Every other funnel figure on this panel begins at the profile insert, which
+ * happens on step 17 of 17, so a woman who left on question 4 used to be
+ * indistinguishable from one who never clicked the ad. This is the only view
+ * that can see inside the quiz.
+ *
+ * Two presentation rules that are really measurement rules:
+ *
+ * - **The bar is share-of-entry; the red number is loss-since-the-previous
+ *   screen.** They answer different questions and the second one is the reason
+ *   this block exists: a cumulative curve falls monotonically, so every late
+ *   step looks bad by construction and none of them is accused of anything. The
+ *   step-to-step loss is what names a screen.
+ * - **Only losses worth acting on are called out.** Under `CLIFF_PCT` is
+ *   ordinary attrition on a 23-screen funnel, and colouring all of it red
+ *   teaches you to ignore the colour.
+ */
+const CLIFF_PCT = 25;
+
+function StepDropoff({
+  rows,
+  worst,
+  error,
+}: {
+  rows: Stats["funnel"]["dropoff"];
+  worst: Stats["funnel"]["worstStep"];
+  error: string | null;
+}) {
+  if (error) {
+    return <p className="px-6 py-5 text-[13px] text-[var(--ink-2)]">{error}</p>;
+  }
+  if (rows.length === 0) {
+    return (
+      <div className="px-6 py-10 text-center">
+        <h3 className="text-base font-semibold">No steps recorded yet</h3>
+        <p className="mx-auto mt-1.5 max-w-[52ch] text-sm text-[var(--ink-2)]">
+          This fills in once the instrumented build is live and someone opens{" "}
+          <code className="rounded bg-[var(--quiet)] px-1 py-0.5 text-[12px]">/register</code>.
+          Nothing is broken — there is simply nothing to draw yet.
+        </p>
+      </div>
+    );
+  }
+
+  const entry = rows[0]?.sessions ?? 0;
+
+  return (
+    <div className="px-6 py-5">
+      {worst && worst.dropPct !== null && worst.dropPct >= CLIFF_PCT && (
+        <p className="mb-4 rounded-lg border border-[var(--line)] bg-[var(--quiet)] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-[var(--ink-2)]">
+          Biggest single drop:{" "}
+          <b className="font-semibold text-[var(--ink)]">
+            {STEP_LABELS[worst.step] ?? worst.step}
+          </b>{" "}
+          loses{" "}
+          <b className="font-semibold tabular-nums text-[#C2410C]">{worst.dropPct}%</b> of everyone
+          who reached the screen before it. Fix that screen before any other.
+        </p>
+      )}
+
+      <div className="space-y-0.5">
+        {rows.map((r) => {
+          const width = entry > 0 ? Math.min((r.sessions / entry) * 100, 100) : 0;
+          const cliff = r.dropPct !== null && r.dropPct >= CLIFF_PCT;
+          return (
+            <div
+              key={r.index}
+              className="grid grid-cols-[136px_1fr_84px] items-center gap-3 sm:grid-cols-[172px_1fr_92px]"
+            >
+              <span className="truncate text-[12px] leading-tight text-[var(--ink-2)]">
+                {STEP_LABELS[r.step] ?? r.step}
+              </span>
+              <span className="flex h-[18px] items-center">
+                <span
+                  className="h-[14px] min-w-[2px] rounded transition-[width] duration-500"
+                  style={{
+                    width: `${Math.max(width, r.sessions > 0 ? 1.5 : 0)}%`,
+                    background: cliff
+                      ? "linear-gradient(90deg, #FDBA74, #FB923C)"
+                      : "linear-gradient(90deg, color-mix(in srgb, var(--her) 34%, white), var(--her))",
+                  }}
+                />
+              </span>
+              <span className="text-right text-[12px] tabular-nums text-[var(--ink-2)]">
+                <b className="font-semibold text-[var(--ink)]">{r.sessions.toLocaleString("en-US")}</b>
+                {r.dropPct !== null && r.dropPct > 0 && (
+                  <span className={cliff ? "ml-1.5 text-[#C2410C]" : "ml-1.5 text-[var(--ink-3)]"}>
+                    −{r.dropPct}%
+                  </span>
+                )}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="mt-4 border-t border-[var(--line)] pt-3 text-[11.5px] leading-relaxed text-[var(--ink-3)]">
+        Bar length is share of everyone who reached the first screen. The red figure is what that
+        one step lost against the step above it — that is the number that names a screen. Counted by
+        visit, not by person: one woman across two tabs is two.
+      </p>
+    </div>
+  );
+}
+
 function Funnel({
   quiz,
   checkout,
