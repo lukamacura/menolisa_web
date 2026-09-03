@@ -1662,17 +1662,27 @@ function CashChart({ revenue, spend }: { revenue: number[]; spend: number[] }) {
  * list lives in `app/register/page.tsx` and this panel must never be the reason
  * a step cannot be added there. An unknown key prints its raw name, which is
  * ugly and correct — better than a step silently missing from the curve.
+ *
+ * **Nothing here is invented.** The keys are exactly the names
+ * `pingFunnelStep()` sends — `start`, then `STEPS`, then `POST_QUIZ_PHASES`,
+ * in that order — and the row order below is that order, so the map reads as
+ * the funnel reads. The `Q<n>` prefixes are the quiz's own counter
+ * (`QUESTION_STEPS`, rewards excluded), so Q13 is the thirteenth of thirteen on
+ * screen; and each label uses the words that screen uses, so a row cannot name
+ * one screen while the woman was looking at another. When a step moves in
+ * `app/register/page.tsx`, renumber here in the same commit — a stale number is
+ * worse than a raw key, because it looks answered.
  */
 const STEP_LABELS: Record<string, string> = {
   start: "Start screen",
   q4_symptoms: "Q1 · Symptoms",
   q1_age: "Q2 · Age",
   q_symptom_impact: "Q3 · How hard it hits",
-  q2_here_for: "Q4 · Her stage",
+  q2_here_for: "Q4 · Menopausal status",
   q_menopause_type: "Q5 · How it began",
   q3_goals: "Q6 · Goal",
-  reward_symptoms: "🎁 Starting point",
-  q_body: "Q7 · Height + weight",
+  reward_symptoms: "🎁 Hers, free",
+  q_body: "Q7 · Body baseline",
   q_fitness: "Q8 · Time for exercise",
   q_training_time: "Q9 · Time of day",
   reward_social_proof: "🎁 Someone like her",
@@ -1757,7 +1767,7 @@ function FunnelRow({
         className={`truncate leading-tight ${
           strong ? "text-[12.5px] font-medium text-[var(--ink)]" : "text-[12px] text-[var(--ink-2)]"
         }`}
-        title={note}
+        title={note ?? label}
       >
         {label}
       </span>
