@@ -938,7 +938,7 @@ export function PaywallView({
               Stripe's sheet and the price card both say it again. */}
           <p className="text-[11px] sm:text-xs text-[#5A5A5A] text-center mt-2 leading-relaxed">
             <b className="text-[#3D3D3D]">{PLAN_WEEKS} week guarantee</b> &middot; Cancel anytime
-            &middot; Renews at {PRICE} every {PLAN_WEEKS} weeks
+            &middot; Renews every {PLAN_WEEKS} weeks
           </p>
           <p className="text-[11px] sm:text-xs text-[#7A7A7A] text-center mt-1 sm:mt-1.5 leading-relaxed">
             <span className="inline-flex items-center justify-center gap-1 flex-wrap">
