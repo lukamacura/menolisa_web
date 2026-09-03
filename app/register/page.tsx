@@ -1252,6 +1252,37 @@ function funnelSessionId(): string | null {
   }
 }
 
+const FUNNEL_QA_KEY = "menolisa:funnel-qa";
+
+/**
+ * True when this visit is a QA run, which must leave no trace in the curve.
+ *
+ * Set by `?qa=1` on any load of `/register`, then remembered for the rest of the
+ * tab. Remembering is the whole point: the funnel is one page and the parameter
+ * does not survive the phase machine, and the Stripe round-trip returns to
+ * `?phase=download` — so re-reading the URL on every ping would stop skipping
+ * halfway through the run and record the half that matters most.
+ *
+ * Scope is `funnel_events` only. Suppressing Meta is Global Privacy Control's
+ * job (`lib/privacySignals.ts`), already wired to all five call sites; a second
+ * mechanism aimed at the same events is how one of them ends up unguarded.
+ */
+function isQaSession(): boolean {
+  if (typeof window === "undefined") return false;
+  const fromUrl = new URLSearchParams(window.location.search).get("qa") === "1";
+  try {
+    if (fromUrl) {
+      window.sessionStorage.setItem(FUNNEL_QA_KEY, "1");
+      return true;
+    }
+    return window.sessionStorage.getItem(FUNNEL_QA_KEY) === "1";
+  } catch {
+    // Private mode, storage disabled, quota. The URL alone still marks the run
+    // for as long as the parameter is on screen.
+    return fromUrl;
+  }
+}
+
 /**
  * Fire and forget. `keepalive` so a ping started as she taps through survives
  * the render that follows it, and every failure is swallowed: this is
@@ -1259,6 +1290,7 @@ function funnelSessionId(): string | null {
  * instrumented.
  */
 function pingFunnelStep(step: string, stepIndex: number) {
+  if (isQaSession()) return;
   const sessionId = funnelSessionId();
   if (!sessionId) return;
   try {
