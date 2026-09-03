@@ -182,6 +182,12 @@ type Revenue = {
   feeRate: number;
   /** Customers whose first-ever charge landed in the last 30 days. Ads buy these. */
   newCustomers30: number;
+  /**
+   * Every customer's first-ever charge, as ms. The funnel block counts new
+   * customers over its own window — which is not `newCustomerSince` — and this
+   * is what lets it do that without a second walk over Stripe.
+   */
+  firstChargeTimes: number[];
   /** Customers who have ever paid a first charge. */
   newCustomersAll: number;
   /** Renewal cohort: first charge is old enough that a renewal was due. */
@@ -217,6 +223,7 @@ function emptyRevenue(error: string | null): Revenue {
     failedLast30: 0,
     feeRate: STRIPE_PCT + STRIPE_FIXED / PLAN_PRICE,
     newCustomers30: 0,
+    firstChargeTimes: [],
     newCustomersAll: 0,
     cohortSize: 0,
     cohortRenewed: 0,
@@ -400,6 +407,7 @@ async function loadRevenue(
     const first = times[0];
     rev.newCustomersAll += 1;
     if (first >= newCustomerSince) rev.newCustomers30 += 1;
+    rev.firstChargeTimes.push(first);
 
     if (first <= maturedBefore) {
       rev.cohortSize += 1;
@@ -569,7 +577,6 @@ export async function POST(req: NextRequest) {
     ? new Stripe(process.env.STRIPE_SECRET_KEY)
     : null;
   const thirtyDaysAgo = startOfToday - 29 * DAY_MS;
-  const thirtyDaysAgoIso = new Date(now - 30 * DAY_MS).toISOString();
 
   /**
    * The floor every funnel and acquisition figure is measured from: 30 days, or
@@ -582,6 +589,36 @@ export async function POST(req: NextRequest) {
   const funnelClamped = campaignFloor !== null && funnelSince > now - 30 * DAY_MS;
   const funnelDays = Math.max(1, Math.ceil((now - funnelSince) / DAY_MS));
 
+  /**
+   * **The funnel is one curve, so every row on it covers exactly the same
+   * days.** That floor is the later of the acquisition window and the first
+   * screen ping that ever happened.
+   *
+   * `funnel_events` only exists from 2026-09-02. Windowing the screen rows from
+   * then while windowing the Stripe rows from the campaign start put two
+   * different spans of time in one column: it showed 63 women finishing the
+   * quiz above 54 reaching the screen they finish it on, which is not a rise in
+   * the funnel, it is 43 extra hours. One window removes the artefact instead
+   * of explaining it in a footnote.
+   *
+   * Read unwindowed, so it is a fixed instant rather than "the oldest ping in
+   * the last 30 days" — the latter walks forward whenever traffic pauses, and
+   * would silently narrow the whole block on a quiet weekend. Once the rolling
+   * 30 days clears 2026-09-02 this stops binding and `funnelSince` takes over.
+   */
+  const trackingStartResult = await supabaseAdmin
+    .from("funnel_events")
+    .select("created_at")
+    .order("created_at", { ascending: true })
+    .limit(1);
+  const trackingStart = trackingStartResult.data?.[0]?.created_at
+    ? new Date(trackingStartResult.data[0].created_at as string).getTime()
+    : null;
+  const curveSince = Math.max(funnelSince, trackingStart ?? funnelSince);
+  const curveDays = Math.max(1, Math.ceil((now - curveSince) / DAY_MS));
+  /** True while the screen data, not the campaign floor, is what bounds the block. */
+  const curveBoundedByTracking = trackingStart !== null && trackingStart > funnelSince;
+
   const [
     trialsResult,
     profilesResult,
@@ -593,7 +630,6 @@ export async function POST(req: NextRequest) {
     checkout,
     emails,
     dropoffResult,
-    trackingStartResult,
   ] = await Promise.all([
     supabaseAdmin
       .from("user_trials")
@@ -624,7 +660,7 @@ export async function POST(req: NextRequest) {
       ? loadRevenue(stripe, startOfToday, funnelSince)
       : Promise.resolve(emptyRevenue("STRIPE_SECRET_KEY is not set")),
     stripe
-      ? loadCheckoutStarts(stripe, funnelSince)
+      ? loadCheckoutStarts(stripe, curveSince)
       : Promise.resolve({ started: 0, error: null, truncated: false }),
     loadEmails(),
     // Screen-by-screen drop-off inside the funnel — the seventeen quiz steps
@@ -634,27 +670,14 @@ export async function POST(req: NextRequest) {
     // woman who left on question 4 was indistinguishable from one who never
     // clicked the ad.
     //
-    // Same `funnelSince` as the three-step funnel above it, so the two blocks
-    // are always measured over the same window and can be read against each
-    // other. Aggregated in Postgres (see the migration) rather than by pulling
+    // `curveSince`, the same window every other row of the curve uses — see the
+    // note where it is computed. Aggregated in Postgres (see the migration)
+    // rather than by pulling
     // rows: PostgREST cannot express count-distinct-group-by, and the fallback
     // would ship the whole table to a serverless function for twenty numbers.
     supabaseAdmin.rpc("funnel_dropoff", {
-      since: new Date(funnelSince).toISOString(),
+      since: new Date(curveSince).toISOString(),
     }),
-    // When screen tracking actually began inside this window.
-    //
-    // The window is `funnelSince` for every block on the panel, but
-    // `funnel_events` only exists from 2026-09-02 — so for the first month the
-    // screen counts cover less time than the three steps beside them, and a
-    // funnel that reads "2 reached the paywall" above "10 finished the quiz"
-    // looks broken when it is merely younger. One indexed row answers it.
-    supabaseAdmin
-      .from("funnel_events")
-      .select("created_at")
-      .gte("created_at", new Date(funnelSince).toISOString())
-      .order("created_at", { ascending: true })
-      .limit(1),
   ]);
 
   if (trialsResult.error) {
@@ -803,8 +826,6 @@ export async function POST(req: NextRequest) {
   // rare. If mobile signup ever becomes real traffic, this denominator needs
   // splitting before the percentage means anything.
   const quizFinished30 = quizCountResult.count ?? 0;
-  const checkoutStarted30 = checkout.started;
-  const paidNew30 = revenue.newCustomers30;
 
   /*
    * Screen-by-screen drop-off, and the single worst step.
@@ -863,12 +884,88 @@ export async function POST(req: NextRequest) {
    * route didn't, and every derived number below — `pctOfEntry`, `lostPct`,
    * `worstStep`, the visit count in the chain sentence — is built off this list.
    */
-  const INACTIVE_STEPS = new Set(["start"]);
-  const dropoffRows = ((dropoffResult.data ?? []) as {
+  const INACTIVE_STEPS = new Set([
+    // Not in the funnel anyone walks: `/register` has cold-started on question 1
+    // since 2026-09-02, so the start screen is reachable only by pressing Back.
+    // It also carries step_index 0, so leaving it in would make it the entry row
+    // and the 100% base — a handful of women who arrived there backwards
+    // deciding the scale of every bar above them.
+    "start",
+    // Superseded by the `paid` row below. `download` is the post-checkout
+    // landing screen, so it measures the same event Stripe measures — and
+    // Stripe is the one that knows whether money moved. Two rows for one event
+    // is the duplicate this curve exists to not have.
+    "download",
+  ]);
+  const screenRows = ((dropoffResult.data ?? []) as {
     step_index: number;
     step: string;
     sessions: number;
   }[]).filter((r) => !INACTIVE_STEPS.has(r.step));
+
+  /**
+   * **One curve, top of the funnel to the money, no row measured twice.**
+   *
+   * This was two bands with two bases — screens counted in visits above,
+   * Supabase + Stripe counted in women below — and the seam between them was
+   * doing real damage:
+   *
+   *   - Its first row, "Finished the quiz", was the `calculating` row of the
+   *     band above it. `save-quiz` writes `user_profiles` behind the
+   *     calculating loader, so they are the same instant; one was Supabase
+   *     counting women and the other `funnel_events` counting visits, over two
+   *     different windows, printed as two rows of one funnel.
+   *   - The bands overlapped rather than stacked. The top band runs to
+   *     `paywall`, which is *below* where the bottom band restarts, so the
+   *     curve appeared to climb at the seam.
+   *   - The one number the split was supposed to protect — paywall to card
+   *     form — could not be computed at all, because it spanned the seam.
+   *
+   * The unit objection that justified the split does not survive the data: over
+   * the same window `calculating` is 54 visits and `user_profiles` is 54 women,
+   * exactly. Visits and women diverge at the *top* of the funnel, where a woman
+   * opens the ad twice — and the money rows are all at the bottom, where the
+   * two have converged. So the rows are appended in funnel order and the source
+   * is stated per row rather than per band.
+   *
+   * `group` is presentation only. It never changes a base: every percentage in
+   * this block still divides by the row above it, and the bars by `entry`.
+   */
+  const POST_QUIZ = new Set(["calculating", "results", "diagnosis", "relief", "paywall"]);
+  const paidInCurve = revenue.firstChargeTimes.filter((t) => t >= curveSince).length;
+  const curveRows: {
+    step: string;
+    sessions: number;
+    group: "quiz" | "after" | "money";
+    source: "screens" | "stripe";
+  }[] = [
+    ...screenRows.map((r) => ({
+      step: r.step,
+      sessions: r.sessions,
+      group: (POST_QUIZ.has(r.step) ? "after" : "quiz") as "quiz" | "after",
+      source: "screens" as const,
+    })),
+    // Both from Stripe, both below every screen we instrument. `checkout.error`
+    // means Stripe would not answer; a row of zero would read as "nobody
+    // opened the card form", which is a different and much worse claim.
+    ...(checkout.error
+      ? []
+      : [
+          {
+            step: "stripe_checkout",
+            sessions: checkout.started,
+            group: "money" as const,
+            source: "stripe" as const,
+          },
+        ]),
+    {
+      step: "stripe_paid",
+      sessions: paidInCurve,
+      group: "money" as const,
+      source: "stripe" as const,
+    },
+  ];
+  const dropoffRows = curveRows;
   const entrySessions = dropoffRows[0]?.sessions ?? 0;
   /*
    * **A loss belongs to the screen she was looking at when she left — which is
@@ -894,8 +991,10 @@ export async function POST(req: NextRequest) {
     const next = i === dropoffRows.length - 1 ? null : dropoffRows[i + 1].sessions;
     const lostCount = next === null ? null : Math.max(row.sessions - next, 0);
     return {
-      index: row.step_index,
+      index: i,
       step: row.step,
+      group: row.group,
+      source: row.source,
       sessions: row.sessions,
       // Share of everyone who reached the first measured screen. Whole numbers:
       // a tenth of a percent on a base of six is false precision.
@@ -912,14 +1011,6 @@ export async function POST(req: NextRequest) {
       significant: row.sessions >= MIN_CLIFF_BASE,
     };
   });
-  /**
-   * The oldest screen ping in the window, or null if there are none. The page
-   * compares it against `funnelSince` to decide whether the screen band and the
-   * money band below it really cover the same days.
-   */
-  const trackingSince =
-    (trackingStartResult.data?.[0]?.created_at as string | undefined) ?? null;
-
   const worstStep =
     entrySessions >= MIN_VERDICT_ENTRY
       ? (dropoff
@@ -1125,18 +1216,24 @@ export async function POST(req: NextRequest) {
       declined30: revenue.failedLast30,
     },
     funnel: {
+      /** Quiz finishers over the acquisition window. Not a row on the curve —
+       *  `calculating` is the same instant — it only backs the empty state. */
       quizFinished30,
-      checkoutStarted30,
-      paidNew30,
       sessionsError: checkout.error,
-      // What the three numbers above were actually measured over. The panel
-      // labels itself from this, so a floored window can never be presented as
-      // a full 30 days.
-      since: new Date(funnelSince).toISOString(),
-      days: funnelDays,
+      /** The one window every row of the curve is measured over. */
+      since: new Date(curveSince).toISOString(),
+      days: curveDays,
       clamped: funnelClamped,
-      // Inside the quiz. Empty until the instrumented build has been live for a
-      // while — the panel says so rather than drawing an empty chart.
+      /** The acquisition window, which the CAC tile still uses and which is not
+       *  necessarily the curve's. */
+      acqSince: new Date(funnelSince).toISOString(),
+      acqDays: funnelDays,
+      /** True when it is the age of the screen data, not the campaign floor,
+       *  that bounds the curve — the panel labels the window from this. */
+      boundedByTracking: curveBoundedByTracking,
+      // The whole funnel, one row per step, top to money. Empty until the
+      // instrumented build has been live for a while — the panel says so rather
+      // than drawing an empty chart.
       dropoff,
       worstStep,
       /** Visits that reached the first measured screen — the base every
@@ -1144,9 +1241,6 @@ export async function POST(req: NextRequest) {
       entrySessions,
       /** How many the verdict needs before it will name a screen. */
       minVerdictEntry: MIN_VERDICT_ENTRY,
-      /** First screen ping inside the window — null when there are none. Later
-       *  than `since` means the two bands cover different spans of days. */
-      trackingSince,
       dropoffError: dropoffResult.error ? "Could not read funnel steps" : null,
     },
     contribution30,

@@ -435,10 +435,10 @@ top to bottom, latest sales, needs a human.
   sessions against a one-day-old campaign, i.e. more checkouts than visitors.
   Deleting the Supabase side makes it *worse*: the quiz finishers go and the
   sessions stay, so the middle funnel step exceeds the first (the bar clamp at
-  `Funnel()` exists for exactly this). The floor gates the three funnel steps
-  and `newCustomers30` (the CAC denominator — dividing this month's ad spend by
-  a customer who bought before you ran an ad reports a CAC the ads did not
-  earn). It is anchored at **local midnight** on that day: UTC midday throws
+  `Funnel()` exists for exactly this). The floor gates `newCustomers30` (the CAC
+  denominator — dividing this month's ad spend by a customer who bought before
+  you ran an ad reports a CAC the ads did not earn); it used to gate the funnel
+  steps too, until the curve was floored at the first screen ping instead. It is anchored at **local midnight** on that day: UTC midday throws
   away launch morning, UTC midnight lets the previous evening back in east of
   Greenwich, and both were live bugs in the first cut of it. `funnel.clamped`
   makes the panel say "Since 1 Sep · 2 days" rather than "Last 30 days" — never
@@ -464,54 +464,62 @@ top to bottom, latest sales, needs a human.
   transactions, falling back to Stripe's published 2.9% + 30¢ only at zero
   volume. `kept` (net less fees) is the only figure it is honest to compare
   against ad spend, and it is what contribution is built from.
-- **The funnel is one block with two bands, not two panels.** Until 2026-09-02
-  the three money steps and the screen-by-screen curve were separate sections
-  answering halves of the same question, and reading them meant holding the last
-  bar of one against the first bar of the other. They are merged into "The
-  funnel, top to bottom" — but **the bands keep separate bases, and that is the
-  whole discipline of the block**: the top is `funnel_events`, counted by
-  *visit*, and the bottom is Supabase profiles plus Stripe charges, counted by
-  *woman*. Flattening them onto one denominator is the only real mistake
-  available here. Each band states its unit and its source, the seam between
-  them is drawn rather than hidden, and one sentence at the bottom reads the
-  chain out in words. Two artefacts the block must keep explaining, because both
-  look like a broken panel and neither is: `trackingSince` later than the window
-  start means the top band covers fewer days than the bottom one (true for as
-  long as the campaign floor predates 2026-09-02), and a later money step
-  outrunning an earlier one is undeleteable test-mode Checkout Sessions, not a
-  miscount. When the bands are not comparable the chain sentence drops the visit
-  count rather than implying a completion rate it cannot support.
-- **The money band is never coloured orange.** Losing most of the room between
-  the quiz and the card form is what that step does on a healthy funnel, so a
-  cliff threshold there sits orange permanently and teaches the eye to ignore the
-  colour that names a *screen*. The two rates it prints instead —
-  finishers→card form, card form→paid — are what split "the offer screen is
-  weak" from "checkout is leaking".
-- **The three money steps are windowed to the same 30 days:** quiz finished
-  (Supabase) → opened the card form (Stripe Checkout Sessions, mobile excluded
-  via `checkout_surface`) → new paying customers (Stripe first charges). The
-  middle step is the one that splits "the offer screen is weak" from "checkout is
-  leaking" — two problems with completely different fixes. Windowing is also what
-  ages out the pre-launch test accounts without a toggle. Mixing a Supabase
-  numerator with a Stripe denominator is only sound because both are web-only
-  today (the Expo app is downloaded *after* checkout); if mobile signup ever
-  becomes real traffic, split the denominator before trusting the percentage.
-  The bar width is clamped to 100% — a later step can legitimately exceed the
-  first when leftover test-mode sessions meet a handful of real quiz rows.
-- **The top band is the inside of the money band's first bar.** The three money
-  steps begin at the profile insert — step 17 of 17 — so they can say the quiz
-  leaked but never where. The band reads `funnel_events` through the
-  `funnel_dropoff(since)` RPC over the *same* `funnelSince`, so the two are
-  always measured over one window. **The RPC groups by screen name, never by
-  `step_index`** — it grouped by position for one day, on the assumption that a
-  step is renamed but never moved, and the quiz reordered the next morning. Two
-  screens swapping places then land two different screens in one bucket and
-  label both with whichever name sorts first: two identical rows, no row for the
-  moved screen, and blended counts, for a whole 30-day window — the window you
-  are reading to find out whether the reorder worked. Ordering is the position
-  each screen was *last* seen at, i.e. the funnel as it stands today. Migration:
-  `scripts/sql/2026-09-03-funnel-dropoff-by-step.sql`. Two rules that are measurement rules, not styling:
-  the bar is share-of-entry, but **the called-out number is what that row lost to
+- **The funnel is one curve, one window, and no row measured twice.** It was two
+  panels until 2026-09-02, then one block with two bands until 2026-09-03. The
+  bands were merged because the seam was doing damage, not because the units
+  stopped differing:
+    - Its first row, "Finished the quiz", **was** the `calculating` row above it.
+      `save-quiz` writes `user_profiles` behind the calculating loader, so they
+      are the same instant — one counted women, the other visits, over two
+      different windows, printed as two rows of one funnel. That is the duplicate
+      that made the panel read 63 above 54 and look broken.
+    - The bands overlapped rather than stacked. The top ran to `paywall`, which
+      is *below* where the bottom restarted, so the curve appeared to climb.
+    - **Paywall → card form could not be computed at all**, because it spanned
+      the seam — and it is the number that splits "the offer screen is weak"
+      from "checkout is leaking".
+  The unit objection that justified the split does not survive the data: over one
+  window `calculating` is 54 visits and `user_profiles` is 54 women, exactly.
+  Visits and women diverge at the *top*, where one woman opens the ad twice, and
+  every money row is at the bottom where they have converged. So the source is
+  stated **per row** (`source: "screens" | "stripe"`) rather than per band, and
+  `group` prints a stretch label — presentation only, it never changes a base.
+- **Everything on the curve is windowed from `curveSince`** = the later of the
+  acquisition window and the **first `funnel_events` ping that ever happened**.
+  Read unwindowed so it is a fixed instant: "the oldest ping in the last 30 days"
+  walks forward whenever traffic pauses and would silently narrow the whole block
+  over a quiet weekend. This is what removed the two-windows artefact rather than
+  footnoting it, and it is why `ADMIN_CAMPAIGN_START` no longer gates the funnel
+  at all — tracking began after the campaign did, so the tracking floor is
+  strictly stricter. The env var's remaining job is `newCustomers30`, the CAC
+  denominator, which keeps `funnelSince` (exported as `acqSince`/`acqDays`): a
+  customer who bought the day before tracking went live still cost ad money.
+- **Two rows are excluded from the curve, both deliberately.** `start` — the
+  screen is reachable only by pressing Back since `/register` cold-starts on
+  question 1, and it carries `step_index` 0, so leaving it in would make a
+  handful of women who arrived backwards the 100% base for every bar. And
+  `download`, the post-checkout landing screen, because it measures the same
+  event `stripe_paid` measures and Stripe is the side that knows whether money
+  moved. `INACTIVE_STEPS` in the route, not the label map — the page must never
+  compute a figure the route didn't.
+- **The two money rows are Stripe, appended below `paywall` because that is
+  where they happen:** `stripe_checkout` (Checkout Sessions, mobile excluded via
+  `checkout_surface`) then `stripe_paid` (first charges — a first charge is a new
+  customer, later ones are renewals). Mixing a `funnel_events` numerator with a
+  Stripe denominator is only sound because both are web-only today (the Expo app
+  is downloaded *after* checkout); if mobile signup becomes real traffic, split
+  before trusting the percentage.
+- **The RPC groups by screen name, never by `step_index`** — it grouped by
+  position for one day, on the assumption that a step is renamed but never moved,
+  and the quiz reordered the next morning. Two screens swapping places then land
+  two different screens in one bucket and label both with whichever name sorts
+  first: two identical rows, no row for the moved screen, and blended counts, for
+  a whole 30-day window — the window you are reading to find out whether the
+  reorder worked. Ordering is the position each screen was *last* seen at, i.e.
+  the funnel as it stands today. Migration:
+  `scripts/sql/2026-09-03-funnel-dropoff-by-step.sql`.
+- **Three reading rules, all of them measurement rules rather than styling.**
+  The bar is share-of-entry, but **the called-out number is what that row lost to
   the next one** — a cumulative curve falls monotonically, so every late step
   looks bad by construction and none of them is accused of anything. Which row
   carries the figure is not cosmetic: `pingFunnelStep` fires when a screen
@@ -519,23 +527,43 @@ top to bottom, latest sales, needs a human.
   before it. This shipped the other way round for one day and the first analysis
   of the data blamed the symptoms question for the age question's loss and the
   height/weight sliders for the reward board's — both fixes aimed one screen past
-  the problem. And only
-  losses at or above `CLIFF_PCT` (25%) are coloured, because on a 23-screen
-  funnel everything below that is ordinary attrition and colouring it all
-  teaches you to ignore the colour. **Two separate sample guards, and they are
-  not the same number** — the first live render got this wrong and the panel
-  showed it: `MIN_CLIFF_BASE` (25) is per row and decides whether a loss may be
-  *called* a cliff at all, because `2 → 1` is otherwise a 50% catastrophe in
-  bright orange; `MIN_VERDICT_ENTRY` (50) gates the sentence that tells you what
-  to do, and is higher on purpose, because a coloured bar is an observation a
-  reader can weigh while "fix that screen before any other" is an instruction —
-  at n=10 it sends you to rewrite a screen chosen by three people. Below it the
-  block states the visit count and says it is too early, the same choice the
-  empty state makes. Both thresholds and the `significant` flag come from the
-  route, so the bar, the figure and the verdict can never use different rules.
-  `STEP_LABELS` is a lookup with a
-  raw-name fallback on purpose: this panel must never be the reason a step
-  cannot be added to `app/register/page.tsx`.
+  the problem. And only losses at or above `CLIFF_PCT` (25%) are coloured,
+  because on a 23-screen funnel everything below that is ordinary attrition and
+  colouring it all teaches you to ignore the colour.
+- **Colour names one thing each.** Bar fill is **depth** — hue 221° → 360°, blue
+  at the top of the funnel to red at the money, deliberately not through green
+  and yellow (a rainbow puts the loudest colour mid-funnel for no reason, and
+  green is what this panel means by Stripe everywhere else). A cliff therefore
+  marks the screen's **name** in orange rather than its bar, so the accusation
+  and the depth cue never compete. Bar length is one shared scale across the
+  whole curve; before 2026-09-03 the money band's first row was hard-coded to
+  100% because it was measured against itself, which made the longest bar in the
+  chart one of its smallest numbers.
+- **Two separate sample guards, and they are not the same number** — the first
+  live render got this wrong and the panel showed it: `MIN_CLIFF_BASE` (25) is
+  per row and decides whether a loss may be *called* a cliff at all, because
+  `2 → 1` is otherwise a 50% catastrophe in bright orange; `MIN_VERDICT_ENTRY`
+  (50) gates the sentence that tells you what to do, and is higher on purpose,
+  because a coloured bar is an observation a reader can weigh while "fix that
+  screen before any other" is an instruction — at n=10 it sends you to rewrite a
+  screen chosen by three people. Below it the block states the visit count and
+  says it is too early, the same choice the empty state makes. Both thresholds
+  and the `significant` flag come from the route, so the bar, the figure and the
+  verdict can never use different rules.
+- **`STEP_LABELS` mirrors the quiz, and nothing on it is invented.** The keys are
+  exactly what `pingFunnelStep()` sends (`STEPS` then `POST_QUIZ_PHASES`, in that
+  order) plus the two Stripe rows; the `Q<n>` prefixes are the quiz's own counter
+  (`QUESTION_STEPS`, rewards excluded), so Q13 is the thirteenth of thirteen on
+  screen; and each label uses the words that screen uses. Renumber in the same
+  commit as a reorder — a stale number is worse than a raw key, because it looks
+  answered. It keeps a raw-name fallback on purpose: this panel must never be the
+  reason a step cannot be added to `app/register/page.tsx`.
+- **One artefact the block must keep explaining**, because it looks like a
+  broken panel and is not: a row bigger than the one above it. Two things do it
+  and neither is a miscount — a screen that moved in the quiz sits in a window
+  containing both orders (live right now: 181 on age against 141 on symptoms),
+  and Stripe Checkout Sessions cannot be deleted, so test taps stay until they
+  age out. Bars clamp; the rates print the true figure.
 - **The verdict sentence is computed server-side**, so the panel and any future
   alert can never disagree about what the numbers mean.
 - **`ADMIN_FIXED_MONTHLY_USD`** is hosting + database + email + domain. Unset
@@ -1286,6 +1314,9 @@ below reads like a rule, it is a pointer to one of those.
 | Re-add custom Meta funnel events | AEM caps the domain at 8 prioritized events. A custom event ranked above `Purchase` costs real attributable conversions, and only the standard five can be spent against. Decide which slot it takes, and from whom, first. |
 | Mint a `_fbp` cookie the way `_fbc` is reconstructed | `_fbc` is rebuilt from a real Meta-issued `fbclid`. `_fbp` is browser-generated, so a value we invent matches nothing Meta has ever seen. |
 | Add a parameter to `POST /api/paywall-view` | It accepts no request body on purpose. A beacon that took an event name, a value or an `event_id` would be an open endpoint for writing arbitrary conversions into the dataset. A new server event gets its own route with its own literals. |
+| Split the funnel back into two bands with two bases | The seam is what created the duplicate row (`Finished the quiz` *is* `calculating`, in women), made the curve appear to climb where the bands overlapped, and put paywall → card form — the number that splits a weak offer screen from a leaking checkout — on opposite sides of a line so it could not be computed. Over one window `calculating` is 54 visits and `user_profiles` 54 women: the units converge before the money rows begin. |
+| Put a `Finished the quiz` row back on the curve | It is the `calculating` row counted a second way. One event, one row. |
+| Add a `download` row beside `Paid` | Same event, and Stripe is the side that knows whether money moved. |
 | Select a second Stripe Price when the paywall countdown expires | It would let a user's system clock decide whether she pays double. The displayed price may understate what she is charged and must never overstate it. |
 | Bring back the paywall's "get my discount back" button | A timer that visibly resets teaches a 45-60 audience that the page is staged, and the doubt lands on the refund guarantee. The countdown is fine; the reset was the half that did the damage. |
 | Put `seconds` back into `DEFAULT_WARMUP` / `DEFAULT_COOLDOWN` | They take the catalog's dose via `bookendFrom()`. A second copy of a number already in `DOSE` drifted the first time `DOSE` changed. |

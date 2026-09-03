@@ -162,20 +162,32 @@ type Stats = {
     declined30: number;
   };
   funnel: {
+    /** Quiz finishers over the acquisition window. Backs the empty state only —
+     *  it is not a row on the curve, because `calculating` is the same instant. */
     quizFinished30: number;
-    checkoutStarted30: number;
-    paidNew30: number;
     sessionsError: string | null;
-    /** What the three figures above were measured over — see `clamped`. */
+    /** The one window every row of the curve is measured over. */
     since: string;
     days: number;
     /** True when ADMIN_CAMPAIGN_START cut the window short of 30 days. */
     clamped: boolean;
-    /** One row per funnel screen reached, in order. Empty before the
+    /** The acquisition window the CAC tile uses, which need not be the curve's. */
+    acqSince: string;
+    acqDays: number;
+    /** True when the age of the screen data, not the campaign floor, is what
+     *  bounds the curve. */
+    boundedByTracking: boolean;
+    /** The whole funnel, one row per step, top to money. Empty before the
      *  instrumented build has been live long enough to collect anything. */
     dropoff: {
       index: number;
       step: string;
+      /** Which stretch of the funnel the row belongs to. Presentation only —
+       *  it never changes a base. */
+      group: "quiz" | "after" | "money";
+      /** Where the number came from, stated per row now that one curve carries
+       *  both `funnel_events` and Stripe. */
+      source: "screens" | "stripe";
       sessions: number;
       /** Share of everyone who reached the first measured screen. */
       pctOfEntry: number;
@@ -204,7 +216,6 @@ type Stats = {
     /** What `entrySessions` has to clear before a screen is named. */
     minVerdictEntry: number;
     dropoffError: string | null;
-    trackingSince: string | null;
   };
   contribution30: number;
   sales: Sale[];
@@ -646,11 +657,21 @@ export default function AdminPage() {
                 value={costs.adSpend30 > 0 ? money(costs.adSpend30) : "—"}
                 tone={costs.adSpend30 > 0 ? "spend" : "mute"}
               />
+              {/* The acquisition window, not the curve's. They were the same
+                  variable until the funnel was windowed on the age of its own
+                  screen data; this figure is the CAC denominator and must keep
+                  being counted from the campaign floor, or a customer who bought
+                  the day before tracking went live would go missing from the
+                  cost the ads are charged with. */}
               <Row
-                label={funnel.clamped ? `New customers, ${plural(funnel.days, "day")}` : "New customers, 30 days"}
+                label={
+                  funnel.clamped
+                    ? `New customers, ${plural(funnel.acqDays, "day")}`
+                    : "New customers, 30 days"
+                }
                 hint={
                   funnel.clamped
-                    ? `Renewals excluded — ads don't buy those. Counted from ${shortDate(funnel.since)}, when paid traffic started.`
+                    ? `Renewals excluded — ads don't buy those. Counted from ${shortDate(funnel.acqSince)}, when paid traffic started.`
                     : "Renewals excluded — ads don't buy those"
                 }
                 value={String(acq.newCustomers30)}
@@ -812,37 +833,34 @@ export default function AdminPage() {
 
         {/* ── 3. The funnel, end to end ───────────────────────────────────
             One block, deliberately. This was two panels answering halves of the
-            same question: the three money steps, and the screen-by-screen curve
-            inside the first of them. The bands keep separate bases because they
-            are measured differently (visits vs women, Supabase vs Stripe) — see
-            WholeFunnel — but they are read as one falling line, which is how the
-            question is actually asked. */}
+            same question — the money steps, and the screen-by-screen curve inside
+            the first of them — and reading them meant holding the last bar of one
+            against the first bar of the other. They are now one curve over one
+            window; see WholeFunnel for why the units allow that. */}
         <SectionHead
           title="The funnel, top to bottom"
-          dot="linear-gradient(90deg, var(--her), var(--cash))"
+          dot="linear-gradient(90deg, hsl(221 68% 51%), hsl(360 68% 51%))"
           source="Supabase + Stripe"
-          // Never say "30 days" when the campaign floor cut it shorter — the
-          // whole point of the floor is that the two are different.
+          // Never say "30 days" when the window is shorter — whether it was the
+          // campaign floor or the age of the screen data that cut it.
           note={
-            funnel.clamped
+            funnel.clamped || funnel.boundedByTracking
               ? `Since ${shortDate(funnel.since)} · ${plural(funnel.days, "day")}`
               : "Last 30 days"
           }
         />
-        <Panel accent="linear-gradient(90deg, var(--her) 0%, var(--her) 55%, var(--cash) 90%)">
+        <Panel accent="linear-gradient(90deg, hsl(221 68% 51%) 0%, hsl(290 60% 56%) 55%, hsl(360 68% 51%) 100%)">
           <WholeFunnel
             rows={funnel.dropoff}
             worst={funnel.worstStep}
             entrySessions={funnel.entrySessions}
             minVerdictEntry={funnel.minVerdictEntry}
-            trackingSince={funnel.trackingSince}
             error={funnel.dropoffError}
-            quiz={funnel.quizFinished30}
-            checkout={funnel.checkoutStarted30}
-            paid={funnel.paidNew30}
             sessionsError={funnel.sessionsError}
             keptPerSale={acq.keptPerSale}
             since={funnel.since}
+            days={funnel.days}
+            boundedByTracking={funnel.boundedByTracking}
           />
         </Panel>
 
@@ -1700,7 +1718,26 @@ const STEP_LABELS: Record<string, string> = {
   diagnosis: "The plan",
   relief: "Breathing exercise",
   paywall: "Paywall",
-  download: "Paid · download",
+  // The last two are not screens and carry no `funnel_events` row. They are
+  // Stripe, appended below the paywall because that is where they happen: the
+  // card form is the screen after the price, and the charge is the screen after
+  // that. `download` — the post-checkout landing screen — is deliberately not
+  // on the curve, because it measures the same event `stripe_paid` measures and
+  // Stripe is the side that knows whether money moved.
+  stripe_checkout: "Opened the card form",
+  stripe_paid: "Paid",
+};
+
+/**
+ * The stretch label printed where the funnel changes character. Presentation
+ * only — a group never changes a base, and the curve does not restart at one.
+ * It exists so the eye can find the money without the block splitting back into
+ * separate charts, which is what it used to be.
+ */
+const GROUP_HEAD: Record<"quiz" | "after" | "money", { title: string; source: string }> = {
+  quiz: { title: "The quiz", source: "visits · Supabase" },
+  after: { title: "After the quiz", source: "visits · Supabase" },
+  money: { title: "The money", source: "Stripe" },
 };
 
 /**
@@ -1811,109 +1848,97 @@ function FunnelRow({
   );
 }
 
-/** The label above each band. It names the unit, because the unit changes. */
-function BandHead({ title, unit }: { title: string; unit: string }) {
-  return (
-    <div className="mb-1.5 flex items-baseline justify-between gap-3">
-      <span className="text-[10.5px] font-semibold uppercase tracking-[0.11em] text-[var(--ink-3)]">
-        {title}
-      </span>
-      <span className="text-[10.5px] text-[var(--ink-3)]">{unit}</span>
-    </div>
-  );
-}
-
+/**
+ * The funnel: every screen she can reach, in the order she reaches it, ending
+ * at the money.
+ *
+ * **One curve, one window, no row measured twice.** This was two bands — the
+ * screens above, counted in visits, and quiz-finished / card-form / paid below,
+ * counted in women — and the seam was the problem rather than the discipline:
+ *
+ *   - "Finished the quiz" was the `Building her plan` row of the band above it.
+ *     `save-quiz` writes `user_profiles` behind the calculating loader, so they
+ *     are the same instant; one counted women, the other visits, over two
+ *     different windows, printed as two rows of one funnel.
+ *   - The bands overlapped rather than stacked, because the top one runs all the
+ *     way to `paywall` — *below* where the bottom one restarted. So the curve
+ *     appeared to climb at the seam.
+ *   - Paywall → card form, the single number that says whether the offer screen
+ *     or the checkout is the problem, could not be computed at all: it spanned
+ *     the seam.
+ *
+ * The unit objection that justified the split does not survive the data. Over
+ * the same window `calculating` is 54 visits and `user_profiles` is 54 women,
+ * exactly — visits and women diverge at the *top*, where one woman opens the ad
+ * twice, and every money row is at the bottom where they have converged. So the
+ * source is stated per row instead of per band, and the route windows all of it
+ * from `curveSince`.
+ *
+ * Three reading rules, all of them measurement rules rather than styling:
+ *
+ *   - **The bar is share of entry; the figure on the right is what that row lost
+ *     to the next one.** A cumulative curve falls monotonically, so every late
+ *     step looks bad by construction and none of them is accused of anything.
+ *   - **The loss belongs to the screen she was looking at**, which is the row
+ *     above the one where the count falls — `pingFunnelStep` fires on render.
+ *   - **Colour names one thing each.** Bar colour is depth, blue at the top to
+ *     red at the money. Orange is a cliff, and it marks the screen's *name*, so
+ *     it never competes with the ramp.
+ */
 function WholeFunnel({
   rows,
   worst,
   entrySessions,
   minVerdictEntry,
-  trackingSince,
   error,
-  quiz,
-  checkout,
-  paid,
   sessionsError,
   keptPerSale,
   since,
+  days,
+  boundedByTracking,
 }: {
   rows: Stats["funnel"]["dropoff"];
   worst: Stats["funnel"]["worstStep"];
   entrySessions: number;
   minVerdictEntry: number;
-  trackingSince: string | null;
   error: string | null;
-  quiz: number;
-  checkout: number;
-  paid: number;
   sessionsError: string | null;
   keptPerSale: number;
   since: string;
+  days: number;
+  boundedByTracking: boolean;
 }) {
   const entry = rows[0]?.sessions ?? 0;
   const confident = entrySessions >= minVerdictEntry;
   const hasVerdict = confident && worst && worst.lostPct !== null && worst.lostPct >= CLIFF_PCT;
 
-  // Screen tracking is younger than the window for as long as the campaign
-  // floor predates 2026-09-02. Without saying so, "2 reached the paywall" sitting
-  // above "10 finished the quiz" reads as a broken funnel rather than a young one.
-  const lagged =
-    trackingSince !== null &&
-    new Date(trackingSince).getTime() - new Date(since).getTime() > 12 * 60 * 60 * 1000;
+  const find = (step: string) => rows.find((r) => r.step === step)?.sessions ?? null;
+  const quizDone = find("calculating");
+  const sawPaywall = find("paywall");
+  const cardForm = find("stripe_checkout");
+  const paid = find("stripe_paid") ?? 0;
+
+  /** Bars share one length, so the block reads as a single falling curve. */
+  const width = (v: number) =>
+    entry > 0 ? Math.min(Math.max((v / entry) * 100, v > 0 ? 1.5 : 0), 100) : 0;
+  const rate = (num: number | null, den: number | null) =>
+    num !== null && den !== null && den > 0 ? `${((num / den) * 100).toFixed(1)}%` : "—";
+
+  // A later step outrunning an earlier one is not impossible, it is a window
+  // artefact: a Checkout Session cannot be deleted, so test-mode taps sit in the
+  // window until they age out. The bars clamp; the rates print the true figure.
+  const inverted = rows.some((r, i) => i > 0 && r.sessions > rows[i - 1].sessions);
 
   /**
-   * **Both bands draw against one length, so the block reads as one falling
-   * curve.** The bars used to restart at band B: its first row was hard-coded
-   * to 100% because it was measured against itself, which put a full-width bar
-   * for 63 women directly under a band-A row that had already fallen to 21% of
-   * entry. A bar chart whose longest bar is one of its smallest numbers is not
-   * a chart, and the operator reads bar length before they read any figure.
+   * Depth, as colour: blue at the top of the funnel, red at the money.
    *
-   * What is emphatically **not** shared is the arithmetic. Every percentage in
-   * this block — `lostPct` on each row, and the two rates under band B — is
-   * still computed inside its own band, because the units genuinely differ:
-   * the top counts *visits* and the bottom counts *women*. Sharing a bar length
-   * is a statement about proportion, which survives the unit change; sharing a
-   * denominator would be a statement about conversion, which does not.
-   *
-   * Fallback to band B's own base when there is no screen data at all — a
-   * panel with the top band empty still has to draw the bottom one.
+   * The hue runs 221° → 360° — blue, violet, pink, red — deliberately *not*
+   * through green and yellow. A rainbow puts the loudest colour in the middle of
+   * the funnel for no reason, and green is what this panel means by Stripe
+   * everywhere else.
    */
-  const barBase = entry > 0 ? entry : quiz;
-  // Clamped, because a later step can legitimately exceed the base when
-  // leftover test-mode checkout sessions meet a handful of real quiz rows.
-  const wMoney = (v: number) =>
-    barBase > 0 ? Math.min(Math.max((v / barBase) * 100, v > 0 ? 1.5 : 0), 100) : 0;
-  const dropOf = (prev: number, now: number) =>
-    prev > 0 ? Math.round(((prev - now) / prev) * 100) : null;
-  const rate = (num: number, den: number) => (den > 0 ? `${((num / den) * 100).toFixed(1)}%` : "—");
-  // A later money step outrunning an earlier one is not impossible, it is a
-  // window artefact: a Checkout Session cannot be deleted, so test-mode taps sit
-  // in the window for a full 30 days. The bars clamp; the percentage prints the
-  // true figure and would otherwise read as "138% of those pay", which looks
-  // like a broken panel rather than an uncleared window.
-  const inverted = !sessionsError && (checkout > quiz || paid > checkout);
-
-  /**
-   * Depth, as colour: blue at the top of the funnel, red at the bottom.
-   *
-   * Every bar used to be the same rose, with two exceptions painted on top —
-   * orange for a cliff and green for `Paid`. So bar colour carried no
-   * information about position at all, and the eye had to count rows to know
-   * how deep it was looking. The ramp gives every row a second, redundant
-   * cue for the one thing this block is about: how far down the funnel it is.
-   *
-   * The hue runs 221° → 360°, i.e. blue → violet → pink → red, deliberately
-   * **not** through green and yellow. A rainbow would put the most eye-catching
-   * colour in the middle of the funnel for no reason, and it would collide with
-   * the green this panel reserves for Stripe figures everywhere else.
-   *
-   * `t` spans both bands as one sequence, so the ramp does not restart at the
-   * seam — the same reason the bar lengths share one base.
-   */
-  const totalRows = rows.length + 3;
   const depthFill = (i: number) => {
-    const hue = 221 + (totalRows > 1 ? i / (totalRows - 1) : 0) * 139;
+    const hue = 221 + (rows.length > 1 ? i / (rows.length - 1) : 0) * 139;
     return `linear-gradient(90deg, hsl(${hue} 70% 74%), hsl(${hue} 68% 51%))`;
   };
 
@@ -1945,7 +1970,6 @@ function WholeFunnel({
         </p>
       )}
 
-      {/* ── Band A · inside the quiz ─────────────────────────────────────── */}
       {rows.length === 0 ? (
         <p className="rounded-lg border border-dashed border-[var(--line)] px-3.5 py-4 text-center text-[12.5px] text-[var(--ink-3)]">
           No screens recorded yet. This fills in once someone opens{" "}
@@ -1953,113 +1977,94 @@ function WholeFunnel({
           instrumented build — nothing is broken.
         </p>
       ) : (
-        <>
-          <BandHead title="Inside the quiz" unit="visits · Supabase" />
-          <div className="space-y-0.5">
-            {rows.map((r, i) => {
-              // Both halves matter: a big percentage on a base of two is not a
-              // cliff, it is two people.
-              const cliff = r.significant && r.lostPct !== null && r.lostPct >= CLIFF_PCT;
-              const width = barBase > 0 ? Math.min((r.sessions / barBase) * 100, 100) : 0;
-              return (
+        <div className="space-y-0.5">
+          {rows.map((r, i) => {
+            // Both halves matter: a big percentage on a base of two is not a
+            // cliff, it is two people.
+            const cliff = r.significant && r.lostPct !== null && r.lostPct >= CLIFF_PCT;
+            // A stretch label where the funnel changes character, so the eye can
+            // find the money without the block splitting into separate charts.
+            const head = r.group !== rows[i - 1]?.group ? GROUP_HEAD[r.group] : null;
+            return (
+              <div key={r.step}>
+                {head && (
+                  <div
+                    className={`flex items-baseline justify-between gap-3 pb-1 ${
+                      i === 0 ? "" : "mt-3 border-t border-dashed border-[var(--line)] pt-2.5"
+                    }`}
+                  >
+                    <span className="text-[10.5px] font-semibold uppercase tracking-[0.11em] text-[var(--ink-3)]">
+                      {head.title}
+                    </span>
+                    <span className="text-[10.5px] text-[var(--ink-3)]">{head.source}</span>
+                  </div>
+                )}
                 <FunnelRow
-                  key={r.index}
                   label={STEP_LABELS[r.step] ?? r.step}
-                  count={r.sessions.toLocaleString("en-US")}
-                  width={Math.max(width, r.sessions > 0 ? 1.5 : 0)}
+                  count={
+                    r.step === "stripe_checkout" && sessionsError
+                      ? "—"
+                      : r.sessions.toLocaleString("en-US")
+                  }
+                  width={width(r.sessions)}
                   drop={r.lostPct}
                   cliff={cliff}
                   fill={depthFill(i)}
+                  strong={r.group === "money"}
                 />
-              );
-            })}
-          </div>
-        </>
+              </div>
+            );
+          })}
+        </div>
       )}
 
-      {/* ── The seam ─────────────────────────────────────────────────────── */}
-      <div className="my-4 border-t border-dashed border-[var(--line)]" />
-
-      {/* ── Band B · after the quiz ──────────────────────────────────────── */}
-      <BandHead title="After the quiz" unit="women · Supabase + Stripe" />
-      <div className="space-y-1">
-        <FunnelRow
-          label="Finished the quiz"
-          note={
-            "The moment `user_profiles` is written — which happens behind the calculating loader, " +
-            "so this row is the same instant as the `Building her plan` row above it, counted in " +
-            "women instead of visits. The two match exactly over the same days; any gap is the " +
-            "window, not a loss."
-          }
-          count={quiz.toLocaleString("en-US")}
-          width={wMoney(quiz)}
-          // Same rule as the band above: the figure on a row is what that row
-          // lost to the next one, so this is the offer screen's loss.
-          drop={sessionsError ? null : dropOf(quiz, checkout)}
-          cliff={false}
-          fill={depthFill(rows.length)}
-          strong
-        />
-        <FunnelRow
-          label="Opened the card form"
-          count={sessionsError ? "—" : checkout.toLocaleString("en-US")}
-          width={sessionsError ? 0 : wMoney(checkout)}
-          drop={sessionsError ? null : dropOf(checkout, paid)}
-          // Never coloured. Losing most of the room between the quiz and the
-          // card form is what this step does on a healthy funnel, so a
-          // threshold here would sit orange permanently and teach the eye to
-          // ignore the colour that names a screen above.
-          cliff={false}
-          fill={depthFill(rows.length + 1)}
-          strong
-        />
-        <FunnelRow
-          label="Paid"
-          count={paid.toLocaleString("en-US")}
-          width={wMoney(paid)}
-          drop={null}
-          cliff={false}
-          fill={depthFill(totalRows - 1)}
-          strong
-        />
-      </div>
-
-      {/* The two rates this band exists to separate: a weak offer screen and a
-          leaking checkout are different problems with different fixes. */}
-      {!sessionsError && quiz > 0 && (
-        <p className="mt-2 pl-[148px] text-[11.5px] leading-relaxed text-[var(--ink-3)] sm:pl-[184px]">
+      {/* The two rates the bottom of the curve exists to separate: a weak offer
+          screen and a leaking checkout are different problems with different
+          fixes, and they were not computable while a seam ran between them. */}
+      {!sessionsError && sawPaywall !== null && cardForm !== null && sawPaywall > 0 && (
+        <p className="mt-3 text-[11.5px] leading-relaxed text-[var(--ink-3)] sm:pl-[184px]">
           <b className="font-semibold tabular-nums text-[var(--her-deep)]">
-            {rate(checkout, quiz)}
+            {rate(cardForm, sawPaywall)}
           </b>{" "}
-          of finishers reach the card form — that is the offer screen&rsquo;s job.{" "}
+          of the women who saw the paywall opened the card form — that is the offer screen&rsquo;s
+          job.{" "}
           <b className="font-semibold tabular-nums text-[var(--her-deep)]">
-            {rate(paid, checkout)}
+            {rate(paid, cardForm)}
           </b>{" "}
-          of those pay — that is checkout abandonment.
+          of those paid — that is checkout abandonment.
         </p>
       )}
 
       {/* ── The chain, in one sentence ───────────────────────────────────── */}
       <p className="mt-4 border-t border-[var(--line)] pt-3 text-[12.5px] leading-relaxed text-[var(--ink-2)]">
-        {entrySessions > 0 && !lagged && (
+        <b className="font-semibold tabular-nums text-[var(--ink)]">{entrySessions}</b>{" "}
+        {entrySessions === 1 ? "visit" : "visits"}
+        {quizDone !== null && (
           <>
-            <b className="font-semibold tabular-nums text-[var(--ink)]">{entrySessions}</b>{" "}
-            {entrySessions === 1 ? "visit" : "visits"} →{" "}
+            {" "}
+            → <b className="font-semibold tabular-nums text-[var(--ink)]">{quizDone}</b> finished the
+            quiz
           </>
         )}
-        <b className="font-semibold tabular-nums text-[var(--ink)]">{quiz}</b> finished the quiz →{" "}
-        <b className="font-semibold tabular-nums text-[var(--ink)]">
-          {sessionsError ? "—" : checkout}
+        {sawPaywall !== null && (
+          <>
+            {" "}
+            → <b className="font-semibold tabular-nums text-[var(--ink)]">{sawPaywall}</b> saw the
+            price
+          </>
+        )}
+        {" "}
+        → <b className="font-semibold tabular-nums text-[var(--ink)]">
+          {sessionsError || cardForm === null ? "—" : cardForm}
         </b>{" "}
         opened the card form →{" "}
-        <b className="font-semibold tabular-nums text-[var(--cash-deep)]">{paid}</b>{" "}
-        {paid === 1 ? "paid" : "paid"}.
-        {quiz > 0 && (
+        <b className="font-semibold tabular-nums text-[var(--cash-deep)]">{paid}</b> paid.
+        {quizDone !== null && quizDone > 0 && (
           <>
             {" "}
             Every 100 quiz finishers are worth{" "}
             <b className="font-semibold tabular-nums text-[var(--cash-deep)]">
-              {money((paid / quiz) * 100 * keptPerSale, 0)}
+              {money((paid / quizDone) * 100 * keptPerSale, 0)}
             </b>{" "}
             kept — that is what a click is allowed to cost.
           </>
@@ -2068,43 +2073,27 @@ function WholeFunnel({
 
       {sessionsError && (
         <p className="mt-2 text-[12px] text-[var(--spend-deep)]">
-          {sessionsError}, so the middle step is blank. The two ends are still correct.
+          {sessionsError}, so the card-form row is blank. Every other row is still correct.
         </p>
       )}
 
       {inverted && (
         <p className="mt-2 text-[11.5px] text-[var(--ink-3)]">
-          A later step is bigger than the one above it, so a rate here reads over 100%. Stripe
-          Checkout Sessions cannot be deleted, so your own test taps stay in the window for 30 days
-          — set{" "}
-          <code className="rounded bg-[var(--quiet)] px-1 py-0.5 text-[11px]">
-            ADMIN_CAMPAIGN_START
-          </code>{" "}
-          to floor it at the day the campaign began.
-        </p>
-      )}
-
-      {lagged && (
-        <p className="mt-2 text-[11.5px] text-[var(--ink-3)]">
-          Screen tracking started {shortDate(trackingSince!)}, after this window opened — so the top
-          band covers fewer days than the bottom one, and the two counts are not yet comparable.
-          That gap is why &ldquo;Finished the quiz&rdquo; can exceed &ldquo;Building her plan&rdquo;
-          above it: same moment, more days.
+          A row is bigger than the one above it. Two things do that and neither is a miscount: a
+          screen that moved in the quiz sits in a window containing both orders, and Stripe Checkout
+          Sessions cannot be deleted, so your own test taps stay until they age out.
         </p>
       )}
 
       <p className="mt-3 text-[11.5px] leading-relaxed text-[var(--ink-3)]">
-        Bar length is the same scale throughout, so the whole block reads as one curve. The
-        percentages are not: each band divides by its own first row, because the units differ — the
-        top counts visits (one woman in two tabs is two) and the bottom counts women. The bottom
-        band restarts earlier in the funnel than the top band ends, so its first bar sits above the
-        paywall row rather than below it; that is the two bands overlapping, not the funnel going
-        back up. The figure on the right belongs to the row it sits on: it is the share of the women
-        who reached that screen and never got to the next one — so it accuses the screen they were
-        looking at when they left, not the screen they failed to arrive at. It is only coloured when
-        enough women stood on that screen for the percentage to mean anything — and when it is, the
-        screen&rsquo;s name is coloured with it. Bar colour carries depth only, blue at the top of
-        the funnel to red at the bottom, so it never competes with that.
+        One curve, measured over one window — {shortDate(since)} to today, {plural(days, "day")}
+        {boundedByTracking ? ", from the day screen tracking began" : ""}. Bar length is share of the
+        first row. The figure on the right belongs to the row it sits on: it is the share of the
+        women who reached that screen and never got to the next one, so it accuses the screen they
+        were looking at when they left, not the screen they failed to arrive at. It is only coloured
+        when enough women stood on that screen for the percentage to mean anything — and when it is,
+        the screen&rsquo;s name is coloured with it. Bar colour carries depth only, blue at the top
+        of the funnel to red at the money.
       </p>
     </div>
   );
