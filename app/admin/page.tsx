@@ -283,6 +283,27 @@ function lastNDays(todayIso: string, n: number): string[] {
  */
 const SPEND_STRIP_DAYS = 8;
 
+/**
+ * What the box may contain while she is typing: digits, one dot, two decimals.
+ *
+ * The draft used to be whatever she typed and was only cleaned up at save time
+ * (`raw.replace(/[^0-9.]/g, "")`), so the field happily showed "12.5.9" or
+ * "24e3" while quietly storing something else — the one field on the panel
+ * where what you see has to be what is filed against the campaign.
+ */
+function sanitizeSpend(raw: string): string {
+  const kept = raw.replace(/[^0-9.]/g, "");
+  const [whole, ...rest] = kept.split(".");
+  const head = whole.replace(/^0+(?=\d)/, "").slice(0, 7);
+  if (rest.length === 0) return head;
+  return `${head}.${rest.join("").slice(0, 2)}`;
+}
+
+/** Dollars as the box shows them at rest: always two decimals, never "12.5". */
+function spendText(amount: number | null): string {
+  return amount === null ? "" : amount.toFixed(2);
+}
+
 /** What's already saved for `day`, so a redundant keystroke skips the round trip. */
 function savedAmountFor(stats: Stats, day: string): number | null {
   if (day === stats.costs.todayIso) return stats.costs.todaySpend;
@@ -355,8 +376,7 @@ export default function AdminPage() {
       const next = { ...prev };
       for (const day of lastNDays(stats.costs.todayIso, SPEND_STRIP_DAYS)) {
         if (touchedDays.current.has(day)) continue;
-        const amt = savedAmountFor(stats, day);
-        next[day] = amt === null ? "" : String(amt);
+        next[day] = spendText(savedAmountFor(stats, day));
       }
       return next;
     });
@@ -367,8 +387,8 @@ export default function AdminPage() {
     async (day: string, raw: string) => {
       const pw = sessionStorage.getItem(SESSION_KEY);
       if (!pw) return;
-      const digits = raw.replace(/[^0-9.]/g, "");
-      const amount = digits === "" ? null : Math.round(parseFloat(digits) * 100) / 100;
+      const digits = sanitizeSpend(raw);
+      const amount = digits === "" || digits === "." ? null : Math.round(parseFloat(digits) * 100) / 100;
       if (amount !== null && !Number.isFinite(amount)) return;
       if (stats && savedAmountFor(stats, day) === amount) return; // nothing changed
 
@@ -403,15 +423,24 @@ export default function AdminPage() {
   );
 
   const handleSpendChange = (day: string, value: string) => {
-    setSpendDrafts((p) => ({ ...p, [day]: value }));
+    const clean = sanitizeSpend(value);
+    setSpendDrafts((p) => ({ ...p, [day]: clean }));
     touchedDays.current.add(day);
     clearTimeout(debounceTimers.current[day]);
-    debounceTimers.current[day] = setTimeout(() => commitSpend(day, value), 700);
+    debounceTimers.current[day] = setTimeout(() => commitSpend(day, clean), 700);
   };
 
+  // Leaving the box settles it to the figure that will be filed — "24.5" and
+  // "24." both read back as $24.50 rather than as something half-typed.
   const handleSpendBlur = (day: string) => {
     clearTimeout(debounceTimers.current[day]);
-    commitSpend(day, spendDrafts[day] ?? "");
+    const raw = sanitizeSpend(spendDrafts[day] ?? "");
+    const parsed = raw === "" || raw === "." ? null : parseFloat(raw);
+    setSpendDrafts((p) => ({
+      ...p,
+      [day]: parsed === null || !Number.isFinite(parsed) ? "" : parsed.toFixed(2),
+    }));
+    commitSpend(day, raw);
   };
 
   // ── Password gate ─────────────────────────────────────────────────────────
@@ -1219,9 +1248,13 @@ function SaveState({
  * frame, `outline-none` kills the browser default and `focus:ring-0`
  * Tailwind's, but the pink one comes from **`input:focus` in
  * `app/globals.css`**, which paints a 2px `var(--ring)` box-shadow on every
- * input in the app. An element selector loses to a class, so
- * `focus:[box-shadow:none]` overrides it here without touching the funnel and
- * login fields that rule was written for.
+ * input in the app — and **no Tailwind class can turn that one off**. That
+ * rule is unlayered while every utility lives in `@layer utilities`, and
+ * unlayered styles beat layered ones whatever their specificity, so the
+ * `focus:[box-shadow:none]` that used to sit here never applied and the ring
+ * was pink the whole time. The opt-out has to be unlayered too: `.bare-input`,
+ * declared right after that rule in `globals.css`, so the funnel and login
+ * fields it was written for keep their ring.
  */
 function SpendInput({
   day,
@@ -1249,9 +1282,9 @@ function SpendInput({
           if (e.key === "Enter") e.currentTarget.blur();
         }}
         inputMode="decimal"
-        placeholder="0"
+        placeholder="0.00"
         aria-label={`Ad spend for ${dayLabel(day)}`}
-        className={`w-full min-w-0 appearance-none border-0 bg-transparent py-0.5 font-semibold tabular-nums text-[var(--spend-deep)] shadow-none outline-none placeholder:font-normal placeholder:text-[var(--ink-3)] focus:border-0 focus:outline-none focus:ring-0 focus:[box-shadow:none] ${size}`}
+        className={`bare-input w-full min-w-0 appearance-none border-0 bg-transparent py-0.5 font-semibold tabular-nums text-[var(--spend-deep)] shadow-none outline-none placeholder:font-normal placeholder:text-[var(--ink-3)] focus:border-0 focus:outline-none focus:ring-0 ${size}`}
       />
     </label>
   );

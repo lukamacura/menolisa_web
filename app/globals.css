@@ -526,6 +526,16 @@ select:focus {
   box-shadow: 0 0 0 2px var(--ring);
 }
 
+/* The bare number fields on /admin (ad spend) opt out of that pink ring.
+   The rule above is unlayered, so it beats every Tailwind utility no matter
+   how specific — `focus:[box-shadow:none]` on the element cannot win, because
+   utilities live in @layer utilities and unlayered styles outrank layers.
+   The opt-out therefore has to be unlayered too, and sit after it. */
+.bare-input:focus {
+  border-color: transparent;
+  box-shadow: none;
+}
+
 label {
   color: var(--foreground);
 }
