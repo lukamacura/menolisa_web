@@ -1,8 +1,6 @@
-import { randomUUID } from "crypto";
 import OpenAI from "openai";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { recordLlmUsage } from "@/lib/llmUsage";
 import type { Adherence } from "@/lib/plan/cycles";
 import {
   DEFAULT_COOLDOWN,
@@ -54,7 +52,6 @@ export const PLAN_WEEKS = 8;
 const PLAN_MODEL = "gpt-4o-mini";
 
 /** Ties the two calls of one generation together for cost reporting. */
-type PlanMeter = { userId: string | null; runId: string };
 
 /**
  * Nutrition is no longer one of these. All ten nutrition habits are shown
@@ -1889,11 +1886,9 @@ function nutritionWhy(raw: Record<string, unknown> | null | undefined): Record<s
 /** Never throws and never returns a partial map — the plan must not fail over copy. */
 async function buildNutritionWhy(
   openai: OpenAI,
-  profile: Profile,
-  meter: PlanMeter
+  profile: Profile
 ): Promise<Record<string, string>> {
   try {
-    const startedAt = Date.now();
     const completion = await openai.chat.completions.create({
       model: PLAN_MODEL,
       temperature: 0.7,
@@ -1906,14 +1901,6 @@ async function buildNutritionWhy(
         },
         { role: "user", content: buildWhyPrompt(profile) },
       ],
-    });
-    await recordLlmUsage({
-      userId: meter.userId,
-      runId: meter.runId,
-      kind: "plan_nutrition_why",
-      model: PLAN_MODEL,
-      usage: completion.usage,
-      durationMs: Date.now() - startedAt,
     });
     const raw = completion.choices[0]?.message?.content;
     const parsed = raw ? JSON.parse(raw) : null;
@@ -2139,12 +2126,8 @@ export function deterministicPlan(p: Profile): Plan {
 
 export async function buildPlan(
   p: Profile,
-  userId?: string | null,
   adherence: Adherence | null = null
 ): Promise<Plan> {
-  // One run id across both calls, so the admin panel can add them up into the
-  // cost of *a plan* rather than averaging two very differently sized calls.
-  const meter: PlanMeter = { userId: userId ?? null, runId: randomUUID() };
   const pool = allowedExercises(p.fitness_level ?? null);
   // Bone loading, kept out of `pool` on purpose — the model never sees these
   // ids and cannot spend a strength slot on them. See allowedPower().
@@ -2168,10 +2151,9 @@ export async function buildPlan(
   // Two calls, in parallel: the weeks, and her ten nutrition reasons. They share
   // nothing, and running them together keeps generation inside the time the
   // success screen is willing to wait. buildNutritionWhy never rejects.
-  const whyPromise = buildNutritionWhy(openai, p, meter);
+  const whyPromise = buildNutritionWhy(openai, p);
 
   try {
-    const startedAt = Date.now();
     const completion = await openai.chat.completions.create({
       model: PLAN_MODEL,
       temperature: 0.5,
@@ -2187,15 +2169,6 @@ export async function buildPlan(
         },
         { role: "user", content: buildPrompt(p, pool, adherence) },
       ],
-    });
-
-    await recordLlmUsage({
-      userId: meter.userId,
-      runId: meter.runId,
-      kind: "plan_weeks",
-      model: PLAN_MODEL,
-      usage: completion.usage,
-      durationMs: Date.now() - startedAt,
     });
 
     // A strict schema can be refused rather than answered, and a refusal comes
@@ -2297,7 +2270,7 @@ export async function generatePlan(
     .eq("user_id", userId)
     .maybeSingle();
 
-  const plan = await buildPlan((profile ?? {}) as Profile, userId, adherence);
+  const plan = await buildPlan((profile ?? {}) as Profile, adherence);
 
   // `started_at` is deliberately not written here. It is stamped by the first
   // GET that reads the row, from her local date — which for a rollover is the

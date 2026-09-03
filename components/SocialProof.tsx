@@ -200,7 +200,12 @@ function Swap({
  * `MemberDots` to restart on. A bar that picked up where it stopped would be
  * lying about when the card moves.
  */
-function useMemberRotation(count: number, expanded: boolean, still: boolean) {
+function useMemberRotation(
+  count: number,
+  expanded: boolean,
+  still: boolean,
+  restMs: number
+) {
   const [index, setIndex] = useState(0);
   const [hidden, setHidden] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -214,7 +219,7 @@ function useMemberRotation(count: number, expanded: boolean, still: boolean) {
   }, []);
 
   const running = count > 1 && !took && !still && !paused && !hidden;
-  const intervalMs = expanded ? ROTATE_OPEN_MS : ROTATE_MS;
+  const intervalMs = expanded ? ROTATE_OPEN_MS : restMs;
 
   useEffect(() => {
     if (!running) return;
@@ -518,7 +523,28 @@ function Tape({ className }: { className: string }) {
  * the rotation timer, and nothing else. Do not reintroduce a
  * `still ? ... : ...` on a rendered prop.
  */
-export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) {
+/**
+ * `rotateMs` exists because the card lives on two screens with very different
+ * dwell times, and one interval cannot serve both.
+ *
+ * On the paywall she is scrolling a ~2000px page and the card is one block on
+ * it, so `ROTATE_MS` (8s) is a read, as its own note argues. On
+ * `reward_social_proof` it is the whole screen and she leaves as soon as she
+ * has read it - measured at a handful of seconds - so at 8s the second woman
+ * arrives after she is gone and the board shows a still photograph of one
+ * person. Four members at 8s is 32 seconds to meet them all, on a screen with
+ * a Continue button under it.
+ *
+ * The floor stays a read rather than a glance: this shortens the hold, it does
+ * not turn the card into a slideshow.
+ */
+export function SocialProofPolaroid({
+  reduced = false,
+  rotateMs = ROTATE_MS,
+}: {
+  reduced?: boolean;
+  rotateMs?: number;
+}) {
   const prefersReducedMotion = useReducedMotion();
   const still = reduced || !!prefersReducedMotion;
 
@@ -565,7 +591,8 @@ export function SocialProofPolaroid({ reduced = false }: { reduced?: boolean }) 
   const { index, running, intervalMs, steered, goTo, hold } = useMemberRotation(
     members.length,
     open,
-    still
+    still,
+    rotateMs
   );
   const swipe = useSwipe((direction) => goTo(index + direction));
   const member = members[index];

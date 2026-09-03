@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 /**
  * The sales desk.
@@ -64,6 +64,87 @@ import { useCallback, useEffect, useRef, useState } from "react";
  *   * **Ad spend in localStorage** — one browser, one number, no history, and
  *     therefore no windowed cost per sale. It lives in `ad_spend` now.
  */
+
+/**
+ * How often the desk re-reads itself.
+ *
+ * Thirty seconds, and the two constraints pull in opposite directions. Every
+ * tick is a full `POST /api/admin/stats`, which walks Stripe charges and
+ * balance transactions — so this is a rate-limited, chargeable call, not a
+ * cheap poll. Against that, the panel is read while a campaign is live, and a
+ * number you have to press a button to trust is a number you stop trusting.
+ *
+ * Two guards keep the cost honest: the tick is skipped entirely while the tab
+ * is in the background (a desk left open overnight must not spend a night's
+ * worth of Stripe calls), and it is skipped while the password screen is up.
+ */
+const AUTO_REFRESH_MS = 30_000;
+
+/**
+ * Tweens a figure to its new value instead of swapping it.
+ *
+ * On a panel that reloads itself every thirty seconds, a hard swap is the one
+ * thing that reads as a glitch: money that changed and money that did not look
+ * identical, and the eye is drawn to whichever number happened to be under it.
+ * A short count-up says "this moved" without a badge or a flash.
+ *
+ * It animates only on *change*, never on mount — a page that counts every
+ * figure up from zero on arrival makes the operator wait to read a screen that
+ * is already loaded. And it snaps rather than tweens under reduced motion.
+ */
+const REDUCED_QUERY = "(prefers-reduced-motion: reduce)";
+
+/**
+ * Read through `useSyncExternalStore` rather than an effect-plus-setState: the
+ * latter is a cascading render and, on a server-rendered page, a hydration
+ * mismatch. The server snapshot is `false`, which is the safe default — it
+ * animates once on the first client render and then obeys the real setting.
+ */
+function usePrefersReducedMotion(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const mq = window.matchMedia(REDUCED_QUERY);
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia(REDUCED_QUERY).matches,
+    () => false
+  );
+}
+
+function useCountUp(value: number, ms = 650): number {
+  const reduced = usePrefersReducedMotion();
+  const [shown, setShown] = useState(value);
+  const from = useRef(value);
+  const raf = useRef<number | null>(null);
+
+  useEffect(() => {
+    const start = from.current;
+    if (start === value) return;
+    if (reduced) {
+      from.current = value;
+      return;
+    }
+    const t0 = performance.now();
+    const step = (now: number) => {
+      const k = Math.min(1, (now - t0) / ms);
+      // easeOutCubic: fast enough to feel immediate, settled enough to read.
+      const eased = 1 - Math.pow(1 - k, 3);
+      setShown(start + (value - start) * eased);
+      if (k < 1) raf.current = requestAnimationFrame(step);
+      else from.current = value;
+    };
+    raf.current = requestAnimationFrame(step);
+    return () => {
+      if (raf.current !== null) cancelAnimationFrame(raf.current);
+      from.current = value;
+    };
+  }, [value, ms, reduced]);
+
+  // Under reduced motion the figure is simply the figure - `shown` is never
+  // written, so it must not be what the caller reads.
+  return reduced ? value : shown;
+}
 
 /**
  * The only place a colour is written down. Set on the page root as custom
@@ -335,9 +416,19 @@ export default function AdminPage() {
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const savedFlashTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-  const load = useCallback(async (pw: string, spend?: { day: string; amount: number | null }) => {
-    if (!spend) setLoading(true);
-    setError(null);
+  // `silent` is the auto-refresh path. It must not flip the button to
+  // "Refreshing…" every thirty seconds, and — more importantly — a transient
+  // network blip must not replace a screen full of good numbers with a red
+  // error line. A dead session (401) is the one failure it still surfaces,
+  // because from then on nothing on screen is going to update again.
+  const load = useCallback(
+    async (
+      pw: string,
+      spend?: { day: string; amount: number | null },
+      silent = false
+    ) => {
+    if (!spend && !silent) setLoading(true);
+    if (!silent) setError(null);
     try {
       const res = await fetch("/api/admin/stats", {
         method: "POST",
@@ -356,20 +447,23 @@ export default function AdminPage() {
         return null;
       }
       if (!res.ok) {
-        setError("Couldn't load the numbers. Try again.");
+        if (!silent) setError("Couldn't load the numbers. Try again.");
         return null;
       }
       const data: Stats = await res.json();
       sessionStorage.setItem(SESSION_KEY, pw);
       setStats(data);
+      setError(null);
       return data;
     } catch {
-      setError("Network error. Try again.");
+      if (!silent) setError("Network error. Try again.");
       return null;
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }, []);
+  },
+    []
+  );
 
   // Restore session on mount so a refresh keeps you in.
   useEffect(() => {
@@ -377,6 +471,46 @@ export default function AdminPage() {
     if (saved) load(saved);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── The 30-second cycle ────────────────────────────────────────────────────
+  //
+  // One timeout, re-armed by the `stats` identity changing after every load, so
+  // a manual Refresh and a spend save both restart the clock rather than
+  // racing it. `cycleStart` re-arms it in the one case that produces no new
+  // stats: a tick that arrives while the tab is in the background, which skips
+  // the Stripe call and simply waits again. It is also what the countdown bar
+  // is keyed on, so the bar and the fetch can never disagree.
+  const [cycleStart, setCycleStart] = useState(() => Date.now());
+
+  // Hooks run before the password / loading early-returns below, so this reads
+  // through `stats?` rather than the destructured `m`.
+  const last7Net = useCountUp(stats?.money.last7.net ?? 0);
+
+  useEffect(() => {
+    if (!stats) return;
+    const id = window.setTimeout(() => {
+      const pw = sessionStorage.getItem(SESSION_KEY);
+      if (!pw) return;
+      if (document.visibilityState !== "visible") {
+        setCycleStart(Date.now());
+        return;
+      }
+      void load(pw, undefined, true);
+    }, AUTO_REFRESH_MS);
+    return () => window.clearTimeout(id);
+  }, [stats, cycleStart, load]);
+
+  // Coming back to a backgrounded tab should show fresh numbers immediately,
+  // not whatever was true when you left plus up to thirty seconds.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      const pw = sessionStorage.getItem(SESSION_KEY);
+      if (pw) void load(pw, undefined, true);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [load]);
 
   // Seed drafts for days the operator hasn't touched yet — a save triggered by
   // one day's debounce must never clobber what's mid-edit in another day's box.
@@ -508,12 +642,27 @@ export default function AdminPage() {
 
   return (
     <main
-      style={PALETTE}
+      style={{
+        ...PALETTE,
+        // Cash green at the top where the money block sits, her pink at the
+        // bottom where the funnel and the sales list do. Low saturation on
+        // purpose: it should read as a lit room, not as a sixth meaning for a
+        // colour that already has five.
+        backgroundImage:
+          "radial-gradient(1100px 460px at 12% -8%, #E8F5EF 0%, rgba(232,245,239,0) 62%), radial-gradient(900px 520px at 92% 4%, #EDEBFB 0%, rgba(237,235,251,0) 58%), radial-gradient(1000px 700px at 50% 108%, #FBEAF2 0%, rgba(251,234,242,0) 60%)",
+        backgroundAttachment: "fixed",
+      }}
       className="min-h-dvh bg-[var(--paper)] px-5 pb-20 pt-10 text-[var(--ink)] sm:px-8"
     >
+      <style>{`
+        @keyframes adminCycle { from { transform: scaleX(0) } to { transform: scaleX(1) } }
+        @media (prefers-reduced-motion: reduce) {
+          [data-admin-cycle] { animation: none !important; transform: scaleX(1) }
+        }
+      `}</style>
       <div className="mx-auto max-w-[1060px]">
         {/* ── Masthead ────────────────────────────────────────────────────── */}
-        <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <header className="mb-3 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="text-xl font-semibold tracking-tight">MenoLisa</h1>
             <p className="mt-0.5 text-[10.5px] font-semibold uppercase tracking-[0.13em] text-[var(--ink-3)]">
@@ -553,6 +702,26 @@ export default function AdminPage() {
           </div>
         </header>
 
+        {/* The cycle, made visible.
+            A panel that silently rewrites itself is a panel you check the clock
+            against; a bar that empties tells you when the figures under it were
+            last true without a line of text saying so. Keyed on the pair that
+            re-arms the timeout, so it restarts on a manual Refresh too. */}
+        <div
+          className="mb-6 h-[3px] w-full overflow-hidden rounded-full bg-[var(--line-soft)]"
+          aria-hidden
+        >
+          <div
+            key={`${stats.refreshedAt}-${cycleStart}`}
+            data-admin-cycle
+            className="h-full w-full origin-left rounded-full"
+            style={{
+              background: "linear-gradient(90deg, var(--cash), var(--ahead), var(--her))",
+              animation: `adminCycle ${AUTO_REFRESH_MS}ms linear forwards`,
+            }}
+          />
+        </div>
+
         {stats.revenueError && (
           <p className="mb-5 rounded-lg border border-[var(--spend-line)] bg-[var(--spend-bg)] px-4 py-3 text-sm text-[var(--spend-deep)]">
             Stripe unavailable: {stats.revenueError}. Everything that comes from Supabase still
@@ -564,17 +733,17 @@ export default function AdminPage() {
         <Verdict verdict={verdict} />
 
         {/* ── 1. Cash in ──────────────────────────────────────────────────── */}
-        <SectionHead title="Cash in" dot="var(--cash)" source="Stripe" note="Charges, net of refunds" />
+        <SectionHead title="Cash in" dot="var(--cash)" source="Stripe" />
         <Panel accent="var(--cash)">
           <div className="grid grid-cols-1 md:grid-cols-[1.05fr_1.35fr]">
-            <div className="border-b border-[var(--line)] bg-[var(--cash-bg)]/50 px-6 py-5 md:border-b-0 md:border-r">
+            <div className="border-b border-[var(--line)] bg-[var(--cash-bg)] px-6 py-5 md:border-b-0 md:border-r">
               <Label className="text-[var(--cash-deep)]">Collected, last 7 days</Label>
               <p
                 className={`mt-2 font-serif text-5xl leading-none tracking-tight tabular-nums sm:text-6xl ${
                   m.last7.net > 0 ? "text-[var(--cash-deep)]" : "text-[var(--ink-3)]"
                 }`}
               >
-                {money(m.last7.net)}
+                {money(last7Net)}
               </p>
               <p className="mt-2 text-[13px] text-[var(--ink-2)]">
                 {m.last7.count > 0 ? (
@@ -950,11 +1119,7 @@ export default function AdminPage() {
         {/* ── 5. Needs a human ────────────────────────────────────────────── */}
         {alerts.length > 0 && (
           <>
-            <SectionHead
-              title="Needs a human"
-              dot="var(--stop)"
-              note="Only here when something is actually wrong"
-            />
+            <SectionHead title="Needs a human" dot="var(--stop)" />
             <div className="grid gap-1.5">
               {alerts.map((a, i) => (
                 <div
@@ -989,12 +1154,18 @@ export default function AdminPage() {
           <KeyChip color="var(--stop)">Needs you</KeyChip>
         </div>
 
-        <footer className="mt-3 flex flex-wrap gap-x-6 gap-y-1.5 border-t border-[var(--line)] pt-3.5 text-[11.5px] text-[var(--ink-3)]">
-          <span>Every dollar on this page comes from Stripe charges.</span>
-          <span>Names, quiz finishers and renewal dates come from Supabase.</span>
-          <span>Ad spend is what you typed in.</span>
-          <span>Refreshed {stamp(stats.refreshedAt)}</span>
-          {stats.truncated && <span>Showing the most recent slice only.</span>}
+        <footer className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 border-t border-[var(--line)] pt-3.5 text-[11.5px] text-[var(--ink-3)]">
+          <span>
+            Money <b className="font-semibold text-[var(--cash-deep)]">Stripe</b>
+          </span>
+          <span>
+            People <b className="font-semibold text-[var(--her-deep)]">Supabase</b>
+          </span>
+          <span>
+            Ad spend <b className="font-semibold text-[var(--spend-deep)]">typed in</b>
+          </span>
+          <span className="ml-auto">Refreshed {stamp(stats.refreshedAt)}</span>
+          {stats.truncated && <span>Most recent slice only.</span>}
         </footer>
       </div>
     </main>
@@ -1020,9 +1191,9 @@ function Panel({
 }) {
   return (
     <div
-      className={`overflow-hidden rounded-xl border border-[var(--line)] bg-white shadow-sm ${className}`}
+      className={`overflow-hidden rounded-xl border border-[var(--line)] bg-white shadow-[0_1px_2px_rgba(28,24,31,0.05),0_8px_24px_-12px_rgba(28,24,31,0.18)] ${className}`}
     >
-      <div className="h-[3px] w-full" style={{ background: accent }} aria-hidden />
+      <div className="h-[4px] w-full" style={{ background: accent }} aria-hidden />
       {children}
     </div>
   );
@@ -1151,9 +1322,13 @@ function SectionHead({
           aria-hidden
         />
       )}
-      <h2 className="whitespace-nowrap text-[13px] font-semibold">{title}</h2>
+      <h2 className="whitespace-nowrap text-[14px] font-bold tracking-tight">{title}</h2>
+      {/* The source tag stays on every block, and stays legible. Which side of
+          the house a figure came from is the thing people forget first, and a
+          panel that mixes Stripe money with Supabase people is the one way this
+          screen can lie. */}
       {source && (
-        <span className="whitespace-nowrap rounded-full border border-[var(--line)] bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--ink-3)]">
+        <span className="whitespace-nowrap rounded-full border border-[var(--line)] bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--ink-2)]">
           {source}
         </span>
       )}
@@ -1168,6 +1343,7 @@ function SectionHead({
 }
 
 function Cell({ label, bucket, bordered }: { label: string; bucket: Bucket; bordered?: boolean }) {
+  const net = useCountUp(bucket.net);
   return (
     <div className={`px-5 py-4 ${bordered ? "border-l border-[var(--line-soft)]" : ""}`}>
       <Label>{label}</Label>
@@ -1176,7 +1352,7 @@ function Cell({ label, bucket, bordered }: { label: string; bucket: Bucket; bord
           bucket.net > 0 ? "text-[var(--cash-deep)]" : "text-[var(--ink-3)]"
         }`}
       >
-        {money(bucket.net)}
+        {money(net)}
       </p>
       <p className="text-[12px] text-[var(--ink-3)]">{plural(bucket.count, "sale")}</p>
     </div>
@@ -1673,9 +1849,9 @@ function CashChart({ revenue, spend }: { revenue: number[]; spend: number[] }) {
  * **Nothing here is invented.** The keys are exactly the names
  * `pingFunnelStep()` sends — `STEPS`, then `POST_QUIZ_PHASES`, in that order —
  * and the row order below is that order, so the map reads as the funnel reads.
- * The one name it deliberately omits is `start`: `/register` cold-starts on
- * question 1, so that screen is only reachable by pressing Back, and
- * `INACTIVE_STEPS` in `/api/admin/stats` drops its row before any figure is
+ * The one name it deliberately omits is `start`: that screen was deleted on
+ * 2026-09-04 and nothing pings the key any more, but historical rows remain and
+ * `INACTIVE_STEPS` in `/api/admin/stats` drops them before any figure is
  * computed. It never reaches this map, so the raw-name fallback below is not
  * what is keeping it off the curve. The `Q<n>` prefixes are the quiz's own counter
  * (`QUESTION_STEPS`, rewards excluded), so Q13 is the thirteenth of thirteen on

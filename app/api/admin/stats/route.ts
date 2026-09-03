@@ -869,11 +869,13 @@ export async function POST(req: NextRequest) {
    * `worstStep`, the visit count in the chain sentence — is built off this list.
    */
   const INACTIVE_STEPS = new Set([
-    // Not in the funnel anyone walks: `/register` has cold-started on question 1
-    // since 2026-09-02, so the start screen is reachable only by pressing Back.
-    // It also carries step_index 0, so leaving it in would make it the entry row
-    // and the 100% base — a handful of women who arrived there backwards
-    // deciding the scale of every bar above them.
+    // The deleted start screen. `/register` cold-started on question 1 from
+    // 2026-09-02 and the screen was removed outright on 2026-09-04, so nothing
+    // pings this key any more — but rows from before then are still in the
+    // window. It carries step_index 0, so leaving it in would make it the entry
+    // row and the 100% base, with a handful of women who arrived there
+    // backwards deciding the scale of every bar above them. Keep the filter as
+    // long as any historical row can fall inside the window.
     "start",
     // Superseded by the `paid` row below. `download` is the post-checkout
     // landing screen, so it measures the same event Stripe measures — and

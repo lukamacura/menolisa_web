@@ -61,7 +61,6 @@ import {
   Sunrise,
   Sun,
   Sunset,
-  Salad,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { HighlightSweep } from "@/components/HighlightSweep";
@@ -215,7 +214,8 @@ type Step =
 // is still collected before the board renders.
 const STEPS: Step[] = [
   // **Symptoms first, age second (2026-09-03).** This screen is the ad's landing
-  // page — the start screen was bypassed on 2026-09-02 — and every live creative
+  // page — the start screen was bypassed on 2026-09-02 and deleted on
+  // 2026-09-04 — and every live creative
   // ends on "tap your symptom". It opened on the age tiles instead, and the
   // telemetry priced that mismatch at 52 of 152 women leaving before one tap:
   // a third of everything paid traffic bought, lost on the promise, not the
@@ -1038,7 +1038,6 @@ function deriveSeverity(totalBurden: number): "mild" | "moderate" | "severe" {
 // `paywall`, then the second half of `relief`, and was removed outright on
 // 2026-08-17 - see the ReliefStage note below.
 type Phase =
-  | "start"
   | "quiz"
   | "calculating"
   | "results"
@@ -1278,7 +1277,8 @@ function pingFunnelStep(step: string, stepIndex: number) {
  * Where each screen sits in the funnel, as one monotonic sequence, so the
  * drop-off curve can be read without knowing the phase machine at query time.
  *
- *   0        start screen (only reachable now by backing off question 1)
+ *   0        unused - the deleted start screen. Historical `funnel_events` rows
+ *            still carry it; `INACTIVE_STEPS` in /api/admin/stats drops them.
  *   1..17    the quiz steps, in STEPS order
  *   18..23   the post-quiz screens, in POST_QUIZ_FUNNEL_STEPS order
  *
@@ -1320,9 +1320,9 @@ const POST_QUIZ_FUNNEL_STEPS = [
  * for React's "useLayoutEffect does nothing on the server" warning.
  *
  * The resume restore has to be a *layout* effect. A passive effect runs after
- * the browser has painted, so she would see the start screen flash before the
- * paywall replaced it - Back from a payment form, landing on a one-frame glimpse
- * of question 1, which is the exact thing this is meant to prevent.
+ * the browser has painted, so she would see question 1 flash before the paywall
+ * replaced it - Back from a payment form, landing on a one-frame glimpse of the
+ * quiz she already finished, which is the exact thing this is meant to prevent.
  */
 const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
@@ -1366,6 +1366,38 @@ function useKeyboardInset() {
     };
   }, []);
   return inset;
+}
+
+/**
+ * Tap anywhere that isn't a control, and the keyboard goes away.
+ *
+ * `q8_name` is the only text input in the funnel, so this is the only screen
+ * where the keyboard can cover anything. `keyboardInset` already lifts the CTA
+ * clear of it, but a woman who has finished typing still has no obvious way to
+ * put it down: iOS shows no "done" key above a plain text keyboard, so half the
+ * screen - the illustration and the line telling her no email is needed - stays
+ * hidden until she happens to hit Continue.
+ *
+ * The blur is skipped when the tap lands on a control, and that exclusion is
+ * load-bearing rather than tidy. Dismissing the keyboard resizes the visual
+ * viewport, the CTA bar drops with it (see `keyboardInset`), and the `click`
+ * that would have followed this `pointerdown` then lands on whatever slid under
+ * her finger - so blurring on a tap *at* the button is how you break the button.
+ */
+function useDismissKeyboardOnTap() {
+  useEffect(() => {
+    const onPointerDown = (e: PointerEvent) => {
+      const active = document.activeElement as HTMLElement | null;
+      if (!active) return;
+      if (active.tagName !== "INPUT" && active.tagName !== "TEXTAREA") return;
+      const target = e.target instanceof Element ? e.target : null;
+      if (!target || target === active) return;
+      if (target.closest("input, textarea, select, button, a, label, [role='button']")) return;
+      active.blur();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, []);
 }
 
 
@@ -1468,15 +1500,15 @@ const getSeverityPainText = (
 // It used to promise understanding: "See the why behind your symptoms." That is
 // the wrong noun. She did not come here to understand hot flashes, she came to
 // stop having them, and the thing we sell is a plan rather than an explanation.
-// Naming the plan here also closes the loop the start screen opened ("your
-// personalized 8-week plan, built around your symptoms") - the promised object
-// finally exists and the next tap opens it.
+// Naming the plan here also closes the loop the ad opened ("your personalized
+// 8-week plan, built around your symptoms") - the promised object finally exists
+// and the next tap opens it.
 const RESULTS_CTA_SUB = "Look what Lisa prepared for you.";
 
 // The funnel's one forward-tap look: gradient, dark ink, pink glow. It was
-// pasted inline at five call sites (start screen, results, plan, relief, and now
-// the quiz's Next bar) and drifting apart by a hex digit was only a matter of
-// time. Every button that moves her one screen closer to the plan wears this;
+// pasted inline at five call sites (results, plan, relief, the quiz's Next bar,
+// and the deleted start screen) and drifting apart by a hex digit was only a
+// matter of time. Every button that moves her one screen closer to the plan wears this;
 // nothing else does.
 const CTA_GRADIENT_STYLE = {
   background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)",
@@ -1535,51 +1567,6 @@ const GOAL_CTA_LABEL: Record<string, string> = {
 function getGoalCtaLabel(goals: string[]): string {
   return GOAL_CTA_LABEL[goals[0]] ?? "I want to start";
 }
-
-// ─── Start screen: the three pillars, i.e. what she actually walks away with ──
-//
-// These are `Pillar` in lib/plan/generate.ts — "movement", "relaxation",
-// "habit" — plus the nutrition checklist that runs alongside them daily. They
-// are the product, not a description of it: every row here is something
-// GET /api/plan returns.
-//
-// **Two words each, in three columns — not sentences in three rows.** They were
-// full-sentence rows for most of 2026-08-30 ("Joint-friendly strength that
-// protects the muscle and bone estrogen used to...") and the sentences were
-// good. They were also ~60 words of body copy stacked under a photograph on the
-// screen with the least attention in the entire funnel, and they pushed the
-// hero down to 26vh to make room. The photograph is the argument here: a
-// before/after she can read in half a second, with no claim to evaluate. Copy
-// that outranks it is copy in the wrong place.
-//
-// What survives the cut is the part that had to: the **mechanism keyword**.
-// Three of the four live creatives sell a mechanism, and Ad 4 sells estrogen,
-// muscle and bone specifically — a woman who clicked an ad about losing her
-// strength must find that word on the screen it paid to reach. "muscle & bone",
-// "cortisol" and "hormones" are each two words and each one is the match. The
-// verbs are the pillars themselves (movement / relaxation / nutrition, the
-// `Pillar` union in lib/plan/generate.ts plus the daily nutrition list), so the
-// column reads as a promise of a *thing she will do*, not a claim about what
-// menopause does to her.
-//
-// Deliberately not restored, and each was a real sentence that lost on space:
-// "joint-friendly" (true of weeks 1-2 only — POWER_RAMP_WEEKS holds the
-// plyometric `I` ids back, then they arrive), "recover overnight", and "nothing
-// cut out" — that last one moved to the sacrifice line under the columns, where
-// it does more work as an objection-killer than as a clause.
-//
-// A column is a label, not a claim, which is also why this shape is safe: two
-// words cannot overstate a mechanism. Keep it that way. If a pillar ever needs
-// a sentence again, it needs a screen with room for one — not this screen.
-//
-// Reword these only alongside docs/plan/pillars.md — the funnel and the app's
-// habit tracker have to name the same three things in the same words, or she
-// buys one product and opens another.
-const START_PILLARS: { Icon: LucideIcon; name: string; what: string }[] = [
-  { Icon: Bone, name: "Move", what: "muscle & bone" },
-  { Icon: Wind, name: "Settle", what: "cortisol" },
-  { Icon: Salad, name: "Eat", what: "hormones" },
-];
 
 // Diagnosis-step CTA (the doorstep to the paywall). She's already convinced she
 // wants the outcome - the only thing left is fear of committing/being charged.
@@ -3674,22 +3661,22 @@ function RegisterPageContent() {
       return phaseParam;
     }
     /*
-     * **Question 1, not the start screen (2026-09-02).**
+     * **Question 1 is the funnel. There is no start screen (2026-09-04).**
      *
      * The ad promises a quiz and the start screen was an interstitial between
      * that promise and the quiz: one image, one headline, one button whose only
      * job was `setPhase("quiz")`. It collected nothing, personalised nothing and
      * asked for a tap before the funnel had given her anything - the single
      * cheapest tap in the funnel to delete, on the screen that takes 100% of the
-     * traffic.
+     * traffic. It was bypassed as the cold-start phase on 2026-09-02 and deleted
+     * outright on 2026-09-04, once the two things that still depended on it had
+     * moved: the Terms and Privacy links (now under the question 1 card, which
+     * is where the obligation attaches - a screen nobody sees cannot be where
+     * the legal links live) and Back off question 1, which no longer renders
+     * because there is nothing behind the entrance.
      *
-     * The screen itself is kept, not deleted, because `goBack` off question 1
-     * still lands there (see `goBack`): backing out of the first question should
-     * reach something, not dead-end, and that is now the start screen's whole
-     * job. It is also where the Terms and Privacy links used to be the only
-     * copies in the funnel - they now sit under the quiz card as well, because a
-     * screen most visitors never see cannot be where the legal links live. If
-     * this screen is ever actually deleted, check those links first.
+     * The `start` key still exists in `funnel_events` history and is dropped by
+     * `INACTIVE_STEPS` in `/api/admin/stats`; nothing pings it any more.
      */
     return "quiz";
   });
@@ -3887,15 +3874,13 @@ function RegisterPageContent() {
    */
   // Lifts the quiz's fixed CTA bar clear of the software keyboard. See the hook.
   const keyboardInset = useKeyboardInset();
+  useDismissKeyboardOnTap();
 
   const funnelStepsSent = useRef<Set<string>>(new Set());
   useEffect(() => {
     let step: string;
     let index: number;
-    if (phase === "start") {
-      step = "start";
-      index = 0;
-    } else if (phase === "quiz") {
+    if (phase === "quiz") {
       step = STEPS[stepIndex] ?? "unknown";
       index = stepIndex + 1;
     } else {
@@ -4576,16 +4561,13 @@ function RegisterPageContent() {
     }, 260);
   }, []);
 
-  // Back off question 1 returns to the start screen rather than dead-ending, so
-  // the first tap stays as reversible as it was promised to be.
+  // Question 1 is the funnel's entrance, so there is nothing behind it: the Back
+  // control is not rendered on step 0 (see the progress row) and this is a no-op
+  // if it is ever reached there anyway.
   const goBack = useCallback(() => {
     // Cancel a pending auto-advance, or Back mid-animation lands her forward.
     if (advanceTimer.current) clearTimeout(advanceTimer.current);
-    if (stepIndex > 0) {
-      setStepIndex(stepIndex - 1);
-    } else {
-      setPhase("start");
-    }
+    if (stepIndex > 0) setStepIndex(stepIndex - 1);
   }, [stepIndex]);
 
   /**
@@ -4856,15 +4838,15 @@ function RegisterPageContent() {
   useIsomorphicLayoutEffect(() => {
     if (resumeChecked.current) return;
     resumeChecked.current = true;
-    // "quiz" is the cold-start phase since 2026-09-02; "start" is still listed
-    // because backing off question 1 lands there. What this guard is really
-    // saying is "only when this load would otherwise begin the funnel from the
-    // top" - `?phase=download` and the dev-only params are decided by the
-    // initializer and outrank a ticket. Leaving it as `phase !== "start"` after
-    // the default moved would have silently disabled the whole resume path:
-    // every Back from Stripe would have dropped her on question 1 with her
-    // answers gone, which is the exact bug the ticket exists to prevent.
-    if (phase !== "start" && phase !== "quiz") return;
+    // "quiz" is the cold-start phase. What this guard is really saying is "only
+    // when this load would otherwise begin the funnel from the top" -
+    // `?phase=download` and the dev-only params are decided by the initializer
+    // and outrank a ticket. Keep it keyed to whatever that cold-start phase is:
+    // when the default moved off the start screen this read `phase !== "start"`,
+    // which silently disabled the whole resume path - every Back from Stripe
+    // dropped her on question 1 with her answers gone, the exact bug the ticket
+    // exists to prevent.
+    if (phase !== "quiz") return;
 
     const saved = readFunnelResume();
     if (!saved) return;
@@ -4896,15 +4878,15 @@ function RegisterPageContent() {
     // funnel's front half would restart it after all.
     setStepIndex(STEPS.length - 1);
     setReliefStage("reward");
-    // Swap without the phase cross-fade. This one is not a step she took: the
-    // start screen is here only because it is what the server rendered before
+    // Swap without the phase cross-fade. This one is not a step she took:
+    // question 1 is on screen only because it is what the server rendered before
     // the ticket could be read, and fading it out for 0.22s in front of her is
     // the same "your quiz is gone" beat, just prettier. Reset after the paint
     // below, so every real phase change still animates.
     skipPhaseTransition.current = true;
     setPhase("paywall");
     // Mount-only by construction: the ref makes a re-run a no-op, and `phase` is
-    // read only for the guard above, where it is "start" on the mount that
+    // read only for the guard above, where it is "quiz" on the mount that
     // matters. (The lint rule does not walk into the isomorphic alias, so the
     // empty dep array is not flagged - it is still deliberate.)
   }, []);
@@ -5037,7 +5019,7 @@ function RegisterPageContent() {
           return;
         }
 
-        // No session at all: a first-time visitor. Leave her on the start screen.
+        // No session at all: a first-time visitor. Leave her on question 1.
         if (!sessionData?.session?.user) return;
 
         const user = sessionData.session.user;
@@ -5120,626 +5102,6 @@ function RegisterPageContent() {
           }}
           className="flex-1 flex flex-col min-h-0"
         >
-
-      {/* Start Phase - the screen the ad lands on.
-          One job: enter on her own sentence, take the blame off her, and hand her
-          a single tap. The quiz used to start here, which meant the first thing
-          she was asked for was her age - an admin field, at the moment she is
-          least committed. Price, credentials and a testimonial wall still stay
-          off this screen. It has to answer three things and nothing else: what
-          she walks away with (a personalized 8-week plan), what it costs her
-          (2 minutes), and whether she can actually do it. The 2026-08-18 pass
-          was about the order and weight of those three, not about adding a
-          fourth; the 2026-08-20 pass cut the screen from seven message blocks
-          to four, because it had grown dense in *mechanism* and thin in
-          *outcome* - seventy words, not one of which said what she walks away
-          with. See the card comment below for what moved downstream and why.
-          The one exception is the hero photo (2026-08-17): a
-          real before/after - scrolling alone, then holding her plan, smiling -
-          so the promise in the headline below is something she sees happen to
-          someone else before she's asked to believe it for herself. */}
-      {/* The scroll column below carries `env(safe-area-inset-bottom)` for the
-          same reason every other phase does: the fixed CTA bar adds the
-          home-indicator inset to its own height, so the flat `pb-28` this used
-          to be left the last ~34px of the offer card under the bar on every
-          notched iPhone. This was the only phase missing it. */}
-      {phase === "start" && (
-        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto items-center justify-start px-2 text-center pb-[calc(112px+env(safe-area-inset-bottom))]">
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: prefersReducedMotion ? 0 : 0.4 }}
-            className="w-full max-w-md mx-auto my-auto flex flex-col items-center"
-          >
-            {/* No brand mark on this screen (2026-08-30).
-
-                It has now been tried in both places it could go. Above the hero
-                it was a 24px row plus a 12px margin of empty page and read as a
-                page header; inside the hero, on a pill, it was the single
-                highest-contrast object in the frame - a white chip in the
-                brightest corner, pulling the eye off the two faces that are the
-                entire argument of the picture. Orientation is worth a few
-                pixels; it is not worth outranking the hero.
-
-                Nothing is lost. She arrived from an ad that carried the brand,
-                the CTA names the product, and /terms and /privacy are linked in
-                the bar. If it comes back a third time it belongs somewhere it
-                cannot compete - and the honest answer may be that this screen
-                does not need it at all. */}
-            <motion.div
-              initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ type: "spring", stiffness: 220, damping: 22 }}
-              className="relative w-full shrink-0 rounded-2xl overflow-hidden ring-1 ring-black/5 shadow-[0_16px_36px_-10px_rgba(61,61,61,0.35)]"
-            >
-              {/* **Height is the space the rest of the screen is not using.**
-
-                  Measured across five viewports on 2026-08-30, everything below
-                  this photo - headline, cause line, pill, card - is **329px,
-                  identically, at every width from 375 to 430**, and the fixed
-                  CTA bar plus the column's own padding accounts for a further
-                  114px. So the height this hero can take without pushing the
-                  card under the bar is exactly `100dvh - 457px`, and that is the
-                  formula rather than a vh fraction because the part below is a
-                  *constant*, not a proportion: as a fraction of the viewport
-                  the budget swings from 20% on a small phone to 52% on a Pro
-                  Max, so no single `max-h-[Nvh]` can express it. A plain 38vh
-                  left ~80px of usable space unclaimed on a 390x844 and
-                  overflowed a 375x557.
-
-                  The `max(190px, ...)` floor is the deliberate exception. On
-                  375x557 - the Instagram/Facebook webview on a small phone -
-                  the honest budget is 114px, which is a letterbox strip rather
-                  than a photograph. That viewport cannot have both a legible
-                  hero and a no-scroll page, so it gets the hero and ~90px of
-                  scroll; the CTA is pinned, so scrolling never costs the tap.
-
-                  **`dvh`, not `vh` (2026-09-02).** This read `100vh` while the
-                  shell above is `h-dvh`, so the budget was computed against the
-                  *large* viewport - the one with the URL bar hidden - inside a
-                  container sized to the current one. On iOS Safari/Chrome and
-                  the Instagram/Facebook webview that is 60-90px of overshoot,
-                  i.e. the whole margin this formula exists to protect, missed
-                  on exactly the browsers the ad audience arrives in. Any future
-                  height maths on this screen uses `dvh`.
-
-                  **The formula is the binding ceiling now** (2026-08-31).
-                  `start.webp` was 900x504 and at that ratio drew ~200px tall
-                  everywhere - under the budget on every real phone, so this
-                  class did nothing and 217px of a 390x844 sat empty around a
-                  small photo. The asset is 768x960 (4:5) now, which at
-                  `w-full h-auto` would draw 449px at 375 wide - over budget on
-                  everything but the tallest phones - so `object-cover` at
-                  `object-[50%_35%]` crops it to the budget and the screen
-                  fills the fold instead of centering fragments in pink.
-
-                  Which makes the crop band the thing to design any future
-                  asset against: at the `short:` floor of 180px against 359px
-                  wide, only ~50% of the frame's height survives, anchored at
-                  the 65% focal line - both faces, the phone, and room for the
-                  bubble and the NOW/WITH YOUR PLAN bar all have to live in
-                  that band. 65% because both faces sit in the lower half of
-                  this frame (chosen by rendering the 180px strip at 35/45/55/
-                  65 on 2026-08-31 - 35% showed sofa where the "before" face
-                  should be); what it crops at tall viewports is ceiling and
-                  window, which cost nothing. The full 4:5 frame only shows on
-                  viewports taller than ~880px.
-
-                  The `short:` override lowers the floor 190 -> 180: ten more
-                  pixels for the card's closing line at 375x557, where the
-                  photo is cropped to a strip either way (see the short
-                  variant's note in globals.css).
-
-                  If the 329px below ever changes, re-measure and move the 457.
-                  It is a measurement, not a guess, and it is only worth having
-                  while it stays one. */}
-              <Image
-                src="/illustrations/start.webp"
-                alt="The same woman twice: searching on her phone alone, then following her plan in the app."
-                width={768}
-                height={960}
-                priority
-                sizes="(max-width: 480px) 92vw, 420px"
-                className="w-full h-auto max-h-[max(190px,calc(100dvh-457px))] short:max-h-[max(180px,calc(100dvh-457px))] object-cover object-[50%_65%]"
-              />
-
-
-              {/* The photo is a diptych and nothing on it said so, which left the
-                  two halves reading as two photos of the same woman rather than
-                  one transformation - the whole reason it is here. The seam is
-                  drawn, the halves are named, and the arrow states the direction,
-                  so the before/after is on the screen instead of in the alt text.
-                  The right-hand label names the *plan* as the thing that closes
-                  the gap. It read "In 2 minutes" until 2026-08-20, which pinned
-                  the screen's strongest outcome image to how long the quiz takes
-                  - and was the third mention of two minutes on one screen. Rose
-                  = the load she carries now, green = what closes it, per the
-                  funnel's colour rule. */}
-              {/* The two halves are the whole argument of this screen, and the
-                  photograph was not carrying them: same woman, same room, same
-                  light, so "before" and "after" were doing all their work in two
-                  10px labels at the bottom edge. A colour wash per half states
-                  the direction before a word is read - rose = the load she
-                  carries now, green = what the plan closes it with, the funnel's
-                  own colour rule, and the same two dots already used below.
-
-                  Anchored to the outer edges and fading to nothing at the seam,
-                  so it reads as light falling across the photo rather than a
-                  filter laid over it - a flat tint at this opacity greys the
-                  faces, which are the only reason the photo is here. Kept off
-                  `mix-blend` deliberately: it composites against whatever sits
-                  behind the rounded container, which is theme-dependent. */}
-              <div
-                aria-hidden
-                className="pointer-events-none absolute inset-y-0 left-0 w-1/2 bg-linear-to-l from-transparent to-[#FB7185]/30"
-              />
-              <div
-                aria-hidden
-                className="pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-linear-to-r from-transparent to-[#22C55E]/35"
-              />
-              <div
-                aria-hidden
-                className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-white/70"
-              />
-
-              {/* Her own sentence, inside the picture.
-
-                  The headline below already is that sentence - "You don't feel
-                  like yourself anymore" - but it sat under the photo in grey
-                  ink, so the photograph and the mirror were two separate
-                  arguments and the left half had to be explained by a tint, a
-                  seam and a 10px label before it said anything. A caption in
-                  her voice makes the "before" self-evident at a glance, which
-                  is the one thing four overlay layers were failing to do.
-
-                  Written against what is actually in the frame - daytime, sofa,
-                  phone in hand, flat expression - not against a mood. "Again"
-                  is the load-bearing word: it makes this the *n*th time rather
-                  than a bad afternoon, which is what makes it hers.
-
-                  Left half only. The right half has the app on the screen and a
-                  label naming the plan; a second bubble would turn a
-                  transformation into a comic strip.
-
-                  Bottom-left, in white, as of 2026-08-30 - it was top-left in
-                  dark ink, and both halves of that were wrong.
-
-                  *Position:* the top-left corner is where the lockup now lives,
-                  and it is also the brightest, emptiest part of the frame - so
-                  the one line of copy that carries the whole "before" argument
-                  was floating in the corner she looks at last, above a face
-                  that is the actual subject. At the bottom it sits directly
-                  over the "Now" label it belongs to, and the two read as one
-                  statement rather than two overlays arguing for the same half.
-
-                  *Colour:* dark-on-photo was a contrast lottery. It sits over
-                  the hero's own bottom scrim (`from-black/65`) now, so white
-                  ink on a white bubble is high contrast against a known dark
-                  ground rather than against whatever the next shoot hands us -
-                  the same reasoning as the lockup pill above. The tail points
-                  down, at her.
-
-                  Offsets stay percentages for the left edge and a rem for the
-                  bottom: the hero is clipped by its own `overflow-hidden` and
-                  its crop moves with the viewport, but the labels bar it clears
-                  is a fixed height, so that gap should not scale.
-
-                  `max-w-[52%]` from a `left-[4%]` anchor overhangs the seam by
-                  ~6%, deliberately. Tightening it to end exactly on the seam
-                  costs a third line at the widths this actually renders at, and
-                  a taller bubble buys nothing: it is anchored left and its tail
-                  is on the left half, so a few percent of overhang reads as a
-                  bubble floating over the picture rather than as a caption on
-                  the "after". Do not push it past ~55% - that is where it
-                  starts covering the phone in her hand, which is the only thing
-                  on the right half that shows the product. */}
-              <motion.div
-                initial={
-                  prefersReducedMotion
-                    ? false
-                    : { opacity: 0, y: 8, scale: 0.94, rotate: -2 }
-                }
-                animate={{ opacity: 1, y: 0, scale: 1, rotate: -2 }}
-                transition={{
-                  delay: prefersReducedMotion ? 0 : 0.5,
-                  type: "spring",
-                  stiffness: 260,
-                  damping: 20,
-                }}
-                className="absolute bottom-8 left-[4%] z-10 max-w-[52%] rounded-xl bg-white px-2.5 py-1 text-left shadow-[0_6px_16px_-4px_rgba(0,0,0,0.55)]"
-              >
-                <p className="text-[11px] sm:text-xs font-semibold leading-snug text-[#3D3D3D]">
-                  &ldquo;Me, googling my symptoms. Again.&rdquo;
-                </p>
-                <span
-                  aria-hidden
-                  className="absolute -bottom-1 left-5 h-3 w-3 rotate-45 rounded-[2px] bg-white"
-                />
-              </motion.div>
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-black/65 via-black/25 to-transparent px-2 pt-8 pb-2">
-                <div className="grid grid-cols-2 items-center">
-                  <span className="flex items-center justify-center gap-1.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wide text-white">
-                    <span className="h-1.5 w-1.5 rounded-full bg-[#FB7185]" />
-                    Now
-                  </span>
-                  <span className="flex items-center justify-center gap-1.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wide text-white">
-                    <span className="h-1.5 w-1.5 rounded-full bg-[#4ADE80]" />
-                    With your plan
-                  </span>
-                </div>
-                <span
-                  aria-hidden
-                  className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-[0_2px_8px_rgba(0,0,0,0.35)]"
-                >
-                  <ArrowRight className="w-3 h-3 text-[#16A34A]" />
-                </span>
-              </div>
-            </motion.div>
-
-            {/* The headline is the *reframe*, not the symptom. It read "You
-                don't feel like yourself anymore." until 2026-08-30, which was a
-                strong mirror opening and the wrong job for this screen: the ad
-                she just clicked already put that sentence in her head, so
-                restating it spends the fold on repetition. The mirror is still
-                on the screen — it is the speech bubble in the photo above, in
-                her own voice — which leaves the headline free to answer it.
-
-                It is written to be universal across all four live creatives.
-                Ad 1 sells a symptom grid, Ad 2 the 3pm crash, Ad 3 cortisol, Ad
-                4 estrogen and bone: the one thing every one of them argues is
-                that this is biology rather than a personal failure, so that is
-                the sentence that has to be here whichever one she came from.
-                Two clauses, because "not in your head" answers the symptom ads
-                and "not a lack of discipline" answers the habit ads, and a
-                woman who arrived by either has to see her own objection named.
-
-                The sub-line is the cause, at one clause. It ran a second half
-                ("and nobody handed you the new ones") which was the better
-                sentence and the wrong screen: it opens a gap, and the card
-                immediately below already closes it, so it was buying suspense
-                over ~40px of a fold that the photograph needs more.
-
-                Both false verdicts carry a rose sweep. That is the funnel's
-                colour rule read literally - rose is the load she is carrying
-                now, and "it's in your head" and "you lack discipline" are
-                exactly that load: they are the two sentences she has already
-                been handed, by a doctor and by herself. Sweeping them puts her
-                own words on the screen in the colour the rest of the funnel
-                uses for her own words.
-
-                Not primary pink, which belongs to the CTA and nothing else, and
-                not green, which is reserved for what closes the gap - these two
-                phrases are the gap. The sweep runs on `whileInView` with no
-                `active` prop, so it draws itself once as the screen settles.
-
-                The sub-line under it stays plain bold ink. "Your hormones
-                changed the rules" is the true claim answering both, and a third
-                sweep in a third colour would flatten the hierarchy into
-                decoration - at which point the highlight stops meaning
-                anything, which is the failure mode the variant table in
-                components/HighlightSweep.tsx exists to prevent. */}
-            {/* Each clause is one unbreakable line. The sweep renders as an
-                inline-block, which cannot break mid-phrase - so at any width
-                where "It isn't a lack of discipline." misses the fit, the whole
-                swept phrase dropped to its own row ("It isn't" / "a lack of
-                discipline."). At text-2xl that line needs 314px and a 360px
-                phone gives it 312. The clamp sizes the type to the clause
-                instead: 6.2vw keeps ~20px of slack at every width from 320 up
-                (22.3px at 360, capped at text-2xl from ~387px), and the nowrap
-                spans state the two-line shape instead of leaving it to a <br/>
-                plus luck. The period lives inside the sweep on both lines -
-                outside it, the dot is its own break opportunity and can wrap
-                alone. */}
-            <motion.h1
-              initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: prefersReducedMotion ? 0 : 0.15, duration: 0.4 }}
-              className="text-[clamp(1.25rem,6.2vw,1.5rem)] sm:text-3xl font-bold text-[#3D3D3D] leading-tight px-2"
-            >
-              <span className="whitespace-nowrap">
-                It isn&apos;t{" "}
-                <HighlightSweep variant="rose">in your head.</HighlightSweep>
-              </span>
-              <br />
-              <span className="whitespace-nowrap">
-                It isn&apos;t{" "}
-                <HighlightSweep variant="rose">a lack of discipline.</HighlightSweep>
-              </span>
-            </motion.h1>
-
-            {/* The reframe. It has to land before she is asked to do any work -
-                self-blame is what keeps her from starting at all.
-
-                It opened on the symptom list ("The sleep, the weight gain, the
-                mood") until 2026-08-20. That was the most specific thing on the
-                screen and it was spent at 22 words, at the moment she is
-                deciding whether to keep reading at all - and the word
-                "symptoms" now does the same job one block down, where it sells
-                the personalization rather than only naming the problem. */}
-            <motion.p
-              initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: prefersReducedMotion ? 0 : 0.28, duration: 0.4 }}
-              className="mt-2 short:mt-1.5 text-sm sm:text-base text-[#5A5A5A] leading-snug px-2"
-            >
-              After 40, <span className="font-semibold text-[#3D3D3D]">your hormones
-              changed the rules.</span>
-            </motion.p>
-
-            {/* The `short:` classes from here down are one pass with one job:
-                at 375x557 (the ad traffic's in-app webview) the offer card
-                ended at 527px behind a bar that starts at 459px, so its
-                closing line - the only sentence on the screen that says why
-                the quiz is worth two minutes - was fully hidden, and the
-                near-opaque bar left no cue that anything was cut. ~42px of
-                rhythm (these margins, the pill, the card's paddings, the icon
-                circles, the hero floor) brings the divider and the closing
-                line's first words above the bar: a visibly cut sentence is
-                its own scroll cue. Taller viewports are untouched. */}
-
-            {/* The cost of entry, stated before she decides whether to keep
-                reading (2026-08-30).
-
-                All three facts were already on this screen and all three were
-                12px grey text *under* the button, in the fixed bar at the very
-                bottom — i.e. the last thing she reads, on a screen most of the
-                traffic never scrolls. "No email needed" in particular is the
-                funnel's strongest unused fact: she genuinely gives no address
-                until Stripe (see "Anonymous accounts" in CLAUDE.md), and "will
-                they spam me" is a top objection on a cold ad click from a
-                45-60 audience. It belongs where the decision is made.
-
-                A pill rather than a line of text because it has to read as a
-                label on the offer, not as more body copy — she is meant to take
-                it in without reading it word by word. Ink on a tinted ground,
-                not rose or green: this is a fact about the transaction, and the
-                funnel's colour rule reserves rose for the load she carries and
-                green for what closes it. Pink stays on the CTA and nothing
-                else.
-
-                The bar under the button now echoes only the two-word version,
-                so the promise is restated at the tap without printing the same
-                sentence twice on one screen. */}
-            <motion.div
-              initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: prefersReducedMotion ? 0 : 0.34, duration: 0.4 }}
-              className="mt-2.5 short:mt-1.5 inline-flex flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-full bg-foreground/5 px-3.5 py-1.5 short:py-1 text-xs sm:text-sm font-semibold text-[#3D3D3D]"
-            >
-              <span>Free</span>
-              <span aria-hidden className="text-[#9A9A9A]">·</span>
-              <span>2 minutes</span>
-              <span aria-hidden className="text-[#9A9A9A]">·</span>
-              <span>No email needed</span>
-            </motion.div>
-
-            {/* What she actually walks away with - the product, in one card.
-
-                Until 2026-08-20 this was a three-column mechanism row (a 10-min
-                walk / protein at breakfast / 2 min of breathing) under the plan
-                promise, closed by "About 15 minutes a day. No gym, no cutting
-                out food groups." Both are good arguments and both belong later:
-                the mechanism is what <PlanStage /> animates on the diagnosis
-                screen, and objection handling only works once an objection
-                exists. Four seconds off a cold ad click she has not decided she
-                wants this yet, so the screen was answering questions she had not
-                asked - and spending the plan screen's ammunition early, which is
-                the mistake the 2026-08-16 pass had just undone on results.
-
-                What replaced them is the outcome the plan is actually bought
-                for, in the funnel's own words: GOAL_PROMISE's generic fallback
-                is "Feel like yourself again", which closes the exact sentence
-                the headline opens with. Two checks, not three - three reads as a
-                list to skim, two reads as a promise. The first sells the
-                personalization, i.e. the only reason to answer a dozen
-                questions rather than download a generic PDF;
-                the second is the "can I actually do this" answer the 15-minutes
-                line used to carry, at one clause instead of a row plus a
-                sentence.
-
-                Green on the checks per the funnel's colour rule - the plan is
-                what closes the gap. Pink stays on the CTA and nothing else.
-
-                Deliberately absent: her wellbeing score. It is a fear device for
-                the results screen, and teasing it here as the payoff would sell
-                the diagnosis instead of the plan - see the header of
-                lib/planTimeline.ts, which refuses it at the paywall for exactly
-                the same reason. */}
-            <motion.div
-              initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: prefersReducedMotion ? 0 : 0.4, duration: 0.4 }}
-              className="mt-3 short:mt-2 w-full rounded-2xl border border-foreground/10 bg-card px-4 py-3.5 short:py-2.5 shadow-sm"
-            >
-              {/* Message match with the live creatives, 2026-08-24. Three of the
-                  four ads sell a *mechanism* - cortisol, the nervous system,
-                  hormone-driven inflammation - and all four promise an "8-week
-                  reset plan" off a "60-second audit". The screen said
-                  "personalized 8-week plan" and "a few small steps", which is
-                  the same product described in words the ad never used: the
-                  woman who clicked "It's not a lack of discipline" arrives on a
-                  page that never mentions why. So: "reset plan" in the headline,
-                  and the mechanism folded into check 2 rather than added as a
-                  third row - two checks read as a promise, three read as a list
-                  to skim (see the block above; that call still stands).
-
-                  Check 2 still answers "can I actually do this" with "a few
-                  small daily habits"; it now also names the three pillars, which
-                  is what the ad body promised she would get.
-
-                  2026-08-30 finished that job. Folding three pillars into one
-                  clause was the compromise; naming them as three rows is the
-                  fix, and the reasoning (including why the "two checks, not
-                  three" call was reversed) is on START_PILLARS. The closing
-                  line restores the time answer the 2026-08-20 pass cut - at one
-                  line rather than a three-column row plus a sentence, and at
-                  the volume the catalog actually prescribes rather than the
-                  flat "about 15 minutes a day" it used to assert. */}
-              <p className="text-base sm:text-lg font-bold text-[#3D3D3D] leading-snug">
-                Your <HighlightSweep>personalized {PLAN_WEEKS}-week plan</HighlightSweep>
-              </p>
-              <ul className="mt-3 short:mt-2 grid grid-cols-3 gap-1">
-                {START_PILLARS.map(({ Icon, name, what }) => (
-                  <li key={name} className="flex flex-col items-center gap-1">
-                    <span className="flex h-9 w-9 short:h-8 short:w-8 items-center justify-center rounded-full bg-[#16A34A]/10">
-                      <Icon className="h-[18px] w-[18px] text-[#16A34A]" strokeWidth={2.5} />
-                    </span>
-                    <span className="text-sm font-bold leading-none text-[#3D3D3D]">
-                      {name}
-                    </span>
-                    <span className="text-[11px] leading-tight text-[#5A5A5A]">
-                      {what}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              {/* The two questions that decide whether she starts, in one line:
-                  what it costs her, and why it would work for her.
-
-                  She is buying a behaviour change, and a behaviour change is
-                  bought on effort and on odds - "how much of my life does this
-                  take" and "will it actually work on me". The screen answered
-                  neither: it named a plan and three pillars, and left both
-                  blanks for her to fill in with whatever the last thing she
-                  tried cost her.
-
-                  **Cost, and it is the real prescription.** MOVEMENT_VOLUME
-                  .beginner is 2 sessions of 20-25 min, CARDIO_VOLUME.beginner
-                  is a 15-25 min walk every day, and beginner is the modal
-                  customer (the 2026-08-28 note in CLAUDE.md). Concrete beats a
-                  number here - "a daily walk and two short sessions" is both
-                  honest and less frightening than the ~25 min/day it adds up
-                  to. Do NOT soften it to "a few minutes a day": even the
-                  lightest level, movement_snacks, is a flat 20-minute daily
-                  walk on top of its bursts, so there is no level at which that
-                  sentence is true, and a time promise she discovers is wrong on
-                  day 1 is a refund.
-
-                  **Odds, and "built from your answers" is the only claim this
-                  screen has earned.** Not a testimonial, not a number, not the
-                  guarantee - the guarantee implies the price, and price stays
-                  off this screen. What it does is contrast the plan with the
-                  free PDF she has already downloaded and abandoned, and it is
-                  the reason the next two minutes are worth spending: the quiz
-                  is what makes the plan hers. It has to lead the sentence for
-                  that reason.
-
-                  One line, centred, because at one line centred is right and
-                  this must not grow back into a paragraph. */}
-              <p className="mt-3 short:mt-2 border-t border-foreground/10 pt-2.5 short:pt-2 text-xs sm:text-sm text-[#5A5A5A] leading-snug">
-                <span className="font-semibold text-[#3D3D3D]">Built from your
-                answers</span> — a daily walk and two short sessions a week. No
-                gym, nothing cut out.
-              </p>
-            </motion.div>
-
-          </motion.div>
-        </div>
-      )}
-
-      {/* The one tap, in the same fixed bar every other phase uses.
-
-          This was the only screen in the funnel with a CTA that scrolled, and
-          it is the one screen where the CTA *is* the conversion event. The
-          stack runs ~550px on a 375x667 device, and an in-app browser (the
-          Instagram/Facebook webview most of the ad traffic arrives in) leaves
-          about 557px - so "Build my plan" sat within single digits of the fold,
-          and `overflow-y-auto` meant it failed silently by scrolling instead of
-          showing a button. Pinned, that can't happen at any viewport.
-
-          Safe despite the warning on the phase wrapper above: that wrapper
-          animates opacity only, so it never becomes the containing block for a
-          fixed child - the four other phases already pin bars inside it.
-
-          There is no cost sub-line here any more (2026-08-30). It read "Free
-          quiz - 2 minutes - no email needed", and those three facts now sit in
-          a pill directly under the headline, where the decision to keep reading
-          is actually made - down here they were the last thing she reads on a
-          screen most ad traffic never scrolls.
-
-          Restating them at the tap is ordinarily worth doing, and it was tried:
-          a two-word "Free - no email needed" echo. It came out on the same day.
-          Measured at 375x557 - the Instagram/Facebook webview on a 375x667
-          device, i.e. the worst case this funnel actually gets - the pill ends
-          at 297px and this bar starts at 459px. Both are on screen together
-          there and on every taller viewport, so the echo was not a reminder of
-          something she had scrolled past: it was the same sentence printed
-          twice inside one glance, which reads as a mistake and spends the two
-          lines above the legal row that the CTA needs to sit clear in. Do not
-          add it back without re-measuring whether the pill still clears the
-          fold.
-
-          If a line ever does return here: "free" has to keep meaning *the
-          quiz*. It sits 90 seconds before a $59 paywall, so never let it grow
-          into anything that could be read as the plan being free. And size it
-          at 13px #5A5A5A (6.9:1), never the 11px #9A9A9A this bar used to use -
-          the hardest text on the page belonged to the audience least able to
-          resolve it.
-
-          It read "Free quiz - 2 minutes - {QUESTION_STEPS.length} taps - no
-          email needed" until 2026-08-20. The count was the only pure *cost* in
-          the line - the other three items are all things she gets - and it was
-          stated at the exact moment she decides whether to start at all.
-          "2 minutes" already answers the same question in the unit she cares
-          about, so the count bought nothing and priced the quiz twice. (It said
-          "taps" rather than "questions" for a good reason, which still holds if
-          it ever comes back: 8 of the steps are auto-advancing image tiles and
-          only q_body and q8_name type anything.) */}
-      {phase === "start" && (
-        <motion.div
-          initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: prefersReducedMotion ? 0 : 0.52, duration: 0.4 }}
-          className="fixed bottom-0 inset-x-0 z-30 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 pb-[env(safe-area-inset-bottom)]"
-        >
-          <div className="mx-auto max-w-md w-full px-4 sm:px-6 py-3">
-            <button
-              type="button"
-              onClick={() => setPhase("quiz")}
-              className={cn(CTA_GRADIENT_CLASS, "min-h-13 cursor-pointer")}
-              style={CTA_GRADIENT_STYLE}
-            >
-              Build my {PLAN_WEEKS}-week reset plan
-              <ArrowRight className="w-4 h-4" />
-            </button>
-            {/* The funnel linked neither, on the one screen that is the entry
-                point for paid traffic ending at a $59 charge - so the two
-                documents Meta's reviewers look for, and the two a cautious
-                45-60 visitor looks for, existed at /terms and /privacy and were
-                reachable from nowhere in the funnel.
-
-                `target="_blank"` so reading them never costs her the funnel;
-                `prefetch={false}` because this is the ad landing page and two
-                speculative page loads is a real cost for a link most visitors
-                never tap. #5A5A5A rather than the #9A9A9A this bar used to use
-                above - 6.9:1 against 2.85:1, and small legal text is exactly
-                where the audience least able to resolve it gets punished. */}
-            <p className="text-[11px] text-[#5A5A5A] text-center mt-1.5 leading-snug">
-              <Link
-                href="/terms"
-                prefetch={false}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline underline-offset-2 hover:text-[#3D3D3D]"
-              >
-                Terms
-              </Link>
-              <span aria-hidden className="mx-1.5">
-                ·
-              </span>
-              <Link
-                href="/privacy"
-                prefetch={false}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline underline-offset-2 hover:text-[#3D3D3D]"
-              >
-                Privacy
-              </Link>
-            </p>
-          </div>
-        </motion.div>
-      )}
 
       {/* Calculating Phase - loader between quiz and results; also where the
           account is created and the quiz is saved (see completeRegistration) */}
@@ -5854,8 +5216,8 @@ function RegisterPageContent() {
                 of her own symptom tiles. */}
 
             {/* The plan, existing.
-                The start screen promised "your personalized 8-week plan, built
-                around your symptoms" and the loader said "Building your 8
+                The ad promised "your personalized 8-week plan, built around
+                your symptoms" and the loader said "Building your 8
                 weeks" - and then this screen used to deliver a score, a chart,
                 and a promise that she would *understand* her symptoms within two
                 weeks. The object she was promised did not appear anywhere on the
@@ -6923,28 +6285,34 @@ function RegisterPageContent() {
               : "pb-[calc(76px+env(safe-area-inset-bottom))]"
           )}
         >
-          {/* Back - on question 1 this returns to the start screen (see goBack).
-              The entry headline that used to sit here is now the start screen,
-              so question 1 gets the full card. */}
-          <button
-            type="button"
-            onClick={goBack}
-            className="flex items-center gap-1 self-start shrink-0 text-xs text-[#9A9A9A] hover:text-[#5A5A5A] px-2 transition-colors"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" /> Back
-          </button>
-          {/* Progress: explicit "Question X of 9" above dots so users always see
-              how much is left. The chrome above the card - back link, counter,
-              dots - is kept tight on purpose: every pixel it takes is a pixel
-              off the card, which is the only part of this screen doing work. */}
-          <div className="mb-1.5 sm:mb-2 shrink-0 pt-1 sm:pt-2 px-2">
-            <p className="text-center text-base sm:text-lg font-semibold text-[#3D3D3D] mb-1.5 min-h-6" role="status" aria-live="polite">
-              {REWARD_STEPS.includes(currentStep)
-                ? REWARD_LABEL[currentStep] ?? "Quick win"
-                : activeQuestionIndex >= QUESTION_STEPS.length - 2
-                  ? "Almost there"
-                  : `Question ${activeQuestionIndex + 1} of ${QUESTION_STEPS.length}`}
-            </p>
+          {/* Progress: the counter is the top line of the screen and Back sits on
+              the same row, absolutely placed so the label stays optically
+              centred whatever its length. They used to be two stacked rows; the
+              chrome above the card is kept as tight as it will go, because every
+              pixel it takes is a pixel off the card, which is the only part of
+              this screen doing work. Back is absent on question 1: it is the
+              funnel's entrance, so there is nothing behind it (see goBack). */}
+          <div className="mb-1 sm:mb-1.5 shrink-0 pt-1 px-2">
+            <div className="relative flex items-center justify-center min-h-6 mb-1">
+              {stepIndex > 0 && (
+                <button
+                  type="button"
+                  onClick={goBack}
+                  className="absolute left-0 flex items-center gap-1 text-xs text-[#9A9A9A] hover:text-[#5A5A5A] transition-colors"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" /> Back
+                </button>
+              )}
+              <p className="text-center text-base sm:text-lg font-semibold text-[#3D3D3D]" role="status" aria-live="polite">
+                {REWARD_STEPS.includes(currentStep)
+                  ? REWARD_LABEL[currentStep] ?? "Quick win"
+                  : activeQuestionIndex === QUESTION_STEPS.length - 1
+                    ? "Last question"
+                    : activeQuestionIndex === QUESTION_STEPS.length - 2
+                      ? "Almost there"
+                      : `Question ${activeQuestionIndex + 1} of ${QUESTION_STEPS.length}`}
+              </p>
+            </div>
             <div className="flex justify-center gap-2 sm:gap-3">
               {QUESTION_STEPS.map((step, index) => {
                 const isActive = activeQuestionIndex === index;
@@ -7509,7 +6877,11 @@ function RegisterPageContent() {
                 >
                   <div className={REWARD_SCROLL_SHELL}>
                     <div className={cn(REWARD_PAYOFF_CENTER, "max-w-md mx-auto px-1 pt-1")}>
-                      <SocialProofPolaroid reduced={!!prefersReducedMotion} />
+                      {/* Faster than the paywall's hold: this board is the
+                          whole screen and she leaves it in seconds, so the
+                          default 8s would show her one woman and call it a
+                          rotation. See `rotateMs` in components/SocialProof.tsx. */}
+                      <SocialProofPolaroid reduced={!!prefersReducedMotion} rotateMs={4500} />
                       <motion.p
                         initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -7642,7 +7014,8 @@ function RegisterPageContent() {
                       What should Lisa call you?
                     </h2>
                     <p className="text-sm sm:text-base text-muted-foreground">
-                      Lisa will use this to personalize your experience
+                      First name only - it&apos;s what Lisa calls you from here on.
+                      No email needed to see your results.
                     </p>
                   </div>
                   <div className="relative">
@@ -7715,9 +7088,8 @@ function RegisterPageContent() {
               reviewers look for, and the two a cautious 45-60 visitor looks for,
               have to be reachable from the screen the ad lands on. Since
               2026-09-02 that screen is this one, so the links moved with the
-              entrance rather than staying on a screen most visitors now never
-              see. (The start screen keeps its copy - it is still reachable by
-              backing off this question.)
+              entrance; the start screen itself was deleted on 2026-09-04, which
+              makes this the only copy in the funnel. Do not remove it.
 
               Question 1 only: repeating them under all seventeen steps is noise,
               and the entrance is the only place the obligation attaches.

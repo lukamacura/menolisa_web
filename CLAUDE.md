@@ -325,8 +325,8 @@ Housekeeping: every quiz finisher who never pays leaves an account behind, and
 Supabase bills monthly active users, so `/api/cron/purge-anon-accounts` deletes
 emailless, unpaid anonymous accounts older than 7 days. Every public user table
 now carries `user_id references auth.users on delete cascade` (verified
-2026-08-29 — `llm_usage` is the one exception, `on delete set null`, so the cost
-row survives without the identifier). `purge_stale_anonymous_users()` therefore
+2026-08-29; `llm_usage` used to be the one exception and was dropped
+2026-09-04). `purge_stale_anonymous_users()` therefore
 deletes from `auth.users` alone and lets the cascade do the rest; the per-table
 list it used to carry is gone, and it is what broke the function last time. Add
 a table with a `user_id`, give it the FK — do not add a line to that function.
@@ -396,7 +396,6 @@ Supabase (PostgreSQL) — no ORM, raw SQL queries via Supabase JS client:
 | `notifications` | `user_id`, `type`, `content`, `metadata` (JSONB), `is_read`, `created_at` |
 | `ad_spend` | One row per calendar day of Meta ad spend, typed into `/admin` — `day` (PK), `amount_usd`. Service-role only: RLS on, no policies, no grants. |
 | `funnel_events` | One row per `/register` screen reached — `session_id` (a random per-visit uuid, **not** an account and never joined to `auth.users`), `step`, `step_index`, `created_at`. The funnel's only measurement before the profile insert at step 17. Service-role only: RLS on, no policies, no grants. Never add her answers to it — see below. |
-| `llm_usage` | One row per OpenAI call — `user_id`, `run_id`, `kind`, `model`, `prompt_tokens`, `cached_prompt_tokens`, `completion_tokens`, `cost_usd`, `duration_ms`. Service-role only: RLS on, no policies, no grants. |
 
 ### Admin panel (`/admin`) — the sales desk
 
@@ -579,9 +578,10 @@ through `TRIAL_SELECT_COLS`, never a hand-written column list.
 **What was deliberately removed, and why not to re-add it.** From 2026-08-29: AI
 cost per plan, token counts, generation duration, MRR, the six-card
 account-state grid, the by-month bar chart, the gross/net/fees split, and the
-table of every account with a billing row. `llm_usage` is still written on every
-OpenAI call and `lib/llmCost.ts` still prices it — a cost question is a query
-against that table, not a permanent tile. (The last survivor — the *measured*
+table of every account with a billing row. `llm_usage` and `lib/llmCost.ts` are
+themselves **gone** as of 2026-09-04 — there is no per-call cost record any
+more, so a cost question needs the instrumentation rebuilt before it can be
+asked. (The last survivor — the *measured*
 serving cost per customer, deducted from contribution — went on 2026-09-03: it
 was fractions of a cent per plan and never changed a decision. Contribution is
 kept, less ads, less fixed costs, nothing else.) From
@@ -1346,7 +1346,7 @@ below reads like a rule, it is a pointer to one of those.
 | Judge a campaign on CAC vs the first $59 alone | That is the strictest possible bar on an auto-renewing plan, and it will tell you to switch off campaigns that make money. Renewal rate and LTV are what make the verdict honest. |
 | Put ad spend back in `localStorage` | One browser, one number, no history — so no windowed cost per sale, and an empty box the moment you open `/admin` on your phone. |
 | Call `isoDay()` without the timezone offset | `toISOString()` renders the UTC date, so local midnight east of Greenwich files today's ad spend under yesterday. It shipped broken once already. |
-| Put AI cost, MRR or the full client table back on `/admin` | None of them changed a decision, and together they buried the two figures that do. `llm_usage` still records every call — a cost question is a query, not a permanent tile. |
+| Put AI cost, MRR or the full client table back on `/admin` | None of them changed a decision, and together they buried the two figures that do. The `llm_usage` ledger behind the cost figure was deleted on 2026-09-04, so re-adding the tile now means rebuilding the instrumentation first — and it must cover `/api/langchain-rag`, which it never did. |
 | Put `symptom_count` or `goal` back on the Meta `Lead` | Health data about an identified person, sent to an ad platform, against our own policy's bold promise. FTC brought GoodRx/BetterHelp/Cerebral on exactly this, and WA's MHMDA gives a private right of action. `custom_data` on a Lead is reporting metadata, not an optimization signal — it bought nothing. |
 | Bypass `lib/privacySignals.ts` on any Meta call site | Privacy §6.4 states we honor GPC. A policy that claims it while pixels fire is the Sephora fine ($1.2M, first CCPA action). |
 | Write a figure into `/terms` or `/privacy` by hand | Both import from `lib/pricing.ts`. A Terms page stating a price Stripe does not charge is a misrepresentation about money, not a stale doc. |
@@ -1358,6 +1358,97 @@ below reads like a rule, it is a pointer to one of those.
 | Send anything from her symptoms, plan or check-in to Meta | Already covered above, and the check-in is the newest thing that looks harmless and isn't. |
 
 ### Recent work
+
+**2026-09-04 (latest) — first campaign read, funnel screen fixes, `/admin` made
+live, dead schema dropped.** The campaign's first 440 landing page views
+produced 74 quiz finishers and 0 sales. The audit's most useful result is a
+negative one: **checkout is not broken.** An anonymous session against
+production returned a real `cs_live_` Checkout Session, HTTP 200 — so
+`STRIPE_SECRET_KEY` and `STRIPE_PRICE_8WEEK` are live-mode and matched, and the
+2026-09-02 open item is closed. (That probe created one live Checkout Session,
+which inflates `/admin`'s checkout row by one for 30 days; Stripe sessions
+cannot be deleted.)
+
+- **The keyboard fix from 2026-09-03 worked.** Splitting `funnel_events` on the
+  deploy time, `q8_name` → `calculating` went from a 23% loss to 9%. n=11 after,
+  so it is directional, not settled — but it is the first confirmed win from the
+  telemetry.
+- **`q8_name` copy and the last-question label.** The header said "Almost there"
+  for the final *two* questions; it now says "Last question" on the last one,
+  which is both true and the most motivating thing available on the screen with
+  the second-largest loss in the quiz. The sub-line stopped saying "personalize
+  your experience" and now says what she gets and what she is not being asked
+  for: *no email needed to see your results*. That is checkable — results,
+  diagnosis, relief and the paywall all render before Stripe collects an address.
+  **The name stays required** (`app/register/page.tsx:4392`): it carries the
+  greetings, the reward boards and the Meta `fn` match parameter.
+- **Tapping anywhere dismisses the keyboard** (`useDismissKeyboardOnTap`). iOS
+  shows no "done" key over a plain text keyboard, so after typing there was no
+  way to put it down. The blur is **skipped when the tap lands on a control**,
+  and that exclusion is load-bearing: dismissing resizes the visual viewport,
+  the `keyboardInset`-anchored CTA drops with it, and the `click` that would
+  have followed lands on whatever slid under her finger. Blurring on a tap *at*
+  the button is how you break the button.
+- **`<SocialProofPolaroid />` takes a `rotateMs`.** The card always rotated; at
+  `ROTATE_MS` (8s) on `reward_social_proof` — a screen she leaves in seconds —
+  the second woman arrived after she was gone, so four members read as one
+  photograph. The board passes 4500; the paywall keeps 8000, where she is
+  scrolling a 2000px page and 8s is a read. Note the card is also deliberately
+  still under `prefers-reduced-motion`.
+- **`/admin` re-reads itself every 30 seconds** (`AUTO_REFRESH_MS`), skipping
+  the tick while the tab is backgrounded — every tick is a Stripe charge walk,
+  and a desk left open overnight must not spend a night of API calls. A silent
+  failure keeps the numbers on screen rather than replacing them with a red
+  line; only a dead session (401) surfaces. Figures tween via `useCountUp` so a
+  self-updating panel never reads as a glitch, and a countdown bar under the
+  masthead says when the figures were last true without a line of text. Colour
+  went up (a three-stop page wash, stronger panel lift); text came down (the
+  footer's three source sentences are now three labels). **The per-block source
+  tags stayed** — which side of the house a figure came from is still the one
+  way this screen can lie.
+- **Dead schema.** `llm_usage` had been write-only since the 2026-09-03 cost-tile
+  removal — 301 rows, $0.30 of history, last written 2026-08-29, and it never
+  covered Lisa chat at all. `lib/llmUsage.ts`, `lib/llmCost.ts` and the `meter`
+  plumbing through `buildPlan`/`buildNutritionWhy` are deleted;
+  `buildPlan(p, adherence)` lost its unused `userId` parameter.
+  `cleanup_old_notifications()` had no caller and no scheduler — **`pg_cron` is
+  not installed on this project**, so it had never run. Migration:
+  `scripts/sql/2026-09-04-drop-llm-usage.sql` (a JSON export of the 301 rows was
+  taken first). Nothing else in the codebase is dead: no unimported module, and
+  every remaining table has live readers and writers.
+- **Supabase audit.** The load-bearing result: **`user_trials` carries a
+  SELECT-only policy**, so no user can write their own `account_status` — nobody
+  can self-grant `paid`. The anon key returns `[]` or `42501` from all fifteen
+  tables, and every SECURITY DEFINER function is unreachable by `anon` and
+  `authenticated`. The linter's "anonymous access" warnings on eleven tables are
+  the anonymous funnel working as designed — those policies are
+  `auth.uid() = user_id`, not `USING (true)`, which is the distinction the
+  2026-08-08 incident was about. Three hardening items in
+  `scripts/sql/2026-09-04-harden-grants-and-search-path.sql`: `match_documents`
+  was executable by `anon` (no data — invoker rights, RLS still applied — but
+  free vector-search compute for anyone with the browser key), `funnel_dropoff`
+  had a mutable `search_path`, and `documents` / `stripe_webhook_events` still
+  carried table grants their service-role-only peers do not.
+
+**Still open.** Both migrations above are written but **not applied** — run them
+in the Supabase SQL editor. And the free-tier ceiling that actually binds is
+**egress, not storage**: 34.8MB of 500MB database and 74MB of 1GB storage is
+nothing, but Smart CDN is off on Free, so every exercise clip re-downloads from
+origin on every view. See "Still open" above for the clip caching item.
+
+**2026-09-04 — the start screen deleted.** It was bypassed as the cold-start
+phase on 2026-09-02 and kept only so `goBack` off question 1 had somewhere to
+land; it is now gone from the code, along with `START_PILLARS` and
+`public/illustrations/start.webp`. Three couplings moved with it: the `start`
+member of `Phase` and its `funnel_events` ping (index 0 is now never sent), the
+resume-ticket guard (`phase !== "quiz"` alone — it is the only cold-start phase
+left), and the Back control, which no longer renders on `stepIndex === 0`
+because there is nothing behind the entrance. **Terms and Privacy now exist only
+under the question 1 card** — that is the funnel's whole legal surface, so do not
+remove it. `start` stays in `INACTIVE_STEPS` in `/api/admin/stats` and out of
+`STEP_LABELS`: nothing pings the key, but rows written before today are still
+inside the 30-day window and it carries `step_index` 0, so leaving it in would
+make it the entry row and the 100% base for every bar.
 
 **2026-09-03 (latest) — the first telemetry read, one bad reading, and the
 reorder it paid for.** `funnel_events` had a day of data. Three changes, and the
@@ -1811,7 +1902,8 @@ and 7 orphaned finishers backfilled. The quiz became 12 questions in a new order
 columns stay, because the Expo app still asks them.
 
 **2026-08-11 — admin panel rebuilt on real numbers.** Revenue from Stripe
-charges, conversion from Supabase on both sides, cost per plan from `llm_usage`.
+charges, conversion from Supabase on both sides, cost per plan from `llm_usage`
+(that last one is gone — see 2026-09-04).
 See §4.
 
 **2026-08-10 — the funnel stopped asking for an email; checkout fulfillment made
