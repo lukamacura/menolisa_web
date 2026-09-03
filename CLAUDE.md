@@ -581,9 +581,10 @@ cost per plan, token counts, generation duration, MRR, the six-card
 account-state grid, the by-month bar chart, the gross/net/fees split, and the
 table of every account with a billing row. `llm_usage` is still written on every
 OpenAI call and `lib/llmCost.ts` still prices it — a cost question is a query
-against that table, not a permanent tile. (The one survivor is the *measured*
-serving cost per customer, an input to contribution. It counts plan generation
-only; Lisa chat is unmetered, so it is a floor and the UI says so.) From
+against that table, not a permanent tile. (The last survivor — the *measured*
+serving cost per customer, deducted from contribution — went on 2026-09-03: it
+was fractions of a cent per plan and never changed a decision. Contribution is
+kept, less ads, less fixed costs, nothing else.) From
 2026-08-30: **"Profit"** — all-time revenue minus a hand-typed spend total, no
 fees, no fixed costs, two windows that never lined up; **the "Her plan" column**
 — an ops signal in a money table, already duplicated by the alert under it;
@@ -621,13 +622,20 @@ candidate cause was equally plausible and none was testable.
   prioritized events; that is why the seven custom funnel events were deleted on
   2026-08-17 and why re-adding them is in the "decided against" table. "Which
   screen leaks" is a product question, answered in our own database.
-- **A phase is not a screen.** `relief` was pinged once while being three
-  screens, so the 16% it lost could have been the offer, the timer or the payoff
-  and the data could not say which. It is `relief_intro` / `relief_running` /
-  `relief_reward` since 2026-09-03, from `POST_QUIZ_FUNNEL_STEPS`, and the old
-  `relief` key is kept in `STEP_LABELS` (as "Breathing exercise (all)") because
-  rows written before the split are still inside the 30-day window. Any phase
-  that grows a second screen gets the same treatment.
+- **One key per row, and re-keying a row throws its history away.** `relief` was
+  split into `relief_intro` / `relief_running` / `relief_reward` on 2026-09-03
+  (the phase really is three screens, and the single row could not say which of
+  them lost the 16%) and put back on **2026-09-04**. The split was right about
+  the product question and wrong about the cost: every session already inside the
+  30-day window is keyed `relief`, so the chart printed three near-empty rows
+  beside a historical one and the breathing step became unreadable at exactly the
+  volume it was added to measure. `POST_QUIZ_FUNNEL_STEPS` pings one `relief`
+  again; `/api/admin/stats` folds `relief_intro` back into `relief` (same
+  phase-entry event, and a session pinged one key or the other depending on the
+  deploy, never both, so the sum is exact) and drops `relief_running` /
+  `relief_reward` via `INACTIVE_STEPS`. If those three screens are worth
+  separating again, do it as a second chart off the same table rather than by
+  re-keying the row the curve depends on.
 - Client side is `pingFunnelStep()` in `app/register/page.tsx` — `keepalive`,
   fire-and-forget, every failure swallowed, deduped per visit by a ref. It
   returns without a row rather than inventing a weak id when `sessionStorage` or

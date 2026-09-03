@@ -35,8 +35,9 @@ export const dynamic = "force-dynamic";
  * grid, the by-month chart, and the table of every account with a billing row.
  * `llm_usage` is still written on every OpenAI call and `lib/llmCost.ts` still
  * prices it — a cost question is a query against that table, not a tile. The
- * one number that survived from it is the measured serving cost per customer,
- * which is an input to contribution.
+ * "serving cost per customer" line that used to be deducted from contribution
+ * went on 2026-09-03: it was fractions of a cent per plan and the operator
+ * does not steer on it. Contribution is kept, less ads, less fixed costs.
  */
 
 // Admin panel password. Set ADMIN_PANEL_PASSWORD in the env + Vercel.
@@ -625,7 +626,6 @@ export async function POST(req: NextRequest) {
     plansResult,
     quizCountResult,
     spendResult,
-    llmResult,
     revenue,
     checkout,
     emails,
@@ -652,10 +652,6 @@ export async function POST(req: NextRequest) {
       .select("day, amount_usd")
       .gte("day", isoDay(thirtyDaysAgo, tzOffsetMinutes))
       .order("day", { ascending: true }),
-    // Serving cost per customer, measured rather than assumed. Only plan
-    // generation is metered — Lisa chat on the phone is not — so this is a
-    // floor, and the UI says so.
-    supabaseAdmin.from("llm_usage").select("user_id, cost_usd"),
     stripe
       ? loadRevenue(stripe, startOfToday, funnelSince)
       : Promise.resolve(emptyRevenue("STRIPE_SECRET_KEY is not set")),
@@ -759,13 +755,6 @@ export async function POST(req: NextRequest) {
     .sort(([a], [b]) => (a < b ? 1 : -1))
     .map(([day, amount]) => ({ day, amount }));
 
-  // ─── Serving cost, measured ───────────────────────────────────────────────
-
-  const llmRows = llmResult.data ?? [];
-  const llmUsers = new Set(llmRows.map((r) => r.user_id).filter(Boolean));
-  const llmTotal = llmRows.reduce((a, r) => a + (Number(r.cost_usd) || 0), 0);
-  const servingPerCustomer = llmUsers.size > 0 ? llmTotal / llmUsers.size : 0;
-
   // ─── Unit economics ───────────────────────────────────────────────────────
 
   /** What one $59 sale is worth after Stripe takes its cut. The break-even unit. */
@@ -788,12 +777,7 @@ export async function POST(req: NextRequest) {
       ? null
       : round2(keptPerSale * Math.min(1 / Math.max(1 - renewalRate, 0.05), 20));
 
-  const contribution30 = round2(
-    revenue.last30.kept -
-      adSpend30 -
-      FIXED_MONTHLY_USD -
-      revenue.last30.count * servingPerCustomer
-  );
+  const contribution30 = round2(revenue.last30.kept - adSpend30 - FIXED_MONTHLY_USD);
 
   // ─── Forward view: money already on the calendar ──────────────────────────
 
@@ -896,12 +880,41 @@ export async function POST(req: NextRequest) {
     // Stripe is the one that knows whether money moved. Two rows for one event
     // is the duplicate this curve exists to not have.
     "download",
+    // The 2026-09-03 relief split, reverted 2026-09-04. The phase is three
+    // screens, but every session already in the window is filed under the
+    // single `relief` key, so splitting it printed three near-empty rows beside
+    // a historical one and made the breathing step unreadable. `relief_intro`
+    // is not dropped — it fires on the same phase entry the old `relief` key
+    // did, so it is folded back into that row below; these two have no
+    // pre-split counterpart and simply go.
+    "relief_running",
+    "relief_reward",
   ]);
-  const screenRows = ((dropoffResult.data ?? []) as {
+  /**
+   * `relief_intro` **is** `relief` — both fire the moment the relief phase
+   * mounts — so the rows are summed rather than shown separately. A session
+   * pinged one key or the other depending on which deploy it landed on, never
+   * both, so the sum is exact rather than an over-count. Position is the
+   * earlier of the two, which keeps the row where the curve expects it.
+   */
+  const RELIEF_ALIASES: Record<string, string> = { relief_intro: "relief" };
+  const screenRows: { step_index: number; step: string; sessions: number }[] = [];
+  for (const row of (dropoffResult.data ?? []) as {
     step_index: number;
     step: string;
     sessions: number;
-  }[]).filter((r) => !INACTIVE_STEPS.has(r.step));
+  }[]) {
+    if (INACTIVE_STEPS.has(row.step)) continue;
+    const step = RELIEF_ALIASES[row.step] ?? row.step;
+    const existing = screenRows.find((r) => r.step === step);
+    if (existing) {
+      existing.sessions += row.sessions;
+      existing.step_index = Math.min(existing.step_index, row.step_index);
+      continue;
+    }
+    screenRows.push({ step_index: row.step_index, step, sessions: row.sessions });
+  }
+  screenRows.sort((a, b) => a.step_index - b.step_index);
 
   /**
    * **One curve, top of the funnel to the money, no row measured twice.**
@@ -935,13 +948,7 @@ export async function POST(req: NextRequest) {
     "calculating",
     "results",
     "diagnosis",
-    // `relief` is the pre-2026-09-03 single row; the three that follow are the
-    // screens it was hiding. All four are grouped "after" so a window spanning
-    // the split still labels every one of them as post-quiz.
     "relief",
-    "relief_intro",
-    "relief_running",
-    "relief_reward",
     "paywall",
   ]);
   const paidInCurve = revenue.firstChargeTimes.filter((t) => t >= curveSince).length;
@@ -1202,7 +1209,6 @@ export async function POST(req: NextRequest) {
       todayIso: isoDay(startOfToday, tzOffsetMinutes),
       todaySpend: spendByDay.get(isoDay(startOfToday, tzOffsetMinutes)) ?? null,
       fixedMonthly: round2(FIXED_MONTHLY_USD),
-      servingPerCustomer: Math.round(servingPerCustomer * 10000) / 10000,
     },
     acq: {
       newCustomers30: revenue.newCustomers30,

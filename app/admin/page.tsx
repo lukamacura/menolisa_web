@@ -20,8 +20,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
  *   contribution, a new sale, the last funnel step. If it is green, Stripe has
  *   it.
  *
- *   **Amber — money going out.** Ad spend, fixed costs, serving cost. Every
- *   amber figure is a deduction from a green one.
+ *   **Amber — money going out.** Ad spend and fixed costs. Every amber figure
+ *   is a deduction from a green one.
  *
  *   **Violet — money on the calendar.** Booked renewals, the renewal rate, the
  *   renewal tag, the refund guarantee still owed. Real, not yet collected.
@@ -141,7 +141,6 @@ type Stats = {
     todayIso: string;
     todaySpend: number | null;
     fixedMonthly: number;
-    servingPerCustomer: number;
   };
   acq: { newCustomers30: number; cac: number | null; keptPerSale: number; feeRate: number };
   retention: {
@@ -702,12 +701,6 @@ export default function AdminPage() {
                 value={costs.fixedMonthly > 0 ? money(costs.fixedMonthly) : "—"}
                 tone={costs.fixedMonthly > 0 ? "spend" : "mute"}
               />
-              <Row
-                label="Serving cost per customer"
-                hint="Measured from every OpenAI call for plan generation. Lisa chat is not metered, so this is a floor."
-                value={`$${costs.servingPerCustomer.toFixed(4)}`}
-                tone="mute"
-              />
             </div>
 
             {/* Value — green for collected, violet for what renewal brings. */}
@@ -815,11 +808,7 @@ export default function AdminPage() {
               <b className="font-semibold text-[var(--spend-deep)] tabular-nums">
                 {money(costs.fixedMonthly)}
               </b>{" "}
-              fixed and{" "}
-              <b className="font-semibold text-[var(--spend-deep)] tabular-nums">
-                {money(m.last30.count * costs.servingPerCustomer, 2)}
-              </b>{" "}
-              serving cost.
+              fixed.
             </p>
             <p
               className={`font-serif text-3xl tracking-tight tabular-nums ${
@@ -1716,14 +1705,13 @@ const STEP_LABELS: Record<string, string> = {
   calculating: "Building her plan",
   results: "Results + score",
   diagnosis: "The plan",
-  // `relief` was one row until 2026-09-03 and is now three, because the phase
-  // is three screens and the single row could not say which of them lost the
-  // 16%. The old key stays: rows written before the split are still in the
-  // 30-day window, and a raw `relief` in the chart would read as a bug.
-  relief: "Breathing exercise (all)",
-  relief_intro: "Breathing · offered",
-  relief_running: "Breathing · started",
-  relief_reward: "Breathing · toolkit",
+  // One row for the whole breathing phase. It was split into three screens on
+  // 2026-09-03 and put back on 2026-09-04: every session already in the window
+  // is keyed `relief`, so the split printed three near-empty rows beside a
+  // historical one. The route folds `relief_intro` — the same phase-entry
+  // event — back into this key and drops the other two, so nothing here needs
+  // to name them.
+  relief: "Breathing exercise",
   paywall: "Paywall",
   // The last two are not screens and carry no `funnel_events` row. They are
   // Stripe, appended below the paywall because that is where they happen: the

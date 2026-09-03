@@ -1280,7 +1280,7 @@ function pingFunnelStep(step: string, stepIndex: number) {
  *
  *   0        start screen (only reachable now by backing off question 1)
  *   1..17    the quiz steps, in STEPS order
- *   18..26   the post-quiz screens, in POST_QUIZ_FUNNEL_STEPS order
+ *   18..23   the post-quiz screens, in POST_QUIZ_FUNNEL_STEPS order
  *
  * Capped well under the route's `MAX_STEP_INDEX` of 40, which leaves room for
  * screens to be added without the two files having to move together.
@@ -1288,29 +1288,29 @@ function pingFunnelStep(step: string, stepIndex: number) {
 const POST_QUIZ_BASE = 18;
 
 /**
- * The post-quiz curve as the drop-off chart reads it — one entry per *screen*,
- * which is not the same thing as one entry per phase.
+ * The post-quiz curve as the drop-off chart reads it — one row per phase.
  *
- * `relief` is three screens behind one phase name: the intro, the 36-second
- * timer, and the reward board. It was pinged once, as `relief`, so the 16% it
- * loses could have been the gate, the exercise or the payoff and nothing in the
- * data could say which — the same blind spot the whole `funnel_events` table
- * exists to close. Three rows, three answers, and the one figure that matters
- * most: how many women start the timer versus how many only see the offer of it.
+ * `relief` was split into `relief_intro` / `relief_running` / `relief_reward`
+ * on 2026-09-03 and put back on 2026-09-04. The split was sound in principle —
+ * the phase really is three screens — but it stranded the row: every session
+ * already in the 30-day window is filed under the single `relief` key, so the
+ * chart printed three near-empty rows next to a historical one and the whole
+ * breathing step became unreadable at exactly the volume it was added to
+ * measure. One key, one row, continuous with the data we already have.
  *
- * Indices stay monotonic and under the route's `MAX_STEP_INDEX` of 40. Adding
- * the two extra relief rows shifts `paywall` and `download` down by two; that is
- * safe because `funnel_dropoff` orders by the position each screen was **last**
- * seen at, so a window containing both numberings sorts by the current one
- * rather than blending two screens into a bucket.
+ * If the three screens are worth separating again, do it as a second chart off
+ * the same table rather than by re-keying the row the curve depends on.
+ *
+ * Indices stay monotonic and under the route's `MAX_STEP_INDEX` of 40.
+ * `funnel_dropoff` orders by the position each screen was **last** seen at, so
+ * a window containing both numberings sorts by the current one rather than
+ * blending two screens into a bucket.
  */
 const POST_QUIZ_FUNNEL_STEPS = [
   "calculating",
   "results",
   "diagnosis",
-  "relief_intro",
-  "relief_running",
-  "relief_reward",
+  "relief",
   "paywall",
   "download",
 ] as const;
@@ -3899,21 +3899,19 @@ function RegisterPageContent() {
       step = STEPS[stepIndex] ?? "unknown";
       index = stepIndex + 1;
     } else {
-      // `relief` is four screens, and each one gets its own row - see
-      // POST_QUIZ_FUNNEL_STEPS. Every other phase is one screen and keeps its
-      // own name.
-      const name = phase === "relief" ? `relief_${reliefStage}` : phase;
+      // One row per phase, `relief` included - see POST_QUIZ_FUNNEL_STEPS for
+      // why its three screens are not pinged separately.
       const position = POST_QUIZ_FUNNEL_STEPS.indexOf(
-        name as (typeof POST_QUIZ_FUNNEL_STEPS)[number]
+        phase as (typeof POST_QUIZ_FUNNEL_STEPS)[number]
       );
       if (position < 0) return;
-      step = name;
+      step = phase;
       index = POST_QUIZ_BASE + position;
     }
     if (funnelStepsSent.current.has(step)) return;
     funnelStepsSent.current.add(step);
     pingFunnelStep(step, index);
-  }, [phase, stepIndex, reliefStage]);
+  }, [phase, stepIndex]);
   // Question position for the progress label/dots (reward steps excluded; during a
   // reward step we keep the last answered question's dot lit).
   const activeQuestionIndex = QUESTION_STEPS.includes(currentStep)
@@ -6997,7 +6995,6 @@ function RegisterPageContent() {
                     options={AGE_OPTIONS}
                     selected={ageBand}
                     onSelect={(id) => selectAndAdvance(() => setAgeBand(id))}
-                    priority
                   />
                 </div>
               )}
@@ -7350,6 +7347,13 @@ function RegisterPageContent() {
                                 alt={option.label}
                                 fill
                                 sizes="(min-width: 640px) 33vw, 50vw"
+                                // This is the funnel's landing screen (symptoms
+                                // first since 2026-09-03), so these nine tiles
+                                // are the LCP. Without `priority` next/image
+                                // ships them `loading="lazy"` — verified on the
+                                // live HTML — and the ad's first paint is a grid
+                                // of labels over empty boxes on a phone.
+                                priority
                                 className="object-cover"
                               />
                               {isSelected && <div className="absolute inset-0 bg-primary/15" />}
