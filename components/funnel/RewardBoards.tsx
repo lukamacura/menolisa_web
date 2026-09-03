@@ -455,6 +455,18 @@ function Signoff({ delay, children }: { delay: number; children: React.ReactNode
  * value this screen exists to produce), then two headed blocks for the why and
  * the payload. Nothing was added or removed to do it; the prevalence line just
  * moved inside the block it is a footnote to.
+ *
+ * **The payload made the hero, 2026-09-03.** The ledger fixed the shape and
+ * flattened the hierarchy: the ranking, the why-block, the tonight-block and
+ * the sign-off were four boxes of the same weight, and the one she is paid
+ * with was the smallest type on the board (12.5px inside a 5% tint) - followed
+ * by a pink sign-off that arrived *after* it, with the board's only ring
+ * pulse, and took the last beat. So the eye landed on the sign-off and the
+ * gift read as a footnote to the ranking. Now: the why is plain text under the
+ * list (no box, no bar), the tonight-block is a solid-green-headed note at
+ * 15.5px with the ring pulse and the board's only shadow, and the sign-off is
+ * one grey line beneath it. One box on the board, and it is the thing she
+ * takes home.
  */
 export type StartingPointRow = { id: string; label: string; Icon: LucideIcon };
 
@@ -565,33 +577,29 @@ export function StartingPointBoard({
 
       {/* Section 2 - why the top one is the top one, then the crowd, in that
           order and at that weight. The physiology is the argument; the
-          percentage is the reassurance underneath it, on its own ruled line so
-          it reads as a footnote to the block rather than a second claim. */}
+          percentage is the reassurance underneath it. Plain text, no box: it
+          is the bridge between the ranking and the payload, and a bordered
+          block here was a third object competing with the one that matters. */}
       {(mechanism || top) && (
-        <div className="mt-2 overflow-hidden rounded-xl border border-[#E8DDD9]">
-          <Line i={0} delay={whyBarAt} className={cn(SECTION_BAR, "px-2.5")}>
-            <span className="truncate">Why it&apos;s first</span>
-          </Line>
-          <div className="px-2.5 py-1.5">
-            {mechanism && (
-              <Line i={0} delay={mechAt} className="text-[11.5px] leading-snug text-[#5A5A5A]">
-                {mechanism}
-              </Line>
-            )}
-            {top && (
-              <Line
-                i={0}
-                delay={pctAt}
-                className={cn(
-                  "text-[10px] leading-snug text-[#9A9A9A]",
-                  mechanism && "mt-1 border-t border-dashed border-[#EFE6E1] pt-1"
-                )}
-              >
-                <span className="font-bold tabular-nums text-[#7A7A7A]">{topPct}%</span> of {cohort}{" "}
-                report {top.label.toLowerCase()} too.
-              </Line>
-            )}
-          </div>
+        <div className="mt-1.5 px-0.5">
+          {mechanism && (
+            <Line i={0} delay={mechAt} className="text-[11.5px] leading-snug text-[#5A5A5A]">
+              <span className="text-[9.5px] font-extrabold uppercase tracking-wide text-[#8C8279]">
+                Why it&apos;s first
+              </span>{" "}
+              &middot; {mechanism}
+            </Line>
+          )}
+          {top && (
+            <Line
+              i={0}
+              delay={pctAt}
+              className={cn("text-[10px] leading-snug text-[#9A9A9A]", mechanism && "mt-0.5")}
+            >
+              <span className="font-bold tabular-nums text-[#7A7A7A]">{topPct}%</span> of {cohort}{" "}
+              report {top.label.toLowerCase()} too.
+            </Line>
+          )}
         </div>
       )}
 
@@ -607,45 +615,75 @@ export function StartingPointBoard({
           anything closes any of it. */}
       {firstMove && (
         <motion.div
-          initial={reduced ? false : { opacity: 0, y: 8, scale: 0.985 }}
+          initial={reduced ? false : { opacity: 0, y: 10, scale: 0.97 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={
             reduced
               ? { duration: 0 }
-              : { type: "spring", stiffness: 300, damping: 24, delay: moveAt }
+              : { type: "spring", stiffness: 280, damping: 22, delay: moveAt }
           }
-          className="mt-2 overflow-hidden rounded-xl border border-[#16A34A]/30"
+          className="relative mt-2.5"
         >
-          <div className="flex items-center justify-between gap-2 bg-[#16A34A]/[0.12] px-2.5 py-[3px] text-[10.5px] font-bold uppercase tracking-wide text-[#15803D]">
-            <span className="flex min-w-0 items-center gap-1">
-              <Moon className="h-3 w-3 shrink-0" strokeWidth={2.6} aria-hidden />
-              <span className="truncate">Do this tonight</span>
-            </span>
-            <span className="shrink-0 rounded bg-[#16A34A] px-1.5 py-[1px] text-[9.5px] font-extrabold tracking-normal text-white">
-              Free
-            </span>
-          </div>
-          <div className="bg-[#16A34A]/[0.05] px-2.5 py-1.5">
-            <p className="text-[12.5px] font-bold leading-snug text-[#3D3D3D]">{firstMove.do}</p>
-            <p className="mt-0.5 text-[11px] leading-snug text-[#5A5A5A]">{firstMove.why}</p>
+          {/* The ring pulse the sign-off used to own. It is the board's one
+              "look here" gesture, and it belongs on the thing she is being
+              handed, not on the sentence after it. */}
+          <motion.span
+            aria-hidden
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={reduced ? { opacity: 0 } : { opacity: [0, 0.9, 0], scale: [0.97, 1.05, 1.09] }}
+            transition={
+              reduced
+                ? { duration: 0 }
+                : { delay: moveAt + 0.12, duration: 0.95, times: [0, 0.3, 1], ease: EASE }
+            }
+            className="pointer-events-none absolute -inset-0.5 rounded-2xl ring-[3px] ring-[#16A34A]/50"
+          />
+          <div
+            className="relative overflow-hidden rounded-2xl border-2 border-[#16A34A] bg-[#F3FBF5]"
+            style={{ boxShadow: "0 8px 22px rgba(22,163,74,0.22), 0 1px 3px rgba(22,163,74,0.18)" }}
+          >
+            <div className="flex items-center justify-between gap-2 bg-[#16A34A] px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.1em] text-white">
+              <span className="flex min-w-0 items-center gap-1.5">
+                <Moon className="h-3.5 w-3.5 shrink-0" strokeWidth={2.6} aria-hidden />
+                <span className="truncate">Your move for tonight</span>
+              </span>
+              <span className="shrink-0 rounded bg-white/25 px-1.5 py-[1px] text-[9.5px] tracking-normal">
+                Free
+              </span>
+            </div>
+            <div className="px-3 pt-2.5 pb-2.5">
+              <p className="text-[15.5px] font-extrabold leading-snug text-[#3D3D3D] text-balance">
+                {firstMove.do}
+              </p>
+              <p className="mt-2 border-t border-dashed border-[#CDE7D4] pt-1.5 text-[11.5px] leading-snug text-[#5A5A5A]">
+                {firstMove.why}
+              </p>
+            </div>
           </div>
         </motion.div>
       )}
 
-      <Signoff delay={signAt}>
+      {/* Not <Signoff />: that is a pink box with a ring pulse, and on this
+          board it sat directly under the payload and outshone it. One quiet
+          line - it is the caption to the gift, not a second gift. */}
+      <Line
+        i={0}
+        delay={signAt}
+        className="mt-2 text-center text-[11px] leading-snug text-[#8C8279]"
+      >
         One thing, tonight.{" "}
         {rest > 0 ? (
           <>
             The other {rest} {rest === 1 ? "is" : "are"} in your{" "}
-            <span className="whitespace-nowrap font-extrabold">{planWeeks}-week plan</span>.
+            <span className="whitespace-nowrap font-bold text-[#5A5A5A]">{planWeeks}-week plan</span>.
           </>
         ) : (
           <>
             The rest is in your{" "}
-            <span className="whitespace-nowrap font-extrabold">{planWeeks}-week plan</span>.
+            <span className="whitespace-nowrap font-bold text-[#5A5A5A]">{planWeeks}-week plan</span>.
           </>
         )}
-      </Signoff>
+      </Line>
     </RewardPaper>
   );
 }

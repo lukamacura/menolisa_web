@@ -435,30 +435,21 @@ export function PaywallView({
             <br />
             {PLAN_WEEKS} weeks from today.
           </h1>
-          {/* The discount is only claimed while it is still on the card. Once
-              the badge reads REGULAR PRICE, a headline shouting "50% off" is the
-              screen contradicting itself.
-
-              It opened on "Start today" until the headline above ended on "from
+          {/* It opened on "Start today" until the headline above ended on "from
               today" - the same word twice inside 20px, which reads as a typo
               rather than as emphasis. "Starts the moment you join" keeps the
               immediacy the line was there for and is the literal truth: the
               plan is generated during checkout, so it exists before she has
-              finished downloading the app. */}
-          <p className="text-sm text-[#5A5A5A] mt-1">
-            Starts the moment you join
-            {!expired && (
-              <>
-                ,{" "}
-                <span
-                  className="font-bold bg-clip-text text-transparent"
-                  style={{ backgroundImage: "linear-gradient(135deg, #ff74b1, #65dbff)" }}
-                >
-                  {PLAN_DISCOUNT_PCT}% off
-                </span>
-              </>
-            )}
-          </p>
+              finished downloading the app.
+
+              It carried ", 50% off" in gradient type until 2026-09-03. With the
+              countdown band, the badge and the strikethrough all inside the
+              same first viewport, that made four discount signals on one
+              screen - a clearance page, read by a woman who has just been told
+              this plan was built from her own answers. The discount is now
+              shown once, as a number (the strikethrough), and timed once (the
+              band). Nothing else on the screen says "off". */}
+          <p className="text-sm text-[#5A5A5A] mt-1">Starts the moment you join</p>
         </motion.div>
 
         {/* Her finish line, sitting above the price hold rather than between it
@@ -558,7 +549,7 @@ export function PaywallView({
             ) : (
               <>
                 <Sparkles className="w-3 h-3" />
-                {PLAN_WEEKS} WEEK PLAN &middot; {PLAN_DISCOUNT_PCT}% OFF
+                YOUR {PLAN_WEEKS} WEEK PLAN
               </>
             )}
           </span>
@@ -580,25 +571,22 @@ export function PaywallView({
               is the price. The rule at the bottom of this file is unaffected:
               every figure shown is still >= what she is charged, and the
               expired branch still shows the anchor. */}
+          {/* Ink, not gradient, and 3xl rather than 4xl (2026-09-03). A price
+              is a fact, and the screen's colour rule gives facts ink; a
+              pink-to-blue number is a sale sticker, and it was the loudest
+              object in the first viewport on a page whose job is to be
+              trusted. The number is still the biggest type on the card - it
+              just no longer shouts. */}
           <div className="pt-2 text-center">
             <div className="flex items-baseline justify-center gap-2 flex-wrap">
               {!expired && (
-                <span className="text-lg text-[#9A9A9A] line-through font-medium">
+                <span className="text-base text-[#9A9A9A] line-through font-medium">
                   {ANCHOR_PRICE}
                 </span>
               )}
-              {expired ? (
-                <span className="text-4xl font-extrabold text-[#3D3D3D]">
-                  {livePrice}
-                </span>
-              ) : (
-                <span
-                  className="text-4xl font-extrabold bg-clip-text text-transparent"
-                  style={{ backgroundImage: "linear-gradient(135deg, #ff74b1 0%, #65dbff 100%)" }}
-                >
-                  {livePrice}
-                </span>
-              )}
+              <span className="text-3xl font-extrabold text-[#3D3D3D] tabular-nums">
+                {livePrice}
+              </span>
               <span className="text-sm text-[#5A5A5A] font-medium">
                 for {PLAN_WEEKS} weeks
               </span>
@@ -633,9 +621,17 @@ export function PaywallView({
               all {PLAN_WEEKS} weeks.
             </p>
 
-            {/* The renewal is stated at the price, not in the small print under
-                the button. She is agreeing to a subscription; burying that is
-                how a week-8 charge turns into a chargeback.
+            {/* The renewal is stated at the price, not only in the small print
+                under the button. She is agreeing to a subscription; burying
+                that is how a week-8 charge turns into a chargeback.
+
+                Stated, not headlined (2026-09-03). It was a bold text-sm line -
+                the largest type on the card after the price itself - so the
+                card read "$59 ... then $59 every 8 weeks" and the renewal was
+                the second thing she learned about the offer. A subscription
+                disclosure has to be present and legible; it does not have to
+                be the argument. One plain line in the card's small type, with
+                the notice and the exit in the same sentence.
 
                 It is also repeated under the sticky CTA (see the bar at the
                 bottom of this file), and that is deliberate rather than
@@ -644,12 +640,9 @@ export function PaywallView({
                 may not be looking at when she taps. Stripe's own sheet shows
                 subscription terms next to the card field; the first time she
                 reads "renews" must not be there. */}
-            <p className="text-sm text-[#3D3D3D] mt-2 font-semibold">
-              {livePrice} today, then {PRICE} every {PLAN_WEEKS} weeks
-            </p>
-            <p className="text-xs text-[#5A5A5A] mt-1">
-              We email you {RENEWAL_NOTICE_DAYS} days before each renewal.{" "}
-              <b className="text-[#3D3D3D]">Cancel anytime.</b>
+            <p className="mt-2 text-xs text-[#7A7A7A] leading-snug">
+              Renews at {PRICE} every {PLAN_WEEKS} weeks. We email you {RENEWAL_NOTICE_DAYS} days
+              before, and you can cancel anytime.
             </p>
 
             {/* What Stripe will actually accept, shown as the card/wallet marks
@@ -933,11 +926,19 @@ export function PaywallView({
               the page; that is both a conversion break and the disclosure the
               auto-renewal statutes want made before the charge, not during it.
 
-              One line, plain words, above the trust marks - so the order she
-              reads it in is what she gets, then who takes the money. */}
+              One line, plain words, above the trust marks. The order inside it
+              changed on 2026-09-03: it read "$59 today, then **$59 every 8
+              weeks**. Cancel anytime." - the renewal in the only bold on the
+              bar, 20px under the button, for the whole ~2000px of scroll. The
+              last thing she reads before tapping was the charge she is most
+              afraid of. Risk reversal is a closer, and under the button is the
+              closing position, so the guarantee leads (it names the card ~700px
+              up rather than restating its condition), the exit is second, and
+              the renewal is still on the line - present, legible, unbolded.
+              Stripe's sheet and the price card both say it again. */}
           <p className="text-[11px] sm:text-xs text-[#5A5A5A] text-center mt-2 leading-relaxed">
-            {livePrice} today, then <b className="text-[#3D3D3D]">{PRICE} every {PLAN_WEEKS} weeks</b>.
-            Cancel anytime.
+            <b className="text-[#3D3D3D]">{PLAN_WEEKS} week guarantee</b> &middot; Cancel anytime
+            &middot; Renews at {PRICE} every {PLAN_WEEKS} weeks
           </p>
           <p className="text-[11px] sm:text-xs text-[#7A7A7A] text-center mt-1 sm:mt-1.5 leading-relaxed">
             <span className="inline-flex items-center justify-center gap-1 flex-wrap">
