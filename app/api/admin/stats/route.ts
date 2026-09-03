@@ -931,7 +931,19 @@ export async function POST(req: NextRequest) {
    * `group` is presentation only. It never changes a base: every percentage in
    * this block still divides by the row above it, and the bars by `entry`.
    */
-  const POST_QUIZ = new Set(["calculating", "results", "diagnosis", "relief", "paywall"]);
+  const POST_QUIZ = new Set([
+    "calculating",
+    "results",
+    "diagnosis",
+    // `relief` is the pre-2026-09-03 single row; the three that follow are the
+    // screens it was hiding. All four are grouped "after" so a window spanning
+    // the split still labels every one of them as post-quiz.
+    "relief",
+    "relief_intro",
+    "relief_running",
+    "relief_reward",
+    "paywall",
+  ]);
   const paidInCurve = revenue.firstChargeTimes.filter((t) => t >= curveSince).length;
   const curveRows: {
     step: string;

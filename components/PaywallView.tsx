@@ -361,7 +361,7 @@ export function PaywallView({
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pt-4 sm:pt-6 pb-[calc(140px+env(safe-area-inset-bottom))] relative [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pt-4 sm:pt-6 pb-[calc(168px+env(safe-area-inset-bottom))] relative [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -563,27 +563,49 @@ export function PaywallView({
             )}
           </span>
 
+          {/* ── The number here is what Stripe will charge, not the per-day
+              slice of it (2026-09-03). ──
+
+              It was the per-day figure at 4xl — $1.05, against a struck-through
+              $2.11 — with `{PRICE}` appearing exactly once on the whole screen,
+              in 12px grey, three lines below. The sticky CTA said "Get my plan
+              for $1.05/day" for all ~2000px of scroll. So the first time a woman
+              saw the string "$59" was on the Stripe sheet, with a card field
+              under it: a number 56x larger than the one she had been reading for
+              two minutes, arriving at the exact moment she is deciding whether
+              to trust us. Five checkouts opened and none completed.
+
+              Per-day framing is not dishonest and it is not gone — it is the
+              sub-line, which is where a reframing of a price belongs. The price
+              is the price. The rule at the bottom of this file is unaffected:
+              every figure shown is still >= what she is charged, and the
+              expired branch still shows the anchor. */}
           <div className="pt-2 text-center">
             <div className="flex items-baseline justify-center gap-2 flex-wrap">
               {!expired && (
-                <span className="text-sm text-[#9A9A9A] line-through font-medium">
-                  {ANCHOR_PER_DAY}
+                <span className="text-lg text-[#9A9A9A] line-through font-medium">
+                  {ANCHOR_PRICE}
                 </span>
               )}
               {expired ? (
                 <span className="text-4xl font-extrabold text-[#3D3D3D]">
-                  {livePricePerDay}
+                  {livePrice}
                 </span>
               ) : (
                 <span
                   className="text-4xl font-extrabold bg-clip-text text-transparent"
                   style={{ backgroundImage: "linear-gradient(135deg, #ff74b1 0%, #65dbff 100%)" }}
                 >
-                  {livePricePerDay}
+                  {livePrice}
                 </span>
               )}
-              <span className="text-sm text-[#5A5A5A] font-medium">/ day</span>
+              <span className="text-sm text-[#5A5A5A] font-medium">
+                for {PLAN_WEEKS} weeks
+              </span>
             </div>
+            <p className="mt-1 text-sm font-semibold text-[#5A5A5A]">
+              About {livePricePerDay} a day
+            </p>
 
             {/* The only anchor on this card that exists outside this card.
 
@@ -613,11 +635,21 @@ export function PaywallView({
 
             {/* The renewal is stated at the price, not in the small print under
                 the button. She is agreeing to a subscription; burying that is
-                how a week-8 charge turns into a chargeback. */}
-            <p className="text-xs text-[#5A5A5A] mt-1.5">
-              Billed {livePrice} today &middot; renews every {PLAN_WEEKS} weeks
-              <br />
-              We email you {RENEWAL_NOTICE_DAYS} days before. <b>Cancel anytime.</b>
+                how a week-8 charge turns into a chargeback.
+
+                It is also repeated under the sticky CTA (see the bar at the
+                bottom of this file), and that is deliberate rather than
+                redundant: this card scrolls away and the bar does not, so
+                without the second copy the renewal is disclosed on a screen she
+                may not be looking at when she taps. Stripe's own sheet shows
+                subscription terms next to the card field; the first time she
+                reads "renews" must not be there. */}
+            <p className="text-sm text-[#3D3D3D] mt-2 font-semibold">
+              {livePrice} today, then {PRICE} every {PLAN_WEEKS} weeks
+            </p>
+            <p className="text-xs text-[#5A5A5A] mt-1">
+              We email you {RENEWAL_NOTICE_DAYS} days before each renewal.{" "}
+              <b className="text-[#3D3D3D]">Cancel anytime.</b>
             </p>
 
             {/* What Stripe will actually accept, shown as the card/wallet marks
@@ -885,11 +917,29 @@ export function PaywallView({
             ) : (
               <>
                 <Lock className="w-4 h-4" />
-                Get my plan for {livePricePerDay}/day
+                {/* The charge, not the per-day slice of it. This label is on
+                    screen for the entire ~2000px scroll, so it is the single
+                    most-read price on the page - and it used to be the one
+                    number Stripe was never going to show her. */}
+                Get my plan &middot; {livePrice}
               </>
             )}
           </motion.button>
-          <p className="text-[11px] sm:text-xs text-[#7A7A7A] text-center mt-2 sm:mt-3 leading-relaxed">
+          {/* The terms she is agreeing to, on the element she agrees with.
+
+              The price card carries the same sentence, but the card scrolls away
+              and this bar does not. Stripe's sheet is where subscription terms
+              appeared for the first time to anyone who tapped from further down
+              the page; that is both a conversion break and the disclosure the
+              auto-renewal statutes want made before the charge, not during it.
+
+              One line, plain words, above the trust marks - so the order she
+              reads it in is what she gets, then who takes the money. */}
+          <p className="text-[11px] sm:text-xs text-[#5A5A5A] text-center mt-2 leading-relaxed">
+            {livePrice} today, then <b className="text-[#3D3D3D]">{PRICE} every {PLAN_WEEKS} weeks</b>.
+            Cancel anytime.
+          </p>
+          <p className="text-[11px] sm:text-xs text-[#7A7A7A] text-center mt-1 sm:mt-1.5 leading-relaxed">
             <span className="inline-flex items-center justify-center gap-1 flex-wrap">
               <b>Safe & Secure</b> with
               <Image
@@ -899,7 +949,6 @@ export function PaywallView({
                 height={83}
                 className="inline-block h-3.5 w-auto align-middle -translate-y-px"
               />
-              . <b>Cancel anytime</b>.
             </span>
           </p>
         </div>

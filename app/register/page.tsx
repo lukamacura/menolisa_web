@@ -1272,20 +1272,40 @@ function pingFunnelStep(step: string, stepIndex: number) {
  *
  *   0        start screen (only reachable now by backing off question 1)
  *   1..17    the quiz steps, in STEPS order
- *   18..23   calculating -> results -> diagnosis -> relief -> paywall -> download
+ *   18..26   the post-quiz screens, in POST_QUIZ_FUNNEL_STEPS order
  *
  * Capped well under the route's `MAX_STEP_INDEX` of 40, which leaves room for
  * screens to be added without the two files having to move together.
  */
-const POST_QUIZ_PHASES: Phase[] = [
+const POST_QUIZ_BASE = 18;
+
+/**
+ * The post-quiz curve as the drop-off chart reads it — one entry per *screen*,
+ * which is not the same thing as one entry per phase.
+ *
+ * `relief` is three screens behind one phase name: the intro, the 36-second
+ * timer, and the reward board. It was pinged once, as `relief`, so the 16% it
+ * loses could have been the gate, the exercise or the payoff and nothing in the
+ * data could say which — the same blind spot the whole `funnel_events` table
+ * exists to close. Three rows, three answers, and the one figure that matters
+ * most: how many women start the timer versus how many only see the offer of it.
+ *
+ * Indices stay monotonic and under the route's `MAX_STEP_INDEX` of 40. Adding
+ * the two extra relief rows shifts `paywall` and `download` down by two; that is
+ * safe because `funnel_dropoff` orders by the position each screen was **last**
+ * seen at, so a window containing both numberings sorts by the current one
+ * rather than blending two screens into a bucket.
+ */
+const POST_QUIZ_FUNNEL_STEPS = [
   "calculating",
   "results",
   "diagnosis",
-  "relief",
+  "relief_intro",
+  "relief_running",
+  "relief_reward",
   "paywall",
   "download",
-];
-const POST_QUIZ_BASE = 18;
+] as const;
 
 /**
  * `useLayoutEffect` on the client, `useEffect` on the server - the standard dodge
@@ -1297,6 +1317,48 @@ const POST_QUIZ_BASE = 18;
  * of question 1, which is the exact thing this is meant to prevent.
  */
 const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
+/**
+ * How many pixels of the bottom of the screen the software keyboard is covering.
+ *
+ * A `position: fixed` bar is positioned against the **layout** viewport, and the
+ * layout viewport does not shrink when a phone opens its keyboard — only the
+ * *visual* viewport does. So a bottom-fixed CTA sits underneath the keyboard on
+ * iOS Safari and inside the Meta in-app webview: present, painted, and
+ * unreachable. That is not a styling nit, it is the entire way forward from
+ * `q8_name` disappearing the moment she taps the box, and it measured at a 22%
+ * loss on the last screen of the quiz.
+ *
+ * `window.innerHeight - (visualViewport.height + visualViewport.offsetTop)` is
+ * the overlap, in CSS pixels. It is `0` with no keyboard, `0` on desktop, and
+ * `0` on any browser without `visualViewport` — so the bar keeps its existing
+ * behaviour everywhere the problem does not exist.
+ *
+ * Small values are ignored: iOS reports a pixel or two of drift mid-scroll while
+ * the URL bar collapses, and reacting to that would jitter the CTA on every
+ * screen in the funnel.
+ */
+const KEYBOARD_INSET_THRESHOLD_PX = 80;
+
+function useKeyboardInset() {
+  const [inset, setInset] = useState(0);
+  useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : undefined;
+    if (!vv) return;
+    const read = () => {
+      const overlap = window.innerHeight - (vv.height + vv.offsetTop);
+      setInset(overlap > KEYBOARD_INSET_THRESHOLD_PX ? Math.round(overlap) : 0);
+    };
+    read();
+    vv.addEventListener("resize", read);
+    vv.addEventListener("scroll", read);
+    return () => {
+      vv.removeEventListener("resize", read);
+      vv.removeEventListener("scroll", read);
+    };
+  }, []);
+  return inset;
+}
 
 
 // Returns the sentence *after* the name, so the name can be rendered bold and
@@ -3645,8 +3707,16 @@ function RegisterPageContent() {
    * doesn't make her breathe through the exercise a second time.
    */
   /**
-   * `checkin` sits between the last exhale and the reward, and it is the only
-   * place in the funnel where the claim is made by her instead of by us.
+   * The check-in is the only place in the funnel where the claim is made by her
+   * instead of by us.
+   *
+   * **It used to have a stage and a screen of its own** (`checkin`, between the
+   * last exhale and the reward) and was folded into the reward on 2026-09-03.
+   * `relief` was four screens between the diagnosis and the price, it loses 16%
+   * of everyone who reaches it, and a whole screen carrying one optional
+   * question was the cheapest of the four to stop charging her for. The
+   * question is unchanged; it now swaps the copy she is already reading rather
+   * than gating the screen that carries it.
    *
    * Everything else on the way to the paywall is an assertion we make and she
    * evaluates - the score, the mechanism, the plan, the testimonial. The
@@ -3669,11 +3739,12 @@ function RegisterPageContent() {
    * a self-report taken thirty seconds after one breathing exercise look like a
    * clinical baseline.
    *
-   * Skipping the timer skips the question too (see `skipRelief`): a woman who
-   * didn't do the exercise has nothing to notice, and asking her anyway is the
-   * funnel putting words in her mouth.
+   * Skipping the timer skips the question too (see `skipRelief`, and the
+   * `reliefElapsed > 0` guard at the render site): a woman who didn't do the
+   * exercise has nothing to notice, and asking her anyway is the funnel putting
+   * words in her mouth.
    */
-  type ReliefStage = "intro" | "running" | "checkin" | "reward";
+  type ReliefStage = "intro" | "running" | "reward";
   const [reliefStage, setReliefStage] = useState<ReliefStage>("intro");
   const [reliefFeedback, setReliefFeedback] = useState<ReliefFeedback | null>(null);
   // Single source of truth: seconds elapsed since she tapped start. Round, step and
@@ -3713,7 +3784,7 @@ function RegisterPageContent() {
 
   useEffect(() => {
     if (reliefStage === "running" && reliefElapsed >= BREATH_TOTAL_SECONDS) {
-      setReliefStage("checkin");
+      setReliefStage("reward");
     }
   }, [reliefStage, reliefElapsed]);
 
@@ -3722,9 +3793,10 @@ function RegisterPageContent() {
     setReliefStage("running");
   }, []);
 
+  // The check-in no longer has a screen of its own - it is a row on the reward,
+  // so answering only swaps the copy above it. See the render site.
   const answerCheckin = useCallback((answer: ReliefFeedback) => {
     setReliefFeedback(answer);
-    setReliefStage("reward");
   }, []);
 
   // Lets her bail out of the timer without losing the reward - jumps straight
@@ -3800,6 +3872,9 @@ function RegisterPageContent() {
    * the right scope — it dies with the mount, and a genuine reload is a new
    * measurement of a page she is genuinely seeing again.
    */
+  // Lifts the quiz's fixed CTA bar clear of the software keyboard. See the hook.
+  const keyboardInset = useKeyboardInset();
+
   const funnelStepsSent = useRef<Set<string>>(new Set());
   useEffect(() => {
     let step: string;
@@ -3811,15 +3886,21 @@ function RegisterPageContent() {
       step = STEPS[stepIndex] ?? "unknown";
       index = stepIndex + 1;
     } else {
-      const position = POST_QUIZ_PHASES.indexOf(phase);
+      // `relief` is four screens, and each one gets its own row - see
+      // POST_QUIZ_FUNNEL_STEPS. Every other phase is one screen and keeps its
+      // own name.
+      const name = phase === "relief" ? `relief_${reliefStage}` : phase;
+      const position = POST_QUIZ_FUNNEL_STEPS.indexOf(
+        name as (typeof POST_QUIZ_FUNNEL_STEPS)[number]
+      );
       if (position < 0) return;
-      step = phase;
+      step = name;
       index = POST_QUIZ_BASE + position;
     }
     if (funnelStepsSent.current.has(step)) return;
     funnelStepsSent.current.add(step);
     pingFunnelStep(step, index);
-  }, [phase, stepIndex]);
+  }, [phase, stepIndex, reliefStage]);
   // Question position for the progress label/dots (reward steps excluded; during a
   // reward step we keep the last answered question's dot lit).
   const activeQuestionIndex = QUESTION_STEPS.includes(currentStep)
@@ -6512,70 +6593,12 @@ function RegisterPageContent() {
                     <button
                       type="button"
                       onClick={() => skipRelief(reliefStage === "intro")}
-                      className="shrink-0 inline-flex items-center gap-1 rounded-full border border-[#D8D8D8] bg-white/80 px-4 py-2 text-[13px] font-semibold text-[#5A5A5A] transition-colors hover:border-[#BDBDBD] hover:bg-white hover:text-[#3D3D3D]"
+                      className="shrink-0 inline-flex items-center gap-1 rounded-full border-2 border-[#C9C9C9] bg-white px-5 py-2.5 text-sm font-bold text-[#3D3D3D] transition-colors hover:border-[#9A9A9A] hover:bg-white"
                     >
                       {reliefStage === "intro" ? `Skip to my ${PLAN_WEEKS}-week plan` : "Skip this step"}
                       <ChevronRight className="w-3.5 h-3.5" aria-hidden />
                     </button>
                   )}
-                </motion.div>
-              ) : reliefStage === "checkin" ? (
-                /* ── Check-in: she says what just happened, before we do. ──
-                    Why this screen exists at all is at `ReliefStage` in the
-                    component; the option rules are at RELIEF_CHECKIN_OPTIONS.
-
-                    Presentation notes, all of them about not turning it into a
-                    thirteenth quiz question:
-
-                    - No progress bar, no "Question N", no Next button. One tap
-                      moves her on, the way the single-choice quiz steps do.
-                    - The three chips are equal in weight - same size, same
-                      border, same ink. The moment one of them is styled as the
-                      preferred answer, this stops being a question and becomes
-                      a leading one, and she can feel that.
-                    - No illustration. The screen she just left was a circle
-                      breathing at her; the quiet is the point, and anything
-                      decorative here reads as the funnel getting going again. */
-                <motion.div
-                  key="relief-checkin"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.3 }}
-                  className="flex-1 flex flex-col justify-center items-center text-center gap-5 px-1"
-                >
-                  <motion.div
-                    initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: prefersReducedMotion ? 0 : 0.1, duration: 0.4 }}
-                    className="space-y-2"
-                  >
-                    <h1 className="text-3xl sm:text-4xl font-normal text-[#3D3D3D] leading-tight">
-                      Notice a{" "}
-                      <span className="font-bold">difference</span>?
-                    </h1>
-                    <p className="text-xs text-[#5A5A5A] leading-relaxed max-w-[17rem] mx-auto">
-                      Take a second before you answer. There&apos;s no wrong one.
-                    </p>
-                  </motion.div>
-
-                  <motion.div
-                    initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: prefersReducedMotion ? 0 : 0.22, duration: 0.4 }}
-                    className="w-full max-w-xs flex flex-col gap-2.5"
-                  >
-                    {RELIEF_CHECKIN_OPTIONS.map((option) => (
-                      <button
-                        key={option.id}
-                        type="button"
-                        onClick={() => answerCheckin(option.id)}
-                        className="w-full min-h-13 rounded-2xl border-2 border-[#E8DDD9] bg-card px-4 text-base font-semibold text-[#3D3D3D] transition-all hover:border-primary/60 hover:bg-primary/5 active:scale-[0.98] cursor-pointer"
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </motion.div>
                 </motion.div>
               ) : (
                 /* ── Reward: she keeps the tool she just used, and sees the
@@ -6656,6 +6679,54 @@ function RegisterPageContent() {
                     );
                   })()}
 
+                  {/* ── The check-in, folded into the reward (2026-09-03). ──
+
+                      It had a screen to itself between the last exhale and this
+                      one, which made `relief` four full screens standing between
+                      the diagnosis and the price - a 36-second timer, a
+                      question, a payoff, and an intro before all three - on a
+                      funnel that has already asked for 26 taps. The phase loses
+                      16% and a screen that exists only to ask one optional
+                      question is the cheapest of the four to stop charging her
+                      for.
+
+                      Nothing about the question changes: the three chips are
+                      still equal in weight, still describe her body rather than
+                      her opinion, and "Not yet" still gets the warmest reply.
+                      What changes is that her answer now swaps the copy she is
+                      already looking at instead of gating the screen that
+                      carries it. Answering is optional, which it always was in
+                      substance - nothing is stored either way.
+
+                      Shown only when she actually breathed. `reliefElapsed > 0`
+                      excludes both the intro skip (`reliefFeedback` is
+                      "skipped") and the Back-from-Stripe resume, which pins the
+                      stage here without her having taken a breath this load. */}
+                  {reliefFeedback === null && reliefElapsed > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.5, duration: 0.4 }}
+                      className="w-full max-w-xs space-y-2"
+                    >
+                      <p className="text-[13px] font-semibold text-[#3D3D3D]">
+                        Notice a difference?
+                      </p>
+                      <div className="flex gap-2">
+                        {RELIEF_CHECKIN_OPTIONS.map((option) => (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() => answerCheckin(option.id)}
+                            className="flex-1 min-h-11 rounded-xl border-2 border-[#E8DDD9] bg-card px-2 text-[13px] font-semibold text-[#3D3D3D] transition-all hover:border-primary/60 hover:bg-primary/5 active:scale-[0.98] cursor-pointer"
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+
                   {/* Tool 1 of 4: what she keeps, then what she doesn't have yet. */}
                   <ToolkitStack unlockedCount={1} topProblems={topProblems} />
                 </motion.div>
@@ -6663,12 +6734,11 @@ function RegisterPageContent() {
             </AnimatePresence>
           </div>
 
-          {/* Fixed bottom CTA. Absent during the exercise itself *and during
-              the check-in*, so the ask always lands after the reward and never
-              during a breath or on top of a question - the check-in's three
-              options are its only way forward, and a paywall button sitting
-              under them would turn a question into a skip. The 0.9s delay lets
-              the confetti, the headline and the toolkit land first.
+          {/* Fixed bottom CTA. Absent during the exercise itself, so the ask
+              always lands after the reward and never during a breath. The 0.9s
+              delay lets the confetti, the headline and the toolkit land first -
+              and, now that the check-in rides on this screen, gives her a beat
+              to answer it before the way out appears.
 
               Its sub-line (getCtaCopy) closes the loop <ToolkitStack /> just
               opened rather than reassuring her about the price; the reasoning
@@ -7560,13 +7630,46 @@ function RegisterPageContent() {
                   </div>
                   <div className="relative">
                     <UserCircle className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
+                    {/* The only text input in the funnel, and it was losing 22%
+                        of everyone who reached it — mechanically, not because of
+                        the question.
+
+                        `autoFocus` used to open the keyboard the instant the
+                        screen mounted. The Continue button below is
+                        `fixed bottom-0`, and a fixed element is laid out against
+                        the *layout* viewport, which does not shrink when the
+                        software keyboard opens — so on iOS Safari and the Meta
+                        in-app webview the keyboard covered the only way forward
+                        the moment she arrived. She saw a text box, a keyboard,
+                        and no button. The CTA bar is visualViewport-aware now
+                        (see `keyboardInset`), and the focus is hers to give.
+
+                        `enterKeyHint` + the Enter handler are the other half:
+                        the return key did nothing, on the one screen in
+                        seventeen where pressing it is the obvious move. iOS
+                        renders it as "Go" from the hint.
+
+                        `autoComplete="given-name"` lets the browser offer the
+                        name she has typed into a hundred other forms, which on a
+                        phone is the difference between one tap and eight. */}
                     <input
                       type="text"
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          e.currentTarget.blur();
+                          goNext();
+                        }
+                      }}
                       placeholder="First name"
+                      enterKeyHint="go"
+                      autoComplete="given-name"
+                      autoCapitalize="words"
+                      autoCorrect="off"
+                      spellCheck={false}
                       className="w-full pl-10 sm:pl-12 pr-10 sm:pr-12 py-3 sm:py-4 rounded-lg sm:rounded-xl border-2 border-foreground/15 bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all duration-200 text-base sm:text-lg"
-                      autoFocus
                     />
                     {firstName.trim().length > 0 && (
                       <div className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2">
@@ -7574,6 +7677,24 @@ function RegisterPageContent() {
                       </div>
                     )}
                   </div>
+                  {/* The escape hatch. Her name is used for greetings, the
+                      reward boards and the Meta `fn` match parameter — it is
+                      worth asking for and it is not worth a lost sale on the
+                      last screen before the account is minted. "there" is what
+                      every downstream `firstName.trim() ? ... : ...` already
+                      falls back to, so skipping costs her nothing but the
+                      personalisation. */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFirstName("");
+                      setPhase("calculating");
+                    }}
+                    className="self-center inline-flex items-center gap-1 rounded-full border border-[#D8D8D8] bg-white/80 px-4 py-2 text-[13px] font-semibold text-[#5A5A5A] transition-colors hover:border-[#BDBDBD] hover:bg-white hover:text-[#3D3D3D]"
+                  >
+                    Skip &mdash; go straight to my plan
+                    <ChevronRight className="w-3.5 h-3.5" aria-hidden />
+                  </button>
                 </div>
               )}
             </div>
@@ -7628,7 +7749,19 @@ function RegisterPageContent() {
               Absent on single-choice steps, which advance themselves, and while
               a reward step's meter is still running - see `onRewardMeter`. */}
           {!autoAdvances && !onRewardMeter && (
-            <div className="fixed bottom-0 inset-x-0 z-30 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 pb-[env(safe-area-inset-bottom)]">
+            <div
+              className="fixed inset-x-0 z-30 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80"
+              style={{
+                // With the keyboard up, the bar rides on top of it; with it
+                // down, `keyboardInset` is 0 and this is the old `bottom-0`.
+                // The safe-area pad is dropped while lifted - the home
+                // indicator is behind the keyboard, not behind the bar.
+                bottom: keyboardInset,
+                paddingBottom: keyboardInset
+                  ? undefined
+                  : "env(safe-area-inset-bottom)",
+              }}
+            >
               <div className="mx-auto max-w-4xl px-4 sm:px-6 py-3">
                 <button
                   type="button"

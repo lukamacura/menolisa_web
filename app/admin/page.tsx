@@ -1716,7 +1716,14 @@ const STEP_LABELS: Record<string, string> = {
   calculating: "Building her plan",
   results: "Results + score",
   diagnosis: "The plan",
-  relief: "Breathing exercise",
+  // `relief` was one row until 2026-09-03 and is now three, because the phase
+  // is three screens and the single row could not say which of them lost the
+  // 16%. The old key stays: rows written before the split are still in the
+  // 30-day window, and a raw `relief` in the chart would read as a bug.
+  relief: "Breathing exercise (all)",
+  relief_intro: "Breathing · offered",
+  relief_running: "Breathing · started",
+  relief_reward: "Breathing · toolkit",
   paywall: "Paywall",
   // The last two are not screens and carry no `funnel_events` row. They are
   // Stripe, appended below the paywall because that is where they happen: the

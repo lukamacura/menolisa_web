@@ -621,6 +621,13 @@ candidate cause was equally plausible and none was testable.
   prioritized events; that is why the seven custom funnel events were deleted on
   2026-08-17 and why re-adding them is in the "decided against" table. "Which
   screen leaks" is a product question, answered in our own database.
+- **A phase is not a screen.** `relief` was pinged once while being three
+  screens, so the 16% it lost could have been the offer, the timer or the payoff
+  and the data could not say which. It is `relief_intro` / `relief_running` /
+  `relief_reward` since 2026-09-03, from `POST_QUIZ_FUNNEL_STEPS`, and the old
+  `relief` key is kept in `STEP_LABELS` (as "Breathing exercise (all)") because
+  rows written before the split are still inside the 30-day window. Any phase
+  that grows a second screen gets the same treatment.
 - Client side is `pingFunnelStep()` in `app/register/page.tsx` — `keepalive`,
   fire-and-forget, every failure swallowed, deduped per visit by a ref. It
   returns without a row rather than inventing a weak id when `sessionStorage` or
