@@ -502,10 +502,24 @@ top to bottom, latest sales, needs a human.
   steps begin at the profile insert — step 17 of 17 — so they can say the quiz
   leaked but never where. The band reads `funnel_events` through the
   `funnel_dropoff(since)` RPC over the *same* `funnelSince`, so the two are
-  always measured over one window. Two rules that are measurement rules, not styling:
-  the bar is share-of-entry, but **the called-out number is the loss against the
-  previous screen** — a cumulative curve falls monotonically, so every late step
-  looks bad by construction and none of them is accused of anything; and only
+  always measured over one window. **The RPC groups by screen name, never by
+  `step_index`** — it grouped by position for one day, on the assumption that a
+  step is renamed but never moved, and the quiz reordered the next morning. Two
+  screens swapping places then land two different screens in one bucket and
+  label both with whichever name sorts first: two identical rows, no row for the
+  moved screen, and blended counts, for a whole 30-day window — the window you
+  are reading to find out whether the reorder worked. Ordering is the position
+  each screen was *last* seen at, i.e. the funnel as it stands today. Migration:
+  `scripts/sql/2026-09-03-funnel-dropoff-by-step.sql`. Two rules that are measurement rules, not styling:
+  the bar is share-of-entry, but **the called-out number is what that row lost to
+  the next one** — a cumulative curve falls monotonically, so every late step
+  looks bad by construction and none of them is accused of anything. Which row
+  carries the figure is not cosmetic: `pingFunnelStep` fires when a screen
+  *renders*, so a woman missing from `q_body` abandoned on the reward board
+  before it. This shipped the other way round for one day and the first analysis
+  of the data blamed the symptoms question for the age question's loss and the
+  height/weight sliders for the reward board's — both fixes aimed one screen past
+  the problem. And only
   losses at or above `CLIFF_PCT` (25%) are coloured, because on a 23-screen
   funnel everything below that is ordinary attrition and colouring it all
   teaches you to ignore the colour. **Two separate sample guards, and they are
@@ -1299,7 +1313,42 @@ below reads like a rule, it is a pointer to one of those.
 
 ### Recent work
 
-**2026-09-02 (latest) — the first campaign audited; the funnel made measurable
+**2026-09-03 (latest) — the first telemetry read, one bad reading, and the
+reorder it paid for.** `funnel_events` had a day of data. Three changes, and the
+first one is the reason the other two are aimed correctly.
+
+- **The drop-off figure was sitting on the wrong row, and it accused the wrong
+  screen.** `pingFunnelStep` fires when a screen *renders*, so a woman missing
+  from `q_body` left on the reward board **before** it — the loss belongs to the
+  screen she was looking at, which is the row above the one where the count
+  falls. It shipped the other way round and produced the wrong reading inside a
+  day: the first analysis blamed the symptoms question for the age question's
+  loss and the height/weight sliders for the reward board's, and both fixes would
+  have been aimed one screen past the problem. `dropPct` is now `lostPct` /
+  `lostCount` — what *this* row lost to the next — with the significance base
+  moved to this row's own count, and `worstStep` skipping the last row rather
+  than the first. The money band follows the same rule.
+- **Symptoms is question 1, age is question 2.** With the figure on the right
+  row, the largest single loss in the funnel is the opening screen: **156 visits
+  entered, 103 reached the symptoms question — 53 women, a third of everything
+  paid traffic bought, gone before one tap.** `/register` has cold-started on
+  question 1 since 2026-09-02, so that screen *is* the ad's landing page, and
+  every live creative ends on "tap your symptom" while the screen showed age
+  brackets. Free downstream: age gates nothing before `reward_symptoms` at step
+  7, and the rule that governs this order — every answer a reward board prints
+  is collected before the board renders — still holds. The image warm-up is now
+  index-driven (`STEPS[0]`) rather than naming `q1_age`; the funnel's opening
+  screen has changed twice and a hardcoded key there warms the wrong tiles
+  silently.
+- **`funnel_dropoff` regrouped by screen rather than position**, because the
+  reorder is exactly the case its old grouping could not survive. See §4.
+
+**Still open:** the reorder is a hypothesis, not a result. Read the same curve
+again once a comparable number of visits has come through the new order, and
+expect the top two rows to look non-monotonic while the window still contains
+both funnels.
+
+**2026-09-02 — the first campaign audited; the funnel made measurable
 and shortened.** ~300 outbound clicks, ~200 landing page views, 10 quiz
 finishers, 0 checkouts. The first thing the audit established is what was *not*
 wrong: `auth.users` anonymous accounts and `user_profiles` rows matched exactly,
@@ -1430,9 +1479,11 @@ rule:
   converts, anger at her GP is a liability — and it hands straight back to "this
   is biology and it responds", because a negative state without the exit in the
   same breath collapses into apathy.
-- **Her symptoms are question 2**, behind the age tile only. Status and menopause
-  type moved back two slots; safe because every answer a reward board prints is
-  still collected before the board renders (`COHORT_PHRASE`, `STAGE_PRIDE_LINE`).
+- **Her symptoms moved to question 2**, behind the age tile only. Status and
+  menopause type moved back two slots; safe because every answer a reward board
+  prints is still collected before the board renders (`COHORT_PHRASE`,
+  `STAGE_PRIDE_LINE`). *(Superseded 2026-09-03: symptoms are question **1**. The
+  telemetry priced the age tile in front of them at a third of all paid traffic.)*
 - **The paywall headline is the outcome and a date**, the refund lives in its own
   green card, and the price is anchored against one hour of personal training —
   a comparison she can check, unlike a "regular price" set at exactly 2x. A

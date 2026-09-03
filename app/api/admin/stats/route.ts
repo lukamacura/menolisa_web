@@ -809,17 +809,18 @@ export async function POST(req: NextRequest) {
   /*
    * Screen-by-screen drop-off, and the single worst step.
    *
-   * `dropPct` is measured against the *previous* screen, not against the first
-   * one, because that is the number that names a screen. A cumulative curve
-   * falls monotonically and every late step looks terrible by construction; the
-   * step-to-step loss is what says "this screen is where they go", which is the
-   * only thing this block is for.
+   * `lostPct` is the share of the women who reached a screen and never got to
+   * the next one — a step-to-step loss, not a share of the first screen. A
+   * cumulative curve falls monotonically and every late step looks terrible by
+   * construction; the step-to-step loss is what says "this screen is where they
+   * go", which is the only thing this block is for.
    *
    * `worst` is computed here rather than in the page for the same reason the
    * verdict sentence is: the panel and anything that ever alerts off this must
    * not be able to disagree about which screen is the problem. It ignores the
-   * first row (nothing precedes it) and any step with a trivial base, since
-   * 2 → 1 is a 50% "cliff" that means nothing at launch volume.
+   * last row (there is no next screen to lose anyone to) and any step with a
+   * trivial base, since 2 → 1 is a 50% "cliff" that means nothing at launch
+   * volume.
    */
   /*
    * Two different guards, and they are not the same number.
@@ -847,8 +848,29 @@ export async function POST(req: NextRequest) {
     sessions: number;
   }[];
   const entrySessions = dropoffRows[0]?.sessions ?? 0;
+  /*
+   * **A loss belongs to the screen she was looking at when she left — which is
+   * the row ABOVE the one where the count falls.**
+   *
+   * `pingFunnelStep` fires when a screen *renders*, so reaching `q_body` means
+   * she had already tapped through the reward board before it. When 84 reach
+   * that board and 70 reach `q_body`, the fourteen missing women abandoned on
+   * the board; `q_body` never got its chance at them.
+   *
+   * This shipped the other way round on 2026-09-02 — the figure sat on the row
+   * where the count dropped — and it produced exactly the wrong reading inside a
+   * day: the first real analysis of this data blamed the symptoms question for a
+   * loss that happened on the age question, and blamed the height/weight sliders
+   * for a loss that happened on the reward board before them. Both fixes would
+   * have been aimed one screen past the problem.
+   *
+   * So `lostPct` / `lostCount` are what THIS row lost to the next one, and the
+   * significance base is this row's own count — the number of women who actually
+   * stood on the screen being accused.
+   */
   const dropoff = dropoffRows.map((row, i) => {
-    const previous = i === 0 ? null : dropoffRows[i - 1].sessions;
+    const next = i === dropoffRows.length - 1 ? null : dropoffRows[i + 1].sessions;
+    const lostCount = next === null ? null : Math.max(row.sessions - next, 0);
     return {
       index: row.step_index,
       step: row.step,
@@ -856,14 +878,16 @@ export async function POST(req: NextRequest) {
       // Share of everyone who reached the first measured screen. Whole numbers:
       // a tenth of a percent on a base of six is false precision.
       pctOfEntry: entrySessions ? Math.round((row.sessions / entrySessions) * 100) : 0,
-      // Share lost between the previous screen and this one.
-      dropPct:
-        previous && previous > 0
-          ? Math.round(((previous - row.sessions) / previous) * 100)
+      /** How many women on THIS screen never reached the next one. */
+      lostCount,
+      /** The same, as a share of the women who stood on this screen. */
+      lostPct:
+        lostCount !== null && row.sessions > 0
+          ? Math.round((lostCount / row.sessions) * 100)
           : null,
-      // Whether that loss is measured over a base big enough to describe. The
-      // page colours from this rather than from `dropPct` alone.
-      significant: previous !== null && previous >= MIN_CLIFF_BASE,
+      // Whether that loss sits on a base big enough to describe. The page
+      // colours from this rather than from `lostPct` alone.
+      significant: row.sessions >= MIN_CLIFF_BASE,
     };
   });
   /**
@@ -877,8 +901,8 @@ export async function POST(req: NextRequest) {
   const worstStep =
     entrySessions >= MIN_VERDICT_ENTRY
       ? (dropoff
-          .filter((d) => d.significant && d.dropPct !== null)
-          .sort((a, b) => (b.dropPct ?? 0) - (a.dropPct ?? 0))[0] ?? null)
+          .filter((d) => d.significant && d.lostPct !== null)
+          .sort((a, b) => (b.lostPct ?? 0) - (a.lostPct ?? 0))[0] ?? null)
       : null;
 
   // ─── Anything that needs a human ──────────────────────────────────────────

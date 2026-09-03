@@ -179,8 +179,11 @@ type Stats = {
       sessions: number;
       /** Share of everyone who reached the first measured screen. */
       pctOfEntry: number;
-      /** Share lost since the *previous* screen — null on the first row. */
-      dropPct: number | null;
+      /** How many women on THIS screen never reached the next one — null on the
+       *  last row, which has no next screen to lose them to. */
+      lostCount: number | null;
+      /** The same, as a share of the women who stood on this screen. */
+      lostPct: number | null;
       /** Whether that loss sits on a base big enough to describe. */
       significant: boolean;
     }[];
@@ -192,7 +195,8 @@ type Stats = {
       step: string;
       sessions: number;
       pctOfEntry: number;
-      dropPct: number | null;
+      lostCount: number | null;
+      lostPct: number | null;
       significant: boolean;
     } | null;
     /** Visits that reached the first measured screen. */
@@ -271,7 +275,13 @@ function lastNDays(todayIso: string, n: number): string[] {
   });
 }
 
-const SPEND_STRIP_DAYS = 14;
+/**
+ * Today plus the seven days before it — the backfill window and nothing wider.
+ * Fourteen filled three columns with a fortnight of days you were never going
+ * to revisit; the only ones you actually reach for are the days since you last
+ * opened the panel, and `missingDays` is measured over 7.
+ */
+const SPEND_STRIP_DAYS = 8;
 
 /** What's already saved for `day`, so a redundant keystroke skips the round trip. */
 function savedAmountFor(stats: Stats, day: string): number | null {
@@ -1201,17 +1211,17 @@ function SaveState({
 }
 
 /**
- * One amber underline you type a number into, and nothing else.
+ * A number on the page. No box, no underline, no ring, no outline — in any
+ * state, focus included. The `$` in front of it is what says "type here"; the
+ * figure is meant to read as part of the panel rather than as a form.
  *
- * No box, no ring, no outline on focus — the rule under the figure thickens
- * into {@link PALETTE} amber and that is the whole focus state.
- *
- * Three things have to be turned off for that, not one. `outline-none` kills
- * the browser default and `focus:ring-0` Tailwind's, but the pink one comes
- * from **`input:focus` in `app/globals.css`**, which paints a 2px
- * `var(--ring)` box-shadow on every input in the app. An element selector
- * loses to a class, so `focus:[box-shadow:none]` overrides it here without
- * touching the funnel and login fields that rule was written for.
+ * Four things have to be turned off for that, not one. `border-0` drops the
+ * frame, `outline-none` kills the browser default and `focus:ring-0`
+ * Tailwind's, but the pink one comes from **`input:focus` in
+ * `app/globals.css`**, which paints a 2px `var(--ring)` box-shadow on every
+ * input in the app. An element selector loses to a class, so
+ * `focus:[box-shadow:none]` overrides it here without touching the funnel and
+ * login fields that rule was written for.
  */
 function SpendInput({
   day,
@@ -1241,7 +1251,7 @@ function SpendInput({
         inputMode="decimal"
         placeholder="0"
         aria-label={`Ad spend for ${dayLabel(day)}`}
-        className={`w-full min-w-0 border-0 border-b border-[var(--spend-line)] bg-transparent py-0.5 font-semibold tabular-nums text-[var(--spend-deep)] shadow-none outline-none transition-colors placeholder:font-normal placeholder:text-[var(--ink-3)] hover:border-[var(--spend)]/60 focus:border-b-2 focus:border-[var(--spend)] focus:outline-none focus:ring-0 focus:[box-shadow:none] ${size}`}
+        className={`w-full min-w-0 appearance-none border-0 bg-transparent py-0.5 font-semibold tabular-nums text-[var(--spend-deep)] shadow-none outline-none placeholder:font-normal placeholder:text-[var(--ink-3)] focus:border-0 focus:outline-none focus:ring-0 focus:[box-shadow:none] ${size}`}
       />
     </label>
   );
@@ -1253,9 +1263,9 @@ function SpendInput({
  *
  * **Today is the only field on screen.** It is the only one you type on a
  * normal day: you read the number off Meta Ads Manager at the end of the day
- * and enter it once. The other {@link SPEND_STRIP_DAYS} days are a backfill
- * job, so they live behind the `⋯` and open as a plain list. If any of the last
- * 7 days is still empty the toggle says so in amber, because that is the one
+ * and enter it once. The seven days before it are a backfill job, so they live
+ * behind the `⋯` and open as one plain top-to-bottom list, newest first. If any
+ * of them is still empty the toggle says so in amber, because that is the one
  * state where opening it actually matters — cost per customer is understated
  * until those are filled in.
  *
@@ -1334,7 +1344,7 @@ function AdSpendStrip({
       </div>
 
       {open && (
-        <div className="mt-4 grid gap-x-8 gap-y-0 border-t border-[var(--spend-line)] pt-2 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-4 max-w-md border-t border-[var(--spend-line)] pt-2">
           {earlier.map((day) => {
             const isMissing = stats.costs.missingDays.includes(day);
             return (
@@ -1622,8 +1632,8 @@ function CashChart({ revenue, spend }: { revenue: number[]; spend: number[] }) {
  */
 const STEP_LABELS: Record<string, string> = {
   start: "Start screen",
-  q1_age: "Q1 · Age",
-  q4_symptoms: "Q2 · Symptoms",
+  q4_symptoms: "Q1 · Symptoms",
+  q1_age: "Q2 · Age",
   q_symptom_impact: "Q3 · How hard it hits",
   q2_here_for: "Q4 · Her stage",
   q_menopause_type: "Q5 · How it began",
@@ -1788,7 +1798,7 @@ function WholeFunnel({
 }) {
   const entry = rows[0]?.sessions ?? 0;
   const confident = entrySessions >= minVerdictEntry;
-  const hasVerdict = confident && worst && worst.dropPct !== null && worst.dropPct >= CLIFF_PCT;
+  const hasVerdict = confident && worst && worst.lostPct !== null && worst.lostPct >= CLIFF_PCT;
 
   // Screen tracking is younger than the window for as long as the campaign
   // floor predates 2026-09-02. Without saying so, "2 reached the paywall" sitting
@@ -1824,13 +1834,14 @@ function WholeFunnel({
         <p className="mb-4 text-[13px] text-[var(--ink-2)]">{error}</p>
       ) : hasVerdict ? (
         <p className="mb-4 rounded-lg border border-[var(--line)] bg-[var(--quiet)] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-[var(--ink-2)]">
-          Biggest single drop:{" "}
+          Most women leave on{" "}
           <b className="font-semibold text-[var(--ink)]">
             {STEP_LABELS[worst!.step] ?? worst!.step}
-          </b>{" "}
-          loses{" "}
-          <b className="font-semibold tabular-nums text-[#C2410C]">{worst!.dropPct}%</b> of everyone
-          who reached the screen before it. Fix that screen before any other.
+          </b>
+          : <b className="font-semibold tabular-nums text-[#C2410C]">{worst!.lostPct}%</b> of the{" "}
+          {worst!.sessions} who reach it never see the next screen
+          {worst!.lostCount !== null ? ` — ${worst!.lostCount} women` : ""}. Fix that screen before
+          any other.
         </p>
       ) : (
         <p className="mb-4 rounded-lg border border-dashed border-[var(--line)] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-[var(--ink-3)]">
@@ -1857,7 +1868,7 @@ function WholeFunnel({
             {rows.map((r) => {
               // Both halves matter: a big percentage on a base of two is not a
               // cliff, it is two people.
-              const cliff = r.significant && r.dropPct !== null && r.dropPct >= CLIFF_PCT;
+              const cliff = r.significant && r.lostPct !== null && r.lostPct >= CLIFF_PCT;
               const width = entry > 0 ? Math.min((r.sessions / entry) * 100, 100) : 0;
               return (
                 <FunnelRow
@@ -1865,7 +1876,7 @@ function WholeFunnel({
                   label={STEP_LABELS[r.step] ?? r.step}
                   count={r.sessions.toLocaleString("en-US")}
                   width={Math.max(width, r.sessions > 0 ? 1.5 : 0)}
-                  drop={r.dropPct}
+                  drop={r.lostPct}
                   cliff={cliff}
                   fill={cliff ? CLIFF : HER}
                 />
@@ -1885,7 +1896,9 @@ function WholeFunnel({
           label="Finished the quiz"
           count={quiz.toLocaleString("en-US")}
           width={quiz > 0 ? 100 : 0}
-          drop={null}
+          // Same rule as the band above: the figure on a row is what that row
+          // lost to the next one, so this is the offer screen's loss.
+          drop={sessionsError ? null : dropOf(quiz, checkout)}
           cliff={false}
           fill={HER}
           strong
@@ -1894,7 +1907,7 @@ function WholeFunnel({
           label="Opened the card form"
           count={sessionsError ? "—" : checkout.toLocaleString("en-US")}
           width={sessionsError ? 0 : wMoney(checkout)}
-          drop={sessionsError ? null : dropOf(quiz, checkout)}
+          drop={sessionsError ? null : dropOf(checkout, paid)}
           // Never coloured. Losing most of the room between the quiz and the
           // card form is what this step does on a healthy funnel, so a
           // threshold here would sit orange permanently and teach the eye to
@@ -1907,7 +1920,7 @@ function WholeFunnel({
           label="Paid"
           count={paid.toLocaleString("en-US")}
           width={wMoney(paid)}
-          drop={sessionsError ? null : dropOf(checkout, paid)}
+          drop={null}
           cliff={false}
           fill={CASH}
           strong
@@ -1983,10 +1996,11 @@ function WholeFunnel({
 
       <p className="mt-3 text-[11.5px] leading-relaxed text-[var(--ink-3)]">
         Each band is measured against its own first row, because the units differ: the top counts
-        visits (one woman in two tabs is two) and the bottom counts women. The figure on the right is
-        what that one step lost against the step above it — the number that names a screen — and it
-        is only coloured when enough people stood on the step above for the percentage to mean
-        anything.
+        visits (one woman in two tabs is two) and the bottom counts women. The figure on the right
+        belongs to the row it sits on: it is the share of the women who reached that screen and
+        never got to the next one — so it accuses the screen they were looking at when they left,
+        not the screen they failed to arrive at. It is only coloured when enough women stood on that
+        screen for the percentage to mean anything.
       </p>
     </div>
   );

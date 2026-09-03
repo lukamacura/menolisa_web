@@ -214,8 +214,16 @@ type Step =
 // three: this reorder is only safe because every answer a reward board prints
 // is still collected before the board renders.
 const STEPS: Step[] = [
-  "q1_age",
+  // **Symptoms first, age second (2026-09-03).** This screen is the ad's landing
+  // page — the start screen was bypassed on 2026-09-02 — and every live creative
+  // ends on "tap your symptom". It opened on the age tiles instead, and the
+  // telemetry priced that mismatch at 52 of 152 women leaving before one tap:
+  // a third of everything paid traffic bought, lost on the promise, not the
+  // product. Age still gates nothing before `reward_symptoms` (step 7), so the
+  // swap is free downstream — every answer a reward board prints is collected
+  // before the board renders, which is the rule that governs this order.
   "q4_symptoms",
+  "q1_age",
   "q_symptom_impact",
   "q2_here_for",
   "q_menopause_type",
@@ -3739,7 +3747,11 @@ function RegisterPageContent() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const srcs = [
-      ...(stepIndex === 0 ? STEP_IMAGES.q1_age ?? [] : []),
+      // Index-driven, never the first step by name: the funnel's opening screen
+      // has now changed twice, and a hardcoded key here warms the wrong tiles
+      // silently — the screen still works, it just paints slower on the one
+      // screen that takes 100% of paid traffic.
+      ...(stepIndex === 0 ? STEP_IMAGES[STEPS[0]] ?? [] : []),
       ...(STEP_IMAGES[STEPS[stepIndex + 1]] ?? []),
     ];
     // No cleanup: it used to set `img.src = ""` on every step change, and a step
