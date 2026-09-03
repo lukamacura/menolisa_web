@@ -1664,9 +1664,13 @@ function CashChart({ revenue, spend }: { revenue: number[]; spend: number[] }) {
  * ugly and correct — better than a step silently missing from the curve.
  *
  * **Nothing here is invented.** The keys are exactly the names
- * `pingFunnelStep()` sends — `start`, then `STEPS`, then `POST_QUIZ_PHASES`,
- * in that order — and the row order below is that order, so the map reads as
- * the funnel reads. The `Q<n>` prefixes are the quiz's own counter
+ * `pingFunnelStep()` sends — `STEPS`, then `POST_QUIZ_PHASES`, in that order —
+ * and the row order below is that order, so the map reads as the funnel reads.
+ * The one name it deliberately omits is `start`: `/register` cold-starts on
+ * question 1, so that screen is only reachable by pressing Back, and
+ * `INACTIVE_STEPS` in `/api/admin/stats` drops its row before any figure is
+ * computed. It never reaches this map, so the raw-name fallback below is not
+ * what is keeping it off the curve. The `Q<n>` prefixes are the quiz's own counter
  * (`QUESTION_STEPS`, rewards excluded), so Q13 is the thirteenth of thirteen on
  * screen; and each label uses the words that screen uses, so a row cannot name
  * one screen while the woman was looking at another. When a step moves in
@@ -1674,7 +1678,6 @@ function CashChart({ revenue, spend }: { revenue: number[]; spend: number[] }) {
  * worse than a raw key, because it looks answered.
  */
 const STEP_LABELS: Record<string, string> = {
-  start: "Start screen",
   q4_symptoms: "Q1 · Symptoms",
   q1_age: "Q2 · Age",
   q_symptom_impact: "Q3 · How hard it hits",
@@ -1763,10 +1766,18 @@ function FunnelRow({
 }) {
   return (
     <div className="grid grid-cols-[136px_1fr_40px_52px] items-center gap-x-3 sm:grid-cols-[172px_1fr_44px_56px]">
+      {/* The cliff signal used to live in the bar's fill. The fill now carries
+          depth (blue at the top of the funnel, red at the bottom), so the screen
+          being accused is named on the label instead — the colour still names a
+          screen, which is the rule, it just no longer competes with the ramp. */}
       <span
         className={`truncate leading-tight ${
-          strong ? "text-[12.5px] font-medium text-[var(--ink)]" : "text-[12px] text-[var(--ink-2)]"
-        }`}
+          cliff
+            ? "font-semibold text-[#C2410C]"
+            : strong
+              ? "font-medium text-[var(--ink)]"
+              : "text-[var(--ink-2)]"
+        } ${strong ? "text-[12.5px]" : "text-[12px]"}`}
         title={note ?? label}
       >
         {label}
@@ -1850,11 +1861,29 @@ function WholeFunnel({
     trackingSince !== null &&
     new Date(trackingSince).getTime() - new Date(since).getTime() > 12 * 60 * 60 * 1000;
 
-  // Band B bars share band B's own 100% (quiz finishers). Clamped, because a
-  // later step can legitimately exceed the first when leftover test-mode
-  // checkout sessions meet a handful of real quiz rows.
+  /**
+   * **Both bands draw against one length, so the block reads as one falling
+   * curve.** The bars used to restart at band B: its first row was hard-coded
+   * to 100% because it was measured against itself, which put a full-width bar
+   * for 63 women directly under a band-A row that had already fallen to 21% of
+   * entry. A bar chart whose longest bar is one of its smallest numbers is not
+   * a chart, and the operator reads bar length before they read any figure.
+   *
+   * What is emphatically **not** shared is the arithmetic. Every percentage in
+   * this block — `lostPct` on each row, and the two rates under band B — is
+   * still computed inside its own band, because the units genuinely differ:
+   * the top counts *visits* and the bottom counts *women*. Sharing a bar length
+   * is a statement about proportion, which survives the unit change; sharing a
+   * denominator would be a statement about conversion, which does not.
+   *
+   * Fallback to band B's own base when there is no screen data at all — a
+   * panel with the top band empty still has to draw the bottom one.
+   */
+  const barBase = entry > 0 ? entry : quiz;
+  // Clamped, because a later step can legitimately exceed the base when
+  // leftover test-mode checkout sessions meet a handful of real quiz rows.
   const wMoney = (v: number) =>
-    quiz > 0 ? Math.min(Math.max((v / quiz) * 100, v > 0 ? 1.5 : 0), 100) : 0;
+    barBase > 0 ? Math.min(Math.max((v / barBase) * 100, v > 0 ? 1.5 : 0), 100) : 0;
   const dropOf = (prev: number, now: number) =>
     prev > 0 ? Math.round(((prev - now) / prev) * 100) : null;
   const rate = (num: number, den: number) => (den > 0 ? `${((num / den) * 100).toFixed(1)}%` : "—");
@@ -1865,9 +1894,28 @@ function WholeFunnel({
   // like a broken panel rather than an uncleared window.
   const inverted = !sessionsError && (checkout > quiz || paid > checkout);
 
-  const HER = "linear-gradient(90deg, color-mix(in srgb, var(--her) 34%, white), var(--her))";
-  const CLIFF = "linear-gradient(90deg, #FDBA74, #FB923C)";
-  const CASH = "linear-gradient(90deg, var(--cash), var(--cash-deep))";
+  /**
+   * Depth, as colour: blue at the top of the funnel, red at the bottom.
+   *
+   * Every bar used to be the same rose, with two exceptions painted on top —
+   * orange for a cliff and green for `Paid`. So bar colour carried no
+   * information about position at all, and the eye had to count rows to know
+   * how deep it was looking. The ramp gives every row a second, redundant
+   * cue for the one thing this block is about: how far down the funnel it is.
+   *
+   * The hue runs 221° → 360°, i.e. blue → violet → pink → red, deliberately
+   * **not** through green and yellow. A rainbow would put the most eye-catching
+   * colour in the middle of the funnel for no reason, and it would collide with
+   * the green this panel reserves for Stripe figures everywhere else.
+   *
+   * `t` spans both bands as one sequence, so the ramp does not restart at the
+   * seam — the same reason the bar lengths share one base.
+   */
+  const totalRows = rows.length + 3;
+  const depthFill = (i: number) => {
+    const hue = 221 + (totalRows > 1 ? i / (totalRows - 1) : 0) * 139;
+    return `linear-gradient(90deg, hsl(${hue} 70% 74%), hsl(${hue} 68% 51%))`;
+  };
 
   return (
     <div className="px-6 py-5">
@@ -1908,11 +1956,11 @@ function WholeFunnel({
         <>
           <BandHead title="Inside the quiz" unit="visits · Supabase" />
           <div className="space-y-0.5">
-            {rows.map((r) => {
+            {rows.map((r, i) => {
               // Both halves matter: a big percentage on a base of two is not a
               // cliff, it is two people.
               const cliff = r.significant && r.lostPct !== null && r.lostPct >= CLIFF_PCT;
-              const width = entry > 0 ? Math.min((r.sessions / entry) * 100, 100) : 0;
+              const width = barBase > 0 ? Math.min((r.sessions / barBase) * 100, 100) : 0;
               return (
                 <FunnelRow
                   key={r.index}
@@ -1921,7 +1969,7 @@ function WholeFunnel({
                   width={Math.max(width, r.sessions > 0 ? 1.5 : 0)}
                   drop={r.lostPct}
                   cliff={cliff}
-                  fill={cliff ? CLIFF : HER}
+                  fill={depthFill(i)}
                 />
               );
             })}
@@ -1937,13 +1985,19 @@ function WholeFunnel({
       <div className="space-y-1">
         <FunnelRow
           label="Finished the quiz"
+          note={
+            "The moment `user_profiles` is written — which happens behind the calculating loader, " +
+            "so this row is the same instant as the `Building her plan` row above it, counted in " +
+            "women instead of visits. The two match exactly over the same days; any gap is the " +
+            "window, not a loss."
+          }
           count={quiz.toLocaleString("en-US")}
-          width={quiz > 0 ? 100 : 0}
+          width={wMoney(quiz)}
           // Same rule as the band above: the figure on a row is what that row
           // lost to the next one, so this is the offer screen's loss.
           drop={sessionsError ? null : dropOf(quiz, checkout)}
           cliff={false}
-          fill={HER}
+          fill={depthFill(rows.length)}
           strong
         />
         <FunnelRow
@@ -1956,7 +2010,7 @@ function WholeFunnel({
           // threshold here would sit orange permanently and teach the eye to
           // ignore the colour that names a screen above.
           cliff={false}
-          fill={HER}
+          fill={depthFill(rows.length + 1)}
           strong
         />
         <FunnelRow
@@ -1965,7 +2019,7 @@ function WholeFunnel({
           width={wMoney(paid)}
           drop={null}
           cliff={false}
-          fill={CASH}
+          fill={depthFill(totalRows - 1)}
           strong
         />
       </div>
@@ -2034,16 +2088,23 @@ function WholeFunnel({
         <p className="mt-2 text-[11.5px] text-[var(--ink-3)]">
           Screen tracking started {shortDate(trackingSince!)}, after this window opened — so the top
           band covers fewer days than the bottom one, and the two counts are not yet comparable.
+          That gap is why &ldquo;Finished the quiz&rdquo; can exceed &ldquo;Building her plan&rdquo;
+          above it: same moment, more days.
         </p>
       )}
 
       <p className="mt-3 text-[11.5px] leading-relaxed text-[var(--ink-3)]">
-        Each band is measured against its own first row, because the units differ: the top counts
-        visits (one woman in two tabs is two) and the bottom counts women. The figure on the right
-        belongs to the row it sits on: it is the share of the women who reached that screen and
-        never got to the next one — so it accuses the screen they were looking at when they left,
-        not the screen they failed to arrive at. It is only coloured when enough women stood on that
-        screen for the percentage to mean anything.
+        Bar length is the same scale throughout, so the whole block reads as one curve. The
+        percentages are not: each band divides by its own first row, because the units differ — the
+        top counts visits (one woman in two tabs is two) and the bottom counts women. The bottom
+        band restarts earlier in the funnel than the top band ends, so its first bar sits above the
+        paywall row rather than below it; that is the two bands overlapping, not the funnel going
+        back up. The figure on the right belongs to the row it sits on: it is the share of the women
+        who reached that screen and never got to the next one — so it accuses the screen they were
+        looking at when they left, not the screen they failed to arrive at. It is only coloured when
+        enough women stood on that screen for the percentage to mean anything — and when it is, the
+        screen&rsquo;s name is coloured with it. Bar colour carries depth only, blue at the top of
+        the funnel to red at the bottom, so it never competes with that.
       </p>
     </div>
   );

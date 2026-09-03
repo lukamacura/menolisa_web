@@ -842,11 +842,33 @@ export async function POST(req: NextRequest) {
    */
   const MIN_CLIFF_BASE = 25;
   const MIN_VERDICT_ENTRY = 50;
-  const dropoffRows = (dropoffResult.data ?? []) as {
+  /**
+   * The screens the curve is measured over — **the active funnel only**.
+   *
+   * `start` is excluded, and it is the one exclusion this needs. `/register`
+   * has cold-started on question 1 since 2026-09-02, so that screen is no
+   * longer in the path anyone walks: the only way to see it is to press Back
+   * off question 1. It still pings, because it is still a real screen a real
+   * woman reached, but it is a *backwards* step and it cannot be read as one
+   * of these rows.
+   *
+   * Leaving it in is not cosmetic. It carries `step_index` 0, so it sorts to
+   * the top and becomes `entrySessions` — the 100% base for every bar and
+   * every percentage in the band — while counting a handful of people who
+   * arrived there by going the wrong way. One woman backing up would make the
+   * entry base 1 and print the rest of the funnel at several thousand percent.
+   *
+   * `STEP_LABELS` in `app/admin/page.tsx` drops `start` for the same reason.
+   * Filter here rather than there: the page must never compute a figure the
+   * route didn't, and every derived number below — `pctOfEntry`, `lostPct`,
+   * `worstStep`, the visit count in the chain sentence — is built off this list.
+   */
+  const INACTIVE_STEPS = new Set(["start"]);
+  const dropoffRows = ((dropoffResult.data ?? []) as {
     step_index: number;
     step: string;
     sessions: number;
-  }[];
+  }[]).filter((r) => !INACTIVE_STEPS.has(r.step));
   const entrySessions = dropoffRows[0]?.sessions ?? 0;
   /*
    * **A loss belongs to the screen she was looking at when she left — which is
