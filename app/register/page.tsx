@@ -748,7 +748,15 @@ const CALCULATING_MAX_PCT = 99;
 // sign-off. `my-auto` on the child centres exactly the same way while there is
 // free space and collapses to nothing when there is not, so a tall payoff simply
 // scrolls from its own top.
-const REWARD_SCROLL_SHELL = "flex-1 min-h-0 overflow-y-auto flex flex-col";
+//
+// `overflow-x-clip`, and it is not cosmetic. The payoff bloom in <RewardPaper />
+// is an absolutely positioned wash sitting a few px outside the card's box, and
+// a box that overflows the *right* edge of a scroll container is scrollable
+// overflow - so without this the reward screens would gain a horizontal scroll
+// on every phone. `clip` rather than `hidden` on purpose: `hidden` on one axis
+// forces the other to `auto`, `clip` leaves `overflow-y` exactly as written, so
+// vertical scrolling (the thing this shell exists for) is untouched.
+const REWARD_SCROLL_SHELL = "flex-1 min-h-0 overflow-y-auto overflow-x-clip flex flex-col";
 const REWARD_PAYOFF_CENTER = "my-auto w-full shrink-0";
 
 // 600ms, down from 1700 (2026-09-02). Four reward boards carry this meter, so
@@ -3613,11 +3621,16 @@ function QuizReward({
     );
   }
 
+  // Opacity only, and short. The payoff underneath has its own landing - the
+  // paper springs in over-rotated behind a bloom (see <RewardPaper />) - and a
+  // translate on the wrapper drags that spring along with it, which reads as
+  // two things moving at once and turns a landing into a slide. The wrapper's
+  // only job is to stop the meter and the payoff sharing a frame.
   return (
     <motion.div
-      initial={initialDone ? false : { opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+      initial={initialDone ? false : { opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
       className="flex-1 flex flex-col min-h-0"
     >
       {children}
@@ -7677,24 +7690,15 @@ function RegisterPageContent() {
                       </div>
                     )}
                   </div>
-                  {/* The escape hatch. Her name is used for greetings, the
-                      reward boards and the Meta `fn` match parameter — it is
-                      worth asking for and it is not worth a lost sale on the
-                      last screen before the account is minted. "there" is what
-                      every downstream `firstName.trim() ? ... : ...` already
-                      falls back to, so skipping costs her nothing but the
-                      personalisation. */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFirstName("");
-                      setPhase("calculating");
-                    }}
-                    className="self-center inline-flex items-center gap-1 rounded-full border border-[#D8D8D8] bg-white/80 px-4 py-2 text-[13px] font-semibold text-[#5A5A5A] transition-colors hover:border-[#BDBDBD] hover:bg-white hover:text-[#3D3D3D]"
-                  >
-                    Skip &mdash; go straight to my plan
-                    <ChevronRight className="w-3.5 h-3.5" aria-hidden />
-                  </button>
+                  {/* No skip on this step, deliberately. Her name is a required
+                      answer like the other twelve: it carries the greetings, the
+                      reward boards and the Meta `fn` match parameter, and an
+                      opt-out on the last screen before the account is minted
+                      would be taken by people who would otherwise have typed
+                      four letters. The 22% this screen was losing was the
+                      keyboard covering the Continue button (see the input
+                      above), not the question — fix the mechanism, keep the
+                      question. */}
                 </div>
               )}
             </div>

@@ -48,7 +48,68 @@ const PAPER = {
     "repeating-linear-gradient(180deg, transparent 0 23px, rgba(61,61,61,0.045) 23px 24px)",
 } as const;
 
-/** Shared shell: paper, tape, a header rule. */
+/** The eased curve every non-spring beat on a board uses. */
+const EASE = [0.22, 1, 0.36, 1] as const;
+
+/**
+ * `--primary` (oklch 0.6209 0.1801 348.14) resolved to sRGB.
+ *
+ * Literal rather than `var(--primary)` because it goes inside a
+ * `radial-gradient()` string with its own alpha stops, and a CSS variable
+ * holding an oklch triple cannot be given one without `color-mix()` - which is
+ * the one thing this funnel cannot rely on, since a decorative background that
+ * fails to parse renders as nothing at all and takes the whole effect with it
+ * on exactly the older in-app webviews the ad traffic arrives in.
+ */
+const GLOW_RGB = "208, 79, 153";
+
+/**
+ * The bloom behind a payoff: brightest as the paper lands, settling to a faint
+ * halo rather than to nothing.
+ *
+ * It settles rather than clearing because the halo is doing a second job after
+ * the arrival is over - it is what separates a reward screen from a question
+ * screen at a glance, on a funnel where both are a card on the same background.
+ */
+const GLOW_PEAK = 1;
+const GLOW_REST = 0.4;
+
+/**
+ * The arrival, and why it is the loudest thing on a board that is otherwise
+ * quiet paper.
+ *
+ * These payoffs are the funnel's only unpaid deliveries - the screens where she
+ * is handed something rather than asked for something - and until 2026-09-03
+ * they arrived on a 0.4s fade and half a degree of rotation. That is the
+ * entrance of a loading state, not of a reward, and the meter immediately in
+ * front of it has just spent 600ms saying something was being worked out. A
+ * payoff that materialises the way a skeleton does gets read as the next
+ * screen, not as a thing earned.
+ *
+ * So the paper now arrives the way the print does on <SocialProofPolaroid /> -
+ * the one animation in the funnel that reads as *handed to you* - in three
+ * beats, then a gloss:
+ *
+ *   1. a **bloom** behind the card, brightest at the landing (see `GLOW_PEAK`).
+ *   2. the **paper**, dropped in over-rotated and sprung flat rather than
+ *      tweened. A spring overshoots and settles, which is what makes an object
+ *      read as having weight; a tween is a fade with a direction.
+ *   3. the **tape**, pressed down *after* the paper has landed, and the header
+ *      rule drawn left to right - the same "filled out in front of her" idiom
+ *      the rows underneath already use. Tape that arrives with the paper is a
+ *      graphic; tape that arrives after it is someone sticking it down.
+ *
+ * Then one **gloss** crosses the page at 0.55s. Once, never on a loop - a
+ * repeating shine is a banner ad, which is the same rule the print's gloss
+ * keeps in components/SocialProof.tsx.
+ *
+ * **Nothing here branches rendered markup on `useReducedMotion()`.** Every
+ * element is always in the tree and only its `animate` target changes, so this
+ * cannot mismatch on hydration - the trap documented at length on
+ * <SocialProofPolaroid />. Reduced motion gets the resting halo and the taped
+ * paper, with no movement at all: the bloom is simply already at rest and the
+ * gloss stays parked off the left edge.
+ */
 function RewardPaper({
   title,
   meta,
@@ -62,40 +123,132 @@ function RewardPaper({
 }) {
   const reduced = useReducedMotion();
   return (
-    <motion.div
-      initial={reduced ? false : { opacity: 0, y: 10, rotate: -0.5 }}
-      animate={{ opacity: 1, y: 0, rotate: 0 }}
-      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+    <div className={cn("relative w-full max-w-sm mx-auto", className)}>
+      {/* The bloom. First in the DOM and left at `z-index: auto` while the
+          paper below is `z-10`, rather than given a negative z - a `-z-10` here
+          would put it behind whatever ancestor background happens to be
+          painting, which on this funnel is not always nothing.
+
+          No `blur-*` class: the falloff is in the gradient stops already, and a
+          filter on a 400px box is the one thing on this screen that costs a
+          mid-range phone real frames. */}
+      <motion.span
+        aria-hidden
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={
+          reduced
+            ? { opacity: GLOW_REST, scale: 1 }
+            : { opacity: [0, GLOW_PEAK, GLOW_REST], scale: [0.9, 1.06, 1] }
+        }
+        transition={
+          reduced ? { duration: 0 } : { duration: 1.25, times: [0, 0.34, 1], ease: EASE }
+        }
+        className="pointer-events-none absolute -inset-6 rounded-[36px]"
+        style={{
+          background: `radial-gradient(58% 52% at 50% 46%, rgba(${GLOW_RGB},0.45), rgba(${GLOW_RGB},0.14) 55%, rgba(${GLOW_RGB},0) 78%)`,
+        }}
+      />
+
+      <motion.div
+        initial={reduced ? false : { opacity: 0, y: 22, scale: 0.94, rotate: -1.8 }}
+        animate={{ opacity: 1, y: 0, scale: 1, rotate: 0 }}
+        transition={
+          reduced
+            ? { duration: 0 }
+            : { type: "spring", stiffness: 150, damping: 16, mass: 0.9 }
+        }
+        className="relative z-10 rounded-2xl border px-3 pt-5 pb-3 shadow-sm"
+        style={PAPER}
+      >
+        <Tape side="left" reduced={!!reduced} />
+        <Tape side="right" reduced={!!reduced} />
+
+        <div className="relative flex items-center justify-between gap-2 pb-1.5">
+          <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#B5ADA9]">
+            {title}
+          </p>
+          {meta ? (
+            <span className="shrink-0 text-[10px] font-extrabold uppercase tracking-wide text-primary tabular-nums">
+              {meta}
+            </span>
+          ) : null}
+          {/* The rule, drawn rather than present. Zero-height with a bottom
+              border, so the dashes are the border's and not a repeating
+              gradient we would then have to keep in sync with the ones below. */}
+          <motion.span
+            aria-hidden
+            initial={reduced ? false : { scaleX: 0 }}
+            animate={{ scaleX: 1 }}
+            transition={reduced ? { duration: 0 } : { delay: 0.24, duration: 0.45, ease: EASE }}
+            style={{ transformOrigin: "left" }}
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-0 border-b border-dashed border-[#E0D5D0]"
+          />
+        </div>
+
+        {children}
+
+        {/* The gloss, clipped to the paper by its own layer rather than by
+            `overflow-hidden` on the card - the tape sits at -top-1.5 and would
+            lose its top edge to a clip on the card itself. Last in the DOM so
+            the light crosses the writing, which is what a light does. */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl"
+        >
+          {/* `skewX` is a motion prop, not a `-skew-x-12` class, for the same
+              reason the tape's rotation is: framer writes the element's whole
+              inline `transform` the moment it animates `x`, and an inline
+              transform beats the class - so a Tailwind skew here is silently
+              dropped and the gloss crosses as a flat vertical band. */}
+          <motion.span
+            initial={{ x: "-150%", skewX: -12 }}
+            animate={{ x: reduced ? "-150%" : "150%", skewX: -12 }}
+            transition={reduced ? { duration: 0 } : { delay: 0.55, duration: 1.05, ease: "easeInOut" }}
+            className="absolute inset-y-0 block w-2/3"
+            style={{
+              background:
+                "linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.72), rgba(255,255,255,0))",
+            }}
+          />
+        </span>
+      </motion.div>
+    </div>
+  );
+}
+
+/**
+ * One strip of washi tape, pressed down over the paper's top edge.
+ *
+ * The rotation is a motion value and not a `-rotate-6` class: framer writes the
+ * whole `transform`, so a Tailwind rotation on the same element is silently
+ * dropped the moment `scale` is animated. Both halves have to live here.
+ */
+function Tape({ side, reduced }: { side: "left" | "right"; reduced: boolean }) {
+  const angle = side === "left" ? -6 : 6;
+  return (
+    <motion.span
+      aria-hidden
+      initial={reduced ? false : { opacity: 0, scale: 0.5, rotate: 0 }}
+      animate={{ opacity: 1, scale: 1, rotate: angle }}
+      transition={
+        reduced
+          ? { duration: 0 }
+          : {
+              type: "spring",
+              stiffness: 420,
+              damping: 18,
+              delay: side === "left" ? 0.2 : 0.27,
+            }
+      }
       className={cn(
-        "relative w-full max-w-sm mx-auto rounded-2xl border px-3 pt-5 pb-3 shadow-sm",
-        className
+        "pointer-events-none absolute -top-1.5 h-4 w-11 rounded-[2px]",
+        side === "left" ? "left-6" : "right-6"
       )}
-      style={PAPER}
-    >
-      <span
-        aria-hidden
-        className="pointer-events-none absolute -top-1.5 left-6 h-4 w-11 -rotate-6 rounded-[2px]"
-        style={{ background: "rgba(255,235,118,0.55)", boxShadow: "0 1px 2px rgba(61,61,61,0.12)" }}
-      />
-      <span
-        aria-hidden
-        className="pointer-events-none absolute -top-1.5 right-6 h-4 w-11 rotate-6 rounded-[2px]"
-        style={{ background: "rgba(255,235,118,0.55)", boxShadow: "0 1px 2px rgba(61,61,61,0.12)" }}
-      />
-
-      <div className="flex items-center justify-between gap-2 border-b border-dashed border-[#E0D5D0] pb-1.5">
-        <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#B5ADA9]">
-          {title}
-        </p>
-        {meta ? (
-          <span className="shrink-0 text-[10px] font-extrabold uppercase tracking-wide text-primary tabular-nums">
-            {meta}
-          </span>
-        ) : null}
-      </div>
-
-      {children}
-    </motion.div>
+      style={{
+        background: "rgba(255,235,118,0.55)",
+        boxShadow: "0 1px 2px rgba(61,61,61,0.12)",
+      }}
+    />
   );
 }
 
@@ -192,17 +345,44 @@ function CountUp({ value, suffix }: { value: number; suffix: string }) {
   );
 }
 
-/** The handwritten closing line every board ends on. */
+/**
+ * The handwritten closing line every board ends on.
+ *
+ * It arrives last and it is the sentence she leaves the screen with, so it gets
+ * the one beat of theatre left over from the paper's own landing: a spring with
+ * a hair of scale in it, and a single ring pulse that expands out of the pill
+ * and clears. That is the board saying it has finished writing itself.
+ *
+ * The pulse is a separate absolutely-positioned ring rather than an animated
+ * `box-shadow`, so it costs one composited layer and no repaints, and it clears
+ * to nothing - a resting glow here would compete with the bloom behind the
+ * whole card, which is the element that owns "this is a reward".
+ */
 function Signoff({ delay, children }: { delay: number; children: React.ReactNode }) {
   const reduced = useReducedMotion();
   return (
     <motion.p
-      initial={reduced ? false : { opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: reduced ? 0 : delay, duration: 0.4 }}
-      className="mt-2.5 rounded-xl border border-primary/20 bg-primary/[0.07] px-3 py-2 text-center text-[12px] sm:text-[13px] font-semibold leading-snug text-[#3D3D3D]"
+      initial={reduced ? false : { opacity: 0, y: 8, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={
+        reduced
+          ? { duration: 0 }
+          : { type: "spring", stiffness: 320, damping: 22, delay }
+      }
+      className="relative mt-2.5 rounded-xl border border-primary/20 bg-primary/[0.07] px-3 py-2 text-center text-[12px] sm:text-[13px] font-semibold leading-snug text-[#3D3D3D]"
     >
-      {children}
+      <motion.span
+        aria-hidden
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={reduced ? { opacity: 0 } : { opacity: [0, 0.85, 0], scale: [0.96, 1.06, 1.1] }}
+        transition={
+          reduced
+            ? { duration: 0 }
+            : { delay: delay + 0.05, duration: 0.85, times: [0, 0.3, 1], ease: EASE }
+        }
+        className="pointer-events-none absolute inset-0 rounded-xl ring-2 ring-primary/45"
+      />
+      <span className="relative">{children}</span>
     </motion.p>
   );
 }
