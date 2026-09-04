@@ -24,7 +24,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
  *   is a deduction from a green one.
  *
  *   **Violet — money on the calendar.** Booked renewals, the renewal rate, the
- *   renewal tag, the refund guarantee still owed. Real, not yet collected.
+ *   renewal tag, the 7-day refund window still open. Real, not yet collected.
  *
  *   **Rose — the women.** Quiz finishers, funnel steps, customer names. The
  *   brand colour, reserved for people rather than money, so a rose figure is
@@ -247,7 +247,7 @@ type Stats = {
     bookedCount: number;
     cancelsPending: number;
     cancelsAtRisk: number;
-    guaranteeExposure: number;
+    refundExposure: number;
     refunds30: { count: number; amount: number };
     declined30: number;
   };
@@ -308,10 +308,10 @@ type Stats = {
     dropoffError: string | null;
   };
   contribution30: number;
-  /** The free week. */
+  /** The free trial. */
   trials: {
     trialDays: number;
-    /** Free weeks started in the curve window — a completed $0 checkout. */
+    /** Free trials started in the curve window — a completed $0 checkout. */
     started: number;
     /** Started long enough ago to have charged (or not). */
     matured: number;
@@ -320,7 +320,7 @@ type Stats = {
     convertRate: number | null;
     canceledDuringTrial: number;
     checkoutByOffer: { trial: number; paid: number; unknown: number };
-    /** Free weeks that have not become money yet, soonest charge first. */
+    /** Free trials that have not become money yet, soonest charge first. */
     running: TrialRunning[];
   };
   sales: Sale[];
@@ -870,7 +870,7 @@ export default function AdminPage() {
                 value={String(acq.newCustomers30)}
                 tone="her"
               />
-              {/* The free week. Three figures and a split: how many saved a
+              {/* The free trial. Three figures and a split: how many saved a
                   card, how many of the matured ones let it charge, how many
                   said no before it could — and which paywall opened the card
                   forms, because the trial paywall and the $59 paywall
@@ -879,7 +879,7 @@ export default function AdminPage() {
                   the trial exists to find out; it is blank until a trial is
                   old enough to have charged. */}
               <Row
-                label={`Free weeks started, ${plural(funnel.days, "day")}`}
+                label={`Free trials started, ${plural(funnel.days, "day")}`}
                 hint={
                   trials.checkoutByOffer.paid > 0
                     ? `Card forms opened: ${trials.checkoutByOffer.trial} on the trial paywall, ${trials.checkoutByOffer.paid} on the $59 paywall`
@@ -889,11 +889,11 @@ export default function AdminPage() {
                 tone="her"
               />
               <Row
-                label="Free week → paid"
+                label="Free trial → paid"
                 hint={
                   trials.convertRate === null
-                    ? `No free week is ${trials.trialDays} days old yet`
-                    : `${trials.converted} of the ${trials.matured} whose free week has ended`
+                    ? `No free trial is ${trials.trialDays} days old yet`
+                    : `${trials.converted} of the ${trials.matured} whose free trial has ended`
                 }
                 value={trials.convertRate === null ? "Not yet known" : `${trials.convertRate}%`}
                 tone={
@@ -902,7 +902,7 @@ export default function AdminPage() {
                 big
               />
               <Row
-                label="Cancelled in the free week"
+                label="Cancelled in the free trial"
                 hint="Saved a card, then cancelled before it charged — last 30 days"
                 value={String(trials.canceledDuringTrial)}
                 tone={trials.canceledDuringTrial > 0 ? "spend" : "mute"}
@@ -1178,12 +1178,12 @@ export default function AdminPage() {
           )}
         </Panel>
 
-        {/* ── 4b. Free weeks running ──────────────────────────────────────── */}
+        {/* ── 4b. Free trials running ──────────────────────────────────────── */}
         {/* Who saved a card and when it charges. A trial produces no charge for
-            seven days, so nobody in her free week can appear in the sales table
-            above — this is the only place she is visible until day 7. */}
+            TRIAL_DAYS days, so nobody in her free trial can appear in the sales table
+            above — this is the only place she is visible until the trial ends. */}
         <SectionHead
-          title="Free weeks running"
+          title="Free trials running"
           dot="var(--ahead)"
           source="Supabase"
           note={
@@ -1195,7 +1195,7 @@ export default function AdminPage() {
         <Panel accent="var(--ahead)">
           {trials.running.length === 0 ? (
             <div className="px-6 py-8 text-center">
-              <h3 className="text-base font-semibold">No free week running</h3>
+              <h3 className="text-base font-semibold">No free trial running</h3>
               <p className="mx-auto mt-1.5 max-w-[48ch] text-sm text-[var(--ink-2)]">
                 A row lands here the moment a card is saved at $0 on the trial paywall, and moves
                 to Latest sales when it charges on day {trials.trialDays}.
@@ -1762,7 +1762,7 @@ const TAG: Record<string, string> = {
 };
 
 const TRIAL_TAG: Record<TrialRunning["status"], { label: string; cls: string }> = {
-  running: { label: "free week", cls: "border-[var(--ahead-line)] bg-[var(--ahead-bg)] text-[var(--ahead-deep)]" },
+  running: { label: "free trial", cls: "border-[var(--ahead-line)] bg-[var(--ahead-bg)] text-[var(--ahead-deep)]" },
   cancelled: { label: "cancelled", cls: "border-[var(--line)] bg-white text-[var(--ink-3)]" },
   ended: { label: "not charged", cls: "border-[var(--stop-line)] bg-[var(--stop-bg)] text-[var(--stop-deep)]" },
 };
@@ -2049,7 +2049,7 @@ const STEP_LABELS: Record<string, string> = {
   stripe_checkout: "Opened the card form",
   // A completed $0 Checkout Session. Between the card form and the charge,
   // because that is where the week sits.
-  stripe_trial: "Started the free week",
+  stripe_trial: "Started the free trial",
   stripe_paid: "Paid",
 };
 

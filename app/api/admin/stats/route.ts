@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import {
-  OFFER_VARIANT_TRIAL,
   PLAN_PRICE,
   PLAN_WEEKS,
   TRIAL_DAYS,
+  isTrialOffer,
 } from "@/lib/pricing";
 import { getAccountState, type AccountState, TRIAL_SELECT_COLS } from "@/lib/getAccountState";
 
@@ -127,8 +127,15 @@ const MAX_SALES_SHOWN = 40;
 
 const DAY_MS = 86_400_000;
 
-/** The billing period, in days. Also the length of the refund guarantee. */
+/** The billing period, in days. */
 const PERIOD_DAYS = PLAN_WEEKS * 7;
+/**
+ * Terms §11: a first charge is refundable, no reason required, for this many
+ * days. The only refund promise left since the 8-week adherence guarantee was
+ * removed on 2026-09-04 — the "100% guarantee" on the paywall is the free trial
+ * and costs nothing once the trial has charged.
+ */
+const REFUND_WINDOW_DAYS = 7;
 /**
  * Grace added to a period before a customer counts as "should have renewed by
  * now". Stripe dunning retries a failed renewal for several days; without the
@@ -196,7 +203,7 @@ type Revenue = {
   firstChargeTimes: number[];
   /**
    * customer id → her first charge, as ms. What lets the trial block say which
-   * free weeks turned into money without a second walk over Stripe.
+   * free trials turned into money without a second walk over Stripe.
    */
   firstChargeByCustomer: Record<string, number>;
   /**
@@ -213,10 +220,11 @@ type Revenue = {
   /** When the earliest unmatured customer's first period closes. */
   cohortMaturesAt: string | null;
   /**
-   * First-period money still inside the 56-day refund guarantee. Not revenue
-   * you can spend yet — it is the only contingent liability in the business.
+   * First charges still inside Terms §11's REFUND_WINDOW_DAYS-day refund
+   * window. Not revenue you can spend yet — it is the only contingent liability
+   * in the business.
    */
-  guaranteeExposure: number;
+  refundExposure: number;
   /** Hit MAX_CHARGES — the figures above are a recent slice, not all time. */
   truncated: boolean;
   sales: RawSale[];
@@ -247,7 +255,7 @@ function emptyRevenue(error: string | null): Revenue {
     cohortSize: 0,
     cohortRenewed: 0,
     cohortMaturesAt: null,
-    guaranteeExposure: 0,
+    refundExposure: 0,
     truncated: false,
     sales: [],
   };
@@ -268,7 +276,7 @@ function emptyRevenue(error: string | null): Revenue {
  * charge per customer is her first purchase and everything after it is a
  * renewal. That same map gives the renewal rate (customers past their first
  * period who have a second charge), the new-customer count that cost-per-sale
- * divides by, and the refund-guarantee exposure.
+ * divides by, and the refund exposure.
  */
 /**
  * `newCustomerSince` is the acquisition floor — 30 days, or the campaign start
@@ -341,7 +349,7 @@ async function loadRevenue(
   const currencies = new Set<string>();
   /** customer → every succeeded charge time, ascending. */
   const byCustomer = new Map<string, number[]>();
-  /** customer → net amount of that customer's first charge, for guarantee exposure. */
+  /** customer → net amount of that customer's first charge, for refund exposure. */
   const firstChargeNet = new Map<string, number>();
   let gross = 0;
   let fees = 0;
@@ -431,9 +439,9 @@ async function loadRevenue(
     }
   }
 
-  // ── Acquisition, retention and guarantee exposure, off the same map ───────
+  // ── Acquisition, retention and refund exposure, off the same map ──────────
   const maturedBefore = now - (PERIOD_DAYS + RENEWAL_GRACE_DAYS) * DAY_MS;
-  const guaranteeAfter = now - PERIOD_DAYS * DAY_MS;
+  const refundableAfter = now - REFUND_WINDOW_DAYS * DAY_MS;
   let earliestUnmatured: number | null = null;
 
   for (const [customerId, times] of byCustomer) {
@@ -450,9 +458,9 @@ async function loadRevenue(
       earliestUnmatured = first;
     }
 
-    // Still refundable: her first period has not closed yet.
-    if (first >= guaranteeAfter) {
-      rev.guaranteeExposure += firstChargeNet.get(customerId) ?? 0;
+    // Still refundable under §11: her first charge is under a week old.
+    if (first >= refundableAfter) {
+      rev.refundExposure += firstChargeNet.get(customerId) ?? 0;
     }
   }
   if (earliestUnmatured !== null) {
@@ -471,7 +479,7 @@ async function loadRevenue(
   }
   rev.daily = rev.daily.map(round2);
   rev.refunds30.amount = round2(rev.refunds30.amount);
-  rev.guaranteeExposure = round2(rev.guaranteeExposure);
+  rev.refundExposure = round2(rev.refundExposure);
 
   return rev;
 }
@@ -499,7 +507,7 @@ type CheckoutStarts = {
    */
   byOffer: { trial: number; paid: number; unknown: number };
   /**
-   * Free weeks that actually began — a *completed* session under the trial
+   * Free trials that actually began — a *completed* session under the trial
    * offer, i.e. a card saved at $0. Carries the customer and the time so the
    * conversion cohort can be built against first charges.
    */
@@ -527,7 +535,7 @@ async function loadCheckoutStarts(stripe: Stripe, since: number): Promise<Checko
       if (s.metadata?.checkout_surface !== "web") continue;
       out.started += 1;
       const offer = s.metadata?.offer_variant;
-      const isTrial = offer === OFFER_VARIANT_TRIAL;
+      const isTrial = isTrialOffer(offer);
       if (isTrial) out.byOffer.trial += 1;
       else if (offer) out.byOffer.paid += 1;
       else out.byOffer.unknown += 1;
@@ -706,9 +714,9 @@ export async function POST(req: NextRequest) {
       // Built from TRIAL_SELECT_COLS, never hand-listed: a missing column
       // comes back undefined, which getAccountState reads as "no dispute,
       // not canceled, no failed payment".
-      // The three trial columns are appended for the "free weeks running"
+      // The three trial columns are appended for the "free trials running"
       // list; getAccountState() does not read them (see CLAUDE.md, "The free
-      // trial") — they only say who is in a free week and when it charges.
+      // trial") — they only say who is in a free trial and when it charges.
       .select(
         `user_id, created_at, stripe_customer_id, trial_ends_at, first_paid_at, offer_variant, ${TRIAL_SELECT_COLS}`
       )
@@ -801,26 +809,26 @@ export async function POST(req: NextRequest) {
     };
   });
 
-  // ─── Free weeks running: who saved a card and when it charges ─────────────
+  // ─── Free trials running: who saved a card and when it charges ─────────────
   //
-  // The trial block above counts free weeks; this names them. A woman in her
-  // free week has produced no charge yet, so she cannot appear in the sales
-  // list for seven days — and "who started a trial today" is the first thing
+  // The trial block above counts free trials; this names them. A woman in her
+  // free trial has produced no charge yet, so she cannot appear in the sales
+  // list for TRIAL_DAYS days — and "who started a trial today" is the first thing
   // the desk asks the morning after the trial paywall goes live. Read off the
   // `user_trials` rows already fetched: a trial-offer row with `trial_ends_at`
-  // set and `first_paid_at` still null is a free week that has not become
+  // set and `first_paid_at` still null is a free trial that has not become
   // money. Soonest-to-charge first, so the top of the list is tomorrow's cash.
   const trialsRunning = rows
     .filter(
       (r) =>
-        r.offer_variant === OFFER_VARIANT_TRIAL &&
+        isTrialOffer(r.offer_variant) &&
         typeof r.trial_ends_at === "string" &&
         !r.first_paid_at
     )
     .map((r) => {
       const chargesAt = new Date(r.trial_ends_at as string);
       const s = state.get(r.user_id);
-      // `ended` is a free week that passed without a charge landing on the
+      // `ended` is a free trial that passed without a charge landing on the
       // row — a declined card (past_due) or a webhook that never arrived.
       // Either way it is not a paying customer and not a cancel.
       const status: "running" | "cancelled" | "ended" =
@@ -912,7 +920,7 @@ export async function POST(req: NextRequest) {
   }).length;
   const trials = {
     trialDays: TRIAL_DAYS,
-    /** Free weeks started in the curve window (card saved, $0). */
+    /** Free trials started in the curve window (card saved, $0). */
     started: checkout.trialStarts.length,
     matured: trialsMatured.length,
     converted: trialsConverted,
@@ -923,7 +931,7 @@ export async function POST(req: NextRequest) {
     canceledDuringTrial: revenue.trialsCanceled30,
     /** Card-form opens split by which paywall opened them. */
     checkoutByOffer: checkout.byOffer,
-    /** Every free week that has not become money yet, soonest charge first. */
+    /** Every free trial that has not become money yet, soonest charge first. */
     running: trialsRunning,
   };
 
@@ -1127,7 +1135,7 @@ export async function POST(req: NextRequest) {
             source: "stripe" as const,
           },
         ]),
-    // The free week, between the card form and the money: a completed $0
+    // The free trial, between the card form and the money: a completed $0
     // session.
     ...(checkout.error
       ? []
@@ -1282,11 +1290,11 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  if (revenue.guaranteeExposure > 0) {
+  if (revenue.refundExposure > 0) {
     alerts.push({
       tone: "money",
       label: "Owed",
-      text: `$${revenue.guaranteeExposure.toFixed(2)} of first-period revenue is still inside the ${PERIOD_DAYS}-day refund guarantee. Treat it as borrowed.`,
+      text: `$${revenue.refundExposure.toFixed(2)} of first charges is still inside the ${REFUND_WINDOW_DAYS}-day refund window (Terms §11). Treat it as borrowed.`,
     });
   }
 
@@ -1403,7 +1411,7 @@ export async function POST(req: NextRequest) {
       bookedCount,
       cancelsPending,
       cancelsAtRisk,
-      guaranteeExposure: revenue.guaranteeExposure,
+      refundExposure: revenue.refundExposure,
       refunds30: revenue.refunds30,
       declined30: revenue.failedLast30,
     },

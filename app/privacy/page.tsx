@@ -204,7 +204,7 @@ export default function PrivacyPage() {
             <li>
               <strong>Plan completion records</strong> — which tasks you marked complete, the day each
               is attributed to, and the time we received it. Both timestamps are used to calculate
-              eligibility for the 8-Week Guarantee.
+              your progress history in the app and shape the adjustments to your next plan.
             </li>
             <li>
               <strong>Your generated plan</strong> — the exercises, cardio, relaxation sessions, and
@@ -259,7 +259,7 @@ export default function PrivacyPage() {
           <h3 className="text-xl font-semibold mb-3 mt-6">2.7 Support correspondence</h3>
           <p>
             If you email us, we keep your message, your address, and our reply, so we can help you and
-            keep a record of what was agreed — particularly for refund and guarantee claims.
+            keep a record of what was agreed — particularly for refund requests.
           </p>
 
           <h3 className="text-xl font-semibold mb-3 mt-6">2.8 AI operational records</h3>
@@ -285,7 +285,7 @@ export default function PrivacyPage() {
             </li>
             <li>
               <strong>To process payments</strong> — take payment, manage renewals and cancellations,
-              and handle refunds, guarantee claims, and payment disputes.
+              and handle free trials, refunds, and payment disputes.
             </li>
             <li>
               <strong>To communicate with you</strong> — sign-in codes, a welcome message, payment and
@@ -299,7 +299,7 @@ export default function PrivacyPage() {
             </li>
             <li>
               <strong>To keep the Service safe and honest</strong> — prevent and investigate fraud and
-              abuse, including refund and guarantee abuse, enforce our Terms, and secure our systems.
+              abuse, including refund and free-trial abuse, enforce our Terms, and secure our systems.
             </li>
             <li>
               <strong>To improve the Service</strong> — understand which features are used and where
@@ -639,7 +639,7 @@ export default function PrivacyPage() {
             </li>
             <li>
               <strong>What we must keep</strong> — transaction and tax records (typically up to seven
-              years, as law requires), records of a refund or guarantee claim, and records needed to
+              years, as law requires), records of a refund request, and records needed to
               establish or defend a legal claim or to prevent recurring fraud. These are billing records
               and support correspondence, <strong>not your health data</strong>.
             </li>

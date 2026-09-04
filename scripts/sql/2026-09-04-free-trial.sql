@@ -13,7 +13,7 @@
 --                   fire only for the caller that sets it from null
 --                   (claimFirstPayment in lib/stripe/fulfillCheckout.ts).
 --                   Never set it by hand: a non-null value suppresses both.
---   offer_variant   What the checkout sold: 'trial7_free' or 'paid_upfront'.
+--   offer_variant   What the checkout sold: 'trial_free' or 'paid_upfront' ('trial7_free' on the first day's sessions).
 --                   Stamped from the Checkout Session so /admin can split
 --                   the two paywalls without re-reading Stripe.
 --
@@ -31,7 +31,7 @@ comment on column public.user_trials.trial_ends_at is
 comment on column public.user_trials.first_paid_at is
   'When money first moved. One-time claim for the trial-conversion side effects; never set by hand.';
 comment on column public.user_trials.offer_variant is
-  'What checkout sold: trial7_free | paid_upfront (lib/pricing.ts OfferVariant).';
+  'What checkout sold: trial_free | paid_upfront (lib/pricing.ts OfferVariant; trial7_free is the 2026-09-04 legacy id).';
 
 -- Verify: all three present, no rows touched.
 -- select column_name, data_type from information_schema.columns

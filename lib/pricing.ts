@@ -18,21 +18,13 @@ export type PlanId = typeof PLAN_ID;
 /** Charged at checkout and every renewal, in USD. Must match STRIPE_PRICE_8WEEK. */
 export const PLAN_PRICE = 59;
 
-/** Billing period length. Also the length of the plan and of the refund guarantee. */
+/** Billing period length. Also the length of the plan. */
 export const PLAN_WEEKS = 8;
 
-/**
- * Minimum share of plan tasks she must tick off to qualify for the refund
- * guarantee. The condition is what makes the promise affordable to honor: it
- * only pays out to someone who did the work and still didn't improve, not to
- * someone who never opened the app.
- *
- * It is checkable without asking her for anything - every tick is a row in
- * `user_plan_logs` (see POST /api/plan/complete), so adherence is derived from
- * data we already hold. Say so in the copy; a threshold she cannot see her own
- * progress against reads as a trap rather than a promise.
- */
-export const PLAN_ADHERENCE_PCT = 90;
+// There is no outcome or adherence refund guarantee any more (2026-09-04). The
+// "100% guarantee" on the paywall *is* the free trial: try it, cancel before
+// the first charge, pay nothing. `PLAN_ADHERENCE_PCT` (90) and Terms §12's
+// adherence maths went with it; the only refund promise left is Terms §11.
 
 /**
  * Strikethrough anchor — the "regular" price the $59 is framed against, i.e. a
@@ -91,19 +83,21 @@ export const PLAN_DISCOUNT_WINDOW_MINUTES = 30;
 export const PLAN_DISCOUNT_WINDOW_MS = PLAN_DISCOUNT_WINDOW_MINUTES * 60 * 1000;
 
 /**
- * How many days before a renewal we email her — and, because the paywall says so
+ * How many days before a charge we email her — and, because the paywall says so
  * at the price, a promise made before she pays.
  *
- * Three, not one. The week-8 charge is the single most disputable moment in the
- * product: it lands exactly when she is least certain the plan worked, and a
- * day's warning is not enough time to act on. Three days is also the floor
- * several US auto-renewal statutes set, California's ARL among them.
+ * One constant covers both charges: the end of the free trial and every
+ * {@link PLAN_WEEKS}-week renewal after it. It has to be shorter than
+ * {@link TRIAL_DAYS} (asserted below), which is why it is two: with a five-day
+ * trial the notice lands on day 3, leaving her two days to act. It was three
+ * against a seven-day trial until 2026-09-04.
  *
- * Read by `/api/cron/renewal-notices` (the send window) and by the paywall (the
- * promise), so both move together. This is the only scheduled email left in the
- * product — see `scripts/sql/2026-08-12-drop-email-sequences.sql`.
+ * Read by `/api/cron/renewal-notices` (the send window), the paywall, the
+ * Terms and the Privacy policy (the promise), so all of them move together.
+ * This is the only scheduled email left in the product — see
+ * `scripts/sql/2026-08-12-drop-email-sequences.sql`.
  */
-export const RENEWAL_NOTICE_DAYS = 3;
+export const RENEWAL_NOTICE_DAYS = 2;
 
 /**
  * The free trial (2026-09-04). Card up front, nothing charged for
@@ -112,25 +106,40 @@ export const RENEWAL_NOTICE_DAYS = 3;
  *
  * Length lives here and nowhere else: Stripe's `trial_period_days`, the paywall
  * copy, the welcome email, the Terms and the admin conversion cohort all derive
- * from it. The trial is *not* a state `getAccountState()` knows about — a
- * trialing subscription is `paid` with `subscription_ends_at = trial_end`, so
+ * from it. Copy says "free trial" and prints this number — never "free week",
+ * which was true for one day (it shipped at 7 and became 5 on 2026-09-04).
+ * The trial is *not* a state `getAccountState()` knows about — a trialing
+ * subscription is `paid` with `subscription_ends_at = trial_end`, so
  * `subscription_ends_at` stays the only access boundary and the mobile app sees
- * an ordinary subscriber with seven days left.
+ * an ordinary subscriber with {@link TRIAL_DAYS} days left.
  */
-export const TRIAL_DAYS = 7;
+export const TRIAL_DAYS = 5;
 
 /**
  * What was sold, stamped on the Checkout Session and the subscription so every
  * downstream reader (webhook, success screen, /admin) knows without a second
- * lookup. `paid_upfront` is the returning customer — one free week per person
+ * lookup. `paid_upfront` is the returning customer — one free trial per person
  * — and every session created before 2026-09-04 carries neither.
+ *
+ * The trial id does not encode the length on purpose: it is persisted on
+ * `user_trials.offer_variant`, Stripe metadata and the success URL, so a
+ * length change must not re-key it. `trial7_free` is what the first day's
+ * sessions carry; read both through {@link isTrialOffer}, never by `===`.
  */
-export const OFFER_VARIANT_TRIAL = "trial7_free" as const;
+export const OFFER_VARIANT_TRIAL = "trial_free" as const;
 export const OFFER_VARIANT_PAID = "paid_upfront" as const;
 export type OfferVariant = typeof OFFER_VARIANT_TRIAL | typeof OFFER_VARIANT_PAID;
 
-// The renewal notice has to land *inside* the free week or the promise on the
-// paywall ("a reminder 3 days before any charge") is false for trial customers.
+/** The id the 2026-09-04 seven-day sessions were stamped with. Read-only. */
+const LEGACY_OFFER_VARIANT_TRIAL = "trial7_free";
+
+/** Whether an `offer_variant` (row, metadata or `?offer=`) sold a free trial. */
+export function isTrialOffer(value: unknown): boolean {
+  return value === OFFER_VARIANT_TRIAL || value === LEGACY_OFFER_VARIANT_TRIAL;
+}
+
+// The notice has to land *inside* the trial or the promise on the paywall
+// ("we email you N days before your first charge") is false for trial customers.
 if (RENEWAL_NOTICE_DAYS >= TRIAL_DAYS) {
   throw new Error(
     `RENEWAL_NOTICE_DAYS (${RENEWAL_NOTICE_DAYS}) must be shorter than TRIAL_DAYS (${TRIAL_DAYS})`

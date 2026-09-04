@@ -33,8 +33,8 @@ export type TrialStatus = {
   /** True for Apple/Google IAP. Web should not show "Manage subscription" (Stripe portal). */
   isThirdPartyProvider: boolean;
   /**
-   * True while the subscription is in its free week — `trial_ends_at` equals
-   * the period end. Switches the account card from "Renews" to "Free week
+   * True while the subscription is in its free trial — `trial_ends_at` equals
+   * the period end. Switches the account card from "Renews" to "Free trial
    * ends", which is the difference between money she has paid and money she
    * has not.
    */

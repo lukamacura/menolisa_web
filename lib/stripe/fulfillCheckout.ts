@@ -35,7 +35,7 @@ export function trialEndIso(subscription: Stripe.Subscription | null): string | 
  *
  * The same conditional-update claim as `claimFulfillment`, for a different
  * side effect: the Meta `Purchase` on a trial's first paid invoice, and the
- * "your free week became a plan" email. Both must fire exactly once per
+ * "your free trial became a plan" email. Both must fire exactly once per
  * customer and `invoice.payment_succeeded` is retried by Stripe, so a
  * read-then-write is not enough. A non-trial checkout claims it at
  * fulfillment (money moved at the card), so the invoice handler that follows
@@ -322,7 +322,7 @@ export type FulfillResult = {
   planType: PlanType | null;
   planAmount: number | null;
   subscriptionEndsAt: string | null;
-  /** True when the subscription is in its free week — nothing was collected. */
+  /** True when the subscription is in its free trial — nothing was collected. */
   trialing: boolean;
   /** Stripe's `trial_end`, when the subscription started with a trial. */
   trialEndsAt: string | null;
@@ -380,10 +380,10 @@ export async function fulfillCheckout(opts: {
   let subscription_canceled = false;
   let plan_type: PlanType | null = null;
   let plan_amount: number | null = null;
-  // During the free week Stripe reports `current_period_end === trial_end`, so
+  // During the free trial Stripe reports `current_period_end === trial_end`, so
   // `subscription_ends_at` lands on the first charge date with no special case
   // — and getAccountState() needs none. `trial_ends_at` is kept beside it so
-  // the renewal cron and the account card can tell "a week free" from "eight
+  // the renewal cron and the account card can tell "a free trial" from "eight
   // weeks paid" when the two dates coincide.
   const trial_ends_at = trialEndIso(subscription);
   const trialing =

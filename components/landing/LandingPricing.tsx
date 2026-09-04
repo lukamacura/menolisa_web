@@ -9,12 +9,12 @@ import { motion, useReducedMotion } from "framer-motion"
 import { useReplayableInView } from "@/hooks/useReplayableInView"
 import { HighlightedTextByRows } from "@/components/landing/HighlightedTextByRows"
 import {
-  PLAN_ADHERENCE_PCT,
   PLAN_ANCHOR_PRICE,
   PLAN_PRICE,
   PLAN_PRICE_PER_DAY,
   PLAN_PRICE_PER_WEEK,
   PLAN_WEEKS,
+  TRIAL_DAYS,
   formatPrice,
 } from "@/lib/pricing"
 
@@ -83,7 +83,7 @@ export default function LandingPricing() {
             <strong>
               {formatPrice(PLAN_PRICE)} for your full {PLAN_WEEKS}-week plan.
             </strong>{" "}
-            Follow {PLAN_ADHERENCE_PCT}% of it and still don&apos;t feel better? Full refund.
+            Try it free for {TRIAL_DAYS} days first. Cancel before your first charge and pay nothing.
           </p>
           <Badge 
             variant="outline" 
@@ -294,10 +294,10 @@ export default function LandingPricing() {
             }}
           >
             <h4 className="text-xl sm:text-2xl font-bold mb-3 text-center" style={{ color: "var(--foreground)" }}>
-              The {PLAN_WEEKS}-Week Guarantee
+              100% guarantee
             </h4>
             <p className="text-sm sm:text-base text-center max-w-2xl mx-auto leading-relaxed" style={{ color: "var(--muted-foreground)" }}>
-              {`Follow at least ${PLAN_ADHERENCE_PCT}% of your plan for ${PLAN_WEEKS} weeks. If you still don't feel better, email us and we'll refund every penny. Your plan counts itself as you tick off each day, so there's nothing to submit and nothing to prove. We can promise this because the plan works when you actually do it — that's the only part we need from you.`}
+              {`Try everything free for ${TRIAL_DAYS} days. If it isn't for you, cancel before your first charge and you pay nothing — two taps from your account, no email, no phone call, no questions. We can offer this because we're sure of the plan.`}
             </p>
           </div>
         </div>
@@ -315,11 +315,11 @@ export default function LandingPricing() {
             >
               <Lock className="h-4 w-4" />
               <span className="text-xs sm:text-sm font-bold">
-                {PLAN_WEEKS}-Week Money-Back Guarantee
+                {TRIAL_DAYS} days free &middot; cancel anytime
               </span>
             </div>
             <p className="text-sm text-center max-w-md" style={{ color: "var(--muted-foreground)" }}>
-              Do the {PLAN_WEEKS} weeks and still not feeling better? Full refund.
+              Nothing is charged until your trial ends. Cancel before then and you pay nothing.
             </p>
           </div>
         </div>

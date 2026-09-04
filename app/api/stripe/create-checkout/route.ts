@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
     // customer, and a retargeting ad puts her back at the paywall as readily as
     // it puts a stranger there.
     //
-    // The same read decides the free trial. One free week per person: an
+    // The same read decides the free trial. One free trial per person: an
     // account that has ever held a subscription (`stripe_subscription_id`,
     // `fulfilled_at`) buys at $59 from day one, and if it has a Stripe customer
     // we ask Stripe too, since a subscription cancelled before this code
@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
     // returning customer on a *fresh* anonymous account — the funnel collects
     // no email before Stripe, so she is recognised only in the webhook, when
     // the address collides and the subscription is merged onto her old account
-    // (`resolveCheckoutAccount`). That woman gets a second free week. Accepted:
+    // (`resolveCheckoutAccount`). That woman gets a second free trial. Accepted:
     // the alternative is asking for an email before the card, which is the
     // thing the funnel exists not to do.
     let trialEligible = true;
@@ -214,7 +214,7 @@ export async function POST(req: NextRequest) {
     // screen and does the same two jobs (mounts MetaPurchaseTracker, calls
     // sync-session if the webhook is late) while pointing her at the app.
     // `offer` tells the landing whether money moved, which decides the copy
-    // the download screen shows ("your free week has started" vs "you're all
+    // the download screen shows ("your free trial has started" vs "you're all
     // set"). Stamped from the same variable that sets `trial_period_days`
     // below, so the two cannot disagree.
     const offerVariant: OfferVariant = trialEligible ? OFFER_VARIANT_TRIAL : OFFER_VARIANT_PAID;
@@ -306,7 +306,7 @@ export async function POST(req: NextRequest) {
           offer_variant: offerVariant,
           ...metaMetadata,
         },
-        // The free week. `payment_method_collection: "always"` above is what
+        // The free trial. `payment_method_collection: "always"` above is what
         // makes the card mandatory on a $0 session — Stripe would otherwise
         // offer to skip it, and a trial with no card on file just expires.
         // `missing_payment_method: "cancel"` is the belt to that brace: if a

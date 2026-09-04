@@ -9,6 +9,7 @@ import {
 import { motion, useReducedMotion } from "framer-motion"
 import { useReplayableInView } from "@/hooks/useReplayableInView"
 import { HighlightedTextByRows } from "@/components/landing/HighlightedTextByRows"
+import { PLAN_PRICE, PLAN_WEEKS, RENEWAL_NOTICE_DAYS, TRIAL_DAYS, formatPrice } from "@/lib/pricing"
 
 export default function LandingFAQ() {
   const prefersReducedMotion = useReducedMotion()
@@ -41,8 +42,7 @@ export default function LandingFAQ() {
     },
     {
       question: "How does the guarantee work?",
-      answer:
-        "You pay $59 for your full 8-week plan. Follow at least 90% of it, and if you still don't feel better after those 8 weeks, email us and we'll refund the whole $59. There's nothing to submit - your plan counts itself as you tick off each day, so we can see your progress without asking you for anything. The 90% is the only condition, and it's there because the plan can only work if you actually do it. You can cancel renewal anytime from your account in two taps, guarantee or not.",
+      answer: `Try everything free for ${TRIAL_DAYS} days - your plan, Lisa, the tracker, all of it. Nothing is charged when you start. If it isn't for you, cancel before the trial ends from your account in two taps and you pay nothing at all. That's the whole guarantee: we're sure enough of the plan to let you use it first. If you stay, ${formatPrice(PLAN_PRICE)} is charged when the trial ends and covers your full ${PLAN_WEEKS}-week plan; it renews every ${PLAN_WEEKS} weeks, we email you ${RENEWAL_NOTICE_DAYS} days before each charge, and you can cancel renewal anytime.`,
     },
   ]
 

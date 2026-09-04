@@ -44,9 +44,9 @@ export async function GET(req: NextRequest) {
     // day the app stops working, and the in-app alert below is the only place
     // she is told before it happens.
     // Free trials come through the same query: a trialing row is `paid` with
-    // `subscription_ends_at = trial_end`, so with TRIAL_DAYS 7 and
-    // RENEWAL_NOTICE_DAYS 3 the notice lands on day 4 of the week. What differs
-    // is the copy — "your free week ends" rather than "your plan renews" —
+    // `subscription_ends_at = trial_end`, so with TRIAL_DAYS 5 and
+    // RENEWAL_NOTICE_DAYS 2 the notice lands on day 3 of the trial. What differs
+    // is the copy — "your free trial ends" rather than "your plan renews" —
     // and `trial_ends_at` matching the period end is how a row says which.
     const { data: due, error } = await supabase
       .from("user_trials")

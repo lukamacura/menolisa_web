@@ -33,7 +33,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Key Design Decisions
 - **Passwordless auth only** — 6-digit email OTP via Supabase (`signInWithOtp` + `verifyOtp`). No passwords, no magic links. Shared `<OtpForm />` (`components/auth/OtpForm.tsx`) is the only auth UI, and `/login` is now its only caller.
-- **The paywall sells a free week** — card up front, $0 at checkout, $59 on day 7, then the same $59/8-week subscription. It is not an account state and there is no flag; see "The free trial" in §4.
+- **The paywall sells a free trial** — card up front, $0 at checkout, $59 when the trial ends (`TRIAL_DAYS`, 5 since 2026-09-04; it shipped at 7), then the same $59/8-week subscription. It is not an account state and there is no flag; see "The free trial" in §4. **There is no refund guarantee** — the "100% guarantee" on the paywall *is* the trial (cancel before the first charge, pay nothing), and Terms §12 says exactly that.
 - **The `/register` funnel never asks for an email** — it signs her in anonymously and lets Stripe collect the address at checkout. See "Anonymous accounts" below.
 - **Dual auth paths** — cookie (web) and Bearer token (mobile) coexist in every API route via `getAuthenticatedUser()`
 - **Verbatim KB-first RAG** — AI chat tries to return exact knowledge base content before falling back to LLM generation; this ensures medically accurate, consistent answers
@@ -651,12 +651,19 @@ Migration: `scripts/sql/2026-09-02-funnel-events.sql`.
 
 The first campaign's read was 74 quiz finishers, a normal paywall → card-form
 rate, and 0 payments: the ask, $59 from a woman who met the brand ten minutes
-ago, was the last step failing. The paywall now sells **the first week free**:
+ago, was the last step failing. The paywall now sells **a free trial**:
 Stripe saves the card at $0 (`subscription_data.trial_period_days: TRIAL_DAYS`,
-`payment_method_collection: "always"`) and charges `PLAN_PRICE` on day 7, then
-every `PLAN_WEEKS` weeks as before. `lib/pricing.ts` holds `TRIAL_DAYS`,
-`trialEndDate()`, `formatChargeDate()` and the two `OFFER_VARIANT_*` ids;
-nothing else states the length. **There is no feature flag** — one was built
+`payment_method_collection: "always"`) and charges `PLAN_PRICE` when it ends,
+then every `PLAN_WEEKS` weeks as before. `lib/pricing.ts` holds `TRIAL_DAYS`
+(**5** — it shipped at 7 and was cut the same day, with `RENEWAL_NOTICE_DAYS`
+going 3 → 2 so the notice still lands inside it), `trialEndDate()`,
+`formatChargeDate()`, the two `OFFER_VARIANT_*` ids and `isTrialOffer()`;
+nothing else states the length. **Copy says "free trial" and prints
+`TRIAL_DAYS`, never "free trial"** — that wording was true for one day.
+`OFFER_VARIANT_TRIAL` is `trial_free` (length-agnostic on purpose: it is
+persisted on `user_trials.offer_variant`, Stripe metadata and the success URL);
+the first day's sessions carry `trial7_free`, so **read it through
+`isTrialOffer()`, never `===`**. **There is no feature flag** — one was built
 and removed the same day ("no complications"); the $59-today path survives
 only for returning customers (`trialEligible === false`, "welcome back").
 Migration: `scripts/sql/2026-09-04-free-trial.sql` — **apply it before
@@ -669,23 +676,25 @@ Rules that hold it together:
 - **It is not a state.** A trialing subscription is stored as `paid` with
   `subscription_ends_at = trial_end` — Stripe reports `current_period_end ===
   trial_end` during a trial, so `getAccountState()` needed no change and the
-  Expo app sees an ordinary subscriber with seven days left. `trial_ends_at`
-  exists beside it so the readers that must tell "a week free" from "eight
-  weeks paid" can: the renewal cron (sends "your free week ends" when the two
+  Expo app sees an ordinary subscriber with `TRIAL_DAYS` days left. `trial_ends_at`
+  exists beside it so the readers that must tell "a free trial" from "eight
+  weeks paid" can: the renewal cron (sends "your free trial ends" when the two
   dates match), `/api/account/status` (`in_trial`), and the account card
   (`inTrial`). The rule in "Access control" stands: don't teach
   `getAccountState()` about a trial.
 - **`RENEWAL_NOTICE_DAYS < TRIAL_DAYS`**, asserted at module load in
   `lib/pricing.ts`. The notice is the same cron, the same window and the same
-  `renewal_notice_sent_for` marker, landing on day 4; only the copy branches.
-- **Meta `Purchase` fires once, when the free week starts, at value 0.**
+  `renewal_notice_sent_for` marker, landing on day 3 of the five; only the copy
+  branches. One constant covers the trial end *and* every 8-week renewal, so
+  cutting it to 2 for the trial also shortened the renewal warning to 2 days.
+- **Meta `Purchase` fires once, when the free trial starts, at value 0.**
   Browser copy from `MetaPurchaseTracker` (off `?offer=trial7_free`), server
   copy from the webhook, deduped on `purchaseEventId(session.id)`. The live ad
   set optimises on `Purchase` and re-pointing it means a new ad set and a fresh
   learning phase, so the event stays where it was; the value is
   `TRIAL_PURCHASE_VALUE` (0) because that is what moved — reporting $59 on a
   saved card inflates Meta's revenue by the trial-cancel rate. A returning
-  customer's $59-today checkout still reports 59. **The day-7 charge is
+  customer's $59-today checkout still reports 59. **The trial-end charge is
   `Subscribe`** (standard event, server-only, value = amount paid,
   `subscribeEventId(invoice.id)`), never a second `Purchase` — two conversions
   a week apart from one click is an attribution mess, and `Subscribe` gives a
@@ -696,20 +705,20 @@ Rules that hold it together:
   rate × `PLAN_PRICE` — one constant in `lib/metaPixel.ts`. Nothing in Ads
   Manager needs touching.
 - **`first_paid_at` is a claim, like `fulfilled_at`.** `claimFirstPayment()`
-  sets it from null exactly once; `sendTrialConvertedEmail` (the day-7
+  sets it from null exactly once; `sendTrialConvertedEmail` (the trial-end
   receipt) fires only for the caller that won. It runs **before** the
   webhook's stale check on purpose — the conversion arrives as a burst with
   `customer.subscription.updated`, and the ordinary ordering could drop the
   invoice event as stale. A paid-upfront checkout claims it at fulfillment
   (`amount_total > 0`), so that path sends nothing new. Never set it by hand.
-- **One free week per person, as far as we can see.** `create-checkout` refuses
+- **One free trial per person, as far as we can see.** `create-checkout` refuses
   the trial to any account with a `stripe_subscription_id` or `fulfilled_at`,
   and asks Stripe when the row has a customer id; `/paywall` shows the
   "welcome back — starts today at $59" line off `previously_paid`. The gap is
   the returning customer on a fresh anonymous account: the funnel collects no
   email before Stripe, so she is recognised only when the address collides in
   the webhook and the subscription merges onto her old account. She gets a
-  second free week. The fix would be asking for an email before the card,
+  second free trial. The fix would be asking for an email before the card,
   which the funnel exists not to do.
 - **`sync-session` accepts `no_payment_required`.** A $0 session completes
   with that `payment_status`; checking `"paid"` alone would leave a trial
@@ -863,7 +872,7 @@ first.
 | `Lead` | — | yes | `sendMetaLead()` from `/api/auth/save-quiz`, **only on `user_profiles` insert** and only for cookie (web) callers | — |
 | `ViewContent` | yes | yes | Browser: `components/PaywallView.tsx` on mount. Server: `sendMetaViewContent()` from `POST /api/paywall-view`, the beacon that mount fires | $59 |
 | `InitiateCheckout` | yes | yes | Browser: `PaywallView` CTA click. Server: `sendMetaInitiateCheckout()` from `/api/stripe/create-checkout` once the session exists | $59 |
-| `Purchase` | yes | yes | Browser: `components/MetaPurchaseTracker.tsx` on the success landing. Server: `sendMetaPurchase()` from the Stripe webhook. Fires when the **free week starts**, at `TRIAL_PURCHASE_VALUE` (0); a returning customer's $59-today checkout reports 59. See "The free trial" | $0 / $59 |
+| `Purchase` | yes | yes | Browser: `components/MetaPurchaseTracker.tsx` on the success landing. Server: `sendMetaPurchase()` from the Stripe webhook. Fires when the **free trial starts**, at `TRIAL_PURCHASE_VALUE` (0); a returning customer's $59-today checkout reports 59. See "The free trial" | $0 / $59 |
 | `Subscribe` | — | yes | `sendMetaSubscribe()` from the webhook on a trial's first **paid** invoice (`first_paid_at` claim). The real-money event; never a second `Purchase` | $59 |
 
 #### Why the funnel's custom events are gone (2026-08-17)
@@ -1048,14 +1057,18 @@ omitted the Meta pixel while promising in bold that health data is never used
 for advertising — which was false. Three rules came out of it:
 
 - **Every figure comes from `lib/pricing.ts`.** Terms imports `PLAN_PRICE`,
-  `PLAN_WEEKS`, `PLAN_ADHERENCE_PCT` and `RENEWAL_NOTICE_DAYS`. A Terms page
+  `PLAN_WEEKS`, `TRIAL_DAYS` and `RENEWAL_NOTICE_DAYS`. A Terms page
   stating a price Stripe does not charge is not a stale doc, it is a
   misrepresentation about money.
 - **The guarantee is a contract.** Terms §12 must stay true to the card in
-  `components/PaywallView.tsx`, and its measurement must be one
-  `POST /api/plan/complete` actually supports. §12.3's contemporaneous-recording
-  rule is the disclosure for `MAX_BACKFILL_DAYS` in that route — change one and
-  you must change the other.
+  `components/PaywallView.tsx`. Since 2026-09-04 both say the same thing: the
+  "100% guarantee" *is* the free trial — cancel before the first charge, pay
+  nothing. There is no adherence threshold, no claim process and no refund
+  behind it; `PLAN_ADHERENCE_PCT` is gone and the only refund promise left is
+  Terms §11 (7 days from the first charge, no reason required). The landing
+  page (`LandingPricing`, `LandingFAQ`) carries the same framing.
+  `MAX_BACKFILL_DAYS` in `POST /api/plan/complete` stays at 7 on the plan's own
+  account — the next cycle is built from those rows.
 - **A promise in the policy is a feature you have to build.** Privacy §6.4 says
   we honor Global Privacy Control, so `lib/privacySignals.ts` exists.
 
@@ -1373,9 +1386,6 @@ below reads like a rule, it is a pointer to one of those.
 - Early plan weeks run at 75-92% of the session length she was sold. That is the
   progression ladder working, but the quiz label describes weeks 5-8, and nobody
   has decided whether that is the honest way to sell it.
-- `PLAN_ADHERENCE_PCT` is still 90. A 90% bar over 56 days reads as unclaimable
-  to the sceptic the refund guarantee exists to convert — but lowering it changes
-  a refund promise, which is a business call, not a copy tweak.
 - The results screen's "Harder than it hits most" card makes a comparative claim
   and then discloses, in its own footnote, that "typical" is a modelled profile
   rather than survey data. It is honest, and it is the one thread a sceptic can
@@ -1416,10 +1426,12 @@ below reads like a rule, it is a pointer to one of those.
 | Select a second Stripe Price when the paywall countdown expires | It would let a user's system clock decide whether she pays double. The displayed price may understate what she is charged and must never overstate it. |
 | Bring back the paywall's "get my discount back" button | A timer that visibly resets teaches a 45-60 audience that the page is staged, and the doubt lands on the refund guarantee. The countdown is fine; the reset was the half that did the damage. |
 | Put `seconds` back into `DEFAULT_WARMUP` / `DEFAULT_COOLDOWN` | They take the catalog's dose via `bookendFrom()`. A second copy of a number already in `DOSE` drifted the first time `DOSE` changed. |
-| Teach `getAccountState()` about the trial | The free week (2026-09-04) is stored as `paid` with `subscription_ends_at = trial_end`, so access needs no trial rule; `trial_ends_at` is read only by the cron, the status route and the account card, for copy. A `trialing` state would mean every gate re-deciding what a trial allows — and the 2026-08-08 phantom-trial bug came from exactly that kind of column. |
-| Move Meta `Purchase` to the day-7 invoice (or rename it `StartTrial`) without a new ad set | The live ad set optimises on `Purchase` at checkout. Changing what that event means mid-flight resets learning. The day-7 charge is `Subscribe`; build a new ad set on it if you ever want to optimise on money. |
+| Bring back the 8-week adherence refund guarantee (or any outcome refund) | Removed 2026-09-04. The "100% guarantee" is the free trial: try it, cancel before the first charge, pay nothing. A refund promise needs a measurement, a claim process and a Terms section a regulator can check; the trial needs none of them. Terms §11's 7-day refund window is the only refund left. |
+| Compare `offer_variant` with `=== OFFER_VARIANT_TRIAL` | The first day's sessions and rows carry `trial7_free`; the id is `trial_free` now. `isTrialOffer()` accepts both. |
+| Teach `getAccountState()` about the trial | The free trial (2026-09-04) is stored as `paid` with `subscription_ends_at = trial_end`, so access needs no trial rule; `trial_ends_at` is read only by the cron, the status route and the account card, for copy. A `trialing` state would mean every gate re-deciding what a trial allows — and the 2026-08-08 phantom-trial bug came from exactly that kind of column. |
+| Move Meta `Purchase` to the trial-end invoice (or rename it `StartTrial`) without a new ad set | The live ad set optimises on `Purchase` at checkout. Changing what that event means mid-flight resets learning. The trial-end charge is `Subscribe`; build a new ad set on it if you ever want to optimise on money. |
 | Report `PLAN_VALUE` on a trial `Purchase` | $0 moved. $59 there inflates Meta's revenue by the trial-cancel rate and is a lie the moment anyone value-optimises or audits the account. `TRIAL_PURCHASE_VALUE`, and raise it only to a measured expected value. |
-| Fire a second `Purchase` on the day-7 charge | Two conversions a week apart from one click. That charge is `Subscribe`. |
+| Fire a second `Purchase` on the trial-end charge | Two conversions a week apart from one click. That charge is `Subscribe`. |
 | Set `user_trials.first_paid_at` by hand | Same shape as `fulfilled_at`: a non-null value permanently suppresses the trial's `Purchase` and the "your plan has started" email. |
 | Add an unauthenticated route that runs DDL | An unauthenticated route holding the service role key is a remote SQL console. The old one-time admin endpoints are gone; don't add another. |
 | Set `user_trials.fulfilled_at` by hand | A non-null value permanently suppresses the welcome email and plan generation. |
@@ -1444,7 +1456,22 @@ below reads like a rule, it is a pointer to one of those.
 
 ### Recent work
 
-**2026-09-04 (latest) — the free 7-day trial.**
+**2026-09-04 (latest) — trial cut to 5 days, notice to 2, guarantee reframed.**
+`TRIAL_DAYS` 7 → 5 and `RENEWAL_NOTICE_DAYS` 3 → 2 in `lib/pricing.ts`; every
+surface derives from them, and "free trial" became "free trial" everywhere it
+was printed (paywall, account card, three emails, the push alert, the download
+screen, `/admin`). The 8-week adherence refund guarantee is gone: the paywall's
+green card, Terms §12, the landing pricing block and FAQ now say the same
+thing — *100% guarantee: try it free, cancel before the first charge, pay
+nothing* — and the card renders only on the trial paywall (a returning
+customer is charged today). `PLAN_ADHERENCE_PCT` deleted; Terms §11 (7-day
+refund) kept and is now the only refund promise; `/admin`'s exposure figure
+re-based onto that 7-day window (`refundExposure`). `OFFER_VARIANT_TRIAL` is
+`trial_free`, read via `isTrialOffer()`. Not touched: the Expo app's own
+"0-3 days before the charge" screen (`docs/mobile-app-changes.md`), which is
+device-side and independent of the email.
+
+**2026-09-04 — the free trial (shipped at 7 days).**
 The paywall sells the first week free; Stripe saves the card at $0 and charges
 $59 on day 7. Full contract in §4 "The free trial". Touched: `lib/pricing.ts`,
 `create-checkout`, `sync-session`, `fulfillCheckout`, the webhook (`first_paid_at` claim,
@@ -1455,7 +1482,7 @@ the funnel's download screen, `/paywall`, `/terms` §10.7, `/api/account/status`
 yet applied). Not done: Stripe's `consent_collection` (needs the dashboard
 Terms URL first), and the returning-customer-on-a-fresh-account gap described
 in §4. Read the trial → paid figure on `/admin` once the first cohort is
-`TRIAL_DAYS + 3` days old; until then the panel says "not yet known".
+`TRIAL_DAYS + RENEWAL_GRACE_DAYS` days old; until then the panel says "not yet known".
 
 **2026-09-04 (latest) — first campaign read, funnel screen fixes, `/admin` made
 live, dead schema dropped.** The campaign's first 440 landing page views

@@ -51,9 +51,9 @@ export async function GET(req: NextRequest) {
   const decision = evaluateTrialStatus(row);
   const expired = decision === "paywall";
   const account = getAccountState(row);
-  // The free week, for a client that wants to say "first charge" rather than
+  // The free trial, for a client that wants to say "first charge" rather than
   // "renews". Nothing in the app *needs* it: a trialing row is an ordinary
-  // paid subscriber whose period ends in seven days, and `days_left` already
+  // paid subscriber whose period ends in TRIAL_DAYS days, and `days_left` already
   // says so.
   const trialEndsAt = row?.trial_ends_at ?? null;
   const inTrial =

@@ -496,7 +496,7 @@ async function handleInvoicePaymentSucceeded(
 }
 
 /**
- * The trial's "your free week became a plan" receipt, plus the internal
+ * The trial's "your free trial became a plan" receipt, plus the internal
  * note. She has been using the plan for a week and this is the email that
  * says the week became a subscription — the one "what is this charge"
  * question the trial can otherwise raise. Never allowed to fail the webhook.
@@ -523,7 +523,7 @@ async function sendTrialConvertedEmails(
       }),
       sendAdminNotification(
         "TRIAL CONVERTED",
-        `<p>First charge after a free week: <strong>${email}</strong>${profile?.name ? ` (${profile.name})` : ""}</p><p>Amount: $${(paidAmountCents / 100).toFixed(2)}</p><p>At: ${new Date().toUTCString()}</p>`
+        `<p>First charge after a free trial: <strong>${email}</strong>${profile?.name ? ` (${profile.name})` : ""}</p><p>Amount: $${(paidAmountCents / 100).toFixed(2)}</p><p>At: ${new Date().toUTCString()}</p>`
       ),
     ]);
   } catch (e) {

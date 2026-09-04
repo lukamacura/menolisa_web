@@ -14,7 +14,7 @@
  * | `Purchase`        | yes     | yes  | checkout completed — $0 on a trial, $59 for a returning customer |
  * | `Subscribe`       | -       | yes  | the trial's first paid invoice ($59) |
  *
- * `Purchase` fires when the free week starts (lib/pricing.ts `TRIAL_DAYS`),
+ * `Purchase` fires when the free trial starts (lib/pricing.ts `TRIAL_DAYS`),
  * not when the $59 is collected a week later. That is a deliberate trade: the
  * live ad set optimises on Purchase, and moving the event to the first paid
  * invoice (or renaming it `StartTrial`) means a new ad set and a fresh
@@ -26,7 +26,7 @@
  *    and is a lie the moment anyone value-optimises or audits the account.
  *    Once the trial → paid rate is known, `TRIAL_PURCHASE_VALUE` can become
  *    the expected value per trial (rate × PLAN_PRICE) — one constant, here.
- * 2. **Once per customer.** Nothing fires `Purchase` on the day-7 charge. The
+ * 2. **Once per customer.** Nothing fires `Purchase` on the trial-end charge. The
  *    real money is `Subscribe` (a standard event, server-only, value 59) so a
  *    clean "money moved" signal exists to build a future ad set on, without
  *    the same click reporting two conversions a week apart.
@@ -112,9 +112,9 @@ export const META_CURRENCY = "USD";
  * checkout.session.completed only, so Meta optimizes for new customers rather
  * than being fed a second conversion every 8 weeks for someone it already won.
  *
- * With the free week this is the value of a *returning* customer's checkout
+ * With the free trial this is the value of a *returning* customer's checkout
  * and of `Subscribe`; a trial checkout reports `TRIAL_PURCHASE_VALUE`.
- * Reconcile the Purchase count against `/admin`'s "free weeks started", and
+ * Reconcile the Purchase count against `/admin`'s "free trials started", and
  * Subscribe against charges.
  */
 export const PLAN_VALUE = PLAN_PRICE;

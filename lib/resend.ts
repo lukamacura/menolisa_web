@@ -123,7 +123,7 @@ function longDate(d: Date): string {
  * subscription is active. Free trial (`trialEndsAt` set): nothing was charged,
  * and the email says so *with the date and the amount of the first charge* —
  * that sentence is the disclosure the trial-to-paid rules want in writing, and
- * it is the one thing she will search her inbox for on day 7.
+ * it is the one thing she will search her inbox for on the day the trial ends.
  */
 export async function sendWelcomeEmail(
   to: string,
@@ -135,7 +135,7 @@ export async function sendWelcomeEmail(
   const footerLine =
     "You can manage or cancel your subscription anytime from Account. Questions? Just reply to this email.";
   const opening = opts.trialEndsAt
-    ? `<p style="margin:0 0 16px">Your free week has started — nothing has been charged. It runs until <strong>${longDate(opts.trialEndsAt)}</strong>. If you keep the plan, ${formatPrice(PLAN_PRICE)} is charged then for your next ${PLAN_WEEKS} weeks; cancel any time before that from Account and you pay nothing.</p>`
+    ? `<p style="margin:0 0 16px">Your free trial has started — nothing has been charged. It runs until <strong>${longDate(opts.trialEndsAt)}</strong>. If you keep the plan, ${formatPrice(PLAN_PRICE)} is charged then for your next ${PLAN_WEEKS} weeks; cancel any time before that from Account and you pay nothing.</p>`
     : `<p style="margin:0 0 16px">Your subscription is active. Thank you for joining.</p>`;
   const body = `
 <p style="margin:0 0 16px;font-size:17px;font-weight:600;color:#2d1b3d">Hi ${greeting},</p>
@@ -157,7 +157,7 @@ ${opening}
 }
 
 /**
- * Sent on a free trial's first real charge — the receipt for the week
+ * Sent on a free trial's first real charge — the receipt for the trial
  * becoming a plan. Says what was charged, what it covers, when the next one
  * is, and how to stop it. The plain renewal email below assumes she has paid
  * before; this one is for a woman who, until this morning, had not.
@@ -171,8 +171,8 @@ export async function sendTrialConvertedEmail(
   const renews = opts.periodEndsAt ? ` It renews on <strong>${longDate(opts.periodEndsAt)}</strong>, and we email you ${RENEWAL_NOTICE_DAYS} days before that.` : "";
   const body = `
 <p style="margin:0 0 16px;font-size:17px;font-weight:600;color:#2d1b3d">Hi ${greeting},</p>
-<p style="margin:0 0 16px">Your free week is over and you kept the plan — thank you. Your card was charged <strong>${formatPrice(opts.amount)}</strong> today for the next ${PLAN_WEEKS} weeks.${renews}</p>
-<p style="margin:0 0 28px">Nothing changes in the app: your plan carries straight on from where you are. Keep ticking days off — that is what the ${PLAN_WEEKS}-week guarantee counts.</p>
+<p style="margin:0 0 16px">Your free trial is over and you kept the plan — thank you. Your card was charged <strong>${formatPrice(opts.amount)}</strong> today for the next ${PLAN_WEEKS} weeks.${renews}</p>
+<p style="margin:0 0 28px">Nothing changes in the app: your plan carries straight on from where you are. Keep ticking days off — your next plan is built from what you actually did.</p>
 <table cellpadding="0" cellspacing="0" border="0">
   <tr>
     <td bgcolor="#7c3aed" style="background-color:#7c3aed;border-radius:10px">
@@ -240,14 +240,14 @@ export async function sendRenewalNoticeEmail(
   const greeting = name?.trim() || "there";
   const when = longDate(renewsAt);
 
-  // The free week's version. Same day (RENEWAL_NOTICE_DAYS before the date),
+  // The free trial's version. Same day (RENEWAL_NOTICE_DAYS before the date),
   // different fact: she has not paid yet, so "renews" is the wrong word and
   // "keep everything you have paid for" is false. This is the reminder the
   // paywall promised at the price, so it names the exact date and amount.
   if (opts.trial) {
     const body = `
 <p style="margin:0 0 16px;font-size:17px;font-weight:600;color:#2d1b3d">Hi ${greeting},</p>
-<p style="margin:0 0 16px">Your free week ends on <strong>${when}</strong>. If you keep the plan, your card will be charged <strong>${formatPrice(PLAN_PRICE)}</strong> that day for your next ${PLAN_WEEKS} weeks.</p>
+<p style="margin:0 0 16px">Your free trial ends on <strong>${when}</strong>. If you keep the plan, your card will be charged <strong>${formatPrice(PLAN_PRICE)}</strong> that day for your next ${PLAN_WEEKS} weeks.</p>
 <p style="margin:0 0 28px">If it isn't for you, cancelling takes about 30 seconds and you will not be charged anything. Nothing to do if you are staying.</p>
 <table cellpadding="0" cellspacing="0" border="0">
   <tr>
@@ -262,7 +262,7 @@ export async function sendRenewalNoticeEmail(
 <p style="margin:24px 0 0;color:#9d7ec9;font-size:13px">Questions? Just reply to this email.</p>`;
     return sendTransactionalEmail(
       to,
-      `Your free week ends in ${RENEWAL_NOTICE_DAYS} days`,
+      `Your free trial ends in ${RENEWAL_NOTICE_DAYS} days`,
       buildEmailHtml(body)
     );
   }

@@ -146,13 +146,13 @@ function warmPhaseChunks(phase: Phase, stepIndex: number) {
 }
 import { PLAN_PILLARS } from "@/lib/planPillars";
 import {
-  OFFER_VARIANT_TRIAL,
   PLAN_ID,
   PLAN_PRICE,
   PLAN_WEEKS,
   TRIAL_DAYS,
   formatChargeDate,
   formatPrice,
+  isTrialOffer,
   trialEndDate,
 } from "@/lib/pricing";
 import { getSymptomTransforms } from "@/lib/testimonials";
@@ -1825,8 +1825,8 @@ function getDiagnosisForwardCopy(): { sub: React.ReactNode } {
 // SYMPTOM_TRANSFORM / getSymptomTransforms live in lib/testimonials.ts, shared
 // with the paywall's SymptomOutcomeCards.
 // The "after" side is deliberately a *feeling*, not a piece of knowledge. The
-// guarantee she reads two blocks later promises she'll feel better, so an after
-// column that only promises understanding undercuts the offer it sits above.
+// offer she reads two blocks later is about feeling better, so an after column
+// that only promises understanding undercuts the offer it sits above.
 
 // ─── The plan: what she actually buys ───────────────────────────────────────
 // The four daily task areas and the 8-week arc live in lib/planPillars.ts.
@@ -4799,11 +4799,11 @@ function RegisterPageContent() {
    */
   const [checkoutEmail, setCheckoutEmail] = useState<string | null>(null);
   /**
-   * Whether this landing is a free week rather than a purchase — `offer` is
+   * Whether this landing is a free trial rather than a purchase — `offer` is
    * stamped on the success URL by `create-checkout` from the same variable
    * that set `trial_period_days`, so the screen and the charge agree.
    */
-  const isTrialLanding = searchParams.get("offer") === OFFER_VARIANT_TRIAL;
+  const isTrialLanding = isTrialOffer(searchParams.get("offer"));
   /**
    * The first-charge date printed on the trial landing. Stripe's own
    * `trial_end` when fulfillment has already written it (read back through
@@ -4853,7 +4853,7 @@ function RegisterPageContent() {
           const json = res.ok ? ((await res.json()) as { ends_at?: string | null }) : null;
           const ends = json?.ends_at ? new Date(json.ends_at) : null;
           // Trust the server date only if it looks like *this* trial: in the
-          // future and no further out than the free week plus a day. A stale
+          // future and no further out than the free trial plus a day. A stale
           // period end on a merged account would otherwise print last year.
           if (
             ends &&
@@ -6254,7 +6254,7 @@ function RegisterPageContent() {
             <p className="text-sm sm:text-base text-[#5A5A5A] mb-5 leading-relaxed">
               {isTrialLanding ? (
                 <>
-                  Your free week has started. Your first charge, if you keep the plan, is{" "}
+                  Your free trial has started. Your first charge, if you keep the plan, is{" "}
                   {formatPrice(PLAN_PRICE)}
                   {trialChargeDate ? ` on ${trialChargeDate}` : ` in ${TRIAL_DAYS} days`}. Your{" "}
                   {PLAN_WEEKS}-week plan is being built right now &mdash; download the app to start it.

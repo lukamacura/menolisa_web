@@ -22,9 +22,9 @@ export interface TrialCardProps {
   paymentFailedAt?: Date | null;
   isThirdPartyProvider?: boolean;
   /**
-   * The free week is running: `trial.end` is the first charge, not a renewal.
+   * The free trial is running: `trial.end` is the first charge, not a renewal.
    * "Renews Sep 11" to a woman who has paid nothing reads as a charge she
-   * did not agree to; "Free week ends Sep 11 · then $59" is the fact.
+   * did not agree to; "Free trial ends Sep 11 · then $59" is the fact.
    */
   inTrial?: boolean;
 }
@@ -228,10 +228,10 @@ export function TrialCard({
             ? "Your subscription is active"
             : state === "canceling"
               ? inTrial
-                ? `Free week ends ${when} · you won't be charged`
+                ? `Free trial ends ${when} · you won't be charged`
                 : `Access until ${when}`
               : inTrial
-                ? `Free week ends ${when} · then ${formatPrice(PLAN_PRICE)} for ${PLAN_WEEKS} weeks`
+                ? `Free trial ends ${when} · then ${formatPrice(PLAN_PRICE)} for ${PLAN_WEEKS} weeks`
                 : `Renews ${when}`}
         </p>
       );
@@ -283,7 +283,7 @@ export function TrialCard({
                     : state === "past_due"
                       ? "days to update card"
                       : inTrial
-                        ? "days of free week left"
+                        ? "days of free trial left"
                         : "days until renewal"}
                 </span>
               </div>

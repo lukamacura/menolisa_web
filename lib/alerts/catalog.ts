@@ -142,9 +142,9 @@ export function weeklyRecapCopy(input: {
   };
 }
 
-/** Three days before the card is charged again. Reassurance, not a warning. */
+/** RENEWAL_NOTICE_DAYS before the card is charged again. Reassurance, not a warning. */
 /**
- * Three days out from the charge — the moment she decides whether to keep going.
+ * A couple of days out from the charge — the moment she decides whether to keep going.
  *
  * This used to read "Your plan renews on the 14th / Nothing to do". Accurate,
  * and completely forgettable: it treated the one point in eight weeks where she
@@ -162,20 +162,20 @@ export function renewalCopy(renewsOn: Date, firstName: string | null): AlertCopy
 }
 
 /**
- * Three days before a free week ends. The renewal alert above says "your 8
- * weeks are nearly up", which is false for her — she has had seven days and
+ * RENEWAL_NOTICE_DAYS before a free trial ends. The renewal alert above says "your 8
+ * weeks are nearly up", which is false for her — she has had TRIAL_DAYS days and
  * paid nothing. Date and amount, and the exit, in two lines.
  */
 export function trialEndingCopy(endsOn: Date, firstName: string | null): AlertCopy {
   return {
     title: firstName
-      ? `${firstName}, your free week ends ${formatAlertDate(endsOn)}`
-      : `Your free week ends ${formatAlertDate(endsOn)}`,
+      ? `${firstName}, your free trial ends ${formatAlertDate(endsOn)}`
+      : `Your free trial ends ${formatAlertDate(endsOn)}`,
     body: `${formatPrice(PLAN_PRICE)} is charged that day for your next ${PLAN_WEEKS} weeks. Cancel before then and you pay nothing.`,
   };
 }
 
-/** Three days before a cancelled subscription's paid period runs out. */
+/** RENEWAL_NOTICE_DAYS before a cancelled subscription's paid period runs out. */
 export function accessEndingCopy(endsOn: Date): AlertCopy {
   return {
     title: `Your access ends on ${formatAlertDate(endsOn)}`,

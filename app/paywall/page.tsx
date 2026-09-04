@@ -22,7 +22,7 @@ export default function PaywallPage() {
   const [error, setError] = useState<string | null>(null);
   const [gateLoading, setGateLoading] = useState(true);
   const [isDisputed, setIsDisputed] = useState(false);
-  // One free week per person. This paywall is reached by someone who already
+  // One free trial per person. This paywall is reached by someone who already
   // has an account, so her history is one field away: `previously_paid` is
   // true for any row that ever held a Stripe subscription. Fail towards
   // charging — until the status has loaded, nobody is offered the trial.

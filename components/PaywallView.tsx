@@ -27,7 +27,6 @@ import {
   viewContentEventId,
 } from "@/lib/metaPixel";
 import {
-  PLAN_ADHERENCE_PCT,
   PLAN_ANCHOR_PRICE,
   PLAN_ANCHOR_PRICE_PER_DAY,
   PLAN_DISCOUNT_PCT,
@@ -101,7 +100,7 @@ export interface PaywallViewProps {
    */
   goal?: string[];
   /**
-   * Sell the free week (2026-09-04). True unless this account has already
+   * Sell the free trial (2026-09-04). True unless this account has already
    * held a subscription — the caller decides, because it is the caller that
    * knows her history (`/paywall` reads `previously_paid`; the funnel's
    * account is minutes old). False renders the $59-today paywall, and
@@ -110,8 +109,8 @@ export interface PaywallViewProps {
    */
   trialEligible?: boolean;
   /**
-   * She has had her free week — a returning customer. One line at the price
-   * says so, because a woman who saw "first week free" in the ad and meets a
+   * She has had her free trial — a returning customer. One line at the price
+   * says so, because a woman who saw "free trial" in the ad and meets a
    * $59 card form with no explanation reads it as a bait-and-switch.
    */
   welcomeBack?: boolean;
@@ -125,7 +124,7 @@ const ANCHOR_PER_DAY = `$${PLAN_ANCHOR_PRICE_PER_DAY.toFixed(2)}`;
 /**
  * Where the deadline lives. sessionStorage, not state: a reload must not hand
  * her a fresh 10 minutes, or the countdown is visibly theatre — and a timer that
- * is caught resetting takes the refund guarantee's credibility down with it,
+ * is caught resetting takes the guarantee card's credibility down with it,
  * which is the reason the first version of this countdown (with its one-tap "get
  * my discount back" button, which *did* visibly reset) was cut on 2026-08-12.
  * There is no reclaim button now: it runs down once per tab and stays down.
@@ -233,14 +232,14 @@ function useDiscountWindow() {
 // false half is the half that lands - and a subscriber who believed "one
 // payment" disputes the week-8 charge. The reassurance she actually needs here
 // is that the renewal is escapable, which is both true and stronger.
-const trustLabels = (price: string, trial: boolean) => [
+const trustLabels = (price: string, trial: boolean, chargeDate: string) => [
   trial
     ? {
         icon: CreditCard,
         bg: "bg-pink-100",
         fg: "text-pink-600",
         title: `$0 today`,
-        sub: `Cancel in the free week and pay nothing`,
+        sub: `Cancel before ${chargeDate} and pay nothing`,
       }
     : {
         icon: CreditCard,
@@ -611,17 +610,17 @@ export function PaywallView({
               trusted. The number is still the biggest type on the card - it
               just no longer shouts. */}
           <div className="pt-2 text-center">
-            {/* The free week (2026-09-04). The headline is the offer — a week
+            {/* The free trial (2026-09-04). The headline is the offer — a week
                 at $0 — and the price is the second line, stated as what
                 happens next rather than what happens now. Both figures are
                 still on the card in the first viewport; a trial that hides the
                 price it converts to is the shape of a complaint. The charge
-                date is printed rather than "in 7 days", for the same reason
+                date is printed rather than "in {TRIAL_DAYS} days", for the same reason
                 the finish board draws a calendar: a date is an appointment. */}
             {trialEligible ? (
               <>
                 <p className="text-2xl font-extrabold text-[#3D3D3D] leading-tight">
-                  Your first week is free.
+                  Your first {TRIAL_DAYS} days are free.
                 </p>
                 {/* ── Two dated rows, not three sentences (2026-09-04). ──
                     The headline used to be followed by three stacked lines of
@@ -684,7 +683,7 @@ export function PaywallView({
                 </p>
                 {welcomeBack && (
                   <p className="mt-1.5 text-xs text-[#7A7A7A] leading-snug">
-                    Welcome back &mdash; your plan starts today at {livePrice}. The free week is for
+                    Welcome back &mdash; your plan starts today at {livePrice}. The free trial is for
                     first-time members.
                   </p>
                 )}
@@ -742,7 +741,7 @@ export function PaywallView({
                   {/* The amount and the interval are stated in the rows above,
                       so this line is the two things they can't be: the notice
                       and the exit. */}
-                  We email you 3 days before your first charge. Cancel any time
+                  We email you {RENEWAL_NOTICE_DAYS} days before your first charge. Cancel any time
                   from your account &mdash; no email, no phone call.
                 </>
               ) : (
@@ -848,7 +847,7 @@ export function PaywallView({
 
         {/* Trust boxes */}
         <div className="grid grid-cols-2 gap-2 mb-4">
-          {trustLabels(livePrice, trialEligible).map((item, i) => {
+          {trustLabels(livePrice, trialEligible, chargeDate).map((item, i) => {
             const Icon = item.icon;
             return (
               <motion.div
@@ -871,33 +870,36 @@ export function PaywallView({
           })}
         </div>
 
-        {/* The 8-Week Guarantee - identical copy and layout to the diagnosis
-            page's guarantee card, restated at the moment of payment. It covers
-            exactly one billing period, and it is conditional on adherence: the
-            condition is the argument, not fine print. "This works if you do it"
-            is a stronger claim than "no questions asked", and it is the only
-            version we can afford to honor. */}
-        <div
-          className="rounded-2xl border-2 border-green-300 bg-green-50 p-4 mb-4"
-          style={{ boxShadow: "0 0 0 2px rgba(22,163,74,0.12), 0 8px 28px rgba(22,163,74,0.12)" }}
-        >
-          <div className="flex flex-col items-center text-center">
-            <ShieldCheck className="w-12 h-12 text-green-600 shrink-0 mb-2" />
-            <h2 className="text-base font-bold text-green-800 mb-2">
-              The {PLAN_WEEKS} Week Guarantee
-            </h2>
-            <p className="text-sm text-[#3D3D3D] leading-relaxed">
-              Follow <b>{PLAN_ADHERENCE_PCT}% of your plan</b> for {PLAN_WEEKS} weeks. If you still
-              don’t feel better, we’ll{" "}
-              <b className="text-green-700">refund you</b> in full.
-            </p>
-            <div className="w-16 h-px bg-green-300 my-3" />
-            <p className="text-xs text-[#5A5A5A] leading-snug">
-              Your plan counts itself as you tick off each day &mdash; nothing to submit, nothing to
-              prove. Do the work and the risk is ours.
-            </p>
+        {/* The 100% guarantee (2026-09-04). It *is* the free trial, stated as
+            a promise: try everything, cancel before the first charge, pay
+            nothing. It replaced the 8-week adherence refund guarantee, which
+            asked her to trust a threshold she could not see and a claim
+            process she had to initiate; this one asks nothing — the exit is
+            two taps in Account and the date is printed. Terms §12 states it
+            in the same words; keep the two in step. Rendered only on the
+            trial paywall: a returning customer is charged today, so "try it
+            free" would be false for her, and her card already says "cancel
+            before renewal and $59 is all you ever pay". */}
+        {trialEligible && (
+          <div
+            className="rounded-2xl border-2 border-green-300 bg-green-50 p-4 mb-4"
+            style={{ boxShadow: "0 0 0 2px rgba(22,163,74,0.12), 0 8px 28px rgba(22,163,74,0.12)" }}
+          >
+            <div className="flex flex-col items-center text-center">
+              <ShieldCheck className="w-12 h-12 text-green-600 shrink-0 mb-2" />
+              <h2 className="text-base font-bold text-green-800 mb-2">100% guarantee</h2>
+              <p className="text-sm text-[#3D3D3D] leading-relaxed">
+                Try everything free for <b>{TRIAL_DAYS} days</b>. If it isn’t for you, cancel before{" "}
+                {chargeDate} and you pay <b className="text-green-700">nothing</b>.
+              </p>
+              <div className="w-16 h-px bg-green-300 my-3" />
+              <p className="text-xs text-[#5A5A5A] leading-snug">
+                We can offer this because we’re sure of the plan. Cancel in two taps from your
+                account &mdash; no email, no phone call, no questions.
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Social proof + outcome cards, reused from the /register diagnosis
             screen (components/SocialProof.tsx) so the paywall carries the same
@@ -994,7 +996,7 @@ export function PaywallView({
             // text band. /register's pastel CTA can be light because it sits on
             // white; this one sits on a stack of pastel cards, so it stays
             // saturated to read as the one thing to press, and green echoes the
-            // refund guarantee card above ("safe to press"). The green glow lifts
+            // guarantee card above ("safe to press"). The green glow lifts
             // it off the page as one premium surface.
             className="relative w-full min-h-14 py-4 font-bold text-white rounded-2xl transition-all flex items-center justify-center gap-2 text-base sm:text-base disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden group"
             style={{
@@ -1025,7 +1027,7 @@ export function PaywallView({
                     most-read price on the page - and it used to be the one
                     number Stripe was never going to show her. With the trial
                     the charge today is $0 and the label says what she gets. */}
-                {trialEligible ? "Start my free week" : <>Get my plan &middot; {livePrice}</>}
+                {trialEligible ? "Start my free trial" : <>Get my plan &middot; {livePrice}</>}
               </>
             )}
           </motion.button>
@@ -1058,8 +1060,8 @@ export function PaywallView({
               </>
             ) : (
               <>
-                <b className="text-[#3D3D3D]">{PLAN_WEEKS} week guarantee</b> &middot; Cancel anytime
-                &middot; Renews every {PLAN_WEEKS} weeks
+                <b className="text-[#3D3D3D]">Cancel anytime</b> &middot; Reminder{" "}
+                {RENEWAL_NOTICE_DAYS} days before &middot; Renews every {PLAN_WEEKS} weeks
               </>
             )}
           </p>
@@ -1128,7 +1130,7 @@ export function DisputedAccountBanner() {
  *
  * What did not come back with the clock is the reclaim button. The 2026-08-12
  * removal was about a timer that visibly reset on one tap, which is the tell
- * that a page is theatre - and doubt on this screen lands on the refund
+ * that a page is theatre - and doubt on this screen lands on the
  * guarantee. Hence {@link DEADLINE_KEY}: a reload does not hand her a fresh ten
  * minutes, and a stored deadline further out than the full window is discarded
  * as tampered.

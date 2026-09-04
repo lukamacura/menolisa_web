@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import {
-  PLAN_ADHERENCE_PCT,
   PLAN_PRICE,
   PLAN_WEEKS,
   RENEWAL_NOTICE_DAYS,
@@ -14,7 +13,7 @@ import {
  * Three rules govern edits to this file.
  *
  * **1. Every figure comes from `lib/pricing.ts`.** The price, the billing
- * cadence, the guarantee threshold and the renewal-notice lead time are imported,
+ * cadence, the trial length and the renewal-notice lead time are imported,
  * never typed. A Terms page that states a price Stripe does not charge is not a
  * stale document, it is a misrepresentation about money — and it is the exact
  * kind that a state consumer-protection office reads first.
@@ -27,18 +26,19 @@ import {
  * afternoon, and each was wrong. Before editing a description here, read the
  * route it describes.
  *
- * **3. The guarantee in §12 is a contract, not marketing.** Its terms must match
- * the card in `components/PaywallView.tsx` word for word in substance, and the
- * measurement it describes must be one `POST /api/plan/complete` actually
- * supports. Section 12.3's contemporaneous-recording rule exists because `date`
- * on that route is client-supplied; `MAX_BACKFILL_DAYS` there is the enforcement
- * and this is the disclosure. Change one and you must change the other.
+ * **3. The guarantee in §12 is a contract, not marketing.** Since 2026-09-04 it
+ * *is* the free trial in §10.7 — cancel before the first charge, pay nothing —
+ * stated in the same words as the card in `components/PaywallView.tsx`. There
+ * is no adherence threshold, no claim process and no refund behind it any more:
+ * the 8-week refund guarantee, its 90% measurement and the
+ * contemporaneous-recording rule that disclosed `MAX_BACKFILL_DAYS` were removed
+ * that day. Change the card and change §12 in the same commit.
  */
 
 export const metadata: Metadata = {
   title: "Terms and Conditions | MenoLisa",
   description:
-    "The terms governing your use of MenoLisa, including subscription, cancellation, refund and 8-Week Guarantee terms.",
+    "The terms governing your use of MenoLisa, including subscription, free trial, cancellation and refund terms.",
 };
 
 const LAST_UPDATED = "September 4, 2026";
@@ -219,8 +219,8 @@ export default function TermsPage() {
             You agree to provide accurate, current, and complete information, and to keep it
             accurate. Your plan is generated from your answers; inaccurate answers produce a plan that
             may be unsuitable or unsafe for you. You may hold only one account. Creating multiple
-            accounts to obtain repeated introductory pricing, repeated refunds, or repeated use of the
-            guarantee in Section 12 is a material breach of these Terms.
+            accounts to obtain repeated introductory pricing, repeated refunds, or repeated free trials is
+            a material breach of these Terms.
           </p>
         </section>
 
@@ -360,9 +360,8 @@ export default function TermsPage() {
             </li>
             <li>
               You will skip, substitute, or reduce any activity that does not feel safe. Nothing in
-              your plan, and no streak, reward, badge, score, or completion metric — including the
-              threshold described in Section 12 — is a reason to perform an activity you should not
-              perform. Your health always takes priority over your plan.
+              your plan, and no streak, reward, badge, score, or completion metric, is a reason to
+              perform an activity you should not perform. Your health always takes priority over your plan.
             </li>
           </ul>
 
@@ -494,19 +493,15 @@ export default function TermsPage() {
               other harmful code;
             </li>
             <li>
-              Falsify records used to determine eligibility for a refund or the guarantee in Section
-              12, including by recording plan tasks as complete when you did not perform them;
-            </li>
-            <li>
-              Create multiple accounts to obtain repeated introductory pricing, refunds, or guarantee
-              claims; or
+              Create multiple accounts to obtain repeated introductory pricing, free trials, or
+              refunds; or
             </li>
             <li>Harass, threaten, or abuse our staff, including in support correspondence.</li>
           </ul>
           <p>
             We may investigate suspected violations and may suspend or terminate access under Section
-            21. We may also refuse a refund or guarantee claim that is the product of a violation of
-            this Section.
+            21. We may also refuse a refund request, or a free trial, that is the product of a
+            violation of this Section.
           </p>
         </section>
 
@@ -613,7 +608,7 @@ export default function TermsPage() {
           </p>
           <p>
             You keep full access until that period ends, and you are not charged again. Cancelling does
-            not refund the period you are in — see Sections 11 and 12 for refunds. Your account
+            not refund the period you are in — see Section 11 for refunds. Your account
             settings and cancellation remain available to you even after your access has ended.
           </p>
 
@@ -664,11 +659,9 @@ export default function TermsPage() {
               </li>
               <li>
                 <strong>Refunds and the guarantee:</strong> nothing is charged during the trial, so
-                there is nothing to refund from it. The refund window in Section 11 runs from the date
-                of your first charge. The {PLAN_WEEKS}-Week Guarantee in Section 12 applies to your
-                first paid period, and its guarantee period is measured exactly as Section 12.2 states
-                — from the day your plan first becomes available, which is the day your trial starts,
-                so the trial days count toward it.
+                there is nothing to refund from it. Cancelling before the trial ends is the 100%
+                Guarantee in Section 12 — you are simply never charged. The refund window in Section
+                11 runs from the date of your first charge.
               </li>
             </ul>
           </div>
@@ -678,7 +671,7 @@ export default function TermsPage() {
           <h2 className="text-2xl font-semibold mb-4">11. Refund Policy (7 Days)</h2>
           <p>
             Except where a longer or unconditional right is required by the law that applies to you,
-            and in addition to the guarantee in Section 12:
+            these are our refund terms:
           </p>
           <ul>
             <li>
@@ -692,7 +685,7 @@ export default function TermsPage() {
             </li>
             <li>
               <strong>Scope.</strong> This applies to your initial purchase only, not to renewal
-              charges. Renewal charges are not refundable except as required by law, under Section 12,
+              charges. Renewal charges are not refundable except as required by law
               or at our discretion.
             </li>
             <li>
@@ -704,147 +697,51 @@ export default function TermsPage() {
               <strong>Effect.</strong> On refund, your subscription is cancelled and your access ends.
             </li>
             <li>
-              <strong>Limit.</strong> One refund per person and per account, across this Section and
-              Section 12 combined. A person who has received any refund from us is not eligible for
-              another.
+              <strong>Limit.</strong> One refund per person and per account. A person who has received
+              any refund from us is not eligible for another.
             </li>
           </ul>
         </section>
 
         <section className="mb-8">
-          <h2 className="text-2xl font-semibold mb-4">
-            12. The {PLAN_WEEKS}-Week Guarantee
-          </h2>
+          <h2 className="text-2xl font-semibold mb-4">12. The 100% Guarantee</h2>
           <p>
             <strong>
-              Follow at least {PLAN_ADHERENCE_PCT}% of your plan for {PLAN_WEEKS} weeks. If you still
-              do not feel better, we will refund what you paid for that period, in full.
+              Try MenoLisa free for {TRIAL_DAYS} days. If it is not for you, cancel before your first
+              charge and you pay nothing.
             </strong>
           </p>
           <p>
-            This is a voluntary promise we make in addition to your legal rights and in addition to
-            Section 11. This Section states its complete terms. Where it and any advertisement differ,
-            this Section governs.
+            That is the whole of the guarantee, and this Section states its complete terms. Where it
+            and any advertisement differ, this Section governs.
           </p>
 
-          <h3 className="text-xl font-semibold mb-3 mt-6">12.1 Who is eligible</h3>
-          <ul>
-            <li>
-              You purchased your subscription <strong>directly from us</strong> (through our website,
-              billed by Stripe). Subscriptions billed by a third-party app store are covered by
-              Section 13 instead.
-            </li>
-            <li>
-              The claim relates to your <strong>first {PLAN_WEEKS}-week period</strong> as a
-              subscriber.
-            </li>
-            <li>
-              Your subscription was <strong>paid and active for the whole of that period</strong>. If
-              you cancel, are refunded, or your subscription lapses or is suspended before the period
-              ends, the period is incomplete and this guarantee does not apply. Cancelling with effect
-              from the <em>end</em> of the period does not disqualify you.
-            </li>
-            <li>
-              You have not previously received a refund from us under this Section or Section 11, and
-              you have not initiated a chargeback (Section 14).
-            </li>
-          </ul>
-
-          <h3 className="text-xl font-semibold mb-3 mt-6">12.2 The period being measured</h3>
+          <h3 className="text-xl font-semibold mb-3 mt-6">12.1 What it is</h3>
           <p>
-            The “guarantee period” is the <strong>{PLAN_WEEKS * 7} consecutive days</strong> beginning
-            on the day your {PLAN_WEEKS}-week plan first becomes available in your account. It is a
-            single continuous period; it cannot be paused, extended, or restarted, and time before your
-            plan is generated does not count toward it.
+            The guarantee is the free trial described in Section 10.7, stated as a promise: for the
+            length of the trial you have the full Service — your plan, Lisa, and symptom tracking —
+            and nothing is charged. Cancelling at any time before the trial ends, from Account
+            settings (Section 10.5), means your payment method is never charged. There is nothing to
+            claim, nothing to submit, and no reason is required.
           </p>
 
-          <h3 className="text-xl font-semibold mb-3 mt-6">
-            12.3 How the {PLAN_ADHERENCE_PCT}% is measured
-          </h3>
+          <h3 className="text-xl font-semibold mb-3 mt-6">12.2 Who it applies to</h3>
           <p>
-            Your plan schedules a defined set of tasks for each day. Your completion figure is:
-          </p>
-          <p className="rounded-lg bg-muted p-4 font-mono text-sm">
-            tasks recorded as complete during the guarantee period ÷ tasks your plan scheduled for
-            that same period
-          </p>
-          <p>
-            <strong>Nothing to submit.</strong> You do not need to send evidence, screenshots, or a
-            diary. The figure is calculated from the completion records already stored in your
-            account. You may ask us for your current figure at any time, and we will provide it along
-            with how it was calculated. We recommend you do so before the period ends, while you can
-            still act on it.
-          </p>
-          <p>
-            <strong>Tasks must be recorded as you do them.</strong> Only completions{" "}
-            <strong>recorded within seven (7) days of the day they are attributed to</strong> count
-            toward your figure. Marking many days complete in bulk after the fact does not count. This
-            allows for a phone that was offline, a weekend away, or a few days catching up — and it is
-            what keeps the guarantee meaningful for the women who actually do the work. Our records of
-            when each completion was received are determinative, absent obvious error.
-          </p>
-          <p>
-            <strong>Changes to your plan.</strong> If your plan is regenerated or adjusted during the
-            period, the calculation uses the tasks scheduled at the time each day occurred. Days on
-            which your plan scheduled no tasks are excluded from both sides.
+            Anyone whose checkout offered the free trial — first-time subscribers, once per person, as
+            Section 10.7 sets out. A returning subscriber is charged at the time of purchase and is
+            covered by Section 11 rather than this Section.
           </p>
 
-          <h3 className="text-xl font-semibold mb-3 mt-6">12.4 The outcome condition</h3>
+          <h3 className="text-xl font-semibold mb-3 mt-6">12.3 What it is not</h3>
           <p>
-            The remaining condition is that <strong>you do not feel better</strong>. That is{" "}
-            <strong>your own honest assessment</strong>. We will not ask you to justify it, prove it,
-            document it, or discuss your symptoms with us, and we will not require you to complete a
-            questionnaire, produce a Menopause Score, or provide medical evidence. We ask only that
-            your statement be made in good faith.
-          </p>
-
-          <h3 className="text-xl font-semibold mb-3 mt-6">12.5 How to claim</h3>
-          <p>
-            Email <Mail /> from the email address on your account, within{" "}
-            <strong>fourteen (14) days after the guarantee period ends</strong>, saying that you
-            completed your plan and do not feel better. Please put “{PLAN_WEEKS}-Week Guarantee” in the
-            subject line. Claims received after that window cannot be accepted. We will confirm your
-            completion figure and respond within <strong>ten (10) business days</strong>.
-          </p>
-
-          <h3 className="text-xl font-semibold mb-3 mt-6">12.6 What you receive</h3>
-          <p>
-            A refund of <strong>the amount you actually paid for that one {PLAN_WEEKS}-week period</strong>,
-            returned to the original payment method, typically within 5–10 business days of approval.
-            Earlier or later periods are not refunded. On refund, your subscription is cancelled and
-            your access ends.
-          </p>
-
-          <h3 className="text-xl font-semibold mb-3 mt-6">12.7 Limits</h3>
-          <ul>
-            <li>
-              <strong>Once per person</strong> — not once per account. Multiple accounts, email
-              addresses, or payment methods used by the same person, or in the same household, count as
-              one.
-            </li>
-            <li>
-              It cannot be combined with Section 11 or any other refund. One refund total.
-            </li>
-            <li>
-              We may decline a claim that is fraudulent, that relies on completion records we
-              reasonably determine to be falsified, or that follows a material breach of Section 8.
-              Where we decline a claim, we will tell you why.
-            </li>
-          </ul>
-
-          <h3 className="text-xl font-semibold mb-3 mt-6">12.8 What this guarantee is not</h3>
-          <p>
-            It is a <strong>refund promise and nothing more</strong>. MenoLisa is a wellness product,
-            not a medical treatment. We do not promise, and this guarantee does not create, any health,
-            clinical, symptom, weight, fitness, or other outcome, and no statement in it should be read
-            as a representation that the Service will improve your health. Individual results vary and
-            depend on many factors outside our control. Section 4 applies in full.
-          </p>
-          <p>
-            It is also <strong>not a general satisfaction guarantee</strong>. It exists for the case
-            where you followed the plan and it did not help you. If you did not use the plan, the{" "}
-            {PLAN_ADHERENCE_PCT}% threshold will not be met and this guarantee will not apply — but
-            Section 11 may.
+            It is <strong>not a refund promise</strong>. Once the trial has ended and your payment
+            method has been charged, the only refund terms are those in Section 11 and any right you
+            have under applicable law. It is also <strong>not a promise about outcomes</strong>.
+            MenoLisa is a wellness product, not a medical treatment. We do not promise, and this
+            guarantee does not create, any health, clinical, symptom, weight, fitness, or other
+            outcome, and no statement in it should be read as a representation that the Service will
+            improve your health. Individual results vary and depend on many factors outside our
+            control. Section 4 applies in full.
           </p>
           <p>
             <strong>Nothing in this Section limits any right you have under consumer law that cannot
@@ -877,7 +774,7 @@ export default function TermsPage() {
               website will not stop that store’s billing.
             </li>
             <li>
-              <strong>Refunds, including under Sections 11 and 12, are handled by that store under its
+              <strong>Refunds, including under Section 11, are handled by that store under its
               refund policy.</strong> We are not able to issue a refund for a purchase we did not
               charge you for, and store rules do not permit us to do so. We will assist you with a
               request where we can, but the decision is the store’s.
@@ -910,7 +807,7 @@ export default function TermsPage() {
               We may <strong>suspend or terminate your access</strong> to the Service while the dispute
               is open, and permanently if it is resolved against you;
             </li>
-            <li>You become ineligible for any refund under Sections 11 or 12; and</li>
+            <li>You become ineligible for any refund under Section 11; and</li>
             <li>
               We may respond to the dispute with evidence of your purchase and use of the Service,
               including your account records, and may recover amounts and fees properly owed.
@@ -1063,7 +960,7 @@ export default function TermsPage() {
           </p>
           <p>
             We may suspend or terminate your access, with or without notice, if you materially breach
-            these Terms, if we reasonably suspect fraud or abuse (including refund or guarantee abuse),
+            these Terms, if we reasonably suspect fraud or abuse (including refund or free-trial abuse),
             if you fail to pay, if your account has been inactive for an extended period, if required
             by law, or if we discontinue the Service. Where we discontinue the Service entirely, we
             will give reasonable notice and refund the unused portion of any period you have paid for.
@@ -1326,8 +1223,8 @@ export default function TermsPage() {
             Email: <Mail />
           </p>
           <p>
-            We aim to respond to all enquiries within five (5) business days, and to refund and
-            guarantee claims within ten (10) business days.
+            We aim to respond to all enquiries within five (5) business days, and to refund
+            requests within ten (10) business days.
           </p>
         </section>
 

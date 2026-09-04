@@ -27,11 +27,14 @@ const BodySchema = z.object({
  * reconnect, and a woman who trains on a Friday in a gym basement and reopens
  * the app on Sunday is telling the truth.
  *
- * It is not unbounded, because the 8-week refund guarantee is measured off these
- * rows (see the guarantee section of /terms). With no floor, all 56 days could
- * be ticked in one afternoon of week eight and clear the 90% threshold without
- * a single session having happened. A week is long enough for every honest
- * offline case and far too short to reconstruct a plan she never did.
+ * It is not unbounded, because these rows are what the next plan is built from
+ * (`prior_adherence`, see lib/plan/cycles.ts) and what her rings and history
+ * show. With no floor, all 56 days could be ticked in one afternoon of week
+ * eight and the next cycle would be progressed off work that never happened.
+ * A week is long enough for every honest offline case and far too short to
+ * reconstruct a plan she never did. (Until 2026-09-04 this bound also enforced
+ * the 8-week refund guarantee's contemporaneous-recording rule; that guarantee
+ * is gone, and the bound stands on the plan alone.)
  */
 const MAX_BACKFILL_DAYS = 7;
 
@@ -42,8 +45,7 @@ const MAX_BACKFILL_DAYS = 7;
  *
  * `date` is the day the work is attributed to and comes from the client;
  * `updated_at` is when we actually recorded it and is stamped here. The two are
- * deliberately separate — the guarantee calculation reads both, so bulk
- * backfilling is visible rather than silent.
+ * deliberately separate, so bulk backfilling is visible rather than silent.
  */
 export async function POST(req: NextRequest) {
   const user = await getAuthenticatedUser(req);
