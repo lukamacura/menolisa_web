@@ -4,6 +4,7 @@ import {
   PLAN_PRICE,
   PLAN_WEEKS,
   RENEWAL_NOTICE_DAYS,
+  TRIAL_DAYS,
   formatPrice,
 } from "@/lib/pricing";
 
@@ -40,7 +41,7 @@ export const metadata: Metadata = {
     "The terms governing your use of MenoLisa, including subscription, cancellation, refund and 8-Week Guarantee terms.",
 };
 
-const LAST_UPDATED = "August 30, 2026";
+const LAST_UPDATED = "September 4, 2026";
 const SUPPORT_EMAIL = "support@macurasolutions.us";
 
 function Mail() {
@@ -77,7 +78,9 @@ export default function TermsPage() {
             </li>
             <li>
               <strong>Your subscription renews automatically</strong> at {formatPrice(PLAN_PRICE)}{" "}
-              every {PLAN_WEEKS} weeks until you cancel (Section 10).
+              every {PLAN_WEEKS} weeks until you cancel (Section 10). The free trial requires a
+              payment method and converts to a paid subscription at {formatPrice(PLAN_PRICE)} when
+              the trial ends unless you cancel first (Section 10.7).
             </li>
             <li>
               <strong>Disputes go to individual arbitration</strong> and you waive class actions and
@@ -537,12 +540,13 @@ export default function TermsPage() {
 
           <h3 className="text-xl font-semibold mb-3">10.1 What you are buying</h3>
           <p>
-            Access to the Service requires a paid subscription.{" "}
-            <strong>There is no free trial.</strong> The subscription is{" "}
-            <strong>{formatPrice(PLAN_PRICE)} per {PLAN_WEEKS}-week period</strong> unless a different
-            price is clearly displayed to you at checkout, and your payment method is charged{" "}
-            <strong>in full at the time of purchase</strong>. Prices are in U.S. dollars and exclude
-            any tax, which is added where applicable.
+            Access to the Service requires a paid subscription. The subscription is{" "}
+            <strong>{formatPrice(PLAN_PRICE)} per {PLAN_WEEKS}-week period</strong> unless a
+            different price is clearly displayed to you at checkout. Where checkout offers a free
+            trial, your payment method is saved at the time of purchase and{" "}
+            <strong>first charged when the trial ends</strong> (Section 10.7); otherwise it is
+            charged <strong>in full at the time of purchase</strong>. Prices are in U.S. dollars and
+            exclude any tax, which is added where applicable.
           </p>
 
           <h3 className="text-xl font-semibold mb-3 mt-6">10.2 Automatic renewal — please read</h3>
@@ -619,6 +623,55 @@ export default function TermsPage() {
             or terminate your access if payment is not completed. You remain responsible for amounts
             properly owed for periods already provided.
           </p>
+
+          <h3 id="free-trial" className="text-xl font-semibold mb-3 mt-6">
+            10.7 Free trial
+          </h3>
+          <div className="rounded-lg border-2 border-foreground/20 bg-muted p-5">
+            <p className="mb-2 font-semibold">Where checkout offers a free trial, these are its terms.</p>
+            <ul className="mb-0">
+              <li>
+                <strong>Length:</strong> {TRIAL_DAYS} days, starting when you complete checkout.
+                Nothing is charged during the trial.
+              </li>
+              <li>
+                <strong>Payment method required:</strong> you must provide a valid payment method to
+                start the trial. Stripe may place a temporary authorization on it to confirm it is
+                valid; that is not a charge.
+              </li>
+              <li>
+                <strong>What happens when it ends:</strong> unless you cancel before the trial ends,
+                your subscription begins automatically and your payment method is charged{" "}
+                <strong>{formatPrice(PLAN_PRICE)}</strong> for the first {PLAN_WEEKS}-week period, and
+                then {formatPrice(PLAN_PRICE)} every {PLAN_WEEKS} weeks under Section 10.2. The exact
+                date and amount of the first charge are shown at checkout, on the screen after it, and
+                in your welcome email.
+              </li>
+              <li>
+                <strong>Reminder:</strong> we email you approximately {RENEWAL_NOTICE_DAYS} days before
+                the first charge, to the address on your account. As in Section 10.2, it remains your
+                responsibility to cancel in time.
+              </li>
+              <li>
+                <strong>How to cancel:</strong> at any time during the trial from{" "}
+                <strong>Account settings</strong> (Section 10.5). Cancelling during the trial ends the
+                trial at its scheduled end date and you are not charged.
+              </li>
+              <li>
+                <strong>One per person:</strong> the free trial is for first-time subscribers. An
+                account or person that has previously held a MenoLisa subscription, on any billing
+                platform, is charged at the time of purchase and does not receive a second trial.
+              </li>
+              <li>
+                <strong>Refunds and the guarantee:</strong> nothing is charged during the trial, so
+                there is nothing to refund from it. The refund window in Section 11 runs from the date
+                of your first charge. The {PLAN_WEEKS}-Week Guarantee in Section 12 applies to your
+                first paid period, and its guarantee period is measured exactly as Section 12.2 states
+                — from the day your plan first becomes available, which is the day your trial starts,
+                so the trial days count toward it.
+              </li>
+            </ul>
+          </div>
         </section>
 
         <section className="mb-8">

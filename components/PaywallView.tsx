@@ -37,7 +37,10 @@ import {
   PLAN_PRICE_PER_DAY,
   PLAN_WEEKS,
   RENEWAL_NOTICE_DAYS,
+  TRIAL_DAYS,
+  formatChargeDate,
   formatPrice,
+  trialEndDate,
 } from "@/lib/pricing";
 import { trackFb } from "@/lib/metaPixelClient";
 import { HighlightSweep } from "@/components/HighlightSweep";
@@ -97,6 +100,21 @@ export interface PaywallViewProps {
    * end of the finish line is the outcome *she* picked, not one we assigned.
    */
   goal?: string[];
+  /**
+   * Sell the free week (2026-09-04). True unless this account has already
+   * held a subscription — the caller decides, because it is the caller that
+   * knows her history (`/paywall` reads `previously_paid`; the funnel's
+   * account is minutes old). False renders the $59-today paywall, and
+   * `create-checkout` makes the same decision from the same facts so the copy
+   * and the charge cannot disagree.
+   */
+  trialEligible?: boolean;
+  /**
+   * She has had her free week — a returning customer. One line at the price
+   * says so, because a woman who saw "first week free" in the ad and meets a
+   * $59 card form with no explanation reads it as a bait-and-switch.
+   */
+  welcomeBack?: boolean;
 }
 
 const PRICE = formatPrice(PLAN_PRICE);
@@ -215,14 +233,22 @@ function useDiscountWindow() {
 // false half is the half that lands - and a subscriber who believed "one
 // payment" disputes the week-8 charge. The reassurance she actually needs here
 // is that the renewal is escapable, which is both true and stronger.
-const trustLabels = (price: string) => [
-  {
-    icon: CreditCard,
-    bg: "bg-pink-100",
-    fg: "text-pink-600",
-    title: `Cancel before renewal`,
-    sub: `and the ${price} is all you ever pay`,
-  },
+const trustLabels = (price: string, trial: boolean) => [
+  trial
+    ? {
+        icon: CreditCard,
+        bg: "bg-pink-100",
+        fg: "text-pink-600",
+        title: `$0 today`,
+        sub: `Cancel in the free week and pay nothing`,
+      }
+    : {
+        icon: CreditCard,
+        bg: "bg-pink-100",
+        fg: "text-pink-600",
+        title: `Cancel before renewal`,
+        sub: `and the ${price} is all you ever pay`,
+      },
   {
     icon: Zap,
     bg: "bg-yellow-100",
@@ -257,8 +283,15 @@ export function PaywallView({
   topProblems,
   goal,
   userId,
+  trialEligible = false,
+  welcomeBack = false,
 }: PaywallViewProps) {
   const name = firstName?.trim() ?? "";
+  // The first-charge date, rendered once per mount. `new Date()` at render is
+  // fine here: Stripe computes the real trial_end at checkout a minute or two
+  // later, and the day only differs if she taps across local midnight — the
+  // welcome email and the account card carry Stripe's own date.
+  const [chargeDate] = useState(() => formatChargeDate(trialEndDate()));
   // Same promise as the finish board's far end (lib/planTimeline.ts) - the
   // headline and the chart should name the same outcome.
   const promise = getOfferPromise(goal ?? []);
@@ -578,22 +611,57 @@ export function PaywallView({
               trusted. The number is still the biggest type on the card - it
               just no longer shouts. */}
           <div className="pt-2 text-center">
-            <div className="flex items-baseline justify-center gap-2 flex-wrap">
-              {!expired && (
-                <span className="text-base text-[#9A9A9A] line-through font-medium">
-                  {ANCHOR_PRICE}
-                </span>
-              )}
-              <span className="text-3xl font-extrabold text-[#3D3D3D] tabular-nums">
-                {livePrice}
-              </span>
-              <span className="text-sm text-[#5A5A5A] font-medium">
-                for {PLAN_WEEKS} weeks
-              </span>
-            </div>
-            <p className="mt-1 text-sm font-semibold text-[#5A5A5A]">
-              About {livePricePerDay} a day
-            </p>
+            {/* The free week (2026-09-04). The headline is the offer — a week
+                at $0 — and the price is the second line, stated as what
+                happens next rather than what happens now. Both figures are
+                still on the card in the first viewport; a trial that hides the
+                price it converts to is the shape of a complaint. The charge
+                date is printed rather than "in 7 days", for the same reason
+                the finish board draws a calendar: a date is an appointment. */}
+            {trialEligible ? (
+              <>
+                <p className="text-2xl font-extrabold text-[#3D3D3D] leading-tight">
+                  Your first week is free.
+                </p>
+                <p className="mt-1.5 text-sm font-semibold text-[#5A5A5A]">
+                  Then{" "}
+                  {!expired && (
+                    <span className="text-[#9A9A9A] line-through font-medium">{ANCHOR_PRICE}</span>
+                  )}{" "}
+                  <span className="text-[#3D3D3D] tabular-nums">{livePrice}</span> for your{" "}
+                  {PLAN_WEEKS}-week protocol &middot; about {livePricePerDay}/day
+                </p>
+                <p className="mt-1.5 text-xs text-[#7A7A7A] leading-snug">
+                  No charge until <b className="text-[#3D3D3D]">{chargeDate}</b> &middot; Cancel anytime
+                  in one tap &middot; 100% money-back guarantee
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="flex items-baseline justify-center gap-2 flex-wrap">
+                  {!expired && (
+                    <span className="text-base text-[#9A9A9A] line-through font-medium">
+                      {ANCHOR_PRICE}
+                    </span>
+                  )}
+                  <span className="text-3xl font-extrabold text-[#3D3D3D] tabular-nums">
+                    {livePrice}
+                  </span>
+                  <span className="text-sm text-[#5A5A5A] font-medium">
+                    for {PLAN_WEEKS} weeks
+                  </span>
+                </div>
+                <p className="mt-1 text-sm font-semibold text-[#5A5A5A]">
+                  About {livePricePerDay} a day
+                </p>
+                {welcomeBack && (
+                  <p className="mt-1.5 text-xs text-[#7A7A7A] leading-snug">
+                    Welcome back &mdash; your plan starts today at {livePrice}. The free week is for
+                    first-time members.
+                  </p>
+                )}
+              </>
+            )}
 
             {/* The only anchor on this card that exists outside this card.
 
@@ -641,8 +709,18 @@ export function PaywallView({
                 subscription terms next to the card field; the first time she
                 reads "renews" must not be there. */}
             <p className="mt-2 text-xs text-[#7A7A7A] leading-snug">
-              Renews at {PRICE} every {PLAN_WEEKS} weeks. We email you {RENEWAL_NOTICE_DAYS} days
-              before, and you can cancel anytime.
+              {trialEligible ? (
+                <>
+                  After your free week, your plan renews every {PLAN_WEEKS} weeks at {PRICE} so it
+                  keeps adapting to your symptoms. Cancel any time from your account &mdash; no
+                  email, no phone call.
+                </>
+              ) : (
+                <>
+                  Renews at {PRICE} every {PLAN_WEEKS} weeks. We email you {RENEWAL_NOTICE_DAYS} days
+                  before, and you can cancel anytime.
+                </>
+              )}
             </p>
 
             {/* What Stripe will actually accept, shown as the card/wallet marks
@@ -740,7 +818,7 @@ export function PaywallView({
 
         {/* Trust boxes */}
         <div className="grid grid-cols-2 gap-2 mb-4">
-          {trustLabels(livePrice).map((item, i) => {
+          {trustLabels(livePrice, trialEligible).map((item, i) => {
             const Icon = item.icon;
             return (
               <motion.div
@@ -829,7 +907,9 @@ export function PaywallView({
               {
                 Icon: Lock,
                 bold: "Secure checkout",
-                sub: "Stripe takes the payment — we never see your card.",
+                sub: trialEligible
+                  ? `Stripe saves your card — $0 today, nothing until ${chargeDate}.`
+                  : "Stripe takes the payment — we never see your card.",
               },
               {
                 Icon: Smartphone,
@@ -913,8 +993,9 @@ export function PaywallView({
                 {/* The charge, not the per-day slice of it. This label is on
                     screen for the entire ~2000px scroll, so it is the single
                     most-read price on the page - and it used to be the one
-                    number Stripe was never going to show her. */}
-                Get my plan &middot; {livePrice}
+                    number Stripe was never going to show her. With the trial
+                    the charge today is $0 and the label says what she gets. */}
+                {trialEligible ? "Start my free week" : <>Get my plan &middot; {livePrice}</>}
               </>
             )}
           </motion.button>
@@ -937,8 +1018,20 @@ export function PaywallView({
               the renewal is still on the line - present, legible, unbolded.
               Stripe's sheet and the price card both say it again. */}
           <p className="text-[11px] sm:text-xs text-[#5A5A5A] text-center mt-2 leading-relaxed">
-            <b className="text-[#3D3D3D]">{PLAN_WEEKS} week guarantee</b> &middot; Cancel anytime
-            &middot; Renews every {PLAN_WEEKS} weeks
+            {trialEligible ? (
+              <>
+                You&rsquo;ll get a reminder {RENEWAL_NOTICE_DAYS} days before any charge &middot;{" "}
+                {TRIAL_DAYS} days free, then {livePrice} every {PLAN_WEEKS} weeks &middot;{" "}
+                <a href="/terms#free-trial" className="underline">
+                  Cancel anytime
+                </a>
+              </>
+            ) : (
+              <>
+                <b className="text-[#3D3D3D]">{PLAN_WEEKS} week guarantee</b> &middot; Cancel anytime
+                &middot; Renews every {PLAN_WEEKS} weeks
+              </>
+            )}
           </p>
           <p className="text-[11px] sm:text-xs text-[#7A7A7A] text-center mt-1 sm:mt-1.5 leading-relaxed">
             <span className="inline-flex items-center justify-center gap-1 flex-wrap">

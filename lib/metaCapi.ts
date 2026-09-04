@@ -338,6 +338,55 @@ export async function sendMetaPurchase(params: SendMetaPurchaseParams): Promise<
   );
 }
 
+export type SendMetaSubscribeParams = MetaMatchData &
+  MetaPersonData & {
+    /** See subscribeEventId() - one per invoice, so a retried webhook collapses. */
+    eventId: string;
+    eventTimeSec: number;
+    /** What was actually collected, in USD. */
+    value: number;
+    currency?: string;
+    email?: string | null;
+    userId?: string | null;
+    planType?: string | null;
+    eventSourceUrl?: string | null;
+  };
+
+/**
+ * Sends a Subscribe to the Conversions API - from the Stripe webhook on the
+ * first *paid* invoice of a subscription that began with a free trial.
+ *
+ * This is the "real money" event. `Purchase` already fired when the card was
+ * saved (at value 0) because the live ad set optimises on it; firing Purchase
+ * again here would report two conversions from one click a week apart.
+ * `Subscribe` is a standard event, so an ad set can be built on it later
+ * without touching the current one. Server-only: no browser is open at the
+ * moment Stripe charges. See `postEvent` - never throws.
+ */
+export async function sendMetaSubscribe(params: SendMetaSubscribeParams): Promise<void> {
+  const { eventId, eventTimeSec, value, currency = META_CURRENCY, planType, eventSourceUrl } =
+    params;
+
+  await postEvent(
+    {
+      event_name: "Subscribe",
+      event_time: eventTimeSec,
+      event_id: eventId,
+      action_source: "website",
+      ...(eventSourceUrl ? { event_source_url: eventSourceUrl } : {}),
+      user_data: buildUserData(params),
+      custom_data: {
+        currency,
+        value,
+        content_type: "product",
+        num_items: 1,
+        ...(planType ? { content_name: planType } : {}),
+      },
+    },
+    `Subscribe ${eventId} (${currency} ${value})`
+  );
+}
+
 export type SendMetaInitiateCheckoutParams = MetaMatchData & {
   /** Must equal the browser event's eventID - minted by `newInitiateCheckoutEventId`. */
   eventId: string;

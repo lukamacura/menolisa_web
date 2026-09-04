@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { AlertTriangle, Clock, CreditCard } from "lucide-react";
 import type { AccountState } from "@/lib/getAccountState";
+import { PLAN_PRICE, PLAN_WEEKS, formatPrice } from "@/lib/pricing";
 
 export type { AccountState };
 
@@ -20,6 +21,12 @@ export interface TrialCardProps {
   subscriptionCanceled?: boolean;
   paymentFailedAt?: Date | null;
   isThirdPartyProvider?: boolean;
+  /**
+   * The free week is running: `trial.end` is the first charge, not a renewal.
+   * "Renews Sep 11" to a woman who has paid nothing reads as a charge she
+   * did not agree to; "Free week ends Sep 11 · then $59" is the fact.
+   */
+  inTrial?: boolean;
 }
 
 function formatCountdown(remaining: { d: number; h: number; m: number }): string {
@@ -127,6 +134,7 @@ export function TrialCard({
   subscriptionCanceled = false,
   paymentFailedAt = null,
   isThirdPartyProvider = false,
+  inTrial = false,
 }: TrialCardProps) {
   const [now, setNow] = useState(new Date());
   const [isPortalLoading, setIsPortalLoading] = useState(false);
@@ -209,13 +217,22 @@ export function TrialCard({
   // Header body content per state.
   const headerBody = (() => {
     if (state === "active" || state === "canceling") {
+      const when = trial.end?.toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
       return (
         <p className="text-sm text-white/80">
-          {trial.end
-            ? state === "canceling"
-              ? `Access until ${trial.end.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`
-              : `Renews ${trial.end.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`
-            : "Your subscription is active"}
+          {!when
+            ? "Your subscription is active"
+            : state === "canceling"
+              ? inTrial
+                ? `Free week ends ${when} · you won't be charged`
+                : `Access until ${when}`
+              : inTrial
+                ? `Free week ends ${when} · then ${formatPrice(PLAN_PRICE)} for ${PLAN_WEEKS} weeks`
+                : `Renews ${when}`}
         </p>
       );
     }
@@ -265,7 +282,9 @@ export function TrialCard({
                     ? "days of access left"
                     : state === "past_due"
                       ? "days to update card"
-                      : "days until renewal"}
+                      : inTrial
+                        ? "days of free week left"
+                        : "days until renewal"}
                 </span>
               </div>
             </div>

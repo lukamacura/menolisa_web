@@ -23,6 +23,8 @@
  * and nothing may send them from here again.
  */
 
+import { PLAN_PRICE, PLAN_WEEKS, formatPrice } from "@/lib/pricing";
+
 export type AlertKind =
   | "daily_nudge"
   | "streak_risk"
@@ -156,6 +158,20 @@ export function renewalCopy(renewsOn: Date, firstName: string | null): AlertCopy
       ? `${firstName}, your 8 weeks are nearly up`
       : "Your 8 weeks are nearly up",
     body: `Your plan renews on ${formatAlertDate(renewsOn)} and carries straight on. This is not the week to stop.`,
+  };
+}
+
+/**
+ * Three days before a free week ends. The renewal alert above says "your 8
+ * weeks are nearly up", which is false for her — she has had seven days and
+ * paid nothing. Date and amount, and the exit, in two lines.
+ */
+export function trialEndingCopy(endsOn: Date, firstName: string | null): AlertCopy {
+  return {
+    title: firstName
+      ? `${firstName}, your free week ends ${formatAlertDate(endsOn)}`
+      : `Your free week ends ${formatAlertDate(endsOn)}`,
+    body: `${formatPrice(PLAN_PRICE)} is charged that day for your next ${PLAN_WEEKS} weeks. Cancel before then and you pay nothing.`,
   };
 }
 

@@ -3,8 +3,8 @@
  *
  * MenoLisa sells one thing: a personalized 8-week plan for $59, billed as a
  * subscription that renews every 8 weeks (Stripe `interval: week`,
- * `interval_count: 8`). There is no free trial and no billing-period choice —
- * the card is charged at checkout.
+ * `interval_count: 8`). There is no billing-period choice. The card is saved
+ * at checkout and first charged {@link TRIAL_DAYS} days later.
  *
  * Every price shown to a user, and every value reported to Meta, derives from
  * the constants here. Hardcoding $59 in a component is how the paywall and the
@@ -104,6 +104,56 @@ export const PLAN_DISCOUNT_WINDOW_MS = PLAN_DISCOUNT_WINDOW_MINUTES * 60 * 1000;
  * product — see `scripts/sql/2026-08-12-drop-email-sequences.sql`.
  */
 export const RENEWAL_NOTICE_DAYS = 3;
+
+/**
+ * The free trial (2026-09-04). Card up front, nothing charged for
+ * {@link TRIAL_DAYS} days, then {@link PLAN_PRICE} for the first
+ * {@link PLAN_WEEKS}-week period and every one after it.
+ *
+ * Length lives here and nowhere else: Stripe's `trial_period_days`, the paywall
+ * copy, the welcome email, the Terms and the admin conversion cohort all derive
+ * from it. The trial is *not* a state `getAccountState()` knows about — a
+ * trialing subscription is `paid` with `subscription_ends_at = trial_end`, so
+ * `subscription_ends_at` stays the only access boundary and the mobile app sees
+ * an ordinary subscriber with seven days left.
+ */
+export const TRIAL_DAYS = 7;
+
+/**
+ * What was sold, stamped on the Checkout Session and the subscription so every
+ * downstream reader (webhook, success screen, /admin) knows without a second
+ * lookup. `paid_upfront` is the returning customer — one free week per person
+ * — and every session created before 2026-09-04 carries neither.
+ */
+export const OFFER_VARIANT_TRIAL = "trial7_free" as const;
+export const OFFER_VARIANT_PAID = "paid_upfront" as const;
+export type OfferVariant = typeof OFFER_VARIANT_TRIAL | typeof OFFER_VARIANT_PAID;
+
+// The renewal notice has to land *inside* the free week or the promise on the
+// paywall ("a reminder 3 days before any charge") is false for trial customers.
+if (RENEWAL_NOTICE_DAYS >= TRIAL_DAYS) {
+  throw new Error(
+    `RENEWAL_NOTICE_DAYS (${RENEWAL_NOTICE_DAYS}) must be shorter than TRIAL_DAYS (${TRIAL_DAYS})`
+  );
+}
+
+/** When a trial that starts at `from` first charges. */
+export function trialEndDate(from: Date = new Date()): Date {
+  return new Date(from.getTime() + TRIAL_DAYS * 86_400_000);
+}
+
+/**
+ * `Sep 11` — or `Jan 3, 2027` once the year turns, so a December trial never
+ * names a date that reads as already past. US format: the campaign is US-only.
+ */
+export function formatChargeDate(d: Date, now: Date = new Date()): string {
+  const sameYear = d.getFullYear() === now.getFullYear();
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
+}
 
 export function isPlanId(value: unknown): value is PlanId {
   return value === PLAN_ID;

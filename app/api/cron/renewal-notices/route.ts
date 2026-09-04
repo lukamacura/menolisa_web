@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendRenewalNoticeEmail } from "@/lib/resend";
 import { RENEWAL_NOTICE_DAYS } from "@/lib/pricing";
-import { accessEndingCopy, renewalCopy } from "@/lib/alerts/catalog";
+import { accessEndingCopy, renewalCopy, trialEndingCopy } from "@/lib/alerts/catalog";
 import { sendAlerts, type AlertRequest } from "@/lib/alerts/send";
 
 export const runtime = "nodejs";
@@ -43,9 +43,16 @@ export async function GET(req: NextRequest) {
     // no renewal email — but the date still matters to her, because it is the
     // day the app stops working, and the in-app alert below is the only place
     // she is told before it happens.
+    // Free trials come through the same query: a trialing row is `paid` with
+    // `subscription_ends_at = trial_end`, so with TRIAL_DAYS 7 and
+    // RENEWAL_NOTICE_DAYS 3 the notice lands on day 4 of the week. What differs
+    // is the copy — "your free week ends" rather than "your plan renews" —
+    // and `trial_ends_at` matching the period end is how a row says which.
     const { data: due, error } = await supabase
       .from("user_trials")
-      .select("user_id, subscription_ends_at, subscription_canceled, renewal_notice_sent_for")
+      .select(
+        "user_id, subscription_ends_at, subscription_canceled, renewal_notice_sent_for, trial_ends_at"
+      )
       .eq("account_status", "paid")
       .gte("subscription_ends_at", from.toISOString())
       .lt("subscription_ends_at", to.toISOString());
@@ -77,6 +84,9 @@ export async function GET(req: NextRequest) {
       // renewal cycle and never repeated — the same rule as the email marker
       // below, but enforced by sendAlerts rather than a column.
       const endsAt = new Date(row.subscription_ends_at);
+      const inTrial =
+        !!row.trial_ends_at &&
+        new Date(row.trial_ends_at).getTime() === endsAt.getTime();
       alerts.push(
         row.subscription_canceled
           ? {
@@ -88,7 +98,9 @@ export async function GET(req: NextRequest) {
           : {
               userId: row.user_id,
               kind: "renewal",
-              copy: renewalCopy(endsAt, firstNames.get(row.user_id) ?? null),
+              copy: inTrial
+                ? trialEndingCopy(endsAt, firstNames.get(row.user_id) ?? null)
+                : renewalCopy(endsAt, firstNames.get(row.user_id) ?? null),
               occurrence: row.subscription_ends_at,
             }
       );
@@ -109,7 +121,8 @@ export async function GET(req: NextRequest) {
       const { error: sendError } = await sendRenewalNoticeEmail(
         email,
         firstNames.get(row.user_id) ?? null,
-        new Date(row.subscription_ends_at)
+        endsAt,
+        { trial: inTrial }
       );
 
       if (sendError) {

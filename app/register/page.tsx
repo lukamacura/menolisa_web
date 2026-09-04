@@ -146,8 +146,14 @@ function warmPhaseChunks(phase: Phase, stepIndex: number) {
 }
 import { PLAN_PILLARS } from "@/lib/planPillars";
 import {
+  OFFER_VARIANT_TRIAL,
   PLAN_ID,
+  PLAN_PRICE,
   PLAN_WEEKS,
+  TRIAL_DAYS,
+  formatChargeDate,
+  formatPrice,
+  trialEndDate,
 } from "@/lib/pricing";
 import { getSymptomTransforms } from "@/lib/testimonials";
 import { getOfferPromise } from "@/lib/planTimeline";
@@ -4792,6 +4798,19 @@ function RegisterPageContent() {
    * on the page.
    */
   const [checkoutEmail, setCheckoutEmail] = useState<string | null>(null);
+  /**
+   * Whether this landing is a free week rather than a purchase — `offer` is
+   * stamped on the success URL by `create-checkout` from the same variable
+   * that set `trial_period_days`, so the screen and the charge agree.
+   */
+  const isTrialLanding = searchParams.get("offer") === OFFER_VARIANT_TRIAL;
+  /**
+   * The first-charge date printed on the trial landing. Stripe's own
+   * `trial_end` when fulfillment has already written it (read back through
+   * `/api/account/status`), else the same arithmetic the paywall used — the
+   * two only differ if checkout straddled local midnight.
+   */
+  const [trialChargeDate, setTrialChargeDate] = useState<string | null>(null);
 
   useEffect(() => {
     if (phase !== "download") return;
@@ -4823,12 +4842,38 @@ function RegisterPageContent() {
         }
       }
       if (!cancelled) setCheckoutEmail(email);
+
+      if (isTrialLanding) {
+        let chargeAt = trialEndDate();
+        try {
+          const res = await fetch("/api/account/status", {
+            credentials: "include",
+            cache: "no-store",
+          });
+          const json = res.ok ? ((await res.json()) as { ends_at?: string | null }) : null;
+          const ends = json?.ends_at ? new Date(json.ends_at) : null;
+          // Trust the server date only if it looks like *this* trial: in the
+          // future and no further out than the free week plus a day. A stale
+          // period end on a merged account would otherwise print last year.
+          if (
+            ends &&
+            !Number.isNaN(ends.getTime()) &&
+            ends.getTime() > Date.now() &&
+            ends.getTime() <= Date.now() + (TRIAL_DAYS + 1) * 86_400_000
+          ) {
+            chargeAt = ends;
+          }
+        } catch {
+          // Fall through to the client-side date.
+        }
+        if (!cancelled) setTrialChargeDate(formatChargeDate(chargeAt));
+      }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [phase, searchParams]);
+  }, [phase, searchParams, isTrialLanding]);
 
   /** Back to question 1. The funnel's only recovery move — there is no state to
    *  restore, so restarting is both the simplest repair and the honest one.
@@ -6174,7 +6219,10 @@ function RegisterPageContent() {
         </div>
       )}
 
-      {/* Paywall Phase - charged in full at Stripe checkout, no trial */}
+      {/* Paywall Phase. The card is saved at Stripe and first charged
+          TRIAL_DAYS later. The funnel's account is minutes old, so it is
+          trial-eligible — `create-checkout` re-checks the account's history
+          and is the side that decides what Stripe is told. */}
       {phase === "paywall" && (
         <PaywallView
           onCheckout={handleStartCheckout}
@@ -6186,6 +6234,7 @@ function RegisterPageContent() {
           topProblems={topProblems}
           goal={goal}
           userId={userId}
+          trialEligible
         />
       )}
 
@@ -6203,7 +6252,18 @@ function RegisterPageContent() {
               {firstName.trim() ? `${firstName.trim()}, you're all set!` : "You're all set!"}
             </h2>
             <p className="text-sm sm:text-base text-[#5A5A5A] mb-5 leading-relaxed">
-              Your {PLAN_WEEKS}-week plan is being built right now. Download the app to start it.
+              {isTrialLanding ? (
+                <>
+                  Your free week has started. Your first charge, if you keep the plan, is{" "}
+                  {formatPrice(PLAN_PRICE)}
+                  {trialChargeDate ? ` on ${trialChargeDate}` : ` in ${TRIAL_DAYS} days`}. Your{" "}
+                  {PLAN_WEEKS}-week plan is being built right now &mdash; download the app to start it.
+                </>
+              ) : (
+                <>
+                  Your {PLAN_WEEKS}-week plan is being built right now. Download the app to start it.
+                </>
+              )}
             </p>
 
             {/* How she gets in, stated before the store badges rather than left

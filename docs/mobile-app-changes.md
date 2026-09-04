@@ -1262,3 +1262,19 @@ screen that told her what it was claiming.
 - [ ] Expect no interval sessions in weeks 1-2 at any level, and no jumping in the week 1-2 power block (§23)
 - [ ] Nutrition: send `nut_post_meal_squats`; expect no history under `nut_post_meal_walk` (§24)
 - [ ] Expect a one-movement power block at beginner level — `I01` alone (§24)
+
+
+## §25 — The free 7-day trial needs nothing from the app (2026-09-04)
+
+The web paywall now sells the first week free: Stripe saves the card at $0
+and charges $59 on day 7. Nothing in the API
+contract changes. A trialing subscription is stored as an ordinary paid one —
+`account_status: "paid"`, `subscription_ends_at` = the first charge date — so
+`GET /api/account/status` returns `has_access: true` and `days_left` counts
+down from 7, and every paid route answers as before.
+
+Two optional fields are new on `/api/account/status`: `trial_ends_at` (ISO)
+and `in_trial` (boolean), null / false for anyone not in a free week. Use them only
+if a screen wants to say "first charge Sep 11" rather than "renews Sep 11".
+
+- [ ] Nothing to build. Do not add a trial state; branch on `in_trial` for copy only, if at all.

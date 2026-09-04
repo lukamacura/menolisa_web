@@ -4,22 +4,35 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { gpcOptOutFromMetadata } from "@/lib/privacySignals";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { writeSubscription } from "@/lib/subscriptionWrite";
-import { sendChargeConfirmedEmail, sendAdminNotification } from "@/lib/resend";
+import {
+  sendChargeConfirmedEmail,
+  sendTrialConvertedEmail,
+  sendAdminNotification,
+} from "@/lib/resend";
 import { paymentFailedCopy } from "@/lib/alerts/catalog";
 import { sendAlert } from "@/lib/alerts/send";
 import {
   sendMetaPurchase,
+  sendMetaSubscribe,
   metaContextFrom,
   metaPersonFrom,
   isMobileCheckout,
 } from "@/lib/metaCapi";
-import { META_CURRENCY, PLAN_VALUE, purchaseEventId } from "@/lib/metaPixel";
 import {
+  META_CURRENCY,
+  PLAN_VALUE,
+  TRIAL_PURCHASE_VALUE,
+  purchaseEventId,
+  subscribeEventId,
+} from "@/lib/metaPixel";
+import {
+  claimFirstPayment,
   customerIdOf,
   fallbackPeriodEndIso,
   fulfillCheckout,
   planFromSubscription,
   subscriptionPeriodEndIso,
+  trialEndIso,
 } from "@/lib/stripe/fulfillCheckout";
 
 export const runtime = "nodejs";
@@ -155,6 +168,11 @@ async function handleCheckoutSessionCompleted(
     // Purchase is the event where honoring it actually costs us something -
     // which is exactly why it has to be honored here rather than only on the
     // three cheap ones.
+    //
+    // Fires on a free-trial checkout too - the live ad set is optimised on
+    // Purchase and cannot be re-pointed without a new ad set - but at
+    // TRIAL_PURCHASE_VALUE, because $0 moved. The $59 is reported a week
+    // later as `Subscribe` off the first paid invoice. See lib/metaPixel.ts.
     if (
       result.written &&
       !isMobileCheckout(session.metadata) &&
@@ -167,7 +185,11 @@ async function handleCheckoutSessionCompleted(
           // Prefer the real amount off the Stripe price - it stays right even
           // for a legacy plan or a coupon-discounted first invoice. PLAN_VALUE
           // is only the floor for when fulfillCheckout couldn't read the price.
-          value: result.planAmount != null ? result.planAmount / 100 : PLAN_VALUE,
+          value: result.trialing
+            ? TRIAL_PURCHASE_VALUE
+            : result.planAmount != null
+              ? result.planAmount / 100
+              : PLAN_VALUE,
           currency: META_CURRENCY,
           email: session.customer_details?.email ?? session.customer_email ?? null,
           userId: result.userId,
@@ -211,6 +233,8 @@ async function handleSubscriptionUpsert(
   // Subscription is active/trialing → mark paid and clear payment-failed flag.
   const isActive = subscription.status === "active" || subscription.status === "trialing";
 
+  const trial_ends_at = trialEndIso(subscription);
+
   const updatePayload: Record<string, unknown> = {
     provider: "stripe",
     stripe_subscription_id: subscription.id,
@@ -221,6 +245,7 @@ async function handleSubscriptionUpsert(
     ...(stripe_customer_id && { stripe_customer_id }),
     ...(plan_type && { plan_type }),
     ...(plan_amount !== null && { plan_amount }),
+    ...(trial_ends_at && { trial_ends_at }),
     ...(isActive && { account_status: "paid", payment_failed_at: null }),
   };
 
@@ -259,6 +284,7 @@ async function handleSubscriptionUpsert(
         ...(stripe_customer_id && { stripe_customer_id }),
         ...(plan_type && { plan_type }),
         ...(plan_amount !== null && { plan_amount }),
+        ...(trial_ends_at && { trial_ends_at }),
         ...(isActive && { payment_failed_at: null }),
       },
     });
@@ -339,18 +365,70 @@ async function handleInvoicePaymentSucceeded(
     stripeSubscriptionId: stripe_subscription_id,
     stripeCustomerId: stripe_customer_id,
   });
-  if (userId && (await isStaleEvent(supabaseAdmin, userId, eventCreatedSec))) return { ok: true };
 
   // Refresh period end from the subscription object — invoice.lines isn't a reliable source across API versions.
+  let subscription: Stripe.Subscription | null = null;
   let subscription_ends_at: string | null = null;
   let subscription_canceled = false;
   try {
-    const subscription = await stripe.subscriptions.retrieve(stripe_subscription_id);
+    subscription = await stripe.subscriptions.retrieve(stripe_subscription_id);
     subscription_ends_at = subscriptionPeriodEndIso(subscription);
     subscription_canceled = !!subscription.cancel_at;
   } catch (err) {
     console.error("Webhook invoice.payment_succeeded: failed to fetch subscription:", err);
   }
+
+  // The trial's first real charge. Claimed *before* the stale check on purpose:
+  // the conversion lands as a burst — `invoice.payment_succeeded` and
+  // `customer.subscription.updated` (trialing → active) inside the same second
+  // or two — and if the subscription event is processed first and stamps a
+  // later watermark, the ordinary path below would drop this event as stale
+  // and she would never get the receipt. `claimFirstPayment` is its own
+  // idempotency, so running it here cannot send twice; and a paid-upfront
+  // checkout (returning customer) already claimed it at fulfillment, so that
+  // path stays exactly as it was.
+  const paidAmount = invoice.amount_paid ?? 0;
+  const trialConverted =
+    !!userId &&
+    paidAmount > 0 &&
+    !!subscription?.trial_end &&
+    (await claimFirstPayment(
+      supabaseAdmin,
+      userId,
+      new Date(eventCreatedSec * 1000).toISOString()
+    ));
+  if (trialConverted && subscription) {
+    // The money event. Not a second Purchase - that already fired at $0 when
+    // the card was saved, and two Purchases a week apart from one click is
+    // the attribution mess this avoids. Match data comes off the subscription
+    // metadata `create-checkout` copied there: an invoice knows its
+    // subscription, not the Checkout Session, and without the copy this would
+    // match on hashed email alone.
+    const meta = subscription.metadata ?? {};
+    if (!isMobileCheckout(meta) && !gpcOptOutFromMetadata(meta)) {
+      const value = paidAmount / 100;
+      after(() =>
+        sendMetaSubscribe({
+          eventId: subscribeEventId(invoice.id),
+          eventTimeSec: eventCreatedSec,
+          value,
+          currency: META_CURRENCY,
+          email: invoice.customer_email ?? null,
+          userId,
+          planType: planFromSubscription(subscription!).plan_type,
+          ...metaPersonFrom({
+            name: invoice.customer_name,
+            phone: invoice.customer_phone,
+            address: invoice.customer_address,
+          }),
+          ...metaContextFrom(meta),
+        })
+      );
+    }
+    await sendTrialConvertedEmails(supabaseAdmin, userId, paidAmount, subscription_ends_at);
+  }
+
+  if (userId && (await isStaleEvent(supabaseAdmin, userId, eventCreatedSec))) return { ok: true };
 
   const updatePayload: Record<string, unknown> = {
     account_status: "paid",
@@ -376,8 +454,10 @@ async function handleInvoicePaymentSucceeded(
   }
 
   // Fire charge confirmation email once, regardless of which DB path succeeds.
+  // A trial's first charge already had its own email above, so it is skipped
+  // here rather than told "you've been charged" twice.
   const chargeUserId = ((updated && updated.length > 0 ? updated[0]?.user_id : userId) ?? null) as string | null;
-  if (chargeUserId && (invoice.amount_paid ?? 0) > 0) {
+  if (chargeUserId && paidAmount > 0 && !trialConverted) {
     try {
       const { data: authData } = await supabaseAdmin.auth.admin.getUserById(chargeUserId);
       const email = authData.user?.email;
@@ -391,7 +471,7 @@ async function handleInvoicePaymentSucceeded(
           sendChargeConfirmedEmail(email, profile?.name ?? null),
           sendAdminNotification(
             "NEW PURCHASE",
-            `<p>Payment received: <strong>${email}</strong>${profile?.name ? ` (${profile.name})` : ""}</p><p>Amount: $${((invoice.amount_paid ?? 0) / 100).toFixed(2)}</p><p>At: ${new Date().toUTCString()}</p>`
+            `<p>Payment received: <strong>${email}</strong>${profile?.name ? ` (${profile.name})` : ""}</p><p>Amount: $${(paidAmount / 100).toFixed(2)}</p><p>At: ${new Date().toUTCString()}</p>`
           ),
         ]);
       }
@@ -413,6 +493,42 @@ async function handleInvoicePaymentSucceeded(
     return { ok: false, error: fallbackError.message };
   }
   return { ok: true };
+}
+
+/**
+ * The trial's "your free week became a plan" receipt, plus the internal
+ * note. She has been using the plan for a week and this is the email that
+ * says the week became a subscription — the one "what is this charge"
+ * question the trial can otherwise raise. Never allowed to fail the webhook.
+ */
+async function sendTrialConvertedEmails(
+  supabaseAdmin: SupabaseClient,
+  userId: string,
+  paidAmountCents: number,
+  periodEndsAt: string | null
+): Promise<void> {
+  try {
+    const { data: authData } = await supabaseAdmin.auth.admin.getUserById(userId);
+    const email = authData.user?.email;
+    if (!email) return;
+    const { data: profile } = await supabaseAdmin
+      .from("user_profiles")
+      .select("name")
+      .eq("user_id", userId)
+      .maybeSingle();
+    await Promise.all([
+      sendTrialConvertedEmail(email, profile?.name ?? null, {
+        amount: paidAmountCents / 100,
+        periodEndsAt: periodEndsAt ? new Date(periodEndsAt) : null,
+      }),
+      sendAdminNotification(
+        "TRIAL CONVERTED",
+        `<p>First charge after a free week: <strong>${email}</strong>${profile?.name ? ` (${profile.name})` : ""}</p><p>Amount: $${(paidAmountCents / 100).toFixed(2)}</p><p>At: ${new Date().toUTCString()}</p>`
+      ),
+    ]);
+  } catch (e) {
+    console.error("Webhook invoice.payment_succeeded: trial-converted emails failed:", e);
+  }
 }
 
 async function handleInvoicePaymentFailed(

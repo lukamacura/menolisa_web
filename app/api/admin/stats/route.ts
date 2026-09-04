@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { PLAN_PRICE, PLAN_WEEKS } from "@/lib/pricing";
+import {
+  OFFER_VARIANT_TRIAL,
+  PLAN_PRICE,
+  PLAN_WEEKS,
+  TRIAL_DAYS,
+} from "@/lib/pricing";
 import { getAccountState, type AccountState, TRIAL_SELECT_COLS } from "@/lib/getAccountState";
 
 export const runtime = "nodejs";
@@ -189,6 +194,17 @@ type Revenue = {
    * is what lets it do that without a second walk over Stripe.
    */
   firstChargeTimes: number[];
+  /**
+   * customer id → her first charge, as ms. What lets the trial block say which
+   * free weeks turned into money without a second walk over Stripe.
+   */
+  firstChargeByCustomer: Record<string, number>;
+  /**
+   * Subscriptions created in the last 30 days that were cancelled before their
+   * trial ended — by her, in the app's Account screen, or by Stripe when the
+   * trial ran out with no card. The "she tried it and said no" figure.
+   */
+  trialsCanceled30: number;
   /** Customers who have ever paid a first charge. */
   newCustomersAll: number;
   /** Renewal cohort: first charge is old enough that a renewal was due. */
@@ -225,6 +241,8 @@ function emptyRevenue(error: string | null): Revenue {
     feeRate: STRIPE_PCT + STRIPE_FIXED / PLAN_PRICE,
     newCustomers30: 0,
     firstChargeTimes: [],
+    firstChargeByCustomer: {},
+    trialsCanceled30: 0,
     newCustomersAll: 0,
     cohortSize: 0,
     cohortRenewed: 0,
@@ -302,6 +320,20 @@ async function loadRevenue(
   }
 
   const rev = emptyRevenue(null);
+
+  // Trials cancelled before they charged. Read off the subscription list that
+  // was already fetched: a subscription that had a `trial_end` and is either
+  // gone with `canceled_at` inside the trial, or still trialing with a cancel
+  // scheduled, never became money. Windowed on when the trial started.
+  const trialWindowStart = Date.now() - 30 * DAY_MS;
+  for (const s of subs) {
+    if (!s.trial_end || s.created * 1000 < trialWindowStart) continue;
+    const canceledInTrial =
+      (s.status === "canceled" && s.canceled_at !== null && s.canceled_at <= s.trial_end) ||
+      (s.status === "trialing" &&
+        (s.cancel_at_period_end || (s.cancel_at !== null && s.cancel_at <= s.trial_end)));
+    if (canceledInTrial) rev.trialsCanceled30 += 1;
+  }
   rev.truncated = charges.length >= MAX_CHARGES || subs.length >= MAX_SUBS;
   rev.livemode = charges[0]?.livemode ?? null;
 
@@ -409,6 +441,7 @@ async function loadRevenue(
     rev.newCustomersAll += 1;
     if (first >= newCustomerSince) rev.newCustomers30 += 1;
     rev.firstChargeTimes.push(first);
+    rev.firstChargeByCustomer[customerId] = first;
 
     if (first <= maturedBefore) {
       rev.cohortSize += 1;
@@ -457,21 +490,58 @@ async function loadRevenue(
  * the web funnel) and it drops every session the *other products* on this
  * shared Stripe account create, which carry no such key.
  */
-async function loadCheckoutStarts(
-  stripe: Stripe,
-  since: number
-): Promise<{ started: number; error: string | null; truncated: boolean }> {
+type CheckoutStarts = {
+  started: number;
+  /**
+   * The same sessions split by what the paywall was selling. The trial paywall
+   * and the $59 paywall must never be averaged: a session opened under one
+   * offer says nothing about the other.
+   */
+  byOffer: { trial: number; paid: number; unknown: number };
+  /**
+   * Free weeks that actually began — a *completed* session under the trial
+   * offer, i.e. a card saved at $0. Carries the customer and the time so the
+   * conversion cohort can be built against first charges.
+   */
+  trialStarts: { customerId: string | null; at: number }[];
+  error: string | null;
+  truncated: boolean;
+};
+
+const emptyCheckoutStarts = (error: string | null): CheckoutStarts => ({
+  started: 0,
+  byOffer: { trial: 0, paid: 0, unknown: 0 },
+  trialStarts: [],
+  error,
+  truncated: false,
+});
+
+async function loadCheckoutStarts(stripe: Stripe, since: number): Promise<CheckoutStarts> {
   try {
     const sessions = await stripe.checkout.sessions
       .list({ limit: 100, created: { gte: Math.floor(since / 1000) } })
       .autoPagingToArray({ limit: MAX_SESSIONS });
-    const started = sessions.filter(
-      (s) => s.metadata?.checkout_surface === "web"
-    ).length;
-    return { started, error: null, truncated: sessions.length >= MAX_SESSIONS };
+    const out = emptyCheckoutStarts(null);
+    out.truncated = sessions.length >= MAX_SESSIONS;
+    for (const s of sessions) {
+      if (s.metadata?.checkout_surface !== "web") continue;
+      out.started += 1;
+      const offer = s.metadata?.offer_variant;
+      const isTrial = offer === OFFER_VARIANT_TRIAL;
+      if (isTrial) out.byOffer.trial += 1;
+      else if (offer) out.byOffer.paid += 1;
+      else out.byOffer.unknown += 1;
+      if (isTrial && s.status === "complete") {
+        out.trialStarts.push({
+          customerId: typeof s.customer === "string" ? s.customer : s.customer?.id ?? null,
+          at: s.created * 1000,
+        });
+      }
+    }
+    return out;
   } catch (err) {
     console.error("Admin stats: Stripe session list failed:", err);
-    return { started: 0, error: "Could not read checkout sessions", truncated: false };
+    return emptyCheckoutStarts("Could not read checkout sessions");
   }
 }
 
@@ -657,7 +727,7 @@ export async function POST(req: NextRequest) {
       : Promise.resolve(emptyRevenue("STRIPE_SECRET_KEY is not set")),
     stripe
       ? loadCheckoutStarts(stripe, curveSince)
-      : Promise.resolve({ started: 0, error: null, truncated: false }),
+      : Promise.resolve(emptyCheckoutStarts(null)),
     loadEmails(),
     // Screen-by-screen drop-off inside the funnel — the seventeen quiz steps
     // plus the six phases after them. This is the only block on the panel that
@@ -778,6 +848,37 @@ export async function POST(req: NextRequest) {
       : round2(keptPerSale * Math.min(1 / Math.max(1 - renewalRate, 0.05), 20));
 
   const contribution30 = round2(revenue.last30.kept - adSpend30 - FIXED_MONTHLY_USD);
+
+  // ─── The free trial ───────────────────────────────────────────────────────
+  //
+  // With the trial on, "completed checkout" and "paid" are a week apart, and
+  // the question between them is the one the trial was introduced to answer:
+  // of the women who saved a card, how many let it charge? Only trials old
+  // enough to have charged are scored — TRIAL_DAYS plus the same dunning
+  // grace the renewal cohort uses, because a card that is being retried is
+  // not a "no" yet. Cancels are counted separately, off the subscription
+  // list, so the two figures never have to add up: a matured trial that
+  // neither charged nor cancelled is a failed card, and that is a third thing.
+  const trialMatureBefore = now - (TRIAL_DAYS + RENEWAL_GRACE_DAYS) * DAY_MS;
+  const trialsMatured = checkout.trialStarts.filter((t) => t.at <= trialMatureBefore);
+  const trialsConverted = trialsMatured.filter((t) => {
+    const first = t.customerId ? revenue.firstChargeByCustomer[t.customerId] : undefined;
+    return first !== undefined && first >= t.at;
+  }).length;
+  const trials = {
+    trialDays: TRIAL_DAYS,
+    /** Free weeks started in the curve window (card saved, $0). */
+    started: checkout.trialStarts.length,
+    matured: trialsMatured.length,
+    converted: trialsConverted,
+    convertRate:
+      trialsMatured.length > 0
+        ? Math.round((trialsConverted / trialsMatured.length) * 1000) / 10
+        : null,
+    canceledDuringTrial: revenue.trialsCanceled30,
+    /** Card-form opens split by which paywall opened them. */
+    checkoutByOffer: checkout.byOffer,
+  };
 
   // ─── Forward view: money already on the calendar ──────────────────────────
 
@@ -979,6 +1080,18 @@ export async function POST(req: NextRequest) {
             source: "stripe" as const,
           },
         ]),
+    // The free week, between the card form and the money: a completed $0
+    // session.
+    ...(checkout.error
+      ? []
+      : [
+          {
+            step: "stripe_trial",
+            sessions: checkout.trialStarts.length,
+            group: "money" as const,
+            source: "stripe" as const,
+          },
+        ]),
     {
       step: "stripe_paid",
       sessions: paidInCurve,
@@ -1032,10 +1145,22 @@ export async function POST(req: NextRequest) {
       significant: row.sessions >= MIN_CLIFF_BASE,
     };
   });
+  // The paywall and the Stripe rows are never named as the worst screen. A
+  // price is the steepest drop in any funnel by nature, and with the trial the
+  // "paid" row lags the card form by a week — so the sentence that tells you
+  // which screen to fix would otherwise point at the offer every single day
+  // and never at a screen a copy change can help. Their losses still print on
+  // the rows; they just don't get the verdict.
   const worstStep =
     entrySessions >= MIN_VERDICT_ENTRY
       ? (dropoff
-          .filter((d) => d.significant && d.lostPct !== null)
+          .filter(
+            (d) =>
+              d.significant &&
+              d.lostPct !== null &&
+              d.source === "screens" &&
+              d.step !== "paywall"
+          )
           .sort((a, b) => (b.lostPct ?? 0) - (a.lostPct ?? 0))[0] ?? null)
       : null;
 
@@ -1264,6 +1389,7 @@ export async function POST(req: NextRequest) {
       dropoffError: dropoffResult.error ? "Could not read funnel steps" : null,
     },
     contribution30,
+    trials,
     sales,
     /** Total succeeded charges walked, so the list can say "newest 40 of 112". */
     salesTotal: revenue.allTime.count,

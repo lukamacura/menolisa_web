@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 type AccountStatusResponse = {
   state?: AccountState;
   has_access?: boolean;
+  previously_paid?: boolean;
 };
 
 export default function PaywallPage() {
@@ -21,6 +22,11 @@ export default function PaywallPage() {
   const [error, setError] = useState<string | null>(null);
   const [gateLoading, setGateLoading] = useState(true);
   const [isDisputed, setIsDisputed] = useState(false);
+  // One free week per person. This paywall is reached by someone who already
+  // has an account, so her history is one field away: `previously_paid` is
+  // true for any row that ever held a Stripe subscription. Fail towards
+  // charging — until the status has loaded, nobody is offered the trial.
+  const [previouslyPaid, setPreviouslyPaid] = useState(true);
   // Held for PaywallView's ViewContent: it keys the once-per-tab guard and
   // derives the event_id the server copy dedups against. See `userId` there.
   const [userId, setUserId] = useState<string | null>(null);
@@ -56,6 +62,7 @@ export default function PaywallPage() {
           return;
         }
         setIsDisputed(json.state === "disputed");
+        setPreviouslyPaid(json.previously_paid !== false);
         setGateLoading(false);
       } catch {
         if (!cancelled) setGateLoading(false);
@@ -130,6 +137,8 @@ export default function PaywallPage() {
           banner={isDisputed ? <DisputedAccountBanner /> : undefined}
           trackingSource="dashboard"
           userId={userId}
+          trialEligible={!previouslyPaid}
+          welcomeBack={previouslyPaid}
         />
       </div>
     </main>

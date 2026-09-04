@@ -25,6 +25,40 @@ import { sendWelcomeEmail, sendAdminNotification } from "@/lib/resend";
 import { generatePlan, markPlanGenerating } from "@/lib/plan/generate";
 import { PLAN_WEEKS } from "@/lib/pricing";
 
+/** Stripe's `trial_end` as ISO, or null when the subscription never had one. */
+export function trialEndIso(subscription: Stripe.Subscription | null): string | null {
+  return subscription?.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null;
+}
+
+/**
+ * Stamp `first_paid_at` once, ever. Returns true to the caller that set it.
+ *
+ * The same conditional-update claim as `claimFulfillment`, for a different
+ * side effect: the Meta `Purchase` on a trial's first paid invoice, and the
+ * "your free week became a plan" email. Both must fire exactly once per
+ * customer and `invoice.payment_succeeded` is retried by Stripe, so a
+ * read-then-write is not enough. A non-trial checkout claims it at
+ * fulfillment (money moved at the card), so the invoice handler that follows
+ * finds it taken and stays quiet.
+ */
+export async function claimFirstPayment(
+  supabaseAdmin: SupabaseClient,
+  userId: string,
+  atIso: string
+): Promise<boolean> {
+  const { data, error } = await supabaseAdmin
+    .from("user_trials")
+    .update({ first_paid_at: atIso })
+    .eq("user_id", userId)
+    .is("first_paid_at", null)
+    .select("user_id");
+  if (error) {
+    console.error("Fulfil: could not claim first payment:", error);
+    return false;
+  }
+  return !!data && data.length > 0;
+}
+
 /**
  * Values `plan_type` can hold. `plan8w` — $59 per 8 weeks — is the only plan
  * sold, and there are no legacy subscribers on anything else.
@@ -247,7 +281,11 @@ export async function claimFulfillment(
   return !!data && data.length > 0;
 }
 
-async function sendFulfillmentEmails(supabaseAdmin: SupabaseClient, userId: string): Promise<void> {
+async function sendFulfillmentEmails(
+  supabaseAdmin: SupabaseClient,
+  userId: string,
+  trialEndsAt: string | null
+): Promise<void> {
   try {
     const { data: authData } = await supabaseAdmin.auth.admin.getUserById(userId);
     const email = authData.user?.email;
@@ -260,10 +298,12 @@ async function sendFulfillmentEmails(supabaseAdmin: SupabaseClient, userId: stri
       .maybeSingle();
 
     await Promise.all([
-      sendWelcomeEmail(email, profile?.name ?? null),
+      sendWelcomeEmail(email, profile?.name ?? null, {
+        trialEndsAt: trialEndsAt ? new Date(trialEndsAt) : null,
+      }),
       sendAdminNotification(
-        "NEW PURCHASE",
-        `<p>New subscriber: <strong>${email}</strong>${profile?.name ? ` (${profile.name})` : ""}</p><p>Started: ${new Date().toUTCString()}</p>`
+        trialEndsAt ? "NEW FREE TRIAL" : "NEW PURCHASE",
+        `<p>${trialEndsAt ? "New trial" : "New subscriber"}: <strong>${email}</strong>${profile?.name ? ` (${profile.name})` : ""}</p><p>Started: ${new Date().toUTCString()}</p>${trialEndsAt ? `<p>First charge: ${new Date(trialEndsAt).toUTCString()}</p>` : ""}`
       ),
     ]);
   } catch (e) {
@@ -282,11 +322,19 @@ export type FulfillResult = {
   planType: PlanType | null;
   planAmount: number | null;
   subscriptionEndsAt: string | null;
+  /** True when the subscription is in its free week — nothing was collected. */
+  trialing: boolean;
+  /** Stripe's `trial_end`, when the subscription started with a trial. */
+  trialEndsAt: string | null;
 };
 
 /**
  * Bind the email, write the subscription, then — once — start the plan and send
  * the welcome email. Safe to call twice on the same session.
+ *
+ * A free-trial checkout runs the identical path: the plan is generated and the
+ * welcome email sent the moment the card is saved, because the week is free
+ * precisely so she can use the plan before paying for it.
  */
 export async function fulfillCheckout(opts: {
   supabaseAdmin: SupabaseClient;
@@ -332,6 +380,15 @@ export async function fulfillCheckout(opts: {
   let subscription_canceled = false;
   let plan_type: PlanType | null = null;
   let plan_amount: number | null = null;
+  // During the free week Stripe reports `current_period_end === trial_end`, so
+  // `subscription_ends_at` lands on the first charge date with no special case
+  // — and getAccountState() needs none. `trial_ends_at` is kept beside it so
+  // the renewal cron and the account card can tell "a week free" from "eight
+  // weeks paid" when the two dates coincide.
+  const trial_ends_at = trialEndIso(subscription);
+  const trialing =
+    subscription?.status === "trialing" ||
+    (!!trial_ends_at && new Date(trial_ends_at).getTime() > atSec * 1000);
 
   if (subscription) {
     subscription_ends_at = subscriptionPeriodEndIso(subscription);
@@ -348,6 +405,8 @@ export async function fulfillCheckout(opts: {
   if (subscription) extras.stripe_subscription_id = subscription.id;
   if (plan_type) extras.plan_type = plan_type;
   if (plan_amount !== null) extras.plan_amount = plan_amount;
+  if (trial_ends_at) extras.trial_ends_at = trial_ends_at;
+  if (session.metadata?.offer_variant) extras.offer_variant = session.metadata.offer_variant;
 
   const result = await writeSubscription(supabaseAdmin, {
     userId,
@@ -363,6 +422,8 @@ export async function fulfillCheckout(opts: {
     planType: plan_type,
     planAmount: plan_amount,
     subscriptionEndsAt: subscription_ends_at,
+    trialing,
+    trialEndsAt: trial_ends_at,
   };
 
   if (!result.written) {
@@ -370,6 +431,13 @@ export async function fulfillCheckout(opts: {
       `Fulfil: conflict — user ${userId} already has an active ${result.existingProvider} sub`
     );
     return { ...base, written: false, fulfilled: false };
+  }
+
+  // Money moved at the card: this checkout is her first payment. A trial
+  // session collects nothing (`amount_total` 0) and leaves the claim for the
+  // first paid invoice a week later — see `claimFirstPayment`.
+  if ((session.amount_total ?? 0) > 0) {
+    await claimFirstPayment(supabaseAdmin, userId, new Date(atSec * 1000).toISOString());
   }
 
   if (!(await claimFulfillment(supabaseAdmin, userId))) {
@@ -382,7 +450,7 @@ export async function fulfillCheckout(opts: {
   // it.
   await markPlanGenerating(userId);
   after(() => generatePlan(userId));
-  after(() => sendFulfillmentEmails(supabaseAdmin, userId));
+  after(() => sendFulfillmentEmails(supabaseAdmin, userId, trialing ? trial_ends_at : null));
 
   return { ...base, written: true, fulfilled: true };
 }

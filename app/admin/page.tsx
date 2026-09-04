@@ -298,6 +298,19 @@ type Stats = {
     dropoffError: string | null;
   };
   contribution30: number;
+  /** The free week. */
+  trials: {
+    trialDays: number;
+    /** Free weeks started in the curve window — a completed $0 checkout. */
+    started: number;
+    /** Started long enough ago to have charged (or not). */
+    matured: number;
+    converted: number;
+    /** converted / matured, one decimal; null until a trial has matured. */
+    convertRate: number | null;
+    canceledDuringTrial: number;
+    checkoutByOffer: { trial: number; paid: number; unknown: number };
+  };
   sales: Sale[];
   salesTotal: number;
   alerts: { tone: "bad" | "warn" | "money"; label: string; text: string }[];
@@ -638,7 +651,7 @@ export default function AdminPage() {
     );
   }
 
-  const { money: m, costs, acq, retention, forward, funnel, verdict, sales, alerts } = stats;
+  const { money: m, costs, acq, retention, forward, funnel, verdict, sales, alerts, trials } = stats;
 
   return (
     <main
@@ -844,6 +857,43 @@ export default function AdminPage() {
                 }
                 value={String(acq.newCustomers30)}
                 tone="her"
+              />
+              {/* The free week. Three figures and a split: how many saved a
+                  card, how many of the matured ones let it charge, how many
+                  said no before it could — and which paywall opened the card
+                  forms, because the trial paywall and the $59 paywall
+                  (returning customers) are two different offers and averaging
+                  them says nothing about either. `convertRate` is the number
+                  the trial exists to find out; it is blank until a trial is
+                  old enough to have charged. */}
+              <Row
+                label={`Free weeks started, ${plural(funnel.days, "day")}`}
+                hint={
+                  trials.checkoutByOffer.paid > 0
+                    ? `Card forms opened: ${trials.checkoutByOffer.trial} on the trial paywall, ${trials.checkoutByOffer.paid} on the $59 paywall`
+                    : "A card saved at $0 — nothing collected yet"
+                }
+                value={String(trials.started)}
+                tone="her"
+              />
+              <Row
+                label="Free week → paid"
+                hint={
+                  trials.convertRate === null
+                    ? `No free week is ${trials.trialDays} days old yet`
+                    : `${trials.converted} of the ${trials.matured} whose free week has ended`
+                }
+                value={trials.convertRate === null ? "Not yet known" : `${trials.convertRate}%`}
+                tone={
+                  trials.convertRate === null ? "mute" : trials.convertRate >= 35 ? "good" : "bad"
+                }
+                big
+              />
+              <Row
+                label="Cancelled in the free week"
+                hint="Saved a card, then cancelled before it charged — last 30 days"
+                value={String(trials.canceledDuringTrial)}
+                tone={trials.canceledDuringTrial > 0 ? "spend" : "mute"}
               />
               <Row
                 label="Cost per new customer"
@@ -1896,6 +1946,9 @@ const STEP_LABELS: Record<string, string> = {
   // on the curve, because it measures the same event `stripe_paid` measures and
   // Stripe is the side that knows whether money moved.
   stripe_checkout: "Opened the card form",
+  // A completed $0 Checkout Session. Between the card form and the charge,
+  // because that is where the week sits.
+  stripe_trial: "Started the free week",
   stripe_paid: "Paid",
 };
 
@@ -2264,7 +2317,9 @@ function WholeFunnel({
         were looking at when they left, not the screen they failed to arrive at. It is only coloured
         when enough women stood on that screen for the percentage to mean anything — and when it is,
         the screen&rsquo;s name is coloured with it. Bar colour carries depth only, blue at the top
-        of the funnel to red at the money.
+        of the funnel to red at the money. The paywall and the Stripe rows are never named as the
+        worst screen: a price is the steepest drop in any funnel by nature, and their losses print on
+        the rows without taking the verdict.
       </p>
     </div>
   );

@@ -39,6 +39,7 @@ export default function AccountPage() {
             subscriptionCanceled={trialStatus.subscriptionCanceled}
             paymentFailedAt={trialStatus.paymentFailedAt}
             isThirdPartyProvider={trialStatus.isThirdPartyProvider}
+            inTrial={trialStatus.inTrial}
           />
         )}
       </section>

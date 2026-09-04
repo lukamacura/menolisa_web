@@ -112,19 +112,34 @@ export async function sendTransactionalEmail(
   return { id: data?.id ?? null, error: null };
 }
 
+function longDate(d: Date): string {
+  return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+}
+
 /**
- * Sent when Stripe checkout completes. The customer has been charged at this
- * point — the 8-week plan has no trial, so there is no "nothing charged yet"
- * variant of this email.
+ * Sent when Stripe checkout completes.
+ *
+ * Two openings, one email. Paid up front: the card was charged, the
+ * subscription is active. Free trial (`trialEndsAt` set): nothing was charged,
+ * and the email says so *with the date and the amount of the first charge* —
+ * that sentence is the disclosure the trial-to-paid rules want in writing, and
+ * it is the one thing she will search her inbox for on day 7.
  */
-export async function sendWelcomeEmail(to: string, name: string | null): Promise<void> {
+export async function sendWelcomeEmail(
+  to: string,
+  name: string | null,
+  opts: { trialEndsAt?: Date | null } = {}
+): Promise<void> {
   const greeting = name?.trim() || "there";
   const subject = "Welcome to MenoLisa";
   const footerLine =
     "You can manage or cancel your subscription anytime from Account. Questions? Just reply to this email.";
+  const opening = opts.trialEndsAt
+    ? `<p style="margin:0 0 16px">Your free week has started — nothing has been charged. It runs until <strong>${longDate(opts.trialEndsAt)}</strong>. If you keep the plan, ${formatPrice(PLAN_PRICE)} is charged then for your next ${PLAN_WEEKS} weeks; cancel any time before that from Account and you pay nothing.</p>`
+    : `<p style="margin:0 0 16px">Your subscription is active. Thank you for joining.</p>`;
   const body = `
 <p style="margin:0 0 16px;font-size:17px;font-weight:600;color:#2d1b3d">Hi ${greeting},</p>
-<p style="margin:0 0 16px">Your subscription is active. Thank you for joining.</p>
+${opening}
 <p style="margin:0 0 28px">Lisa is ready. Open the app, say hi, and log how you feel today. Even one symptom helps her start spotting patterns for you.</p>
 <table cellpadding="0" cellspacing="0" border="0">
   <tr>
@@ -139,6 +154,42 @@ export async function sendWelcomeEmail(to: string, name: string | null): Promise
 <p style="margin:24px 0 0;color:#9d7ec9;font-size:13px">${footerLine}</p>`;
 
   await sendTransactionalEmail(to, subject, buildEmailHtml(body));
+}
+
+/**
+ * Sent on a free trial's first real charge — the receipt for the week
+ * becoming a plan. Says what was charged, what it covers, when the next one
+ * is, and how to stop it. The plain renewal email below assumes she has paid
+ * before; this one is for a woman who, until this morning, had not.
+ */
+export async function sendTrialConvertedEmail(
+  to: string,
+  name: string | null,
+  opts: { amount: number; periodEndsAt: Date | null }
+): Promise<void> {
+  const greeting = name?.trim() || "there";
+  const renews = opts.periodEndsAt ? ` It renews on <strong>${longDate(opts.periodEndsAt)}</strong>, and we email you ${RENEWAL_NOTICE_DAYS} days before that.` : "";
+  const body = `
+<p style="margin:0 0 16px;font-size:17px;font-weight:600;color:#2d1b3d">Hi ${greeting},</p>
+<p style="margin:0 0 16px">Your free week is over and you kept the plan — thank you. Your card was charged <strong>${formatPrice(opts.amount)}</strong> today for the next ${PLAN_WEEKS} weeks.${renews}</p>
+<p style="margin:0 0 28px">Nothing changes in the app: your plan carries straight on from where you are. Keep ticking days off — that is what the ${PLAN_WEEKS}-week guarantee counts.</p>
+<table cellpadding="0" cellspacing="0" border="0">
+  <tr>
+    <td bgcolor="#7c3aed" style="background-color:#7c3aed;border-radius:10px">
+      <a href="${APP_URL}/get-the-app" target="_blank"
+         style="display:inline-block;padding:13px 28px;color:#ffffff;font-weight:600;font-size:15px;text-decoration:none">
+        Open MenoLisa
+      </a>
+    </td>
+  </tr>
+</table>
+<p style="margin:24px 0 0;color:#9d7ec9;font-size:13px">To cancel or manage your subscription, go to Account at ${APP_URL}/dashboard/account or reply to this email.</p>`;
+
+  await sendTransactionalEmail(
+    to,
+    `Your ${formatPrice(opts.amount)} MenoLisa plan has started`,
+    buildEmailHtml(body)
+  );
 }
 
 /** Sent on every renewal charge after the first. */
@@ -183,14 +234,39 @@ export async function sendChargeConfirmedEmail(to: string, name: string | null):
 export async function sendRenewalNoticeEmail(
   to: string,
   name: string | null,
-  renewsAt: Date
+  renewsAt: Date,
+  opts: { trial?: boolean } = {}
 ): Promise<{ id: string | null; error: Error | null }> {
   const greeting = name?.trim() || "there";
-  const when = renewsAt.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
+  const when = longDate(renewsAt);
+
+  // The free week's version. Same day (RENEWAL_NOTICE_DAYS before the date),
+  // different fact: she has not paid yet, so "renews" is the wrong word and
+  // "keep everything you have paid for" is false. This is the reminder the
+  // paywall promised at the price, so it names the exact date and amount.
+  if (opts.trial) {
+    const body = `
+<p style="margin:0 0 16px;font-size:17px;font-weight:600;color:#2d1b3d">Hi ${greeting},</p>
+<p style="margin:0 0 16px">Your free week ends on <strong>${when}</strong>. If you keep the plan, your card will be charged <strong>${formatPrice(PLAN_PRICE)}</strong> that day for your next ${PLAN_WEEKS} weeks.</p>
+<p style="margin:0 0 28px">If it isn't for you, cancelling takes about 30 seconds and you will not be charged anything. Nothing to do if you are staying.</p>
+<table cellpadding="0" cellspacing="0" border="0">
+  <tr>
+    <td bgcolor="#7c3aed" style="background-color:#7c3aed;border-radius:10px">
+      <a href="${APP_URL}/dashboard/account" target="_blank"
+         style="display:inline-block;padding:13px 28px;color:#ffffff;font-weight:600;font-size:15px;text-decoration:none">
+        Keep or cancel
+      </a>
+    </td>
+  </tr>
+</table>
+<p style="margin:24px 0 0;color:#9d7ec9;font-size:13px">Questions? Just reply to this email.</p>`;
+    return sendTransactionalEmail(
+      to,
+      `Your free week ends in ${RENEWAL_NOTICE_DAYS} days`,
+      buildEmailHtml(body)
+    );
+  }
+
   const body = `
 <p style="margin:0 0 16px;font-size:17px;font-weight:600;color:#2d1b3d">Hi ${greeting},</p>
 <p style="margin:0 0 16px">A heads up with time to act on it: your MenoLisa subscription renews on <strong>${when}</strong>, and your card will be charged ${formatPrice(PLAN_PRICE)} for the next ${PLAN_WEEKS} weeks.</p>

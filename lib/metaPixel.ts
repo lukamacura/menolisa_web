@@ -11,7 +11,27 @@
  * | `Lead`            | -       | yes  | `user_profiles` insert          |
  * | `ViewContent`     | yes     | yes  | paywall mount ($59)             |
  * | `InitiateCheckout`| yes     | yes  | paywall CTA ($59)               |
- * | `Purchase`        | yes     | yes  | checkout completed ($59)        |
+ * | `Purchase`        | yes     | yes  | checkout completed — $0 on a trial, $59 for a returning customer |
+ * | `Subscribe`       | -       | yes  | the trial's first paid invoice ($59) |
+ *
+ * `Purchase` fires when the free week starts (lib/pricing.ts `TRIAL_DAYS`),
+ * not when the $59 is collected a week later. That is a deliberate trade: the
+ * live ad set optimises on Purchase, and moving the event to the first paid
+ * invoice (or renaming it `StartTrial`) means a new ad set and a fresh
+ * learning phase. Two rules keep it honest:
+ *
+ * 1. **Value is what moved.** A trial checkout reports `value: 0`; only a
+ *    returning customer's $59-today checkout reports 59. Reporting the plan
+ *    price on a saved card inflates Meta's revenue by the trial-cancel rate
+ *    and is a lie the moment anyone value-optimises or audits the account.
+ *    Once the trial → paid rate is known, `TRIAL_PURCHASE_VALUE` can become
+ *    the expected value per trial (rate × PLAN_PRICE) — one constant, here.
+ * 2. **Once per customer.** Nothing fires `Purchase` on the day-7 charge. The
+ *    real money is `Subscribe` (a standard event, server-only, value 59) so a
+ *    clean "money moved" signal exists to build a future ad set on, without
+ *    the same click reporting two conversions a week apart.
+ *
+ * See "The free trial" in CLAUDE.md.
  *
  * Seven custom funnel events - `QuizStart`, `QuizStep`, `QuizComplete`,
  * `ResultsView`, `PlanView`, `PlanScrollDepth`, `ReliefDone` - were removed on
@@ -91,8 +111,29 @@ export const META_CURRENCY = "USD";
  * Renewals are deliberately *not* reported: Purchase fires from
  * checkout.session.completed only, so Meta optimizes for new customers rather
  * than being fed a second conversion every 8 weeks for someone it already won.
+ *
+ * With the free week this is the value of a *returning* customer's checkout
+ * and of `Subscribe`; a trial checkout reports `TRIAL_PURCHASE_VALUE`.
+ * Reconcile the Purchase count against `/admin`'s "free weeks started", and
+ * Subscribe against charges.
  */
 export const PLAN_VALUE = PLAN_PRICE;
+
+/**
+ * `value` on the Purchase a free-trial checkout reports. Zero, because zero
+ * was collected. Raise it to the expected value per trial (trial → paid rate
+ * × PLAN_PRICE) once `/admin` can state that rate — never to PLAN_PRICE.
+ */
+export const TRIAL_PURCHASE_VALUE = 0;
+
+/**
+ * Event id for the `Subscribe` reported off a trial's first paid invoice.
+ * Server-only — there is no browser copy — so the id exists so a retried
+ * `invoice.payment_succeeded` collapses to one event inside Meta's window.
+ */
+export function subscribeEventId(stripeInvoiceId: string): string {
+  return `subscribe_${stripeInvoiceId}`;
+}
 
 /** Dedup key linking the browser Purchase to the Conversions API Purchase. */
 export function purchaseEventId(stripeSessionId: string): string {

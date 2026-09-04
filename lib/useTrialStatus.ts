@@ -32,11 +32,27 @@ export type TrialStatus = {
   previouslyPaid: boolean;
   /** True for Apple/Google IAP. Web should not show "Manage subscription" (Stripe portal). */
   isThirdPartyProvider: boolean;
+  /**
+   * True while the subscription is in its free week — `trial_ends_at` equals
+   * the period end. Switches the account card from "Renews" to "Free week
+   * ends", which is the difference between money she has paid and money she
+   * has not.
+   */
+  inTrial: boolean;
   loading: boolean;
   error: string | null;
 };
 
-const SELECT_COLS = TRIAL_SELECT_COLS;
+/**
+ * `trial_ends_at` rides along for the copy. Its column is added by
+ * scripts/sql/2026-09-04-free-trial.sql — a select naming a column that does
+ * not exist fails the whole read, which this hook turns into "no row", which
+ * the dashboard turns into a paywall for every paying customer. The migration
+ * is not optional.
+ */
+const SELECT_COLS = `${TRIAL_SELECT_COLS}, trial_ends_at`;
+
+type TrialRowWithTrial = AccountStateRow & { trial_ends_at?: string | null };
 
 export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> } {
   const [trialStatus, setTrialStatus] = useState<TrialStatus>({
@@ -50,6 +66,7 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
     paymentFailedAt: null,
     previouslyPaid: false,
     isThirdPartyProvider: false,
+    inTrial: false,
     loading: true,
     error: null,
   });
@@ -144,6 +161,12 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
 
     const account = getAccountState(trialData, now);
     const subscriptionCanceled = !!trialData?.subscription_canceled;
+    const trialEndsAt = (trialData as TrialRowWithTrial | null)?.trial_ends_at ?? null;
+    const inTrial =
+      !!trialEndsAt &&
+      !!account.endsAt &&
+      new Date(trialEndsAt).getTime() === account.endsAt.getTime() &&
+      account.hasAccess;
     const paymentFailedAt = trialData?.payment_failed_at
       ? new Date(trialData.payment_failed_at)
       : null;
@@ -168,6 +191,7 @@ export function useTrialStatus(): TrialStatus & { refetch: () => Promise<void> }
       paymentFailedAt,
       previouslyPaid: account.previouslyPaid,
       isThirdPartyProvider: account.isThirdPartyProvider,
+      inTrial,
       loading: false,
       error: null,
     });

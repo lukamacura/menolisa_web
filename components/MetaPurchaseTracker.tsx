@@ -1,8 +1,13 @@
 "use client";
 
 import { useEffect } from "react";
-import { META_CURRENCY, PLAN_VALUE, purchaseEventId } from "@/lib/metaPixel";
-import { isPlanId } from "@/lib/pricing";
+import {
+  META_CURRENCY,
+  PLAN_VALUE,
+  TRIAL_PURCHASE_VALUE,
+  purchaseEventId,
+} from "@/lib/metaPixel";
+import { OFFER_VARIANT_TRIAL, isPlanId } from "@/lib/pricing";
 import { getSupabase } from "@/lib/supabaseClient";
 import { identifyMetaUser, trackFbOnce } from "@/lib/metaPixelClient";
 
@@ -16,6 +21,12 @@ import { identifyMetaUser, trackFbOnce } from "@/lib/metaPixelClient";
  *
  * The Stripe webhook sends the same Purchase through the Conversions API with
  * an identical event_id, so exactly one is counted.
+ *
+ * Fires on a free-trial landing too (`?offer=trial7_free`, stamped on the
+ * success URL by `create-checkout`) - the live ad set optimises on Purchase
+ * and cannot be re-pointed without a new ad set - but at
+ * `TRIAL_PURCHASE_VALUE`, because that is what moved. The $59 lands in Meta a
+ * week later as `Subscribe`, server-side. See `lib/metaPixel.ts`.
  *
  * A landing carrying a retired `plan` value - a checkout started before the
  * switch to the single 8-week plan - is skipped rather than reported at the new
@@ -49,13 +60,14 @@ export default function MetaPurchaseTracker() {
     const sessionId = params.get("session_id");
     const plan = params.get("plan");
     if (!sessionId || !isPlanId(plan)) return;
+    const isTrial = params.get("offer") === OFFER_VARIANT_TRIAL;
 
     const fire = () =>
       trackFbOnce(
         `purchase:${sessionId}`,
         "Purchase",
         {
-          value: PLAN_VALUE,
+          value: isTrial ? TRIAL_PURCHASE_VALUE : PLAN_VALUE,
           currency: META_CURRENCY,
           content_name: plan,
           content_type: "product",
