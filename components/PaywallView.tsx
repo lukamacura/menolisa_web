@@ -492,9 +492,26 @@ export function PaywallView({
               What replaces it is the outcome and a date she can picture. "8
               weeks from today" rather than "in 8 weeks" for the same reason the
               finish board draws a calendar instead of writing "8 weeks": a
-              duration is an abstraction and a deadline is an appointment. */}
-          <h1 className="text-2xl sm:text-2xl font-bold text-[#3D3D3D] leading-tight text-balance">
-            <HighlightSweep variant="green">{promise}</HighlightSweep>.
+              duration is an abstraction and a deadline is an appointment.
+
+              **The full stop lives *inside* the sweep, and it has to.**
+              `<HighlightSweep>` is an `inline-block`, so it is an atomic inline
+              that shrink-to-fits the line: on any promise long enough to wrap -
+              "Walk into your doctor with real answers", "Feel calm and steady
+              again" - it takes the full column width and the bare "." that used
+              to sit after it had nowhere to go but the next line, printing a
+              lone dot under the headline. It reads as a typo on the largest
+              type on the page, at the moment she is deciding whether this was
+              built carefully. Anything appended after the sweep has the same
+              problem; put it in the children.
+
+              Sized at 27/32 rather than 24 (2026-09-04). This is the sentence
+              the whole screen is arguing for and it was set two steps off the
+              price beside it. Negative tracking and 1.1 leading keep the extra
+              size from costing a line, and the ink is a shade deeper than the
+              funnel's body #3D3D3D so it separates from the subline under it. */}
+          <h1 className="text-[27px] sm:text-[32px] font-bold text-[#2B2627] leading-[1.1] tracking-[-0.02em] text-balance">
+            <HighlightSweep variant="green">{promise}.</HighlightSweep>
             <br />
             {PLAN_WEEKS} weeks from today.
           </h1>

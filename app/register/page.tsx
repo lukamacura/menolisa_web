@@ -6396,10 +6396,12 @@ function RegisterPageContent() {
           )}
         >
           {/* A one-line note from Lisa over the top of the earliest screens -
-              the ones where the funnel loses most and explains least. It is
-              `pointer-events-none` and has no dismiss control, so it cannot
-              take the tap this screen is waiting for; the rules it lives under
-              are at the component. Steps with no line render nothing. */}
+              the ones where the funnel loses most and explains least, dressed
+              as the iOS/Android push banner it is imitating. Everything outside
+              the card itself is `pointer-events-none`, so it cannot take the
+              tap this screen is waiting for; the card takes taps only to run
+              its own close button and swipe. The rules it lives under are at
+              the component. Steps with no line render nothing. */}
           <QuizNudge step={currentStep} seen={nudgeSeen.current} />
 
           {/* Progress: the counter is the top line of the screen and Back sits on

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion, type PanInfo } from "framer-motion";
+import { X } from "lucide-react";
 
 /**
- * ── A small note from a person, dropped over the top of a quiz screen. ──
+ * ── A push notification from Lisa, dropped over the top of a quiz screen. ──
  *
  * The funnel's largest single loss is the first screen: over the first clean
  * window, 231 sessions entered and 118 reached screen two. Forty-nine percent
@@ -15,15 +16,22 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
  *
  * This is that reason, in one sentence, from a name and a face. It is
  * deliberately not another headline: a headline is the page talking, and the
- * page is what she is deciding whether to trust.
+ * page is what she is deciding whether to trust. It is dressed as the iOS
+ * banner it is imitating — frosted material, app icon, app name, "now",
+ * swipe-up-to-dismiss — because that is the one piece of chrome on her phone
+ * she reads without deciding to, and it reads as a person rather than as a
+ * page. It renders identically on Android: none of it depends on the OS, only
+ * on CSS every mobile browser since 2021 supports (see the material note on
+ * the card itself for the one property that degrades).
  *
  * Three rules hold it together, and each one is load-bearing:
  *
- *  1. **It can never eat a tap.** The whole overlay is `pointer-events-none`.
- *     The screen it covers is the one where half the traffic is already
- *     leaving, and an overlay that swallows the first tap there would cost
- *     more than every nudge could ever return. There is no close button for
- *     the same reason — it would need to accept a tap to work.
+ *  1. **It can never eat a tap it did not ask for.** The overlay wrapper is
+ *     `pointer-events-none`; only the banner itself opts back in, and only so
+ *     that its close button and its swipe work. The screen it covers is the
+ *     one where half the traffic is already leaving, so everything outside the
+ *     card's own ~76px must stay live — an overlay that swallowed the first tap
+ *     there would cost more than every nudge could ever return.
  *  2. **It never claims a number we cannot show.** See {@link QUIZ_NUDGES}.
  *  3. **The author is a real person or the brand's disclosed persona, never an
  *     invented human.** See {@link NUDGE_AUTHOR}.
@@ -51,11 +59,15 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
  *
  * `avatar` must be a real file in `public/`. If you swap the name, swap the
  * face; Lisa's portrait over someone else's name is the same problem twice.
+ *
+ * `app` is the notification's app name row — the product, not the person, the
+ * same way a real banner names the app above the sender.
  */
 export const NUDGE_AUTHOR = {
   name: "Lisa",
   role: "your coach",
   avatar: "/brand/lisa-profile.webp",
+  app: "MenoLisa",
 } as const;
 
 /**
@@ -74,7 +86,8 @@ export const NUDGE_AUTHOR = {
  * What is left is stronger anyway, because all of it is true and she can feel
  * it being true as she goes: what the answer is used for, and who sees it.
  *
- * Keep them one sentence. This sits over a screen she is trying to read.
+ * Keep them one sentence. This sits over a screen she is trying to read, in a
+ * banner that clamps at three lines exactly as the real one does.
  */
 export const QUIZ_NUDGES: Record<string, string> = {
   // Screen 1 — the ad's landing page, and the 49% loss. She has just arrived
@@ -92,10 +105,18 @@ export const QUIZ_NUDGES: Record<string, string> = {
   q_body: "Nobody sees this but you. It sets your starting point and nothing else.",
 };
 
-/** How long after the screen settles the note appears. */
+/** How long after the screen settles the banner drops in. */
 const NUDGE_DELAY_MS = 900;
 /** How long it stays. Long enough to read twice at 50, short enough to leave. */
 const NUDGE_VISIBLE_MS = 6000;
+
+/**
+ * Swipe-up-to-dismiss thresholds, matched to the gesture iOS actually accepts:
+ * a short flick counts on velocity, a slow drag counts on distance. Anything
+ * that satisfies neither springs back, so a stray scroll never dismisses it.
+ */
+const SWIPE_DISMISS_PX = 28;
+const SWIPE_DISMISS_VELOCITY = 320;
 
 export interface QuizNudgeProps {
   /** The current quiz step key. A step with no {@link QUIZ_NUDGES} entry renders nothing. */
@@ -111,8 +132,26 @@ export interface QuizNudgeProps {
 export function QuizNudge({ step, seen }: QuizNudgeProps) {
   const reduceMotion = useReducedMotion();
   const [visible, setVisible] = useState(false);
+  // Held so a dismiss cancels the auto-hide rather than racing it: without
+  // this, the timer fires into an already-unmounted banner and (harmlessly but
+  // pointlessly) re-runs the exit.
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const message = QUIZ_NUDGES[step];
+
+  const dismiss = useCallback(() => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    setVisible(false);
+  }, []);
+
+  const handleDragEnd = useCallback(
+    (_e: unknown, info: PanInfo) => {
+      if (info.offset.y < -SWIPE_DISMISS_PX || info.velocity.y < -SWIPE_DISMISS_VELOCITY) {
+        dismiss();
+      }
+    },
+    [dismiss]
+  );
 
   useEffect(() => {
     if (!message || seen.has(step)) return;
@@ -123,13 +162,13 @@ export function QuizNudge({ step, seen }: QuizNudgeProps) {
     seen.add(step);
 
     const show = setTimeout(() => setVisible(true), NUDGE_DELAY_MS);
-    const hide = setTimeout(
+    hideTimer.current = setTimeout(
       () => setVisible(false),
       NUDGE_DELAY_MS + NUDGE_VISIBLE_MS
     );
     return () => {
       clearTimeout(show);
-      clearTimeout(hide);
+      if (hideTimer.current) clearTimeout(hideTimer.current);
       setVisible(false);
     };
   }, [step, message, seen]);
@@ -138,39 +177,95 @@ export function QuizNudge({ step, seen }: QuizNudgeProps) {
     <AnimatePresence>
       {visible && message && (
         <motion.div
-          // `pointer-events-none` is the rule this component exists under - see
-          // the note at the top of the file. It is on the wrapper, so nothing
-          // inside it can opt back in.
-          className="pointer-events-none fixed inset-x-0 top-0 z-40 flex justify-center px-3 pt-[calc(8px+env(safe-area-inset-top))]"
-          initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -24 }}
+          // `pointer-events-none` on the wrapper is the rule this component
+          // lives under - see the note at the top of the file. Only the card
+          // below opts back in, so the full-width strip either side of it stays
+          // transparent to taps.
+          //
+          // `top-0` plus the safe-area inset is what puts it where the real
+          // banner sits on every device at once: 0 on Android and on a
+          // flat-topped iPhone, ~59px under a Dynamic Island. z-50 clears the
+          // funnel's own fixed CTA bar (z-30).
+          className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center px-2.5 pt-[calc(env(safe-area-inset-top)+10px)]"
+          initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -120 }}
           animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
-          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -16 }}
-          transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
+          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -120 }}
+          transition={
+            reduceMotion
+              ? { duration: 0.2 }
+              : // iOS drops the banner in on a spring with a touch of overshoot
+                // and pulls it back out on a curve. A symmetric tween in both
+                // directions is the tell that it is a web div.
+                { type: "spring", stiffness: 420, damping: 34, mass: 0.9 }
+          }
           // Announced once, politely. It is supplementary to the question, not
           // a replacement for it, so it must not interrupt the screen's own
           // heading being read.
           role="status"
           aria-live="polite"
         >
-          <div className="flex w-full max-w-md items-start gap-2.5 rounded-2xl border border-[#F0E3EA] bg-white/95 px-3 py-2.5 shadow-[0_8px_24px_-8px_rgba(61,61,61,0.28)] backdrop-blur">
+          <motion.div
+            // The material. `backdrop-blur` is the one property here that is
+            // not universal - an old Android in-app webview without
+            // `backdrop-filter` gets the opaque white fallback and the banner
+            // still reads, which is why the translucent value is behind
+            // `supports-backdrop-filter:` rather than being the base.
+            className="pointer-events-auto flex w-full max-w-md cursor-default select-none items-start gap-3 rounded-[22px] bg-white px-3.5 py-3 shadow-[0_12px_34px_-10px_rgba(61,40,50,0.34),0_2px_10px_-4px_rgba(61,40,50,0.18)] ring-1 ring-black/[0.06] backdrop-blur-xl backdrop-saturate-150 supports-backdrop-filter:bg-white/78"
+            // Swipe up to dismiss, the gesture the real banner teaches. Dragging
+            // down does nothing (`dragConstraints` pins the bottom at 0), so a
+            // downward swipe over the banner cannot drag it into the page.
+            drag={reduceMotion ? false : "y"}
+            dragDirectionLock
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={{ top: 0.6, bottom: 0 }}
+            onDragEnd={handleDragEnd}
+          >
+            {/* The app icon, in the rounded square iOS gives every app rather
+                than the circle a chat avatar would get - the banner names the
+                app first and the sender second, and this is the half that says
+                which app. */}
             <Image
               src={NUDGE_AUTHOR.avatar}
               alt=""
-              width={36}
-              height={36}
-              className="mt-0.5 h-9 w-9 shrink-0 rounded-full object-cover"
+              width={38}
+              height={38}
+              className="mt-[1px] h-[38px] w-[38px] shrink-0 rounded-[9px] object-cover shadow-[0_1px_3px_rgba(61,40,50,0.22)]"
+              draggable={false}
             />
-            <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9A9A9A]">
+
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <p className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.07em] text-[#8E8A8C]">
+                  {NUDGE_AUTHOR.app}
+                </p>
+                <span className="shrink-0 text-[11px] font-medium text-[#A9A5A7]">now</span>
+                {/* The dismiss control. Real banners have no X - they are swiped
+                    - so this exists for the phone that will not swipe and for
+                    the woman who does not know the gesture. 28px of circle with
+                    the negative margins giving it a ~40px hit area, which is the
+                    minimum that is honest on a screen this important. */}
+                <button
+                  type="button"
+                  onClick={dismiss}
+                  aria-label="Dismiss notification"
+                  className="-my-1.5 -mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-black/[0.06] text-[#6F6A6D] transition-colors active:bg-black/[0.12]"
+                >
+                  <X className="h-3.5 w-3.5" strokeWidth={2.5} />
+                </button>
+              </div>
+
+              <p className="mt-1 text-[14px] font-semibold leading-tight text-[#1F1D1E]">
                 {NUDGE_AUTHOR.name}
-                <span className="font-normal normal-case tracking-normal">
-                  {" "}
-                  · {NUDGE_AUTHOR.role}
-                </span>
+                <span className="font-normal text-[#6F6A6D]"> · {NUDGE_AUTHOR.role}</span>
               </p>
-              <p className="mt-0.5 text-[13px] leading-snug text-[#3D3D3D]">{message}</p>
+              {/* Three lines, then an ellipsis, exactly as the real banner
+                  clamps. Keep the lines in QUIZ_NUDGES short enough that it
+                  never has to. */}
+              <p className="mt-0.5 line-clamp-3 text-[13.5px] leading-[1.35] text-[#3D3D3D]">
+                {message}
+              </p>
             </div>
-          </div>
+          </motion.div>
         </motion.div>
       )}
     </AnimatePresence>
