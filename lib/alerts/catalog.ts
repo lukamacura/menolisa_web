@@ -162,7 +162,7 @@ export function renewalCopy(renewsOn: Date, firstName: string | null): AlertCopy
 }
 
 /**
- * RENEWAL_NOTICE_DAYS before a free trial ends. The renewal alert above says "your 8
+ * TRIAL_NOTICE_DAYS before a free trial ends. The renewal alert above says "your 8
  * weeks are nearly up", which is false for her — she has had TRIAL_DAYS days and
  * paid nothing. Date and amount, and the exit, in two lines.
  */

@@ -36,6 +36,7 @@ import {
   PLAN_PRICE_PER_DAY,
   PLAN_WEEKS,
   RENEWAL_NOTICE_DAYS,
+  TRIAL_NOTICE_DAYS,
   TRIAL_DAYS,
   formatChargeDate,
   formatPrice,
@@ -299,7 +300,37 @@ export function PaywallView({
   // byte-identical either side of zero - she is charged PLAN_PRICE whether the
   // clock ran out or not. See the note at the bottom of this file before
   // touching that.
-  const { remainingMs, expired } = useDiscountWindow();
+  const { remainingMs, expired: windowExpired } = useDiscountWindow();
+
+  /**
+   * ── The countdown does not run on the trial paywall (2026-09-04). ──
+   *
+   * It sells urgency on a price, and on the trial paywall today's price is
+   * **zero**. The two ran together for one deploy and contradicted each other
+   * inside a single viewport: "Your first 5 days are free" and "$0 today"
+   * directly under "{name}, your $59 rate is held for 29:59".
+   *
+   * The expired state was worse than incoherent, it was broken. `expired`
+   * flips `livePrice` to {@link PLAN_ANCHOR_PRICE}, so after 30 minutes the
+   * trial card rendered its "From {date}" row as a struck-through $118 beside
+   * a $118 - the same number twice, the discount visibly cancelled - while the
+   * guarantee card still promised free and the CTA still said "Start my free
+   * trial". The band above it announced "your 50% discount window has closed"
+   * on a screen whose whole offer is that nothing is charged today.
+   *
+   * So `expired` is forced false here rather than the band merely being
+   * hidden: half the card's styling and both anchor branches read it, and a
+   * hidden clock that still silently doubles the displayed price is the same
+   * bug with the evidence removed.
+   *
+   * This cannot overcharge anyone. The rule at the bottom of this file is that
+   * the page may understate what she pays and must never overstate it; holding
+   * the display at {@link PLAN_PRICE} is exact, and Stripe has one price
+   * either way. The returning-customer paywall (`trialEligible === false`) is
+   * a real $59-today decision and keeps its clock unchanged.
+   */
+  const showCountdown = !trialEligible;
+  const expired = showCountdown && windowExpired;
   const livePrice = expired ? ANCHOR_PRICE : PRICE;
   const livePricePerDay = expired ? ANCHOR_PER_DAY : PER_DAY;
 
@@ -499,6 +530,7 @@ export function PaywallView({
             The seconds are `aria-hidden` and only the expiry is announced: a
             per-second live region reads the whole band aloud sixty times a
             minute, which is a screen reader jackhammer, not urgency. */}
+        {showCountdown && (
         <motion.div
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
@@ -549,6 +581,7 @@ export function PaywallView({
             {expired ? `Your ${PLAN_DISCOUNT_PCT}% discount window has closed.` : ""}
           </span>
         </motion.div>
+        )}
 
         {/* Price card - the single plan, no choice to make */}
         <motion.div
@@ -741,7 +774,7 @@ export function PaywallView({
                   {/* The amount and the interval are stated in the rows above,
                       so this line is the two things they can't be: the notice
                       and the exit. */}
-                  We email you {RENEWAL_NOTICE_DAYS} days before your first charge. Cancel any time
+                  We email you {TRIAL_NOTICE_DAYS} days before your first charge. Cancel any time
                   from your account &mdash; no email, no phone call.
                 </>
               ) : (
@@ -1052,7 +1085,7 @@ export function PaywallView({
           <p className="text-[11px] sm:text-xs text-[#5A5A5A] text-center mt-2 leading-relaxed">
             {trialEligible ? (
               <>
-                Reminder {RENEWAL_NOTICE_DAYS} days before &middot;{" "}
+                Reminder {TRIAL_NOTICE_DAYS} days before &middot;{" "}
                 {TRIAL_DAYS} days free &middot;{" "}
                 <a href="/terms#free-trial" className="underline">
                   Cancel anytime

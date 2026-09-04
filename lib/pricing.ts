@@ -86,18 +86,34 @@ export const PLAN_DISCOUNT_WINDOW_MS = PLAN_DISCOUNT_WINDOW_MINUTES * 60 * 1000;
  * How many days before a charge we email her — and, because the paywall says so
  * at the price, a promise made before she pays.
  *
- * One constant covers both charges: the end of the free trial and every
- * {@link PLAN_WEEKS}-week renewal after it. It has to be shorter than
- * {@link TRIAL_DAYS} (asserted below), which is why it is two: with a five-day
- * trial the notice lands on day 3, leaving her two days to act. It was three
- * against a seven-day trial until 2026-09-04.
+ * **Two constants, not one (2026-09-04).** One covered both charges and was cut
+ * 3 → 2 so the notice would still land inside a five-day trial. That silently
+ * shortened the warning on the {@link PLAN_WEEKS}-week {@link PLAN_PRICE}
+ * renewal too, which never needed shortening: the renewal notice is the
+ * cheapest chargeback insurance in the product, and two days' warning on a $59
+ * auto-renewal to a woman who last thought about us eight weeks ago is thin.
+ * The trial's constraint is real but it belongs only to the trial.
  *
- * Read by `/api/cron/renewal-notices` (the send window), the paywall, the
- * Terms and the Privacy policy (the promise), so all of them move together.
- * This is the only scheduled email left in the product — see
- * `scripts/sql/2026-08-12-drop-email-sequences.sql`.
+ * {@link TRIAL_NOTICE_DAYS} must be shorter than {@link TRIAL_DAYS} (asserted
+ * below). {@link RENEWAL_NOTICE_DAYS} has no such ceiling — an 8-week period is
+ * far longer than any notice — so it is free to be the longer, safer number.
+ *
+ * Both are read by `/api/cron/renewal-notices` (which picks per row, since a
+ * trialing row and a renewing row are the same shape), the paywall, the emails,
+ * the in-app alerts, the Terms and the Privacy policy. Every surface derives;
+ * never type either number into copy.
  */
-export const RENEWAL_NOTICE_DAYS = 2;
+export const RENEWAL_NOTICE_DAYS = 3;
+
+/**
+ * Days before the free trial's first charge that we email and alert her.
+ *
+ * Must stay under {@link TRIAL_DAYS} or the promise on the paywall ("we email
+ * you N days before your first charge") is false for trial customers — the
+ * notice would be scheduled for a day that arrives after the money has already
+ * moved. At 2 against a 5-day trial it lands on day 3.
+ */
+export const TRIAL_NOTICE_DAYS = 2;
 
 /**
  * The free trial (2026-09-04). Card up front, nothing charged for
@@ -140,9 +156,11 @@ export function isTrialOffer(value: unknown): boolean {
 
 // The notice has to land *inside* the trial or the promise on the paywall
 // ("we email you N days before your first charge") is false for trial customers.
-if (RENEWAL_NOTICE_DAYS >= TRIAL_DAYS) {
+// Only the trial has this ceiling; RENEWAL_NOTICE_DAYS is bounded by the 8-week
+// period, which no plausible notice length can exceed.
+if (TRIAL_NOTICE_DAYS >= TRIAL_DAYS) {
   throw new Error(
-    `RENEWAL_NOTICE_DAYS (${RENEWAL_NOTICE_DAYS}) must be shorter than TRIAL_DAYS (${TRIAL_DAYS})`
+    `TRIAL_NOTICE_DAYS (${TRIAL_NOTICE_DAYS}) must be shorter than TRIAL_DAYS (${TRIAL_DAYS})`
   );
 }
 

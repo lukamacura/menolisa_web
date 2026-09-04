@@ -3,6 +3,7 @@ import {
   PLAN_PRICE,
   PLAN_WEEKS,
   RENEWAL_NOTICE_DAYS,
+  TRIAL_NOTICE_DAYS,
   TRIAL_DAYS,
   formatPrice,
 } from "@/lib/pricing";
@@ -643,7 +644,7 @@ export default function TermsPage() {
                 in your welcome email.
               </li>
               <li>
-                <strong>Reminder:</strong> we email you approximately {RENEWAL_NOTICE_DAYS} days before
+                <strong>Reminder:</strong> we email you approximately {TRIAL_NOTICE_DAYS} days before
                 the first charge, to the address on your account. As in Section 10.2, it remains your
                 responsibility to cancel in time.
               </li>

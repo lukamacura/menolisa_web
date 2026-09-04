@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendRenewalNoticeEmail } from "@/lib/resend";
-import { RENEWAL_NOTICE_DAYS } from "@/lib/pricing";
+import { RENEWAL_NOTICE_DAYS, TRIAL_NOTICE_DAYS } from "@/lib/pricing";
 import { accessEndingCopy, renewalCopy, trialEndingCopy } from "@/lib/alerts/catalog";
 import { sendAlerts, type AlertRequest } from "@/lib/alerts/send";
 
@@ -9,8 +9,9 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 /**
- * Cron: warn every active subscriber RENEWAL_NOTICE_DAYS before her card is
- * charged again. Runs once daily (vercel.json).
+ * Cron: warn every active subscriber before her card is charged again — a free
+ * trial TRIAL_NOTICE_DAYS out, an 8-week renewal RENEWAL_NOTICE_DAYS out. Runs
+ * once daily (vercel.json).
  *
  * This replaced the nine-step email sequence on 2026-08-12. The sequence needed
  * a mirror table, two triggers and three SQL functions to answer "who is due for
@@ -33,11 +34,27 @@ export async function GET(req: NextRequest) {
 
     const supabase = getSupabaseAdmin();
 
-    // A 24h-wide window, so a once-daily run matches each subscriber on exactly
-    // one pass. Narrower and a missed run loses the notice entirely; wider and
-    // only the sent-marker stops a second send.
-    const from = new Date(Date.now() + RENEWAL_NOTICE_DAYS * 86_400_000);
-    const to = new Date(from.getTime() + 86_400_000);
+    // ── Two horizons, one query (2026-09-04). ──
+    //
+    // A trial is warned TRIAL_NOTICE_DAYS out and an 8-week renewal
+    // RENEWAL_NOTICE_DAYS out, and the two numbers are deliberately different
+    // (see lib/pricing.ts). A row does not say which it is until it is read —
+    // a trialing subscription is an ordinary `paid` row whose `trial_ends_at`
+    // equals its period end — so the query fetches the union of both windows
+    // and each row is matched against its own horizon below.
+    //
+    // Each window is still 24h wide, so a once-daily run matches each
+    // subscriber on exactly one pass. Narrower and a missed run loses the
+    // notice entirely; wider and only the sent-marker stops a second send.
+    const now = Date.now();
+    const noticeWindow = (days: number) => ({
+      from: now + days * 86_400_000,
+      to: now + (days + 1) * 86_400_000,
+    });
+    const trialWindow = noticeWindow(TRIAL_NOTICE_DAYS);
+    const renewalWindow = noticeWindow(RENEWAL_NOTICE_DAYS);
+    const from = new Date(Math.min(trialWindow.from, renewalWindow.from));
+    const to = new Date(Math.max(trialWindow.to, renewalWindow.to));
 
     // Cancelled subscribers come along too now. No charge is coming for them, so
     // no renewal email — but the date still matters to her, because it is the
@@ -45,9 +62,10 @@ export async function GET(req: NextRequest) {
     // she is told before it happens.
     // Free trials come through the same query: a trialing row is `paid` with
     // `subscription_ends_at = trial_end`, so with TRIAL_DAYS 5 and
-    // RENEWAL_NOTICE_DAYS 2 the notice lands on day 3 of the trial. What differs
-    // is the copy — "your free trial ends" rather than "your plan renews" —
-    // and `trial_ends_at` matching the period end is how a row says which.
+    // TRIAL_NOTICE_DAYS 2 the notice lands on day 3 of the trial. What differs
+    // is the horizon it is due at, and the copy — "your free trial ends" rather
+    // than "your plan renews". `trial_ends_at` matching the period end is how a
+    // row says which of the two it is.
     const { data: due, error } = await supabase
       .from("user_trials")
       .select(
@@ -87,6 +105,15 @@ export async function GET(req: NextRequest) {
       const inTrial =
         !!row.trial_ends_at &&
         new Date(row.trial_ends_at).getTime() === endsAt.getTime();
+
+      // The query fetched the union of both windows; this is where a row is
+      // held to its own. Without it a trial would be warned on the renewal
+      // horizon (day 2 of 5, before she has used the thing) and a renewal on
+      // the trial's (a day short of what the paywall and Terms promise her).
+      const dueWindow = inTrial ? trialWindow : renewalWindow;
+      const endsAtMs = endsAt.getTime();
+      if (endsAtMs < dueWindow.from || endsAtMs >= dueWindow.to) continue;
+
       alerts.push(
         row.subscription_canceled
           ? {

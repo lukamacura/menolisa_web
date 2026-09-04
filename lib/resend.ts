@@ -3,6 +3,7 @@ import {
   PLAN_PRICE,
   PLAN_WEEKS,
   RENEWAL_NOTICE_DAYS,
+  TRIAL_NOTICE_DAYS,
   formatPrice,
 } from "@/lib/pricing";
 
@@ -192,12 +193,20 @@ export async function sendTrialConvertedEmail(
   );
 }
 
-/** Sent on every renewal charge after the first. */
+/**
+ * Sent on every renewal charge after the first.
+ *
+ * The subject said "You've been charged. Welcome to MenoLisa." until
+ * 2026-09-04 — a welcome, to a woman eight weeks into her subscription, on the
+ * one email that exists because she has just been billed again. That reads as a
+ * duplicate signup, and a customer who thinks she has been charged twice
+ * disputes rather than emails. It now says what happened.
+ */
 export async function sendChargeConfirmedEmail(to: string, name: string | null): Promise<void> {
   const greeting = name?.trim() || "there";
   const body = `
 <p style="margin:0 0 16px;font-size:17px;font-weight:600;color:#2d1b3d">Hi ${greeting},</p>
-<p style="margin:0 0 16px">Your subscription is active. Thank you for staying with Lisa.</p>
+<p style="margin:0 0 16px">Your subscription renewed today and your card was charged for the next ${PLAN_WEEKS} weeks. Thank you for staying with Lisa.</p>
 <p style="margin:0 0 28px">She will keep learning your patterns and building a clearer picture over time. The longer you log, the sharper her insights get.</p>
 <table cellpadding="0" cellspacing="0" border="0">
   <tr>
@@ -213,7 +222,7 @@ export async function sendChargeConfirmedEmail(to: string, name: string | null):
 
   await sendTransactionalEmail(
     to,
-    "You've been charged. Welcome to MenoLisa.",
+    `Your MenoLisa plan renewed for another ${PLAN_WEEKS} weeks`,
     buildEmailHtml(body)
   );
 }
@@ -240,8 +249,9 @@ export async function sendRenewalNoticeEmail(
   const greeting = name?.trim() || "there";
   const when = longDate(renewsAt);
 
-  // The free trial's version. Same day (RENEWAL_NOTICE_DAYS before the date),
-  // different fact: she has not paid yet, so "renews" is the wrong word and
+  // The free trial's version. Sent on its own horizon (TRIAL_NOTICE_DAYS before
+  // the date, which is shorter than the renewal's so it lands inside the trial),
+  // and a different fact: she has not paid yet, so "renews" is the wrong word and
   // "keep everything you have paid for" is false. This is the reminder the
   // paywall promised at the price, so it names the exact date and amount.
   if (opts.trial) {
@@ -262,7 +272,7 @@ export async function sendRenewalNoticeEmail(
 <p style="margin:24px 0 0;color:#9d7ec9;font-size:13px">Questions? Just reply to this email.</p>`;
     return sendTransactionalEmail(
       to,
-      `Your free trial ends in ${RENEWAL_NOTICE_DAYS} days`,
+      `Your free trial ends in ${TRIAL_NOTICE_DAYS} days`,
       buildEmailHtml(body)
     );
   }

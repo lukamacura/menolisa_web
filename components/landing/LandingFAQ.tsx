@@ -9,7 +9,14 @@ import {
 import { motion, useReducedMotion } from "framer-motion"
 import { useReplayableInView } from "@/hooks/useReplayableInView"
 import { HighlightedTextByRows } from "@/components/landing/HighlightedTextByRows"
-import { PLAN_PRICE, PLAN_WEEKS, RENEWAL_NOTICE_DAYS, TRIAL_DAYS, formatPrice } from "@/lib/pricing"
+import {
+  PLAN_PRICE,
+  PLAN_WEEKS,
+  RENEWAL_NOTICE_DAYS,
+  TRIAL_DAYS,
+  TRIAL_NOTICE_DAYS,
+  formatPrice,
+} from "@/lib/pricing"
 
 export default function LandingFAQ() {
   const prefersReducedMotion = useReducedMotion()
@@ -42,7 +49,7 @@ export default function LandingFAQ() {
     },
     {
       question: "How does the guarantee work?",
-      answer: `Try everything free for ${TRIAL_DAYS} days - your plan, Lisa, the tracker, all of it. Nothing is charged when you start. If it isn't for you, cancel before the trial ends from your account in two taps and you pay nothing at all. That's the whole guarantee: we're sure enough of the plan to let you use it first. If you stay, ${formatPrice(PLAN_PRICE)} is charged when the trial ends and covers your full ${PLAN_WEEKS}-week plan; it renews every ${PLAN_WEEKS} weeks, we email you ${RENEWAL_NOTICE_DAYS} days before each charge, and you can cancel renewal anytime.`,
+      answer: `Try everything free for ${TRIAL_DAYS} days - your plan, Lisa, the tracker, all of it. Nothing is charged when you start. If it isn't for you, cancel before the trial ends from your account in two taps and you pay nothing at all. That's the whole guarantee: we're sure enough of the plan to let you use it first. If you stay, ${formatPrice(PLAN_PRICE)} is charged when the trial ends and covers your full ${PLAN_WEEKS}-week plan; it renews every ${PLAN_WEEKS} weeks, we email you ${TRIAL_NOTICE_DAYS} days before that first charge and ${RENEWAL_NOTICE_DAYS} days before every renewal after it, and you can cancel renewal anytime.`,
     },
   ]
 

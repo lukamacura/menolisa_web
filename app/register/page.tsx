@@ -71,6 +71,7 @@ import {
   type PlannerDay,
   type SessionRow,
 } from "@/components/funnel/RewardBoards";
+import { QuizNudge } from "@/components/funnel/QuizNudge";
 import { SHOT_W, SHOT_H } from "@/components/PhoneShots";
 
 /*
@@ -1586,8 +1587,20 @@ const CTA_GRADIENT_CLASS =
 // stopped weighing. The paywall states the price in full, immediately, in its
 // own headline and price card - nothing here is hidden by not naming it, and
 // the "no card needed" promise is kept by the screen itself.
+//
+// **It carries the offer again (2026-09-04).** The line closed the toolkit loop
+// and said nothing else, which was right when the next screen asked for $59 on
+// the spot — naming a price one screen early buys nothing. It is wrong now. The
+// ad she clicked promises a free trial, the paywall opens on "your first
+// {TRIAL_DAYS} days are free", and the screen between them was the one place the
+// funnel went quiet about it. A woman deciding whether to tap "view my plan" was
+// weighing it as a purchase, because nothing since the ad had told her
+// otherwise. Both halves fit on one line: what is still locked, and what it
+// costs to open it today.
 function getCtaCopy(): { sub: string } {
-  return { sub: `${RELIEF_TOOLKIT_SIZE - 1} more tools waiting inside.` };
+  return {
+    sub: `${RELIEF_TOOLKIT_SIZE - 1} more tools inside · free for ${TRIAL_DAYS} days`,
+  };
 }
 // First-person CTA label driven by her #1 goal (multi-select; first = primary).
 // Used on the results screen, where the next tap is still about what she wants.
@@ -4089,6 +4102,11 @@ function RegisterPageContent() {
   // recomputing it in front of her. A ref rather than state: nothing renders
   // off it, it only decides <QuizReward />'s initial state at mount.
   const rewardSeen = useRef<Partial<Record<Step, boolean>>>({});
+  // Which quiz screens have already shown their note from Lisa. A Set rather
+  // than a boolean map because <QuizNudge /> owns the "once per visit" rule and
+  // only needs somewhere durable to keep it — going Back and forward must not
+  // replay a line she has read.
+  const nudgeSeen = useRef<Set<string>>(new Set());
   // The same transition, in state. The ref alone was enough while nothing
   // rendered off it, but the fixed Next bar now has to disappear while a
   // reward's meter runs (see `onRewardMeter` below) and a ref does not
@@ -6283,7 +6301,7 @@ function RegisterPageContent() {
                 <p className="text-sm text-[#3D3D3D] leading-snug">
                   Open the app and enter{" "}
                   <span className="font-bold break-all">{checkoutEmail}</span> - the address you
-                  used at checkout. We&apos;ll text you a 6-digit code. No password to remember.
+                  used at checkout. We&apos;ll email you a 6-digit code. No password to remember.
                 </p>
               ) : (
                 <p className="text-sm text-[#3D3D3D] leading-snug">
@@ -6377,6 +6395,13 @@ function RegisterPageContent() {
               : "pb-[calc(76px+env(safe-area-inset-bottom))]"
           )}
         >
+          {/* A one-line note from Lisa over the top of the earliest screens -
+              the ones where the funnel loses most and explains least. It is
+              `pointer-events-none` and has no dismiss control, so it cannot
+              take the tap this screen is waiting for; the rules it lives under
+              are at the component. Steps with no line render nothing. */}
+          <QuizNudge step={currentStep} seen={nudgeSeen.current} />
+
           {/* Progress: the counter is the top line of the screen and Back sits on
               the same row, absolutely placed so the label stays optically
               centred whatever its length. They used to be two stacked rows; the
