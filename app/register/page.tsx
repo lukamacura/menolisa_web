@@ -3664,15 +3664,31 @@ function QuizReward({
   // translate on the wrapper drags that spring along with it, which reads as
   // two things moving at once and turns a landing into a slide. The wrapper's
   // only job is to stop the meter and the payoff sharing a frame.
+  //
+  // The nested <AnimatePresence> is what lets that landing play at all. The
+  // phase-level presence in RegisterPageContent is `initial={false}` so the
+  // landing screen does not fade in behind hydration, and framer applies that
+  // to *every* motion element mounted inside the child that was present on the
+  // first render - the quiz phase - for as long as it lives, not just at page
+  // load (PresenceChild memoises `initial` on `[isPresent, ...]`). So the paper
+  // and its tape mounted already at rest, the polaroid's drop started from
+  // flat, and the payoff read as a tilted card rather than a thing handed to
+  // her. A nested presence issues a fresh context, and its `initial` is the
+  // one this subtree obeys. It is `false` again on the Back path on purpose:
+  // that is the payoff she has already been handed, and it should be sitting
+  // where she left it, not landing a second time.
   return (
-    <motion.div
-      initial={initialDone ? false : { opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-      className="flex-1 flex flex-col min-h-0"
-    >
-      {children}
-    </motion.div>
+    <AnimatePresence initial={!initialDone}>
+      <motion.div
+        key="payoff"
+        initial={initialDone ? false : { opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+        className="flex-1 flex flex-col min-h-0"
+      >
+        {children}
+      </motion.div>
+    </AnimatePresence>
   );
 }
 
