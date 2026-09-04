@@ -255,6 +255,13 @@ const STEPS: Step[] = [
 //
 // q4_symptoms keeps its button: it's multi-select, so only she knows when the
 // list is complete. The severity follow-up is its own single-choice step.
+//
+// On the steps that keep it, the bar does not render until the step has an
+// answer - it is not drawn disabled. q4_symptoms is the funnel's landing screen
+// since 2026-09-03, so a greyed-out dead button was the first thing a woman
+// arriving from an ad saw at the bottom of her phone, and it reads as broken
+// rather than as waiting. Its height stays reserved either way (see the quiz
+// shell), so the reveal costs no layout shift.
 const AUTO_ADVANCE_STEPS: Step[] = [
   "q1_age",
   "q2_here_for",
@@ -6406,6 +6413,10 @@ function RegisterPageContent() {
             // one. 76px = the CTA's own 52px (py-3.5 around a 24px line, which
             // clears min-h-12) plus the bar's py-3. Keep it in step with
             // CTA_GRADIENT_CLASS or the card runs under the button.
+            //
+            // Reserved on every non-auto-advance step, including while the bar
+            // is still hidden for want of an answer: the space is what stops
+            // the card resizing under her thumb the moment she taps a tile.
             autoAdvances
               ? "pb-[env(safe-area-inset-bottom)]"
               : "pb-[calc(76px+env(safe-area-inset-bottom))]"
@@ -6830,6 +6841,16 @@ function RegisterPageContent() {
                         so a grid always left a hole in the last row. Wrapping with a
                         centred last row fills the shelf and keeps every tile the same
                         size. */}
+                    {/* Three across on every width, and a 4:3 image rather than a
+                        square below sm. Nine tiles two-across is five rows of ~200px:
+                        on a 375x667 phone four of the nine were above the fold and the
+                        other five lived inside this div's own scroll, which the page
+                        shell (h-dvh, overflow-hidden) does not extend - a swipe
+                        starting on the header or the CTA bar moves nothing. That is
+                        the funnel's landing screen reading as frozen on the screen
+                        that takes 100% of paid traffic. Three rows of ~120px fit
+                        whole, and the scroller stays as a safety net for the shortest
+                        viewports rather than as the layout. */}
                     <div className="flex flex-wrap justify-center gap-2">
                       {PROBLEM_OPTIONS.map((option) => {
                         const isSelected = (symptomSeverity[option.id] ?? 0) > 0;
@@ -6838,18 +6859,18 @@ function RegisterPageContent() {
                             key={option.id}
                             type="button"
                             onClick={() => toggleProblem(option.id)}
-                            className={`flex flex-col w-[calc(50%-0.25rem)] sm:w-[calc(33.333%-0.334rem)] rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer outline-none focus:outline-none ${
+                            className={`flex flex-col w-[calc(33.333%-0.334rem)] rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer outline-none focus:outline-none ${
                               isSelected
                                 ? "ring-2 ring-inset ring-primary shadow-lg shadow-primary/30"
                                 : "hover:opacity-90"
                             }`}
                           >
-                            <div className="relative aspect-square">
+                            <div className="relative aspect-4/3 sm:aspect-square">
                               <Image
                                 src={option.image}
                                 alt={option.label}
                                 fill
-                                sizes="(min-width: 640px) 33vw, 50vw"
+                                sizes="33vw"
                                 // This is the funnel's landing screen (symptoms
                                 // first since 2026-09-03), so these nine tiles
                                 // are the LCP. Without `priority` next/image
@@ -7263,9 +7284,9 @@ function RegisterPageContent() {
           {/* Navigation Buttons - fixed to bottom of viewport, safe-area aware.
               Absent on single-choice steps, which advance themselves, and while
               a reward step's meter is still running - see `onRewardMeter`. */}
-          {!autoAdvances && !onRewardMeter && (
+          {!autoAdvances && !onRewardMeter && stepIsAnswered(currentStep) && (
             <div
-              className="fixed inset-x-0 z-30 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80"
+              className="fixed inset-x-0 z-30 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 animate-in fade-in slide-in-from-bottom-2 duration-200"
               style={{
                 // With the keyboard up, the bar rides on top of it; with it
                 // down, `keyboardInset` is 0 and this is the old `bottom-0`.
@@ -7281,15 +7302,7 @@ function RegisterPageContent() {
                 <button
                   type="button"
                   onClick={goNext}
-                  disabled={!stepIsAnswered(currentStep)}
-                  className={cn(
-                    CTA_GRADIENT_CLASS,
-                    // The gradient is an inline background, so there is no bg
-                    // utility to dim - opacity carries the disabled state, and
-                    // the hover lift has to be cancelled explicitly or a dead
-                    // button still grows under the cursor.
-                    "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none"
-                  )}
+                  className={CTA_GRADIENT_CLASS}
                   style={CTA_GRADIENT_STYLE}
                 >
                   {REWARD_STEPS.includes(currentStep) || stepIndex === STEPS.length - 1 ? "Continue" : "Next"}

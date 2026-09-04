@@ -93,16 +93,19 @@ export const QUIZ_NUDGES: Record<string, string> = {
   // Screen 1 — the ad's landing page, and the 49% loss. She has just arrived
   // from a creative that ended on "tap your symptom"; this says the tapping is
   // the point rather than a form to get through.
-  q4_symptoms:
-    "Tap everything that's been happening — even what you've learned to live with. Your plan is built from these.",
+  q4_symptoms: "Tap anything that sounds like you, even what you've gotten used to.",
 
   // Screen 2 — the first screen that asks for something about her rather than
   // about how she feels, and the first place "why do you need this" arrives.
-  q1_age:
-    "There are no wrong answers here. The more honest you are, the better the plan fits.",
+  q1_age: "No wrong answers here. Just tap what's closest.",
 
   // Height and weight, the one genuinely uncomfortable screen in the quiz.
-  q_body: "Nobody sees this but you. It sets your starting point and nothing else.",
+  q_body: "Only you see this. A rough guess is fine.",
+
+  // The only text input in the funnel, and the last question. The screen's own
+  // sub-line already says no email is needed, so this takes the other half of
+  // the cost: she does not have to hand over her real name to go on.
+  q8_name: "Just a first name. A nickname works fine.",
 };
 
 /** How long after the screen settles the banner drops in. */
@@ -210,7 +213,7 @@ export function QuizNudge({ step, seen }: QuizNudgeProps) {
             // `backdrop-filter` gets the opaque white fallback and the banner
             // still reads, which is why the translucent value is behind
             // `supports-backdrop-filter:` rather than being the base.
-            className="pointer-events-auto flex w-full max-w-md cursor-default select-none items-start gap-3 rounded-[22px] bg-white px-3.5 py-3 shadow-[0_12px_34px_-10px_rgba(61,40,50,0.34),0_2px_10px_-4px_rgba(61,40,50,0.18)] ring-1 ring-black/[0.06] backdrop-blur-xl backdrop-saturate-150 supports-backdrop-filter:bg-white/78"
+            className="pointer-events-auto relative flex w-full max-w-sm cursor-default select-none items-start gap-2.5 rounded-[18px] bg-white py-2 pl-3 pr-11 shadow-[0_10px_28px_-10px_rgba(61,40,50,0.32),0_2px_8px_-4px_rgba(61,40,50,0.16)] ring-1 ring-black/[0.06] backdrop-blur-xl backdrop-saturate-150 supports-backdrop-filter:bg-white/78"
             // Swipe up to dismiss, the gesture the real banner teaches. Dragging
             // down does nothing (`dragConstraints` pins the bottom at 0), so a
             // downward swipe over the banner cannot drag it into the page.
@@ -227,44 +230,58 @@ export function QuizNudge({ step, seen }: QuizNudgeProps) {
             <Image
               src={NUDGE_AUTHOR.avatar}
               alt=""
-              width={38}
-              height={38}
-              className="mt-[1px] h-[38px] w-[38px] shrink-0 rounded-[9px] object-cover shadow-[0_1px_3px_rgba(61,40,50,0.22)]"
+              width={30}
+              height={30}
+              className="mt-[1px] h-[30px] w-[30px] shrink-0 rounded-[7px] object-cover shadow-[0_1px_3px_rgba(61,40,50,0.22)]"
               draggable={false}
             />
 
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <p className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.07em] text-[#8E8A8C]">
+                <p className="min-w-0 flex-1 truncate text-[9.5px] font-semibold uppercase tracking-[0.07em] text-[#8E8A8C]">
                   {NUDGE_AUTHOR.app}
+                  <span className="text-[#B4B0B2]"> · </span>
+                  <span className="text-[#5E5A5C]">{NUDGE_AUTHOR.name}</span>
+                  <span className="font-medium text-[#A9A5A7]"> · {NUDGE_AUTHOR.role}</span>
                 </p>
-                <span className="shrink-0 text-[11px] font-medium text-[#A9A5A7]">now</span>
+                <span className="shrink-0 text-[9.5px] font-medium text-[#A9A5A7]">now</span>
                 {/* The dismiss control. Real banners have no X - they are swiped
                     - so this exists for the phone that will not swipe and for
-                    the woman who does not know the gesture. 28px of circle with
-                    the negative margins giving it a ~40px hit area, which is the
-                    minimum that is honest on a screen this important. */}
-                <button
-                  type="button"
-                  onClick={dismiss}
-                  aria-label="Dismiss notification"
-                  className="-my-1.5 -mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-black/[0.06] text-[#6F6A6D] transition-colors active:bg-black/[0.12]"
-                >
-                  <X className="h-3.5 w-3.5" strokeWidth={2.5} />
-                </button>
+                    the woman who does not know the gesture. 24px of circle, with
+                    the negative margins and the padded tap target giving it a
+                    ~36px hit area: it shrank with the card, but the touch area
+                    did not, because this sits on the screen that takes 100% of
+                    paid traffic. */}
               </div>
 
-              <p className="mt-1 text-[14px] font-semibold leading-tight text-[#1F1D1E]">
-                {NUDGE_AUTHOR.name}
-                <span className="font-normal text-[#6F6A6D]"> · {NUDGE_AUTHOR.role}</span>
-              </p>
-              {/* Three lines, then an ellipsis, exactly as the real banner
-                  clamps. Keep the lines in QUIZ_NUDGES short enough that it
-                  never has to. */}
-              <p className="mt-0.5 line-clamp-3 text-[13.5px] leading-[1.35] text-[#3D3D3D]">
+              {/* Two lines, then an ellipsis, as the collapsed banner clamps.
+                  Keep the lines in QUIZ_NUDGES short enough that it never has
+                  to - at this size that is roughly 70 characters.
+
+                  The sender's role leads the body rather than occupying a
+                  heading row of its own. Three stacked rows made the card 90px
+                  tall, which is taller than the gap between the top of the
+                  screen and the question, so the banner covered the headline it
+                  is supposed to sit on top of. Two rows clear it. */}
+              <p className="mt-0.5 line-clamp-2 text-[12px] leading-[1.3] text-[#3D3D3D]">
                 {message}
               </p>
             </div>
+
+            {/* Absolutely placed, not part of the header row: a 36px touch
+                target inside the flow set the row height and made the whole
+                card ~12px taller than the gap above the question. The hit area
+                is unchanged - only what it pushes around is. */}
+            <button
+              type="button"
+              onClick={dismiss}
+              aria-label="Dismiss notification"
+              className="absolute right-1 top-1 flex h-9 w-9 items-center justify-center text-[#6F6A6D]"
+            >
+              <span className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-black/[0.06] transition-colors active:bg-black/[0.12]">
+                <X className="h-3 w-3" strokeWidth={2.5} />
+              </span>
+            </button>
           </motion.div>
         </motion.div>
       )}
