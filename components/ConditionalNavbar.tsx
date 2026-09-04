@@ -12,7 +12,11 @@ export default function ConditionalNavbar() {
   // button/social-proof/headline instead of above them.
   const isRegisterPage = pathname?.startsWith("/register");
   const isPaywallPage = pathname?.startsWith("/paywall");
-  const hidden = isRegisterPage || isPaywallPage;
+  // /admin is the sales desk — a password-gated single screen with its own
+  // masthead. The marketing navbar sits above it doing nothing but taking
+  // vertical space and offering a sign-in link the operator doesn't want.
+  const isAdminPage = pathname?.startsWith("/admin");
+  const hidden = isRegisterPage || isPaywallPage || isAdminPage;
 
   // Starts false so the prerendered HTML and the first client render agree.
   // The cookie hint below corrects it in the first effect - synchronously, off

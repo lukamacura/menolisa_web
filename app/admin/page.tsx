@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Lock, RefreshCw } from "lucide-react";
 
 /**
  * The sales desk.
@@ -707,12 +708,17 @@ export default function AdminPage() {
                 Live
               </span>
             )}
+            {/* Icon-only: both controls are unmistakable as glyphs and the words
+                were the widest things in the masthead. The accessible name
+                lives on aria-label, and title gives it back on hover. */}
             <button
               onClick={() => load(sessionStorage.getItem(SESSION_KEY) ?? "")}
               disabled={loading}
-              className="underline underline-offset-4 transition-colors hover:text-[var(--her)] disabled:opacity-50"
+              aria-label={loading ? "Refreshing" : "Refresh"}
+              title={loading ? "Refreshing…" : "Refresh"}
+              className="inline-flex size-8 items-center justify-center rounded-full border border-[var(--line-soft)] transition-colors hover:text-[var(--her)] disabled:opacity-50"
             >
-              {loading ? "Refreshing…" : "Refresh"}
+              <RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} aria-hidden />
             </button>
             <button
               onClick={() => {
@@ -720,9 +726,11 @@ export default function AdminPage() {
                 setStats(null);
                 setPassword("");
               }}
-              className="underline underline-offset-4 transition-colors hover:text-[var(--her)]"
+              aria-label="Lock"
+              title="Lock"
+              className="inline-flex size-8 items-center justify-center rounded-full border border-[var(--line-soft)] transition-colors hover:text-[var(--her)]"
             >
-              Lock
+              <Lock className="size-4" aria-hidden />
             </button>
           </div>
         </header>
