@@ -623,18 +623,46 @@ export function PaywallView({
                 <p className="text-2xl font-extrabold text-[#3D3D3D] leading-tight">
                   Your first week is free.
                 </p>
-                <p className="mt-1.5 text-sm font-semibold text-[#5A5A5A]">
-                  Then{" "}
-                  {!expired && (
-                    <span className="text-[#9A9A9A] line-through font-medium">{ANCHOR_PRICE}</span>
-                  )}{" "}
-                  <span className="text-[#3D3D3D] tabular-nums">{livePrice}</span> for your{" "}
-                  {PLAN_WEEKS}-week protocol &middot; about {livePricePerDay}/day
-                </p>
-                <p className="mt-1.5 text-xs text-[#7A7A7A] leading-snug">
-                  No charge until <b className="text-[#3D3D3D]">{chargeDate}</b> &middot; Cancel anytime
-                  in one tap &middot; 100% money-back guarantee
-                </p>
+                {/* ── Two dated rows, not three sentences (2026-09-04). ──
+                    The headline used to be followed by three stacked lines of
+                    prose - the "then" price, a dot-separated trio (no charge
+                    until / cancel in one tap / money-back guarantee) and the
+                    renewal paragraph below the anchor. Four paragraphs to say
+                    two things, with "cancel anytime" appearing four times on
+                    one screen (here, the trust grid, the small print and the
+                    sticky bar) and the guarantee restated 400px above its own
+                    green card.
+
+                    A trial offer is two facts with dates on them, so it is
+                    laid out as two dated rows and read rather than parsed:
+                    today $0, from {chargeDate} the price. The interval and
+                    the per-day framing hang off the date row where they
+                    belong, and everything her eye needs to compare - $0 vs
+                    $59 - is now in one right-hand column. */}
+                <dl className="mt-3 overflow-hidden rounded-xl border border-[#EFE2E8] bg-white/70 text-left">
+                  <div className="flex items-baseline justify-between gap-3 px-3 py-2">
+                    <dt className="text-sm font-semibold text-[#3D3D3D]">Today</dt>
+                    <dd className="text-sm font-extrabold tabular-nums text-[#15803D]">$0</dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3 border-t border-[#F4EAEF] px-3 py-2">
+                    <dt className="text-sm text-[#5A5A5A]">
+                      From <b className="text-[#3D3D3D]">{chargeDate}</b>
+                      <span className="block text-xs text-[#8A8A8A]">
+                        every {PLAN_WEEKS} weeks &middot; about {livePricePerDay} a day
+                      </span>
+                    </dt>
+                    <dd className="shrink-0 whitespace-nowrap text-sm">
+                      {!expired && (
+                        <span className="mr-1 font-medium text-[#9A9A9A] line-through">
+                          {ANCHOR_PRICE}
+                        </span>
+                      )}
+                      <span className="font-extrabold tabular-nums text-[#3D3D3D]">
+                        {livePrice}
+                      </span>
+                    </dd>
+                  </div>
+                </dl>
               </>
             ) : (
               <>
@@ -711,9 +739,11 @@ export function PaywallView({
             <p className="mt-2 text-xs text-[#7A7A7A] leading-snug">
               {trialEligible ? (
                 <>
-                  After your free week, your plan renews every {PLAN_WEEKS} weeks at {PRICE} so it
-                  keeps adapting to your symptoms. Cancel any time from your account &mdash; no
-                  email, no phone call.
+                  {/* The amount and the interval are stated in the rows above,
+                      so this line is the two things they can't be: the notice
+                      and the exit. */}
+                  We email you {RENEWAL_NOTICE_DAYS} days before your first charge. Cancel any time
+                  from your account &mdash; no email, no phone call.
                 </>
               ) : (
                 <>
