@@ -865,6 +865,7 @@ export async function POST(req: NextRequest) {
 
   // Yesterday backwards: days with no row at all. Today is excluded — you type
   // it in at the end of the day, so an empty today is normal, not a gap.
+  const yesterdayIso = isoDay(startOfToday - DAY_MS, tzOffsetMinutes);
   const missingDays: string[] = [];
   for (let i = 1; i <= 7; i++) {
     const d = isoDay(startOfToday - i * DAY_MS, tzOffsetMinutes);
@@ -1388,8 +1389,11 @@ export async function POST(req: NextRequest) {
       lastLoggedDay,
       loggedDays,
       missingDays,
-      todayIso: isoDay(startOfToday, tzOffsetMinutes),
-      todaySpend: spendByDay.get(isoDay(startOfToday, tzOffsetMinutes)) ?? null,
+      // Yesterday, not today: spend is read off Ads Manager once the day is
+      // over, so a box for a day still running is a box you cannot fill in
+      // honestly. It anchors the whole strip.
+      yesterdayIso,
+      yesterdaySpend: spendByDay.get(yesterdayIso) ?? null,
       fixedMonthly: round2(FIXED_MONTHLY_USD),
     },
     acq: {

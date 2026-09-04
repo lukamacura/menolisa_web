@@ -230,8 +230,8 @@ type Stats = {
     lastLoggedDay: string | null;
     loggedDays: { day: string; amount: number }[];
     missingDays: string[];
-    todayIso: string;
-    todaySpend: number | null;
+    yesterdayIso: string;
+    yesterdaySpend: number | null;
     fixedMonthly: number;
   };
   acq: { newCustomers30: number; cac: number | null; keptPerSale: number; feeRate: number };
@@ -382,9 +382,9 @@ const weekdayLabel = (day: string) =>
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** The last `n` days ending at `todayIso`, oldest first. */
-function lastNDays(todayIso: string, n: number): string[] {
-  const [y, m, d] = todayIso.split("-").map(Number);
+/** The last `n` days ending at `endIso`, oldest first. */
+function lastNDays(endIso: string, n: number): string[] {
+  const [y, m, d] = endIso.split("-").map(Number);
   const base = Date.UTC(y, m - 1, d, 12);
   return Array.from({ length: n }, (_, i) => {
     const dt = new Date(base - (n - 1 - i) * DAY_MS);
@@ -393,12 +393,15 @@ function lastNDays(todayIso: string, n: number): string[] {
 }
 
 /**
- * Today plus the seven days before it — the backfill window and nothing wider.
- * Fourteen filled three columns with a fortnight of days you were never going
- * to revisit; the only ones you actually reach for are the days since you last
- * opened the panel, and `missingDays` is measured over 7.
+ * Yesterday plus the six days before it — the backfill window and nothing
+ * wider. Fourteen filled three columns with a fortnight of days you were never
+ * going to revisit; the only ones you actually reach for are the days since you
+ * last opened the panel, and `missingDays` is measured over exactly these 7.
+ *
+ * Today is not on the strip at all: the day is still running, so any figure you
+ * copy off Ads Manager for it is wrong by the time the day ends.
  */
-const SPEND_STRIP_DAYS = 8;
+const SPEND_STRIP_DAYS = 7;
 
 /**
  * What the box may contain while she is typing: digits, one dot, two decimals.
@@ -423,7 +426,7 @@ function spendText(amount: number | null): string {
 
 /** What's already saved for `day`, so a redundant keystroke skips the round trip. */
 function savedAmountFor(stats: Stats, day: string): number | null {
-  if (day === stats.costs.todayIso) return stats.costs.todaySpend;
+  if (day === stats.costs.yesterdayIso) return stats.costs.yesterdaySpend;
   return stats.costs.loggedDays.find((d) => d.day === day)?.amount ?? null;
 }
 
@@ -544,7 +547,7 @@ export default function AdminPage() {
     if (!stats) return;
     setSpendDrafts((prev) => {
       const next = { ...prev };
-      for (const day of lastNDays(stats.costs.todayIso, SPEND_STRIP_DAYS)) {
+      for (const day of lastNDays(stats.costs.yesterdayIso, SPEND_STRIP_DAYS)) {
         if (touchedDays.current.has(day)) continue;
         next[day] = spendText(savedAmountFor(stats, day));
       }
@@ -1619,13 +1622,16 @@ function SpendInput({
  * Ad spend, auto-saved — no calendar picker, no Save button, and no wall of
  * boxes.
  *
- * **Today is the only field on screen.** It is the only one you type on a
- * normal day: you read the number off Meta Ads Manager at the end of the day
- * and enter it once. The seven days before it are a backfill job, so they live
- * behind the `⋯` and open as one plain top-to-bottom list, newest first. If any
- * of them is still empty the toggle says so in amber, because that is the one
- * state where opening it actually matters — cost per customer is understated
- * until those are filled in.
+ * **Yesterday is the only field on screen, and today is not offered at all.**
+ * Spend is read off Meta Ads Manager once a day has finished, so a box for a
+ * day still running invites a figure that is wrong by midnight — and it was
+ * also the one box whose emptiness meant nothing, which is why `missingDays`
+ * has always started at yesterday. Yesterday is the one you type on a normal
+ * day; the six days before it are a backfill job, so they live behind the `⋯`
+ * and open as one plain top-to-bottom list, newest first. If any of them is
+ * still empty the toggle says so, because that is the one state where opening
+ * it actually matters — cost per customer is understated until those are
+ * filled in.
  *
  * Typing debounces a save 700ms after the last keystroke; tabbing or clicking
  * away saves immediately. Clearing a field removes that day.
@@ -1648,11 +1654,11 @@ function AdSpendStrip({
   onBlur: (day: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const today = stats.costs.todayIso;
-  const earlier = lastNDays(today, SPEND_STRIP_DAYS)
-    .filter((d) => d !== today)
-    .reverse(); // newest first — yesterday is the one you actually reach for
-  const missing = stats.costs.missingDays.filter((d) => d !== today).length;
+  const yesterday = stats.costs.yesterdayIso;
+  const earlier = lastNDays(yesterday, SPEND_STRIP_DAYS)
+    .filter((d) => d !== yesterday)
+    .reverse(); // newest first — the day before last is the one you reach for
+  const missing = stats.costs.missingDays.filter((d) => d !== yesterday).length;
   const firstError = Object.entries(errors)[0];
 
   return (
@@ -1664,20 +1670,22 @@ function AdSpendStrip({
           </ColumnHead>
           <span className="flex items-baseline gap-2">
             <SpendInput
-              day={today}
-              value={drafts[today] ?? ""}
+              day={yesterday}
+              value={drafts[yesterday] ?? ""}
               onChange={onChange}
               onBlur={onBlur}
               className="w-28"
               size="text-[17px]"
             />
-            <span className="text-[11.5px] text-[var(--spend-deep)]/70">today</span>
+            <span className="text-[11.5px] text-[var(--spend-deep)]/70">
+              yesterday · {dayLabel(yesterday)}
+            </span>
           </span>
           <span className="text-[10px] leading-none">
             <SaveState
-              saving={!!saving[today]}
-              saved={!!saved[today]}
-              failed={!!errors[today]}
+              saving={!!saving[yesterday]}
+              saved={!!saved[yesterday]}
+              failed={!!errors[yesterday]}
             />
           </span>
         </div>
