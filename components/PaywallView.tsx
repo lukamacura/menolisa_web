@@ -742,7 +742,7 @@ export function PaywallView({
                   {/* The amount and the interval are stated in the rows above,
                       so this line is the two things they can't be: the notice
                       and the exit. */}
-                  We email you {RENEWAL_NOTICE_DAYS} days before your first charge. Cancel any time
+                  We email you 3 days before your first charge. Cancel any time
                   from your account &mdash; no email, no phone call.
                 </>
               ) : (
@@ -1050,8 +1050,8 @@ export function PaywallView({
           <p className="text-[11px] sm:text-xs text-[#5A5A5A] text-center mt-2 leading-relaxed">
             {trialEligible ? (
               <>
-                You&rsquo;ll get a reminder {RENEWAL_NOTICE_DAYS} days before any charge &middot;{" "}
-                {TRIAL_DAYS} days free, then {livePrice} every {PLAN_WEEKS} weeks &middot;{" "}
+                Reminder {RENEWAL_NOTICE_DAYS} days before &middot;{" "}
+                {TRIAL_DAYS} days free &middot;{" "}
                 <a href="/terms#free-trial" className="underline">
                   Cancel anytime
                 </a>
