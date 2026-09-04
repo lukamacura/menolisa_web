@@ -91,9 +91,14 @@ const GLOW_REST = 0.4;
  * beats, then a gloss:
  *
  *   1. a **bloom** behind the card, brightest at the landing (see `GLOW_PEAK`).
- *   2. the **paper**, dropped in over-rotated and sprung flat rather than
+ *   2. the **paper**, dropped in over-rotated and sprung to rest rather than
  *      tweened. A spring overshoots and settles, which is what makes an object
- *      read as having weight; a tween is a fade with a direction.
+ *      read as having weight; a tween is a fade with a direction. The numbers
+ *      are the print's `drop` variant verbatim - -7deg in, -2deg at rest,
+ *      spring 130/15/0.9 - so the two arrivals are the same object landing.
+ *      It settles *tilted*, not flat: a page that comes to rest square with
+ *      the viewport reads as a UI card, and the whole idiom here is a sheet
+ *      someone taped down by hand.
  *   3. the **tape**, pressed down *after* the paper has landed, and the header
  *      rule drawn left to right - the same "filled out in front of her" idiom
  *      the rows underneath already use. Tape that arrives with the paper is a
@@ -150,12 +155,12 @@ function RewardPaper({
       />
 
       <motion.div
-        initial={reduced ? false : { opacity: 0, y: 22, scale: 0.94, rotate: -1.8 }}
-        animate={{ opacity: 1, y: 0, scale: 1, rotate: 0 }}
+        initial={reduced ? false : { opacity: 0, y: 28, scale: 0.93, rotate: -7 }}
+        animate={{ opacity: 1, y: 0, scale: 1, rotate: -2 }}
         transition={
           reduced
             ? { duration: 0 }
-            : { type: "spring", stiffness: 150, damping: 16, mass: 0.9 }
+            : { type: "spring", stiffness: 130, damping: 15, mass: 0.9 }
         }
         className="relative z-10 rounded-2xl border px-3 pt-5 pb-3 shadow-sm"
         style={PAPER}
