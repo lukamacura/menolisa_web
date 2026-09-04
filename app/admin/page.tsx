@@ -193,6 +193,16 @@ const PALETTE = {
 
 type Bucket = { count: number; net: number; kept: number };
 
+type TrialRunning = {
+  userId: string;
+  name: string | null;
+  email: string | null;
+  startedAt: string;
+  chargesAt: string;
+  /** `ended`: the week passed and no charge landed — a declined card or a lost webhook. */
+  status: "running" | "cancelled" | "ended";
+};
+
 type Sale = {
   id: string;
   at: string;
@@ -310,6 +320,8 @@ type Stats = {
     convertRate: number | null;
     canceledDuringTrial: number;
     checkoutByOffer: { trial: number; paid: number; unknown: number };
+    /** Free weeks that have not become money yet, soonest charge first. */
+    running: TrialRunning[];
   };
   sales: Sale[];
   salesTotal: number;
@@ -1166,6 +1178,78 @@ export default function AdminPage() {
           )}
         </Panel>
 
+        {/* ── 4b. Free weeks running ──────────────────────────────────────── */}
+        {/* Who saved a card and when it charges. A trial produces no charge for
+            seven days, so nobody in her free week can appear in the sales table
+            above — this is the only place she is visible until day 7. */}
+        <SectionHead
+          title="Free weeks running"
+          dot="var(--ahead)"
+          source="Supabase"
+          note={
+            trials.running.length === 0
+              ? "Soonest charge first"
+              : `${plural(trials.running.length, "card")} saved, not charged yet`
+          }
+        />
+        <Panel accent="var(--ahead)">
+          {trials.running.length === 0 ? (
+            <div className="px-6 py-8 text-center">
+              <h3 className="text-base font-semibold">No free week running</h3>
+              <p className="mx-auto mt-1.5 max-w-[48ch] text-sm text-[var(--ink-2)]">
+                A row lands here the moment a card is saved at $0 on the trial paywall, and moves
+                to Latest sales when it charges on day {trials.trialDays}.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px] text-left text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--line)] text-[10.5px] uppercase tracking-[0.11em] text-[var(--ink-3)]">
+                    <th className="px-5 py-3 font-semibold">Started</th>
+                    <th className="px-5 py-3 font-semibold">Customer</th>
+                    <th className="px-5 py-3 font-semibold" />
+                    <th className="px-5 py-3 font-semibold">Charges</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trials.running.map((t) => (
+                    <tr
+                      key={t.userId}
+                      className="border-b border-[var(--line-soft)] transition-colors last:border-0 hover:bg-[var(--her-bg)]/45"
+                    >
+                      <td className="whitespace-nowrap px-5 py-3 text-[13px]">
+                        {relative(t.startedAt)}
+                        <span className="block text-[11.5px] text-[var(--ink-3)]">
+                          {stamp(t.startedAt)}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className="font-semibold text-[var(--her-deep)]">
+                          {t.name ?? "—"}
+                        </span>
+                        <span className="block text-[12.5px] text-[var(--ink-2)]">
+                          {t.email ?? "no email bound yet"}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3">
+                        <TrialTag status={t.status} />
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3 text-[13px] tabular-nums">
+                        {t.status === "running" ? (
+                          <span className="text-[var(--ahead-deep)]">{shortDate(t.chargesAt)}</span>
+                        ) : (
+                          <span className="text-[var(--ink-3)]">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Panel>
+
         {/* ── 5. Needs a human ────────────────────────────────────────────── */}
         {alerts.length > 0 && (
           <>
@@ -1676,6 +1760,23 @@ const TAG: Record<string, string> = {
   renewal: "border-[var(--ahead-line)] bg-[var(--ahead-bg)] text-[var(--ahead-deep)]",
   refunded: "border-[var(--stop-line)] bg-[var(--stop-bg)] text-[var(--stop-deep)]",
 };
+
+const TRIAL_TAG: Record<TrialRunning["status"], { label: string; cls: string }> = {
+  running: { label: "free week", cls: "border-[var(--ahead-line)] bg-[var(--ahead-bg)] text-[var(--ahead-deep)]" },
+  cancelled: { label: "cancelled", cls: "border-[var(--line)] bg-white text-[var(--ink-3)]" },
+  ended: { label: "not charged", cls: "border-[var(--stop-line)] bg-[var(--stop-bg)] text-[var(--stop-deep)]" },
+};
+
+function TrialTag({ status }: { status: TrialRunning["status"] }) {
+  const t = TRIAL_TAG[status];
+  return (
+    <span
+      className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.07em] ${t.cls}`}
+    >
+      {t.label}
+    </span>
+  );
+}
 
 function Tag({ kind }: { kind: "new" | "renewal" | "refunded" }) {
   return (

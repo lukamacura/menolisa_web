@@ -706,7 +706,12 @@ export async function POST(req: NextRequest) {
       // Built from TRIAL_SELECT_COLS, never hand-listed: a missing column
       // comes back undefined, which getAccountState reads as "no dispute,
       // not canceled, no failed payment".
-      .select(`user_id, created_at, stripe_customer_id, ${TRIAL_SELECT_COLS}`)
+      // The three trial columns are appended for the "free weeks running"
+      // list; getAccountState() does not read them (see CLAUDE.md, "The free
+      // trial") — they only say who is in a free week and when it charges.
+      .select(
+        `user_id, created_at, stripe_customer_id, trial_ends_at, first_paid_at, offer_variant, ${TRIAL_SELECT_COLS}`
+      )
       .order("created_at", { ascending: false })
       .limit(MAX_CLIENTS),
     supabaseAdmin.from("user_profiles").select("user_id, name"),
@@ -796,6 +801,46 @@ export async function POST(req: NextRequest) {
     };
   });
 
+  // ─── Free weeks running: who saved a card and when it charges ─────────────
+  //
+  // The trial block above counts free weeks; this names them. A woman in her
+  // free week has produced no charge yet, so she cannot appear in the sales
+  // list for seven days — and "who started a trial today" is the first thing
+  // the desk asks the morning after the trial paywall goes live. Read off the
+  // `user_trials` rows already fetched: a trial-offer row with `trial_ends_at`
+  // set and `first_paid_at` still null is a free week that has not become
+  // money. Soonest-to-charge first, so the top of the list is tomorrow's cash.
+  const trialsRunning = rows
+    .filter(
+      (r) =>
+        r.offer_variant === OFFER_VARIANT_TRIAL &&
+        typeof r.trial_ends_at === "string" &&
+        !r.first_paid_at
+    )
+    .map((r) => {
+      const chargesAt = new Date(r.trial_ends_at as string);
+      const s = state.get(r.user_id);
+      // `ended` is a free week that passed without a charge landing on the
+      // row — a declined card (past_due) or a webhook that never arrived.
+      // Either way it is not a paying customer and not a cancel.
+      const status: "running" | "cancelled" | "ended" =
+        s === "canceling" || s === "disputed" || r.subscription_canceled
+          ? "cancelled"
+          : chargesAt.getTime() <= now
+            ? "ended"
+            : "running";
+      return {
+        userId: r.user_id,
+        name: nameMap.get(r.user_id) ?? null,
+        email: emails.get(r.user_id) ?? null,
+        startedAt: new Date(chargesAt.getTime() - TRIAL_DAYS * DAY_MS).toISOString(),
+        chargesAt: chargesAt.toISOString(),
+        status,
+      };
+    })
+    .sort((a, b) => a.chargesAt.localeCompare(b.chargesAt))
+    .slice(0, MAX_SALES_SHOWN);
+
   // ─── Ad spend ─────────────────────────────────────────────────────────────
 
   const spendByDay = new Map<string, number>();
@@ -878,6 +923,8 @@ export async function POST(req: NextRequest) {
     canceledDuringTrial: revenue.trialsCanceled30,
     /** Card-form opens split by which paywall opened them. */
     checkoutByOffer: checkout.byOffer,
+    /** Every free week that has not become money yet, soonest charge first. */
+    running: trialsRunning,
   };
 
   // ─── Forward view: money already on the calendar ──────────────────────────
