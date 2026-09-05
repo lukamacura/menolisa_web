@@ -165,10 +165,34 @@ export const SYMPTOM_TRANSFORM: Record<string, SymptomTransform> = {
  * (e.g. the dashboard paywall for a lapsed subscriber). */
 export const DEFAULT_SYMPTOM_TRANSFORM_IDS = ["hot_flashes", "sleep_issues", "brain_fog"];
 
-/** Her selected symptoms that have a before/after image (capped, original order). */
-export function getSymptomTransforms(topProblems: string[], n = 3): SymptomTransform[] {
-  return topProblems
-    .filter((id) => SYMPTOM_TRANSFORM[id])
-    .slice(0, n)
-    .map((id) => SYMPTOM_TRANSFORM[id]);
+/**
+ * Her selected symptoms that have a before/after image (capped, original order).
+ *
+ * `topUp` fills the remainder from the representative set when she has given
+ * fewer than `n`. **The quiz asks for one symptom since 2026-09-05**, so
+ * without it every one of these carousels collapses to a single card — a
+ * horizontal scroller with nothing to scroll, on the diagnosis screen and again
+ * on the paywall, which is where the product has to look biggest.
+ *
+ * It is honest because of what the carousels are titled: "what 8 weeks can look
+ * like", not "your symptoms". Hers still leads, and nothing on the card claims
+ * she reported the ones behind it. Anywhere the cards *are* a claim about her
+ * — `PlanFinishBoard`, which draws her own finish line — leave `topUp` off.
+ */
+export function getSymptomTransforms(
+  topProblems: string[],
+  n = 3,
+  topUp = false
+): SymptomTransform[] {
+  const picked = topProblems.filter((id) => SYMPTOM_TRANSFORM[id]).slice(0, n);
+  if (topUp) {
+    const seen = new Set(picked);
+    for (const id of [...DEFAULT_SYMPTOM_TRANSFORM_IDS, ...Object.keys(SYMPTOM_TRANSFORM)]) {
+      if (picked.length >= n) break;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      picked.push(id);
+    }
+  }
+  return picked.map((id) => SYMPTOM_TRANSFORM[id]);
 }

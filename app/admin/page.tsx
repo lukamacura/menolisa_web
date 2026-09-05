@@ -2028,7 +2028,12 @@ function CashChart({ revenue, spend }: { revenue: number[]; spend: number[] }) {
  * worse than a raw key, because it looks answered.
  */
 const STEP_LABELS: Record<string, string> = {
-  q4_symptoms: "Q1 · Symptoms",
+  // Still thirteen questions. On 2026-09-05 the nine-tile multi-select that
+  // opened the funnel became one tap — `q_symptom_primary` — and `q4_symptoms`
+  // was deleted, so the count is unchanged and the key is not. Renumber here in
+  // the same commit as any reorder: a stale number is worse than a raw key,
+  // because it looks answered.
+  q_symptom_primary: "Q1 · Worst symptom",
   q1_age: "Q2 · Age",
   q_symptom_impact: "Q3 · How hard it hits",
   q2_here_for: "Q4 · Menopausal status",
@@ -2048,13 +2053,11 @@ const STEP_LABELS: Record<string, string> = {
   calculating: "Building her plan",
   results: "Results + score",
   diagnosis: "The plan",
-  // One row for the whole breathing phase. It was split into three screens on
-  // 2026-09-03 and put back on 2026-09-04: every session already in the window
-  // is keyed `relief`, so the split printed three near-empty rows beside a
-  // historical one. The route folds `relief_intro` — the same phase-entry
-  // event — back into this key and drops the other two, so nothing here needs
-  // to name them.
-  relief: "Breathing exercise",
+  // No `relief` row. The breathing exercise was deleted from the funnel on
+  // 2026-09-05 for costing 18.8% of everyone who reached it, and the route
+  // drops all four of its keys (see INACTIVE_STEPS) so the curve reads as the
+  // funnel that exists. `diagnosis → paywall` is the adjacency to watch: it was
+  // 68 → 52 with the exercise in between.
   paywall: "Paywall",
   // The last two are not screens and carry no `funnel_events` row. They are
   // Stripe, appended below the paywall because that is where they happen: the

@@ -290,8 +290,40 @@ export const SCORE_GOAL = 80;
 const SCORE_CEILING = SCORE_GOAL - 12; // 68
 // Above this the remaining points get compressed instead of clipped, so the
 // lightest answer sets still order correctly relative to each other.
-const SCORE_SOFT_CAP = 60;
-const SCORE_SQUASH = 0.2;
+//
+// **Loosened 60/0.2 → 62/0.35 on 2026-09-05**, measured on all 156 live
+// profiles. The old pair was crushing the whole population into 61–66 — a
+// three-point interquartile range on a 0–100 scale — and put **74% of women at
+// or above the "typical for her age" benchmark. On a funnel whose entire
+// audience self-selected by struggling, a score that says "better than typical"
+// for three women in four is not a personalised number, it is a constant with
+// noise on it. At 62/0.35 the same 156 profiles spread 30–68 (median 55) and
+// 36% land at or above the benchmark, which is a claim the results screen can
+// actually carry.
+const SCORE_SOFT_CAP = 62;
+const SCORE_SQUASH = 0.35;
+
+/**
+ * What one symptom, at the intensity she reported, is worth in burden points.
+ *
+ * **The quiz asks for one symptom, not a list (2026-09-05).** It used to sum
+ * `weight × intensity` over every symptom she ticked, so the burden — the
+ * dominant term in the whole score — was really a *count*. When the funnel's
+ * landing screen became a single tap, that sum collapsed to one term and every
+ * woman scored 63–66: 97% at or above the benchmark, measured.
+ *
+ * So the model is re-based on what the quiz still asks: **which symptom is
+ * worst, and how hard her symptoms hit her overall** (`q_symptom_impact`, the
+ * mild / moderate / severe screen). This factor restores the scale the sum used
+ * to provide — it is ~2x the mean number of symptoms women used to tick (3.3),
+ * because the intensity term now has to carry the differentiation the count
+ * used to. 7 was chosen against the live distribution, not derived: see the
+ * soft-cap note above for the numbers it produces.
+ *
+ * Re-calibrate this and the soft cap together, against real profiles. Moving
+ * one alone changes the shape of every score on the results screen.
+ */
+const SYMPTOM_LOAD = 7;
 
 export interface ScoreBreakdown {
   score: number;            // final 0..100 (higher = better)
@@ -308,12 +340,21 @@ export function calculateWellbeingScore(inputs: ScoreInputs): ScoreBreakdown {
   const { symptomSeverity, timing, hereFor, hrtStatus, ageBand, heightCm, weightKg } = inputs;
 
   // 1. Weighted symptom burden (the dominant factor).
-  //    burden = Σ impact_i × intensity_i (0..3); ×2 turns it into score points.
-  const burden = Object.entries(symptomSeverity).reduce((sum, [id, sev]) => {
-    if (!sev) return sum;
-    return sum + (SYMPTOM_IMPACT[id] ?? 1.0) * sev;
+  //    burden = heaviest(impact_i × intensity_i) × SYMPTOM_LOAD; ×2 turns it
+  //    into score points.
+  //
+  //    **The heaviest, not the sum (2026-09-05).** A sum made the score a
+  //    function of how many boxes she ticked, which stopped being a question
+  //    the quiz asks. Taking the max keeps this correct for any number of
+  //    symptoms — one from the funnel, several from a resumed profile — with no
+  //    double-counting and no discontinuity between the two, and it is
+  //    monotonic in both weight and intensity, which is what the compression
+  //    below relies on.
+  const heaviest = Object.entries(symptomSeverity).reduce((max, [id, sev]) => {
+    if (!sev) return max;
+    return Math.max(max, (SYMPTOM_IMPACT[id] ?? 1.0) * sev);
   }, 0);
-  const symptomPenalty = burden * 2;
+  const symptomPenalty = heaviest * SYMPTOM_LOAD * 2;
 
   const durationPenalty = timing ? DURATION_PENALTY[timing] ?? 4 : 4;
   const stagePenalty = STAGE_PENALTY[hereFor] ?? 0;

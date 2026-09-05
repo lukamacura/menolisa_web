@@ -877,9 +877,13 @@ export function SymptomOutcomeCards({
 }: {
   topProblems?: string[];
 }) {
+  // `topUp`: the funnel collects one symptom, so hers leads and the rest of the
+  // row is filled from the representative set. The heading is "what 8 weeks
+  // with Lisa can look like" — the cards are the product, not a claim about her.
   const transforms = getSymptomTransforms(
     topProblems && topProblems.length > 0 ? topProblems : DEFAULT_SYMPTOM_TRANSFORM_IDS,
-    3
+    3,
+    true
   );
   if (transforms.length === 0) return null;
 

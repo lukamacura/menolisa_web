@@ -273,7 +273,7 @@ const supabaseAdmin = getSupabaseAdmin(); // lazy singleton
 - `lib/getAuthenticatedUser.ts` — **always use this** in API routes; it handles both cookie-based (web) and Bearer token (mobile) auth
 - Auth UI: shared `components/auth/OtpForm.tsx`, used by `app/login/page.tsx`. The `/register` funnel no longer has an email phase (see below), so login is its only caller.
 - Login flow: email → `signInWithOtp({ shouldCreateUser: false })` → 6-digit code → `verifyOtp` → session → honor `?redirectedFrom=` (validated, must start with `/` and not `//`)
-- Registration flow: quiz → **anonymous sign-in** behind the calculating loader → `POST /api/auth/save-quiz` (server reads `userId` from session, validates payload with zod, creates `user_trials` row in `pending_payment`) → results → plan (the `diagnosis` phase) → relief → paywall → Stripe checkout **collects the email** → webhook binds it to that same user id and flips `account_status` to `paid`. `relief` runs breathing → reward and nothing else; the nutrition checklist that followed it (its own `nutrition` phase until 2026-08-16, then the second half of `relief`) was removed on 2026-08-17
+- Registration flow: quiz → **anonymous sign-in** behind the calculating loader → `POST /api/auth/save-quiz` (server reads `userId` from session, validates payload with zod, creates `user_trials` row in `pending_payment`) → results → plan (the `diagnosis` phase) → paywall → Stripe checkout **collects the email** → webhook binds it to that same user id and flips `account_status` to `paid`. There is nothing between the plan and the price: the `relief` breathing phase was deleted on 2026-09-05 (it cost 18.8% of everyone who reached it) and the nutrition checklist inside it went on 2026-08-17
 - Mobile bridge (`app/auth/mobile-bridge/page.tsx`) is a session handoff (mobile → web token via `#hash`), not a login — leave it alone
 - Email template: paste branded HTML into Supabase Dashboard → Auth → Email Templates → Magic Link, with `{{ .Token }}` for the 6-digit code
 - `proxy.ts` (Next 16 renamed `middleware.ts` → `proxy.ts`, and the exported function from `middleware` → `proxy`) protects `/dashboard/*`. It runs two gates: a session check on everything in `PROTECTED_PREFIXES`, then a payment check that skips `PAYMENT_EXEMPT_PREFIXES` (`/dashboard/account`, `/dashboard/settings`) so cancellation and account deletion stay reachable after access ends. Select the full `TRIAL_SELECT_COLS` when reading `user_trials` — a partial select makes missing columns read as "no dispute, not canceled" and grants access it shouldn't.
@@ -623,6 +623,14 @@ candidate cause was equally plausible and none was testable.
   prioritized events; that is why the seven custom funnel events were deleted on
   2026-08-17 and why re-adding them is in the "decided against" table. "Which
   screen leaks" is a product question, answered in our own database.
+- **A retired screen comes off the curve, it is not left to rot on it.** The
+  `relief` phase was deleted on 2026-09-05, so all four of its keys (`relief`,
+  `relief_intro`, `relief_running`, `relief_reward`) are in `INACTIVE_STEPS`.
+  Rows written before the deploy sit in the window for another 30 days, and a
+  row for a screen nobody can reach makes every rate under it divide by a step
+  today's traffic never sees. `diagnosis → paywall` is the real adjacency now,
+  and it is the number the deletion is judged on. Historical loss folds into
+  `diagnosis`, which is honest: the loss did happen between those two screens.
 - **One key per row, and re-keying a row throws its history away.** `relief` was
   split into `relief_intro` / `relief_running` / `relief_reward` on 2026-09-03
   (the phase really is three screens, and the single row could not say which of
@@ -630,13 +638,11 @@ candidate cause was equally plausible and none was testable.
   the product question and wrong about the cost: every session already inside the
   30-day window is keyed `relief`, so the chart printed three near-empty rows
   beside a historical one and the breathing step became unreadable at exactly the
-  volume it was added to measure. `POST_QUIZ_FUNNEL_STEPS` pings one `relief`
-  again; `/api/admin/stats` folds `relief_intro` back into `relief` (same
-  phase-entry event, and a session pinged one key or the other depending on the
-  deploy, never both, so the sum is exact) and drops `relief_running` /
-  `relief_reward` via `INACTIVE_STEPS`. If those three screens are worth
-  separating again, do it as a second chart off the same table rather than by
-  re-keying the row the curve depends on.
+  volume it was added to measure. The screen is gone now and so are all four
+  keys, but the rule stands for the next rename: a live row is re-keyed only
+  when you are willing to lose its window. `STEP_ALIASES` in
+  `/api/admin/stats` is the mechanism that keeps a rename continuous; it is
+  empty today and is deliberately kept.
 - Client side is `pingFunnelStep()` in `app/register/page.tsx` — `keepalive`,
   fire-and-forget, every failure swallowed, deduped per visit by a ref. It
   returns without a row rather than inventing a weak id when `sessionStorage` or
@@ -1451,12 +1457,94 @@ below reads like a rule, it is a pointer to one of those.
 | Put the refund back in the paywall headline | It spends the largest type on the page introducing the possibility of failure, at the moment belief is highest. Risk reversal answers a question she only has after she wants the thing. The guarantee card 400px below states it in full. |
 | Shorten `PLAN_DISCOUNT_WINDOW_MINUTES` back to 10 | The paywall is ~2000px and is read by a woman in her fifties on a phone. Ten minutes expired mid-read, doubled the displayed price to `PLAN_ANCHOR_PRICE`, and did it to the careful reader — who is the buyer. It also fired on the return-from-Stripe path. An expired countdown converts at roughly nothing. |
 | Move her symptoms back behind age, stage and menopause type | Every live creative is a symptom or mechanism argument and Ad 1 ends on "tap your symptom". Three categorising screens before the funnel mentions what she came for is a form, not the audit she was promised. |
+| Put the breathing exercise back between the plan and the price | Deleted 2026-09-05 on measurement, not taste: `relief → paywall` lost 18.8% (12 of 64 over the clean window), the second-largest single loss in the funnel and the only one falling on women who had already answered thirteen questions and read their results. It was a product demo placed where a close belongs — reciprocity is real, but it is worth less than the 18.8%, and the same demo inside the trial is retention rather than a toll. If it comes back, it comes back after the card. |
+| Make the funnel's landing screen a multi-select again | It was one until 2026-09-05 and the telemetry priced it at 54% — 325 renders, 148 women reaching question 2, the largest single loss in the business. A multi-select cannot auto-advance (only she knows when the list is done), so it always needs a Continue button, and the button is the second action asked of a woman four seconds into the page. Of the 148 who made that first tap, 83 walked thirteen more screens: the first tap is the commitment. |
+| Add a second symptom screen ("anything else?") | Built and cut the same day. The funnel asks **one** symptom; `q_symptom_impact` asks how hard her symptoms hit overall, and those two answers are what the score and the plan are built from. A list is a second screen for data no reader needs any more. |
+| Make `calculateWellbeingScore` sum over her symptoms again | The sum made the dominant term a **count of ticked boxes**, which stopped being a question the quiz asks. Measured on all 156 live profiles: with one symptom the sum put **97% of women at or above the "typical for her age" benchmark** — the results screen telling a woman whose symptoms run her life that she is doing better than average, on the screen where belief is formed. It is now `heaviest(weight × intensity) × SYMPTOM_LOAD`, which is correct for one symptom or nine (r = 0.95 against the old model on the same profiles). |
+| Make `q_symptom_impact` optional, or drop it | Since 2026-09-05 it is half the score. With one symptom there is no count left to differentiate anyone, so her mild/moderate/severe tap and her symptom's weight are the whole burden term. The same woman scores 32 or 67 depending on it. |
 | Store the relief check-in answer | A self-report taken thirty seconds after one breathing exercise is not a baseline. Its whole job is the sentence she reads next; writing it to `user_profiles` makes it look clinical. |
 | Send anything from her symptoms, plan or check-in to Meta | Already covered above, and the check-in is the newest thing that looks harmless and isn't. |
 
 ### Recent work
 
-**2026-09-04 (latest) — trial cut to 5 days, notice to 2, guarantee reframed.**
+**2026-09-05 (latest) — the two biggest leaks in the funnel, both measured
+first.** The €300 campaign's real shape, read off `funnel_events` on the clean
+post-reorder window: 325 renders of screen 1, 148 reaching screen 2, 83 reaching
+the name step, 70 finishing, 52 at the paywall. **16 of every 100 women who
+render the landing screen ever see a price**, and 54 of the missing 84 are lost
+on the first screen alone. The paywall was not where the money was dying.
+
+- **The landing screen is one tap, and there is only one symptom screen.**
+  `q_symptom_primary` ("Which one is hitting you hardest?") is single-select and
+  auto-advances; `q4_symptoms` is deleted. A second "anything else?" screen was
+  built and cut the same day — the funnel asks which symptom is worst, and
+  `q_symptom_impact` two screens later asks how hard her symptoms hit overall.
+  Still thirteen questions. `top_problems` is a one-element array on every web
+  signup, and `/api/admin/stats` **aliases** `q4_symptoms` → `q_symptom_primary`
+  rather than dropping it: same slot, same question, and it holds all 563
+  pre-change sessions at `step_index` 1, so excluding it would hand the curve's
+  100% base to the age tile.
+- **The score had to be re-based, and the measurement found a second bug.**
+  `calculateWellbeingScore` summed `weight × intensity` over every ticked
+  symptom, so its dominant term was really a *count*. Run against all 156 live
+  profiles, one symptom put **97% of women at or above the benchmark**. It is
+  now `heaviest(weight × intensity) × SYMPTOM_LOAD` (7) — correct for one
+  symptom or nine, r = 0.95 against the old model. Separately, the soft cap was
+  crushing **everyone** into 61–66 (a three-point IQR on a 0–100 scale, 74% above
+  the benchmark) — that was already true and nobody had looked; 62/0.35 spreads
+  the same profiles 30–68, median 55, 36% above. The same woman now scores 32
+  (severe sleep) or 67 (mild bloating). `deriveSeverity()` is deleted: with one
+  symptom its 10/6 thresholds returned "mild" for every woman alive.
+- **Three consumers of the old list, fixed rather than left to degrade.** The
+  results pain line named a count ("**1** symptom") in the type reserved for
+  what hurts — it names her symptom now, with no pronoun, because her nine
+  options split singular and plural. The `reward_symptoms` loader claimed to be
+  "ranking them" with one answer. And both before/after carousels (diagnosis and
+  paywall) collapsed to a single card in a horizontal scroller —
+  `getSymptomTransforms(..., topUp)` fills to three with hers leading, which is
+  honest because those cards are titled "what 8 weeks can look like", not "your
+  symptoms". `PlanFinishBoard` draws her own finish line, so it keeps `topUp`
+  off.
+- **The breathing exercise is deleted.** Phase, render, state machine, the
+  toolkit stack, the check-in and every helper. `diagnosis` opens the paywall
+  directly and its CTA sub-line carries the offer (`Free for {TRIAL_DAYS} days ·
+  cancel anytime`) — the line the relief CTA used to own. `POST_QUIZ_BASE` is 19
+  (one more quiz step) and `POST_QUIZ_FUNNEL_STEPS` is five.
+- **The paywall says what the switch is.** One line above the h1: *Your audit is
+  done & free. This is the plan it built.* She arrives from a free quiz and this
+  is the first screen with a price on it; unannounced, the price reads as a bait
+  rather than as the offer. It is not reassurance — the guarantee card 400px
+  down does that — it only has to make the price expected.
+- **`/register` stopped saying "peri" to women who are not.** The "if you do
+  nothing" card claimed *perimenopause* symptoms persist 4–7 years, on a
+  finisher base that is 24% surgical (38 of 156) and largely past it. The claim
+  is true of menopause symptoms generally; the qualifier was the only wrong part.
+- `/admin` drops all four `relief` keys, aliases the symptom screen and keeps
+  thirteen question labels. Verified against the live endpoint: 24 rows, no
+  `relief`, entry base continuous at 564, `diagnosis → paywall` now one 24% step.
+
+**Still open, and it is what the next read is for:** every figure above is a
+before. One tap instead of two is a hypothesis about *why* 54% left, not a fix
+for a measured cause. Read `q_symptom_primary → q1_age` and
+`diagnosis → paywall` once a comparable number of visits has come through — the
+entry row is continuous across the change by design, so it is a straight
+before-and-after. **No email capture was added** —
+see the note under it.
+
+**Not done deliberately: email capture.** It is the strongest economic lever
+available (at a ~$54 AOV, converting 2–3 of the 96 non-buyers per 100 paywall
+views over 30 days is worth more than any creative test), and it is worth
+nothing without a sequence to send. The sequence is the work — a column, a
+capture route, a cron, templates, an unsubscribe path and CAN-SPAM footers —
+and the whole email-sequence system was deleted on 2026-08-12, so it is a
+rebuild rather than a re-enable. Adding a field before the sequence exists buys
+friction on the funnel's best screen and no revenue. When it is built: put it on
+**results**, not on `q8_name` (which already loses 16%), optional, framed as
+"email me my results" — results has more traffic than the paywall (70 vs 52 over
+the clean window), so it catches more of them, and it sits after the payoff
+rather than between her and it.
+
+**2026-09-04 — trial cut to 5 days, notice to 2, guarantee reframed.**
 `TRIAL_DAYS` 7 → 5 and `RENEWAL_NOTICE_DAYS` 3 → 2 in `lib/pricing.ts`; every
 surface derives from them, and "free trial" became "free trial" everywhere it
 was printed (paywall, account card, three emails, the push alert, the download

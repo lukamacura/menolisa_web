@@ -38,11 +38,7 @@ import {
   Ruler,
   Weight,
   ShieldCheck,
-  Wind,
-  PartyPopper,
-  Lock,
   Sparkles,
-  ChevronRight,
   Flame,
   MoonStar,
   Brain,
@@ -176,10 +172,10 @@ const QUIZ_ILLUSTRATION: Record<string, string> = {
 
 
 type Step =
+  | "q_symptom_primary"
   | "q1_age"
   | "q2_here_for"
   | "q_menopause_type"
-  | "q4_symptoms"
   | "q_symptom_impact"
   | "q3_goals"
   | "reward_symptoms"
@@ -229,7 +225,22 @@ const STEPS: Step[] = [
   // product. Age still gates nothing before `reward_symptoms` (step 7), so the
   // swap is free downstream — every answer a reward board prints is collected
   // before the board renders, which is the rule that governs this order.
-  "q4_symptoms",
+  // **One tap, and one symptom (2026-09-05).** This screen was a nine-tile
+  // multi-select with a Continue button, and it was losing 54% of paid traffic
+  // before a single tap: 325 renders, 148 women reaching question 2. A
+  // multi-select is two actions minimum (choose, then confirm) and the ad
+  // promises one ("tap your symptom"). It is now one tap that auto-advances,
+  // and there is no "anything else" screen behind it — the funnel asks which
+  // symptom is worst, and `q_symptom_impact` two screens later asks how hard
+  // her symptoms hit overall. Those two answers are what the score is built
+  // from; the *number* of boxes she ticked is not a question any more.
+  //
+  // `top_problems` is therefore a one-element array on every web signup.
+  // `calculateWellbeingScore` was re-based onto the heaviest symptom rather
+  // than the sum in the same commit — with the sum, one symptom put 97% of
+  // women at or above the "typical for her age" benchmark. Read the
+  // SYMPTOM_LOAD note in `lib/quiz-results-helpers.ts` before changing either.
+  "q_symptom_primary",
   "q1_age",
   "q_symptom_impact",
   "q2_here_for",
@@ -250,19 +261,18 @@ const STEPS: Step[] = [
 
 // Single-choice steps advance on tap - the extra "Next" press on a question that
 // can only hold one answer is pure friction, and it's the same press she already
-// made. Multi-select, the two numeric inputs and the name step keep the button,
-// because there the tap is a toggle and only she knows when she's done.
-//
-// q4_symptoms keeps its button: it's multi-select, so only she knows when the
-// list is complete. The severity follow-up is its own single-choice step.
+// made. `q3_goals` (multi-select), the two numeric inputs and the name step keep
+// the button, because there the tap is a toggle and only she knows when she's
+// done.
 //
 // On the steps that keep it, the bar does not render until the step has an
-// answer - it is not drawn disabled. q4_symptoms is the funnel's landing screen
-// since 2026-09-03, so a greyed-out dead button was the first thing a woman
-// arriving from an ad saw at the bottom of her phone, and it reads as broken
-// rather than as waiting. Its height stays reserved either way (see the quiz
-// shell), so the reveal costs no layout shift.
+// answer - it is not drawn disabled. A greyed-out dead button reads as broken
+// rather than as waiting, and its height stays reserved either way (see the
+// quiz shell), so the reveal costs no layout shift.
 const AUTO_ADVANCE_STEPS: Step[] = [
+  // The funnel's landing screen, and the reason it is on this list: one tap, no
+  // button, no second decision.
+  "q_symptom_primary",
   "q1_age",
   "q2_here_for",
   "q_menopause_type",
@@ -305,7 +315,7 @@ const AUTO_ADVANCE_STEPS: Step[] = [
 // was the longest unbroken run in the quiz and, per the note above, its least
 // engaging block; this splits it 3/2. Every other slot either sits adjacent to
 // an existing reward (two payoffs in a row read as filler) or lands before
-// q4_symptoms, where there are no answers yet to have earned anything.
+// q_symptom_primary, where there are no answers yet to have earned anything.
 //
 // It deliberately does not go last, before `q8_name`: the end of the quiz is
 // already carrying `reward_progress`, and social proof placed immediately
@@ -436,7 +446,7 @@ const MENOPAUSE_TYPE_TONE: Record<string, ChoiceTone> = {
   },
 };
 
-// Image-based symptom tiles (same style as Q1 age / Q2 status). 9 options, multi-select.
+// Image-based symptom tiles (same style as Q1 age / Q2 status). 9 options, one tap.
 // IDs reuse the existing downstream keys (SYMPTOM_LABELS, pillars, comparison) so results keep working.
 const PROBLEM_OPTIONS = [
   { id: "hot_flashes", label: "Hot flashes", image: "/quiz/symptoms/hot_flashes.webp" },
@@ -471,11 +481,15 @@ const SYMPTOM_ICON: Record<string, LucideIcon> = {
   bloating: Droplets,
 };
 
-// Its own step, straight after q4_symptoms: one overall rating of how hard her
-// symptoms are hitting, not a rating of any single one. Rating all nine is a
-// chore nobody finishes, and rating only her first pick made the whole score
-// hang on tile order - what she actually knows is how heavy the load is as a
-// whole, so that is what we ask for.
+// One overall rating of how hard her symptoms are hitting, not a rating of any
+// single one. Rating all nine is a chore nobody finishes, and what she actually
+// knows is how heavy the load is as a whole, so that is what we ask for.
+//
+// **Since 2026-09-05 this is half the score.** The quiz asks one symptom, so
+// the burden term is her symptom's weight times what she taps here — there is
+// no count left to carry the differentiation. See SYMPTOM_LOAD in
+// `lib/quiz-results-helpers.ts`; dropping or making this screen optional would
+// flatten every score on the results page.
 //
 // The ids stay mild/moderate/severe - IMPACT_VALUE, the score and the results
 // copy all key off them - but she never sees those words. "Moderate" is what a
@@ -863,7 +877,7 @@ const TRIED_OPTIONS: string[] = [];
 const STEP_IMAGES: Partial<Record<Step, string[]>> = {
   q1_age: AGE_OPTIONS.map((o) => o.image),
   q2_here_for: HERE_FOR_OPTIONS.map((o) => o.image),
-  q4_symptoms: PROBLEM_OPTIONS.map((o) => o.image),
+  q_symptom_primary: PROBLEM_OPTIONS.map((o) => o.image),
   q3_goals: GOAL_OPTIONS.map((o) => o.image),
   // The three reward steps preload nothing: they render lucide icons now, which
   // ship in the JS chunk that is already parsed by the time she reaches them.
@@ -1032,31 +1046,22 @@ function preloadResponsiveImage(src: string, sizes: string) {
   void img.decode().catch(() => {});
 }
 
-/** Fallback severity for the results copy, from total symptom burden alone.
- *  Only used when she skipped the impact tap - normally her own Mild/Moderate/
- *  Severe answer is what drives that copy. The duration input this used to take
- *  is gone with q6_how_long. */
-function deriveSeverity(totalBurden: number): "mild" | "moderate" | "severe" {
-  if (totalBurden >= 10) return "severe";
-  if (totalBurden >= 6) return "moderate";
-  return "mild";
-}
-
 // No email/OTP phase: the funnel never asks her to leave for an inbox. The
 // account is created silently (Supabase anonymous sign-in) while the
 // calculating loader runs, and Stripe Checkout collects the email at payment -
 // the webhook then stamps it onto that same user id. See
 // `completeRegistration()` below and `resolveCheckoutAccount()` in the Stripe
 // webhook.
-// There is no `nutrition` phase. It was its own phase between `relief` and
-// `paywall`, then the second half of `relief`, and was removed outright on
-// 2026-08-17 - see the ReliefStage note below.
+// There is no `nutrition` phase and no `relief` phase. The nutrition checklist
+// went on 2026-08-17; the breathing exercise went on 2026-09-05, for the same
+// reason and with a measurement behind it this time - it was the last unpaid
+// interaction standing between the plan and the price, and it cost 18.8% of
+// everyone who reached it. The diagnosis CTA now opens the paywall directly.
 type Phase =
   | "quiz"
   | "calculating"
   | "results"
   | "diagnosis"
-  | "relief"
   | "paywall"
   | "download";
 
@@ -1326,7 +1331,7 @@ function pingFunnelStep(step: string, stepIndex: number) {
  *   0        unused - the deleted start screen. Historical `funnel_events` rows
  *            still carry it; `INACTIVE_STEPS` in /api/admin/stats drops them.
  *   1..17    the quiz steps, in STEPS order
- *   18..23   the post-quiz screens, in POST_QUIZ_FUNNEL_STEPS order
+ *   18..22   the post-quiz screens, in POST_QUIZ_FUNNEL_STEPS order
  *
  * Capped well under the route's `MAX_STEP_INDEX` of 40, which leaves room for
  * screens to be added without the two files having to move together.
@@ -1336,16 +1341,12 @@ const POST_QUIZ_BASE = 18;
 /**
  * The post-quiz curve as the drop-off chart reads it — one row per phase.
  *
- * `relief` was split into `relief_intro` / `relief_running` / `relief_reward`
- * on 2026-09-03 and put back on 2026-09-04. The split was sound in principle —
- * the phase really is three screens — but it stranded the row: every session
- * already in the 30-day window is filed under the single `relief` key, so the
- * chart printed three near-empty rows next to a historical one and the whole
- * breathing step became unreadable at exactly the volume it was added to
- * measure. One key, one row, continuous with the data we already have.
- *
- * If the three screens are worth separating again, do it as a second chart off
- * the same table rather than by re-keying the row the curve depends on.
+ * **`relief` is gone (2026-09-05).** The breathing exercise stood between the
+ * plan and the price and cost 18.8% of everyone who reached it — 12 of 64 over
+ * the clean window, the second-largest single loss in the funnel and the one
+ * falling on the most qualified traffic there is. Nothing pings the key any
+ * more; `INACTIVE_STEPS` in `/api/admin/stats` drops the historical rows so the
+ * curve reads as the funnel that exists rather than blending two of them.
  *
  * Indices stay monotonic and under the route's `MAX_STEP_INDEX` of 40.
  * `funnel_dropoff` orders by the position each screen was **last** seen at, so
@@ -1356,7 +1357,6 @@ const POST_QUIZ_FUNNEL_STEPS = [
   "calculating",
   "results",
   "diagnosis",
-  "relief",
   "paywall",
   "download",
 ] as const;
@@ -1498,31 +1498,36 @@ const PainEmphasis = ({ children }: { children: React.ReactNode }) => (
 // four lines. What she needs from this slot is the turn: it's real, it has a
 // cause, and it is fixable. Everything below the headline earns its place by
 // being new information, and empathy copy is not information.
+//
+// **It names her symptom rather than counting them (2026-09-05).** It used to
+// open on "{n} symptoms" in the largest emphasis on the line, which was a real
+// pain signal while the quiz collected a list. The quiz asks for one now, so
+// that line would have led the results screen with the word "1" — the smallest
+// number available — set in the type reserved for the thing that hurts. Her own
+// symptom, named back to her, is the stronger sentence and the one she gave us.
+//
+// The phrasing deliberately carries no pronoun for the symptom: her nine
+// options split between singular ("Brain fog", "Anxiety") and plural ("Hot
+// flashes", "Mood swings"), and any "it/they" here is wrong for half of them.
 const getSeverityPainText = (
   severity: string,
-  symptomCount: number,
+  symptomLabel: string,
   name: string
 ): React.ReactNode => {
   const displayName = name || "you";
-  const symptomWord = symptomCount === 1 ? "symptom" : "symptoms";
-  const theyIt = symptomCount === 1 ? "it" : "they";
-  const count = (
-    <PainEmphasis>
-      {symptomCount} {symptomWord}
-    </PainEmphasis>
-  );
+  const symptom = <PainEmphasis>{symptomLabel || "Your symptoms"}</PainEmphasis>;
   switch (severity) {
     case "severe":
       return (
         <>
-          {count}, and {theyIt}&apos;re running your days. {displayName}, this isn&apos;t your new
-          normal - <PainEmphasis>it&apos;s treatable</PainEmphasis>.
+          {symptom}, running your days. {displayName}, this isn&apos;t your new normal -{" "}
+          <PainEmphasis>it&apos;s treatable</PainEmphasis>.
         </>
       );
     case "moderate":
       return (
         <>
-          {count}, costing you energy every single day. {displayName}, that&apos;s{" "}
+          {symptom}, costing you energy every single day. {displayName}, that&apos;s{" "}
           <PainEmphasis>energy you can get back</PainEmphasis>.
         </>
       );
@@ -1530,9 +1535,9 @@ const getSeverityPainText = (
     default:
       return (
         <>
-          {count}, manageable today. Left alone {theyIt} usually{" "}
-          <PainEmphasis>get{symptomCount === 1 ? "s" : ""} worse</PainEmphasis> - {displayName},
-          this is the easiest it will ever be to turn around.
+          {symptom}, manageable today. Left alone this usually{" "}
+          <PainEmphasis>gets worse</PainEmphasis> - {displayName}, this is the easiest it will
+          ever be to turn around.
         </>
       );
   }
@@ -1552,9 +1557,9 @@ const getSeverityPainText = (
 const RESULTS_CTA_SUB = "Look what Lisa prepared for you.";
 
 // The funnel's one forward-tap look: gradient, dark ink, pink glow. It was
-// pasted inline at five call sites (results, plan, relief, the quiz's Next bar,
-// and the deleted start screen) and drifting apart by a hex digit was only a
-// matter of time. Every button that moves her one screen closer to the plan wears this;
+// pasted inline at five call sites (results, plan, the deleted relief screen,
+// the quiz's Next bar, and the deleted start screen) and drifting apart by a
+// hex digit was only a matter of time. Every button that moves her one screen closer to the plan wears this;
 // nothing else does.
 const CTA_GRADIENT_STYLE = {
   background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)",
@@ -1567,53 +1572,11 @@ const CTA_GRADIENT_STYLE = {
 const CTA_GRADIENT_CLASS =
   "w-full min-h-12 py-3.5 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg";
 
-// Doorstep to the paywall. This line used to lead with the price and the
-// adherence threshold, which sells before she has agreed to look - and the
-// paywall itself already states both, in full, one tap later. Her objection
-// here isn't "is it worth $59", it's "is this tap the one that costs me
-// something". So the line answers only that, and lets the paywall sell.
-//
-// "Free to look" was the wrong way to say it. One tap before a hard paywall,
-// "free" is the word she carries onto the next screen, and it primes a free
-// tier that does not exist - so the price reads as a bait rather than as the
-// offer. Naming what the next screen actually contains (the plan *and* the
-// price) sets her up to see exactly what she then sees.
-//
-// **It stopped being about the price on 2026-08-30.** "See your plan and the
-// price. No card needed to look." was written to answer the fear of the tap,
-// and by the time she reads it that fear is already gone: she has finished the
-// quiz, read the diagnosis, breathed for thirty-six seconds and watched a
-// toolkit open with one of four entries unlocked. What the line was doing
-// instead was framing the next screen as a browse - and "just looking" is the
-// lowest-commitment state you can walk someone into the one screen that needs
-// the highest.
-//
-// The screen it sits on has just opened a loop (<ToolkitStack /> renders three
-// locked rows), so the line closes it. That is the same forward motion in a
-// state she is already in, rather than a reassurance about a risk she has
-// stopped weighing. The paywall states the price in full, immediately, in its
-// own headline and price card - nothing here is hidden by not naming it, and
-// the "no card needed" promise is kept by the screen itself.
-//
-// **It carries the offer again (2026-09-04).** The line closed the toolkit loop
-// and said nothing else, which was right when the next screen asked for $59 on
-// the spot — naming a price one screen early buys nothing. It is wrong now. The
-// ad she clicked promises a free trial, the paywall opens on "your first
-// {TRIAL_DAYS} days are free", and the screen between them was the one place the
-// funnel went quiet about it. A woman deciding whether to tap "view my plan" was
-// weighing it as a purchase, because nothing since the ad had told her
-// otherwise. Both halves fit on one line: what is still locked, and what it
-// costs to open it today.
-function getCtaCopy(): { sub: string } {
-  return {
-    sub: `${RELIEF_TOOLKIT_SIZE - 1} more tools inside · free for ${TRIAL_DAYS} days`,
-  };
-}
 // First-person CTA label driven by her #1 goal (multi-select; first = primary).
 // Used on the results screen, where the next tap is still about what she wants.
-// Inside the relief sequence the sticky button stays progress-phrased instead
-// ("View my 8-week plan"), so those screens read as one ladder rather than as
-// several different voices.
+// The diagnosis screen's sticky button stays progress-phrased instead
+// ("I'm ready to feel better"), so the two read as one ladder rather than as
+// two different voices.
 const GOAL_CTA_LABEL: Record<string, string> = {
   sleep_through_night: "I want to sleep again",
   think_clearly: "I want to think clearly again",
@@ -1631,211 +1594,19 @@ function getGoalCtaLabel(goals: string[]): string {
 // So this label is resolve + safety, never a "buy now".
 const DIAGNOSIS_CTA_LABEL = "I'm ready to feel better";
 
-// ─── Relief exercise: paced breathing between diagnosis and paywall ─────────
-// One thing that works, done by her, before she's ever asked for money. The
-// exhale is longer than the inhale on purpose - that asymmetry is what shifts
-// the nervous system, and it's the pattern clinicians hand out for hot flashes.
-// A full cycle is 12s (in 4, hold 2, out 6) - hence the tool's name below.
+// The doorstep to the paywall - and since 2026-09-05 it really is the doorstep,
+// with nothing between this tap and the price. The breathing exercise used to
+// sit here and carried this reassurance for us; it was removed for costing
+// 18.8% of everyone who reached it, so the line it owned moves up to the tap
+// that now leads straight to the card.
 //
-// `ease` shapes each step so the circle moves like lungs, not like a slider:
-//   in   - fills fast at first, then eases into the top as the chest resists
-//   hold - drifts back a hair (1.35 -> 1.32); a real hold settles, it doesn't freeze
-//   out  - hesitates, releases, then lands softly at rest
-// `glow` is the halo's opacity for that step, so the blur breathes with her
-// instead of pulsing on its own unrelated loop.
-const BREATH_SEQUENCE = [
-  { key: "in", label: "Breathe in", seconds: 4, scale: 1.35, glow: 0.72, ease: [0.22, 0.45, 0.32, 1] },
-  { key: "hold", label: "Hold", seconds: 2, scale: 1.32, glow: 0.66, ease: [0.4, 0, 0.6, 1] },
-  { key: "out", label: "Breathe out", seconds: 6, scale: 1, glow: 0.32, ease: [0.5, 0.03, 0.35, 1] },
-] as const;
-const BREATH_ROUNDS = 3;
-const BREATH_CYCLE_SECONDS = BREATH_SEQUENCE.reduce((sum, b) => sum + b.seconds, 0); // 12
-const BREATH_TOTAL_SECONDS = BREATH_CYCLE_SECONDS * BREATH_ROUNDS; // 36
-
-// ─── The toolkit: one ordered list, unlocked one entry at a time ────────────
-// The breathing reward renders this stack with #1 unlocked, so she arrives at
-// the paywall already holding one of a set she started herself. A second
-// unlock step (the nutrition checklist) used to move the bar 25% -> 50%; it was
-// removed on 2026-08-17 for being a second unpaid interaction at the point of
-// maximum intent. The stack is unchanged - #2 is simply still locked.
-//
-// Entries 1-3 are the three daily pillars of the habit tracker (relaxation,
-// nutrition, movement); #4 is the layer around them. Every entry has to exist
-// in the product - this is a preview, not a feature list.
-const RELIEF_TOOLKIT_SIZE = 4;
-// Also the caption under the breathing circle, so the tool is named the same
-// before she uses it and after she keeps it.
-const RELIEF_TOOL_NAME = "Breathing exercise";
-
-type ReliefTool = { name: string; use: string };
-
-function getToolkit(topProblems: string[]): ReliefTool[] {
-  return [
-    {
-      name: RELIEF_TOOL_NAME,
-      use: getUnlockedToolUse(topProblems),
-    },
-    {
-      name: "Nutrition checklist",
-      use: "The 9 daily habits that steady your hormones",
-    },
-    {
-      name: `Exercises for ${getSymptomPhrase(topProblems)}`,
-      use: "Targeted routines for what you picked",
-    },
-    {
-      name: "Tracking & knowledge",
-      use: "Log how you feel, understand why",
-    },
-  ];
-}
-
-// "For hot flashes - anywhere, no equipment". Her #1 symptom, so the tool she
-// keeps is labelled with the thing she came here for.
-function getUnlockedToolUse(topProblems: string[]): string {
-  const first = topProblems[0];
-  const label = first ? (SYMPTOM_LABELS[first] || first).toLowerCase() : "";
-  return label ? `For ${label} - anywhere, no equipment` : "Anywhere, no equipment";
-}
-
-// ─── The check-in: her own read on what just happened ───────────────────────
-// See the `ReliefStage` note in the component for why this exists at all. The
-// rules for the three options:
-//
-// - **Three, and they are a scale.** Two would be a yes/no, and "no" on a
-//   yes/no reads as a verdict on the product thirty seconds before the price.
-//   Three lets the middle answer be the honest one for most people, which is
-//   also the one that is true: one round of paced breathing takes the edge off,
-//   it does not fix an afternoon.
-// - **None of them is wrong, and the copy must not treat one as the good
-//   answer.** She is being asked to notice, not to grade us. "Not yet" gets the
-//   warmest reply of the three.
-// - **They describe her body, not her opinion.** "Calmer" is something she can
-//   check; "It works!" is a review, and asking a stranger for a review before
-//   she has paid is the tell that this is a sales screen.
-// `skipped` is not one of the three check-in answers - it is what the reward
-// screen is told when she never breathed at all, so its copy can stop claiming
-// she did. See `getReliefRewardCopy`.
-type ReliefFeedback = "calmer" | "little" | "not_yet" | "skipped";
-
-const RELIEF_CHECKIN_OPTIONS: { id: ReliefFeedback; label: string }[] = [
-  { id: "calmer", label: "Calmer" },
-  { id: "little", label: "A little" },
-  { id: "not_yet", label: "Not yet" },
-];
-
-/**
- * The reward line, answering whatever she just said.
- *
- * The heading stops being a celebration of *us* and becomes a reply to *her*,
- * which is the whole point of asking. And every branch lands on the same place
- * - one round is the sample, the eight weeks are the product - because that is
- * the true sentence in all three cases, not a recovery written for the bad one.
- *
- * `null` is the skip path and the resumed-from-Stripe path (`reliefStage` is
- * pinned to `reward` there, with no answer). It keeps the original line, which
- * is the one that never needed her to have said anything.
- */
-function getReliefRewardCopy(
-  answer: ReliefFeedback | null,
-  name: string
-): { heading: string; body: React.ReactNode } {
-  const suffix = name ? `, ${name}` : "";
-  switch (answer) {
-    case "calmer":
-      return {
-        heading: `You did that${suffix}.`,
-        body: (
-          <>
-            Not a pill, not a doctor&apos;s appointment -{" "}
-            <span className="font-bold text-[#3D3D3D]">{BREATH_TOTAL_SECONDS} seconds</span> and
-            your own breath. That was one tool, on one symptom.
-          </>
-        ),
-      };
-    case "little":
-      return {
-        heading: `That's a start${suffix}.`,
-        body: (
-          <>
-            A little, from{" "}
-            <span className="font-bold text-[#3D3D3D]">{BREATH_TOTAL_SECONDS} seconds</span> on
-            your first go. It goes deeper with practice - and that was one tool, on one symptom.
-          </>
-        ),
-      };
-    case "not_yet":
-      return {
-        heading: `That's honest${suffix}.`,
-        body: (
-          <>
-            One round rarely does it. Paced breathing works the way training works -{" "}
-            <span className="font-bold text-[#3D3D3D]">a little, most days</span>. That is exactly
-            what the next {PLAN_WEEKS} weeks are.
-          </>
-        ),
-      };
-    // She skipped from the intro, so she never took a breath. The old copy here
-    // told her she had calmed her body in 36 seconds, which she would know to be
-    // false - and a funnel caught inventing a result thirty seconds before the
-    // price has spent the belief it needs. She keeps the tool either way; that
-    // part is true.
-    case "skipped":
-      return {
-        heading: `It's yours anyway${suffix}.`,
-        body: (
-          <>
-            Keep it for the next time it hits -{" "}
-            <span className="font-bold text-[#3D3D3D]">{BREATH_TOTAL_SECONDS} seconds</span>,
-            anywhere, no equipment. That is one tool, on one symptom.
-          </>
-        ),
-      };
-    default:
-      return {
-        heading: `Hooray${suffix}!`,
-        body: (
-          <>
-            You calmed your body in{" "}
-            <span className="font-bold text-[#3D3D3D]">{BREATH_TOTAL_SECONDS} seconds</span> - and
-            unlocked your first tool.
-          </>
-        ),
-      };
-  }
-}
-
-// Confetti for the finish moment. Precomputed (not random) so the burst is
-// identical every time and never re-shuffles on a re-render.
-const CONFETTI_BURST = Array.from({ length: 14 }, (_, i) => {
-  const angle = (i / 14) * Math.PI * 2;
-  const distance = 78 + (i % 3) * 22;
-  return {
-    x: Math.cos(angle) * distance,
-    y: Math.sin(angle) * distance,
-    color: ["#ff74b1", "#ffeb76", "#65dbff"][i % 3],
-  };
-});
-
-// Her symptoms as a natural lowercase phrase: "hot flashes, sleep issues and brain fog".
-// Capped at 3 so the sentence stays readable.
-function getSymptomPhrase(topProblems: string[]): string {
-  const names = topProblems.slice(0, 3).map((id) => (SYMPTOM_LABELS[id] || id).toLowerCase());
-  if (names.length === 0) return "your symptoms";
-  if (names.length === 1) return names[0];
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-}
-
-// Diagnosis is one screen short of the paywall: relief is the only thing left
-// between them, and it costs nothing. So this step gets pure forward motion and
-// getCtaCopy()'s no-charge reassurance lives on the relief CTA, where the
-// commitment actually happens. It promises the next step is short, because the
-// only thing standing between her and the plan now is one small screen. She's
-// read a long page and her guard is up: the next tap feels like the one that
-// costs her something. So the line names what the next screen is NOT (a pitch,
-// a form, a charge) before it names what it is.
+// It answers the only question live at this moment, which is not "is it worth
+// $59" - the paywall states the price in full one tap later, in its own
+// headline - but "does this tap cost me anything". The ad promised a free
+// trial and this is the last screen before the offer, so it says so plainly
+// and hands over.
 function getDiagnosisForwardCopy(): { sub: React.ReactNode } {
-  return { sub: "One simple exercise to feel calm." };
+  return { sub: `Free for ${TRIAL_DAYS} days \u00b7 cancel anytime` };
 }
 
 
@@ -2829,104 +2600,6 @@ function EnvelopeReveal({
   );
 }
 
-// The reward stack the breathing step ends on: what she keeps, then what she
-// doesn't have yet, then how far through the set she is. Felt first, read
-// second. `unlockedCount` stayed a prop after the second unlock step was cut -
-// the stack is the only place the toolkit is drawn, and hardcoding 1 into it
-// would bury the assumption in the component instead of at the call site.
-function ToolkitStack({
-  unlockedCount,
-  topProblems,
-}: {
-  unlockedCount: number;
-  topProblems: string[];
-}) {
-  const prefersReducedMotion = useReducedMotion();
-  const toolkit = getToolkit(topProblems);
-  const unlocked = toolkit.slice(0, unlockedCount);
-  const locked = toolkit.slice(unlockedCount);
-
-  return (
-    <div className="w-full max-w-xs space-y-2">
-      {unlocked.map((tool, i) => (
-        <motion.div
-          key={tool.name}
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={
-            prefersReducedMotion
-              ? { duration: 0 }
-              : { type: "spring", stiffness: 260, damping: 16, delay: 0.55 + i * 0.09 }
-          }
-          className="flex items-start gap-3 rounded-2xl bg-primary/5 border-2 border-primary/30 px-4 py-3 text-left"
-        >
-          <div className="mt-0.5 w-6 h-6 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
-            <Check className="w-3.5 h-3.5 text-primary" strokeWidth={3} />
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-bold text-[#3D3D3D] leading-tight">{tool.name}</p>
-            <p className="text-xs text-[#5A5A5A] leading-snug">{tool.use}</p>
-            <p className="text-[11px] font-semibold text-primary mt-0.5">Yours to keep</p>
-          </div>
-        </motion.div>
-      ))}
-
-      {/* Locked stack, fading out at the bottom so it reads as "there's more". */}
-      <div className="relative space-y-2">
-        {locked.map((tool, i) => (
-          <motion.div
-            key={tool.name}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.7 + i * 0.09, duration: 0.35 }}
-            className="flex items-center gap-3 rounded-2xl border border-foreground/10 bg-foreground/3 px-4 py-2.5 text-left"
-          >
-            <div className="w-6 h-6 rounded-full bg-foreground/5 flex items-center justify-center shrink-0">
-              <Lock className="w-3.5 h-3.5 text-[#9A9A9A]" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-[#8A8A8A] leading-tight truncate">
-                {tool.name}
-              </p>
-              <p className="text-[11px] text-[#B0B0B0] leading-snug truncate">{tool.use}</p>
-            </div>
-          </motion.div>
-        ))}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-9 bg-linear-to-t from-background to-transparent"
-        />
-      </div>
-
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 1, duration: 0.4 }}
-        className="pt-1 space-y-1.5"
-      >
-        <div className="flex items-baseline justify-between text-[11px]">
-          <span className="font-semibold text-[#3D3D3D]">
-            {unlockedCount} of {RELIEF_TOOLKIT_SIZE} unlocked
-          </span>
-          <span className="text-[#9A9A9A]">
-            +{RELIEF_TOOLKIT_SIZE - unlockedCount} more in your plan
-          </span>
-        </div>
-        <div className="h-1.5 w-full rounded-full bg-primary/15 overflow-hidden">
-          <motion.div
-            className="h-full rounded-full bg-primary"
-            initial={{ width: `${((unlockedCount - 1) / RELIEF_TOOLKIT_SIZE) * 100}%` }}
-            animate={{ width: `${(unlockedCount / RELIEF_TOOLKIT_SIZE) * 100}%` }}
-            transition={
-              prefersReducedMotion ? { duration: 0 } : { delay: 1.05, duration: 0.7, ease: "easeOut" }
-            }
-          />
-        </div>
-      </motion.div>
-    </div>
-  );
-}
-
 /** How long each hero screen holds before the next one slides in. Long enough to
  *  read a screen that is mostly layout, short enough that a second one arrives
  *  before she scrolls past. */
@@ -3726,10 +3399,10 @@ function RegisterPageContent() {
   const [phase, setPhase] = useState<Phase>(() => {
     const phaseParam = searchParams.get("phase");
     if (phaseParam === "download") return phaseParam;
-    // Dev-only: preview the results / plan / relief steps directly without
-    // finishing the quiz.
+    // Dev-only: preview the results / plan steps directly without finishing the
+    // quiz.
     if (
-      (phaseParam === "results" || phaseParam === "diagnosis" || phaseParam === "relief") &&
+      (phaseParam === "results" || phaseParam === "diagnosis") &&
       process.env.NODE_ENV === "development"
     ) {
       return phaseParam;
@@ -3764,129 +3437,6 @@ function RegisterPageContent() {
   const [stepIndex, setStepIndex] = useState(0);
   const currentStep = STEPS[stepIndex];
   const autoAdvances = AUTO_ADVANCE_STEPS.includes(currentStep);
-
-  /**
-   * The relief phase, the whole pre-paywall sequence:
-   *
-   *   intro → running → reward → (paywall)
-   *
-   * `reward` is the toolkit-unlock screen (1 of 4). Two further stages -
-   * `checklist` (a five-row nutrition audit) and `done` (its verdict, unlocking
-   * 2 of 4) - were removed on 2026-08-17: they were a second unpaid interaction
-   * and two more taps in the stretch immediately after she taps "I'm ready to
-   * feel better", which is the point of maximum intent and the worst place in
-   * the funnel to ask her for anything else.
-   *
-   * It never rewinds past `reward` once reached, so coming back from the paywall
-   * doesn't make her breathe through the exercise a second time.
-   */
-  /**
-   * The check-in is the only place in the funnel where the claim is made by her
-   * instead of by us.
-   *
-   * **It used to have a stage and a screen of its own** (`checkin`, between the
-   * last exhale and the reward) and was folded into the reward on 2026-09-03.
-   * `relief` was four screens between the diagnosis and the price, it loses 16%
-   * of everyone who reaches it, and a whole screen carrying one optional
-   * question was the cheapest of the four to stop charging her for. The
-   * question is unchanged; it now swaps the copy she is already reading rather
-   * than gating the screen that carries it.
-   *
-   * Everything else on the way to the paywall is an assertion we make and she
-   * evaluates - the score, the mechanism, the plan, the testimonial. The
-   * breathing exercise is the one moment the product does something to her body
-   * in front of her, before any money, and until now the funnel spent it
-   * telling her what had happened: "You calmed your body in 36 seconds." She
-   * never got to say it. A benefit she states herself is worth more than the
-   * same sentence in our voice, and once she has said it the eight weeks are
-   * consistent with a position she already took rather than a promise she is
-   * being asked to believe.
-   *
-   * There is no wrong answer and no answer that costs us the sale. "Not yet" is
-   * the honest reply for plenty of first attempts at paced breathing, and it
-   * hands us the better argument anyway: one round is not the intervention, the
-   * eight weeks are.
-   *
-   * It is not stored. Nothing downstream reads it, `save-quiz` never sees it
-   * and it is deliberately absent from the resume ticket - the answer's whole
-   * job is the sentence she reads next. Adding it to `user_profiles` would make
-   * a self-report taken thirty seconds after one breathing exercise look like a
-   * clinical baseline.
-   *
-   * Skipping the timer skips the question too (see `skipRelief`, and the
-   * `reliefElapsed > 0` guard at the render site): a woman who didn't do the
-   * exercise has nothing to notice, and asking her anyway is the funnel putting
-   * words in her mouth.
-   */
-  type ReliefStage = "intro" | "running" | "reward";
-  const [reliefStage, setReliefStage] = useState<ReliefStage>("intro");
-  const [reliefFeedback, setReliefFeedback] = useState<ReliefFeedback | null>(null);
-  // Single source of truth: seconds elapsed since she tapped start. Round, step and
-  // the countdown are all *derived* from it, so the interval's updater stays pure
-  // (StrictMode double-invokes updaters in dev - anything stateful in there advances twice).
-  const [reliefElapsed, setReliefElapsed] = useState(0);
-
-  useEffect(() => {
-    if (reliefStage !== "running") return;
-    const id = setInterval(() => setReliefElapsed((e) => e + 1), 1000);
-    return () => clearInterval(id);
-  }, [reliefStage]);
-
-  // The circle's scale is animated by framer over each step's full duration, so the
-  // breathing stays smooth even though the visible number only ticks once a second.
-  const { breathStep, breathRound, secondsLeft } = useMemo(() => {
-    // Clamp to the final second: on the tick that completes the exercise the raw
-    // value would wrap back to "Breathe in", flashing one frame of the circle
-    // re-expanding before the reward swaps in.
-    const t = Math.min(reliefElapsed, BREATH_TOTAL_SECONDS - 1);
-    const intoCycle = t % BREATH_CYCLE_SECONDS;
-    let acc = 0;
-    let step = BREATH_SEQUENCE.length - 1;
-    for (let i = 0; i < BREATH_SEQUENCE.length; i++) {
-      if (intoCycle < acc + BREATH_SEQUENCE[i].seconds) {
-        step = i;
-        break;
-      }
-      acc += BREATH_SEQUENCE[i].seconds;
-    }
-    return {
-      breathStep: step,
-      breathRound: Math.floor(t / BREATH_CYCLE_SECONDS),
-      secondsLeft: acc + BREATH_SEQUENCE[step].seconds - intoCycle,
-    };
-  }, [reliefElapsed]);
-
-  useEffect(() => {
-    if (reliefStage === "running" && reliefElapsed >= BREATH_TOTAL_SECONDS) {
-      setReliefStage("reward");
-    }
-  }, [reliefStage, reliefElapsed]);
-
-  const startRelief = useCallback(() => {
-    setReliefElapsed(0);
-    setReliefStage("running");
-  }, []);
-
-  // The check-in no longer has a screen of its own - it is a row on the reward,
-  // so answering only swaps the copy above it. See the render site.
-  const answerCheckin = useCallback((answer: ReliefFeedback) => {
-    setReliefFeedback(answer);
-  }, []);
-
-  // Lets her bail out of the timer without losing the reward - jumps straight
-  // to the reward as if she'd finished, so the toolkit unlock still lands.
-  // Past the check-in too, and with no answer recorded: she didn't do the
-  // exercise, so there is nothing for her to have noticed.
-  //
-  // `neverStarted` separates the two ways out. Skipping mid-exercise means she
-  // breathed some of it, so the reward keeps its original wording; skipping from
-  // the intro means she breathed none of it, and the reward has to say so rather
-  // than congratulate her on 36 seconds she did not spend.
-  const skipRelief = useCallback((neverStarted = false) => {
-    setReliefElapsed(BREATH_TOTAL_SECONDS);
-    setReliefFeedback(neverStarted ? "skipped" : null);
-    setReliefStage("reward");
-  }, []);
 
   // Preload the next step's images (and prewarm the very first step on mount) so
   // tiles are already cached before the step renders.
@@ -3958,8 +3508,8 @@ function RegisterPageContent() {
       step = STEPS[stepIndex] ?? "unknown";
       index = stepIndex + 1;
     } else {
-      // One row per phase, `relief` included - see POST_QUIZ_FUNNEL_STEPS for
-      // why its three screens are not pinged separately.
+      // One row per phase. `relief` used to sit between `diagnosis` and
+      // `paywall`; it was removed on 2026-09-05.
       const position = POST_QUIZ_FUNNEL_STEPS.indexOf(
         phase as (typeof POST_QUIZ_FUNNEL_STEPS)[number]
       );
@@ -4038,24 +3588,26 @@ function RegisterPageContent() {
     [symptomSeverity]
   );
 
-  // The intensities everything downstream reads. She rates her symptoms as a
-  // whole, so every one she picked carries that same level - no per-symptom
-  // ranking is implied by tile order any more. Before she taps, every symptom
-  // keeps the old flat weight so nothing renders empty.
+  // The intensity everything downstream reads. She rates her symptoms as a
+  // whole on `q_symptom_impact`, and the funnel collects one symptom, so this is
+  // a single entry in practice. It stays a record rather than a pair because a
+  // resumed ticket (or the Expo app's profile) can still carry several, and
+  // every reader - `calculateWellbeingScore`, `getTopBurdenSymptoms` - is
+  // written for any number. Before she taps the impact screen, the flat
+  // SELECTED_SEVERITY keeps it from rendering empty.
   const scoredSeverity = useMemo(() => {
     const level = IMPACT_VALUE[symptomImpact] ?? SELECTED_SEVERITY;
     return Object.fromEntries(topProblems.map((id) => [id, level]));
   }, [topProblems, symptomImpact]);
 
-  const totalBurden = useMemo(
-    () => Object.values(scoredSeverity).reduce((a, b) => a + b, 0),
-    [scoredSeverity]
+  // Her symptom leads and the row is topped up to three (see getSymptomTransforms)
+  // - the quiz collects one, and a horizontal carousel holding a single card is
+  // worse than no carousel. Hoisted out of the JSX because the carousel that
+  // renders them needs a hook, and a hook can't live inside a conditional.
+  const diagnosisTransforms = useMemo(
+    () => getSymptomTransforms(topProblems, 3, true),
+    [topProblems]
   );
-
-  // Up to 3 of her symptoms, so the before/after proof covers what she actually
-  // picked rather than just her #1. Hoisted out of the JSX because the carousel
-  // that renders them needs a hook, and a hook can't live inside a conditional.
-  const diagnosisTransforms = useMemo(() => getSymptomTransforms(topProblems, 3), [topProblems]);
   const transformCarousel = useCarouselIndex(diagnosisTransforms.length);
 
   // Normalized body metrics (canonical cm/kg) derived from the per-unit inputs.
@@ -4094,8 +3646,16 @@ function RegisterPageContent() {
   // PaywallView keys its ViewContent off this - see the `userId` prop there.
   const [userId, setUserId] = useState<string | null>(null);
 
-  // Her own answer outranks the fallback: she just told us how hard this hits.
-  const derivedSeverity = (symptomImpact || deriveSeverity(totalBurden)) as
+  // Her own answer, always. `q_symptom_impact` is a required step, so by the
+  // time anything reads this she has tapped it.
+  //
+  // It used to fall back to `deriveSeverity(totalBurden)` — thresholds of 10
+  // and 6 on the *summed* burden of everything she ticked. With one symptom the
+  // sum is 1..3, so that fallback returned "mild" for every woman including the
+  // one who just said her symptoms run her life. It is deleted rather than
+  // re-scaled: a fallback that can only ever be wrong is worse than no fallback,
+  // and there is no path to results that skips the screen.
+  const derivedSeverity = (symptomImpact || "moderate") as
     | "mild"
     | "moderate"
     | "severe";
@@ -4485,7 +4045,7 @@ function RegisterPageContent() {
           return menopauseType !== "";
         case "q3_goals":
           return goal.length > 0;
-        case "q4_symptoms":
+        case "q_symptom_primary":
           return topProblems.length > 0;
         case "q_symptom_impact":
           return symptomImpact !== "";
@@ -4771,19 +4331,18 @@ function RegisterPageContent() {
     })();
   }, [phase, completeRegistration, registrationRetry]);
 
-  const toggleProblem = (problemId: string) => {
-    setSymptomSeverity((prev) => {
-      const on = Boolean(prev[problemId]);
-      // Untick her first pick and the follow-up is now rating a different
-      // symptom than the one she answered about, so the rating goes with it.
-      if (on && Object.keys(prev)[0] === problemId) setSymptomImpact("");
-      if (on) {
-        const next = { ...prev };
-        delete next[problemId];
-        return next;
-      }
-      return { ...prev, [problemId]: SELECTED_SEVERITY };
-    });
+  /**
+   * Her symptom, from the funnel's landing screen. One, not a list.
+   *
+   * **It replaces rather than merges**, so a Back-and-change leaves exactly one
+   * entry and `topProblems[0]` is always the symptom she last chose. A resumed
+   * ticket can still restore a multi-entry record written by an older deploy
+   * (or by the Expo app), which is why every reader downstream —
+   * `getTopBurdenSymptoms`, `calculateWellbeingScore`, `relaxationForSymptom` —
+   * is written to cope with any number of them rather than assuming one.
+   */
+  const selectPrimaryProblem = (problemId: string) => {
+    setSymptomSeverity({ [problemId]: SELECTED_SEVERITY });
   };
 
   const toggleGoal = (goalId: string) => {
@@ -4936,11 +4495,8 @@ function RegisterPageContent() {
    * initializer and outrank a ticket.
    *
    * What it restores is every answer she gave plus the account id she gave them
-   * on, so the screens behind the paywall (Back → relief → diagnosis → results)
-   * are the same screens she just walked, not cold ones. `reliefStage` is pinned
-   * to `reward` for the reason the stage machine never rewinds past it either:
-   * she has already done the breathing exercise, and making her do it again to
-   * get back to a price she has already seen is a worse tax than the reload was.
+   * on, so the screens behind the paywall (Back → diagnosis → results) are the
+   * same screens she just walked, not cold ones.
    *
    * The pixel needs re-identifying because this is a fresh document - without it
    * the browser `ViewContent` this paywall is about to fire carries no
@@ -4995,7 +4551,6 @@ function RegisterPageContent() {
     // the step index at the end rather than at question 1, or a Back out of the
     // funnel's front half would restart it after all.
     setStepIndex(STEPS.length - 1);
-    setReliefStage("reward");
     // Swap without the phase cross-fade. This one is not a step she took:
     // question 1 is on screen only because it is what the server rendered before
     // the ticket could be read, and fading it out for 0.22s in front of her is
@@ -5094,7 +4649,7 @@ function RegisterPageContent() {
    * still has one on her next ad click. Keying off the profile row meant she was
    * bounced to `/dashboard`, payment-gated by `proxy.ts`, and redirected right
    * back to `/register?phase=paywall` — landing cold on the price screen with no
-   * quiz, no score, no plan and no relief exercise. Every piece of persuasion the
+   * quiz, no score and no plan. Every piece of persuasion the
    * funnel owns was skipped, for the one visitor who had already said no once,
    * and the click was paid for.
    *
@@ -5108,7 +4663,6 @@ function RegisterPageContent() {
       phase === "calculating" ||
       phase === "results" ||
       phase === "diagnosis" ||
-      phase === "relief" ||
       phase === "paywall" ||
       phase === "download"
     ) {
@@ -5189,7 +4743,7 @@ function RegisterPageContent() {
 
   // max-w-4xl, with the horizontal padding trimmed on phones, so the quiz card
   // gets the extra width in both directions. The quiz is the only phase that
-  // spans this box - results / plan / relief / paywall / download all wrap
+  // spans this box - results / plan / paywall / download all wrap
   // themselves in max-w-md - so widening it here widens nothing else. The quiz's
   // fixed Next bar carries the same max-w; keep the two equal or the button
   // stops lining up with the card above it.
@@ -5197,7 +4751,7 @@ function RegisterPageContent() {
     <main className="overflow-hidden relative mx-auto px-2 pb-2 sm:px-4 sm:pb-4 h-dvh flex flex-col pt-2 max-w-4xl min-h-0">
       {/* One cross-fade across every phase change.
           Each step *inside* the quiz already animated, but the phase changes
-          themselves - results → plan → relief → paywall, the five biggest
+          themselves - results → plan → paywall, the biggest
           moments in the funnel - were plain sibling conditionals that swapped
           instantly. Eight hard cuts made it read as eight separate pages rather
           than one product.
@@ -5295,7 +4849,11 @@ function RegisterPageContent() {
               transition={{ delay: 0.85 }}
               className="text-sm text-[#5A5A5A] leading-relaxed mb-4 px-0.5"
             >
-              {getSeverityPainText(derivedSeverity, topProblems.length, firstName || "you")}
+              {getSeverityPainText(
+                derivedSeverity,
+                SYMPTOM_LABELS[topProblems[0]] ?? "",
+                firstName || "you"
+              )}
             </motion.p>
 
             {/* What is behind her score, why each part of it happens, and the
@@ -5735,7 +5293,7 @@ function RegisterPageContent() {
                     ) : (
                       "Untreated"
                     )}{" "}
-                    perimenopause symptoms persist 4&ndash;7 years on average - and often get
+                    menopause symptoms persist 4&ndash;7 years on average - and often get
                     worse before they settle.
                   </motion.p>
                   {/* Not a `rise` child: the chart runs its own draw off its
@@ -5821,7 +5379,7 @@ function RegisterPageContent() {
 
           </motion.div>
 
-          {/* Fixed bottom CTA -> relief exercise */}
+          {/* Fixed bottom CTA -> paywall */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -5835,7 +5393,7 @@ function RegisterPageContent() {
                   <>
                     <button
                       type="button"
-                      onClick={() => setPhase("relief")}
+                      onClick={() => setPhase("paywall")}
                       className={CTA_GRADIENT_CLASS}
                       style={CTA_GRADIENT_STYLE}
                     >
@@ -5851,415 +5409,6 @@ function RegisterPageContent() {
         </div>
       )}
 
-      {/* Relief Phase - the one screen between the plan and the price: a
-          paced-breathing exercise she completes herself, and the tool she keeps
-          for having done it. She reaches the paywall having already been given
-          something that worked.
-
-          A five-row nutrition audit and its verdict used to sit between the
-          reward and the paywall (and before that, ten rows on their own phase).
-          Two more taps and two more screens immediately after she tapped "I'm
-          ready to feel better" - the point of maximum intent in the whole
-          funnel, and the worst possible place to ask her for anything. */}
-      {phase === "relief" && (
-        <div
-          className={cn(
-            "flex-1 flex flex-col min-h-0 -mx-4 sm:-mx-6 px-4 sm:px-6 pt-2",
-            // The reward stack is taller than the exercise, so it gets to scroll
-            // on short screens; the exercise itself must never move under her.
-            reliefStage === "reward" &&
-              "overflow-y-auto pb-[calc(132px+env(safe-area-inset-bottom))]"
-          )}
-        >
-          <div className="max-w-md mx-auto w-full flex-1 flex flex-col min-h-0">
-            {/* Back leaves the phase from every stage - there is nothing left in
-                front of the reward to step back through. */}
-            <button
-              type="button"
-              onClick={() => setPhase("diagnosis")}
-              className="flex items-center gap-1 self-start shrink-0 text-xs text-[#9A9A9A] hover:text-[#5A5A5A] mb-2 transition-colors"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" /> Back
-            </button>
-
-            <AnimatePresence mode="wait">
-              {/* ── Intro + running share one persistent circle, so starting the
-                  exercise never re-mounts (and never re-animates) it. ───────── */}
-              {reliefStage === "intro" || reliefStage === "running" ? (
-                <motion.div
-                  key="relief-exercise"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0, scale: 0.96 }}
-                  transition={{ duration: 0.35 }}
-                  className="flex-1 flex flex-col justify-center items-center text-center gap-5"
-                >
-                  {/* Fixed-height copy slot: the two states swap inside it without
-                      shifting the circle below. */}
-                  <div className="min-h-32 sm:min-h-[136px] flex flex-col justify-end w-full">
-                    <AnimatePresence mode="wait">
-                      {reliefStage === "intro" ? (
-                        <motion.div
-                          key="relief-copy-intro"
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -10 }}
-                          transition={{ duration: 0.3 }}
-                          className="space-y-2.5"
-                        >
-                          <h1 className="text-3xl sm:text-4xl font-normal text-[#3D3D3D] leading-tight">
-                            {firstName.trim() ? (
-                              <>
-                                <span className="font-bold">{firstName.trim()}</span>, let&apos;s do
-                                one relief exercise.
-                              </>
-                            ) : (
-                              <>Let&apos;s do one relief exercise.</>
-                            )}
-                          </h1>
-                          <p className="text-xs text-[#5A5A5A] leading-relaxed max-w-xs mx-auto">
-                            When{" "}
-                            <span className="font-semibold text-[#3D3D3D]">
-                              {getSymptomPhrase(topProblems)}
-                            </span>{" "}
-                            hit, your body is already in alarm. This is the fastest way out.
-                          </p>
-                        </motion.div>
-                      ) : (
-                        <motion.div
-                          key="relief-copy-running"
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -10 }}
-                          transition={{ duration: 0.3 }}
-                          className="space-y-3"
-                        >
-                          <p className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">
-                            Round {breathRound + 1} of {BREATH_ROUNDS}
-                          </p>
-                          {/* Round dots - she can always see exactly how much is left. */}
-                          <div className="flex justify-center gap-2">
-                            {Array.from({ length: BREATH_ROUNDS }).map((_, i) => (
-                              <motion.div
-                                key={i}
-                                animate={{ width: i === breathRound ? 32 : 8 }}
-                                transition={{
-                                  type: "spring",
-                                  damping: 30,
-                                  stiffness: 200,
-                                  duration: prefersReducedMotion ? 0 : 0.4,
-                                }}
-                                className={cn(
-                                  "h-2 rounded-full",
-                                  i <= breathRound ? "bg-primary" : "bg-primary/20"
-                                )}
-                              />
-                            ))}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-
-                  {/* Breathing circle. The box is sized for the largest scale so
-                      expanding never nudges the layout. */}
-                  <div className="relative w-56 h-56 sm:w-64 sm:h-64 flex items-center justify-center shrink-0">
-                    {!prefersReducedMotion && (
-                      <motion.div
-                        aria-hidden
-                        className="absolute w-36 h-36 sm:w-40 sm:h-40 rounded-full bg-primary/30 blur-2xl"
-                        animate={
-                          reliefStage === "running"
-                            ? {
-                                scale: BREATH_SEQUENCE[breathStep].scale * 1.06,
-                                opacity: BREATH_SEQUENCE[breathStep].glow,
-                              }
-                            : { scale: [0.9, 1.15, 0.9], opacity: [0.4, 0.7, 0.4] }
-                        }
-                        transition={
-                          reliefStage === "running"
-                            ? {
-                                duration: BREATH_SEQUENCE[breathStep].seconds,
-                                ease: [...BREATH_SEQUENCE[breathStep].ease],
-                              }
-                            : { duration: 2.4, repeat: Infinity, ease: "easeInOut" }
-                        }
-                      />
-                    )}
-                    <motion.button
-                      type="button"
-                      onClick={startRelief}
-                      disabled={reliefStage === "running"}
-                      aria-label={
-                        reliefStage === "intro" ? "Start the breathing exercise" : undefined
-                      }
-                      animate={{
-                        scale:
-                          reliefStage === "running" ? BREATH_SEQUENCE[breathStep].scale : 1,
-                      }}
-                      transition={
-                        prefersReducedMotion
-                          ? { duration: 0 }
-                          : reliefStage === "running"
-                            ? {
-                                duration: BREATH_SEQUENCE[breathStep].seconds,
-                                ease: [...BREATH_SEQUENCE[breathStep].ease],
-                              }
-                            : { duration: 0.4, ease: "easeOut" }
-                      }
-                      className="relative w-36 h-36 sm:w-40 sm:h-40 rounded-full flex flex-col items-center justify-center gap-1 disabled:cursor-default"
-                      style={{
-                        background:
-                          "linear-gradient(135deg, rgba(255,116,177,0.22) 0%, rgba(255,235,118,0.22) 50%, rgba(101,219,255,0.22) 100%)",
-                        border: "2px solid rgba(255,116,177,0.35)",
-                        willChange: reliefStage === "running" ? "transform" : "auto",
-                      }}
-                    >
-                      <AnimatePresence mode="wait">
-                        {reliefStage === "intro" ? (
-                          <motion.span
-                            key="relief-circle-intro"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="flex flex-col items-center gap-1.5"
-                          >
-                            <Wind className="w-7 h-7 text-primary" />
-                            <span className="text-sm font-semibold text-[#3D3D3D]">
-                              Tap to begin
-                            </span>
-                          </motion.span>
-                        ) : (
-                          <motion.span
-                            key={`relief-circle-${breathStep}`}
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="flex flex-col items-center"
-                          >
-                            <span
-                              role="status"
-                              aria-live="polite"
-                              className="text-sm font-semibold text-[#3D3D3D]"
-                            >
-                              {BREATH_SEQUENCE[breathStep].label}
-                            </span>
-                            <span className="text-3xl font-black text-primary leading-tight tabular-nums">
-                              {secondsLeft}
-                            </span>
-                          </motion.span>
-                        )}
-                      </AnimatePresence>
-                    </motion.button>
-                  </div>
-
-                  <p className="text-[11px] text-[#9A9A9A] shrink-0">
-                    {reliefStage === "intro"
-                      ? `${RELIEF_TOOL_NAME} · ${BREATH_TOTAL_SECONDS} seconds`
-                      : "Let the exhale be longer than the breath in."}
-                  </p>
-
-                  {/* Skip: an escape hatch on a 36-second timer has to be
-                      findable at a glance, or she waits it out or leaves. Sized
-                      as a real tap target rather than an 11px underline, but
-                      outlined and neutral so it never competes with the circle
-                      it sits under.
-
-                      **It renders on the intro too now (2026-09-02).** It used
-                      to appear only once the exercise was `running`, which meant
-                      the intro screen offered exactly one way forward: start a
-                      36-second timer. That is a hard gate two screens before the
-                      price, on a funnel that has already asked for 26 taps, and
-                      the women it stops are the impatient ones - not obviously
-                      the ones least likely to buy. The exercise is the better
-                      path and still the prominent one; this is the door for
-                      everyone who was going to leave through it anyway.
-
-                      The label differs because the two skips mean different
-                      things: from the intro she is asking for the plan, from the
-                      middle she is ending something she started. */}
-                  {(reliefStage === "intro" || reliefStage === "running") && (
-                    <button
-                      type="button"
-                      onClick={() => skipRelief(reliefStage === "intro")}
-                      className="shrink-0 inline-flex items-center gap-1 rounded-full border-2 border-[#C9C9C9] bg-white px-5 py-2.5 text-sm font-bold text-[#3D3D3D] transition-colors hover:border-[#9A9A9A] hover:bg-white"
-                    >
-                      {reliefStage === "intro" ? `Skip to my ${PLAN_WEEKS}-week plan` : "Skip this step"}
-                      <ChevronRight className="w-3.5 h-3.5" aria-hidden />
-                    </button>
-                  )}
-                </motion.div>
-              ) : (
-                /* ── Reward: she keeps the tool she just used, and sees the
-                    three she doesn't have yet - felt first, read second. ── */
-                <motion.div
-                  key="relief-reward"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.35 }}
-                  className="flex-1 flex flex-col justify-center items-center text-center gap-4"
-                >
-                  <motion.div
-                    className="relative flex items-center justify-center"
-                    initial={{ scale: 0, rotate: -18, opacity: 0 }}
-                    animate={{ scale: 1, rotate: 0, opacity: 1 }}
-                    transition={
-                      prefersReducedMotion
-                        ? { duration: 0 }
-                        : { type: "spring", stiffness: 240, damping: 11, delay: 0.05 }
-                    }
-                  >
-                    {!prefersReducedMotion && (
-                      <>
-                        <motion.div
-                          aria-hidden
-                          className="absolute inset-0 rounded-full bg-primary/30 blur-2xl"
-                          animate={{ scale: [0.9, 1.2, 0.9], opacity: [0.4, 0.75, 0.4] }}
-                          transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-                        />
-                        {/* Confetti burst - fires once, right as the icon pops. */}
-                        {CONFETTI_BURST.map((c, i) => (
-                          <motion.span
-                            key={i}
-                            aria-hidden
-                            className="absolute w-1.5 h-1.5 rounded-full"
-                            style={{ background: c.color }}
-                            initial={{ x: 0, y: 0, scale: 0, opacity: 1 }}
-                            animate={{ x: c.x, y: c.y, scale: [0, 1, 0.6], opacity: [1, 1, 0] }}
-                            transition={{ duration: 1.1, delay: 0.15, ease: "easeOut" }}
-                          />
-                        ))}
-                      </>
-                    )}
-                    <div
-                      className="relative w-20 h-20 rounded-full flex items-center justify-center"
-                      style={{
-                        background:
-                          "linear-gradient(135deg, rgba(255,116,177,0.25) 0%, rgba(255,235,118,0.25) 50%, rgba(101,219,255,0.25) 100%)",
-                        border: "2px solid rgba(255,116,177,0.4)",
-                      }}
-                    >
-                      <PartyPopper className="w-9 h-9 text-primary" strokeWidth={2} />
-                    </div>
-                  </motion.div>
-
-                  {/* Answers whatever she just tapped - see
-                      getReliefRewardCopy(). The skip and resume paths pass
-                      `null` and get the original line back. */}
-                  {(() => {
-                    const rewardCopy = getReliefRewardCopy(
-                      reliefFeedback,
-                      firstName.trim()
-                    );
-                    return (
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.3, duration: 0.4 }}
-                        className="space-y-2"
-                      >
-                        <h1 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight">
-                          {rewardCopy.heading}
-                        </h1>
-                        <p className="text-xs text-[#5A5A5A] leading-relaxed max-w-xs mx-auto">
-                          {rewardCopy.body}
-                        </p>
-                      </motion.div>
-                    );
-                  })()}
-
-                  {/* ── The check-in, folded into the reward (2026-09-03). ──
-
-                      It had a screen to itself between the last exhale and this
-                      one, which made `relief` four full screens standing between
-                      the diagnosis and the price - a 36-second timer, a
-                      question, a payoff, and an intro before all three - on a
-                      funnel that has already asked for 26 taps. The phase loses
-                      16% and a screen that exists only to ask one optional
-                      question is the cheapest of the four to stop charging her
-                      for.
-
-                      Nothing about the question changes: the three chips are
-                      still equal in weight, still describe her body rather than
-                      her opinion, and "Not yet" still gets the warmest reply.
-                      What changes is that her answer now swaps the copy she is
-                      already looking at instead of gating the screen that
-                      carries it. Answering is optional, which it always was in
-                      substance - nothing is stored either way.
-
-                      Shown only when she actually breathed. `reliefElapsed > 0`
-                      excludes both the intro skip (`reliefFeedback` is
-                      "skipped") and the Back-from-Stripe resume, which pins the
-                      stage here without her having taken a breath this load. */}
-                  {reliefFeedback === null && reliefElapsed > 0 && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.5, duration: 0.4 }}
-                      className="w-full max-w-xs space-y-2"
-                    >
-                      <p className="text-[13px] font-semibold text-[#3D3D3D]">
-                        Notice a difference?
-                      </p>
-                      <div className="flex gap-2">
-                        {RELIEF_CHECKIN_OPTIONS.map((option) => (
-                          <button
-                            key={option.id}
-                            type="button"
-                            onClick={() => answerCheckin(option.id)}
-                            className="flex-1 min-h-11 rounded-xl border-2 border-[#E8DDD9] bg-card px-2 text-[13px] font-semibold text-[#3D3D3D] transition-all hover:border-primary/60 hover:bg-primary/5 active:scale-[0.98] cursor-pointer"
-                          >
-                            {option.label}
-                          </button>
-                        ))}
-                      </div>
-                    </motion.div>
-                  )}
-
-                  {/* Tool 1 of 4: what she keeps, then what she doesn't have yet. */}
-                  <ToolkitStack unlockedCount={1} topProblems={topProblems} />
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Fixed bottom CTA. Absent during the exercise itself, so the ask
-              always lands after the reward and never during a breath. The 0.9s
-              delay lets the confetti, the headline and the toolkit land first -
-              and, now that the check-in rides on this screen, gives her a beat
-              to answer it before the way out appears.
-
-              Its sub-line (getCtaCopy) closes the loop <ToolkitStack /> just
-              opened rather than reassuring her about the price; the reasoning
-              is at that function. */}
-          {reliefStage === "reward" && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.9 }}
-              className="fixed bottom-0 inset-x-0 z-30 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 pb-[env(safe-area-inset-bottom)]"
-            >
-              <div className="mx-auto max-w-md w-full px-4 sm:px-6 py-3">
-                <button
-                  type="button"
-                  onClick={() => setPhase("paywall")}
-                  className={CTA_GRADIENT_CLASS}
-                  style={CTA_GRADIENT_STYLE}
-                >
-                  {`View my ${PLAN_WEEKS}-week plan`}
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-                <p className="text-[11px] text-[#9A9A9A] text-center mt-1.5">
-                  {getCtaCopy().sub}
-                </p>
-              </div>
-            </motion.div>
-          )}
-        </div>
-      )}
-
       {/* Paywall Phase. The card is saved at Stripe and first charged
           TRIAL_DAYS later. The funnel's account is minutes old, so it is
           trial-eligible — `create-checkout` re-checks the account's history
@@ -6269,7 +5418,7 @@ function RegisterPageContent() {
           onCheckout={handleStartCheckout}
           checkoutLoading={checkoutLoading}
           error={error}
-          onBack={() => setPhase("relief")}
+          onBack={() => setPhase("diagnosis")}
           firstName={firstName}
           trackingSource="register"
           topProblems={topProblems}
@@ -6823,24 +5972,39 @@ function RegisterPageContent() {
                 </div>
               )}
 
-              {/* Q4: Symptoms - image tiles (same style as Q1 age / Q2 status), multi-select up to 9 */}
-              {currentStep === "q4_symptoms" && (
+              {/* Q1: the one symptom that is hardest. The funnel's landing
+                  screen and the ad's own instruction ("tap your symptom"), so
+                  it is one tap and nothing else: single-select, auto-advance,
+                  no Continue button, no second decision.
+
+                  It was a nine-tile multi-select until 2026-09-05, and the
+                  telemetry priced that at 54% — 325 renders, 148 women reaching
+                  question 2 — the single largest loss anywhere in the business.
+                  A multi-select cannot auto-advance (only she knows when the
+                  list is done), so the Continue button was unavoidable, and the
+                  button was the problem: two actions asked of a woman who has
+                  been on the page for four seconds and owes us nothing. Of the
+                  148 who made the first tap, 83 walked thirteen more screens —
+                  the first tap is the whole commitment.
+
+                  **The list is not asked for anywhere else.** It briefly moved
+                  to a second screen and was cut: the funnel asks which symptom
+                  is worst, `q_symptom_impact` asks how hard her symptoms hit
+                  overall, and those two answers are what the score and the plan
+                  are built from. The *count* of ticked boxes was load-bearing in
+                  `calculateWellbeingScore` and is not any more — see SYMPTOM_LOAD
+                  there before touching either screen. */}
+              {currentStep === "q_symptom_primary" && (
                 <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl font-bold mb-0.5">
-                      What&apos;s making life hardest right now?
+                      Which one is hitting you hardest?
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                      {topProblems.length > 0
-                        ? `${topProblems.length} selected`
-                        : "Tap all that apply"}
+                      Tap it — you can add the rest next.
                     </p>
                   </div>
                   <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 -mr-1 pb-1 [scrollbar-width:thin] scroll-smooth">
-                    {/* Flex-wrap, not grid: both of these lists have an odd option count,
-                        so a grid always left a hole in the last row. Wrapping with a
-                        centred last row fills the shelf and keeps every tile the same
-                        size. */}
                     {/* Three across on every width, and a 4:3 image rather than a
                         square below sm. Nine tiles two-across is five rows of ~200px:
                         on a 375x667 phone four of the nine were above the fold and the
@@ -6853,12 +6017,15 @@ function RegisterPageContent() {
                         viewports rather than as the layout. */}
                     <div className="flex flex-wrap justify-center gap-2">
                       {PROBLEM_OPTIONS.map((option) => {
-                        const isSelected = (symptomSeverity[option.id] ?? 0) > 0;
+                        // Her *primary* is the first key, not any selected key:
+                        // coming back with Back onto a screen where three tiles
+                        // are lit would not say which one she answered with.
+                        const isSelected = topProblems[0] === option.id;
                         return (
                           <button
                             key={option.id}
                             type="button"
-                            onClick={() => toggleProblem(option.id)}
+                            onClick={() => selectAndAdvance(() => selectPrimaryProblem(option.id))}
                             className={`flex flex-col w-[calc(33.333%-0.334rem)] rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer outline-none focus:outline-none ${
                               isSelected
                                 ? "ring-2 ring-inset ring-primary shadow-lg shadow-primary/30"
@@ -6871,12 +6038,12 @@ function RegisterPageContent() {
                                 alt={option.label}
                                 fill
                                 sizes="33vw"
-                                // This is the funnel's landing screen (symptoms
-                                // first since 2026-09-03), so these nine tiles
-                                // are the LCP. Without `priority` next/image
-                                // ships them `loading="lazy"` — verified on the
-                                // live HTML — and the ad's first paint is a grid
-                                // of labels over empty boxes on a phone.
+                                // This is the funnel's landing screen, so these
+                                // nine tiles are the LCP. Without `priority`
+                                // next/image ships them `loading="lazy"` —
+                                // verified on the live HTML — and the ad's first
+                                // paint is a grid of labels over empty boxes on a
+                                // phone.
                                 priority
                                 className="object-cover"
                               />
@@ -6957,9 +6124,13 @@ function RegisterPageContent() {
                 // middle caption used to say "Comparing with {cohort}" for a
                 // payoff whose comparison is a grey footnote; the last one
                 // promised a ranking the old board never showed.
+                // The middle line used to say "Ranking them by what they cost
+                // you", which was true of a list and is a lie about one answer.
+                // A meter that narrates work the screen is not doing is the
+                // fastest way to make the payoff under it read as theatre.
                 const messages = [
-                  `Reading your ${topProblems.length} symptom${topProblems.length === 1 ? "" : "s"}...`,
-                  "Ranking them by what they cost you...",
+                  `Reading what ${SYMPTOM_LABELS[top] ?? "your symptom"} costs you...`,
+                  "Matching it to what actually moves it...",
                   "Picking your one move for tonight...",
                 ];
                 return (

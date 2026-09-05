@@ -1039,24 +1039,48 @@ export async function POST(req: NextRequest) {
     // Stripe is the one that knows whether money moved. Two rows for one event
     // is the duplicate this curve exists to not have.
     "download",
-    // The 2026-09-03 relief split, reverted 2026-09-04. The phase is three
-    // screens, but every session already in the window is filed under the
-    // single `relief` key, so splitting it printed three near-empty rows beside
-    // a historical one and made the breathing step unreadable. `relief_intro`
-    // is not dropped — it fires on the same phase entry the old `relief` key
-    // did, so it is folded back into that row below; these two have no
-    // pre-split counterpart and simply go.
+    // The breathing exercise, deleted from the funnel on 2026-09-05. It stood
+    // between the plan and the price and cost 18.8% of everyone who reached it
+    // (12 of 64 over the clean window) — the second-largest single loss in the
+    // funnel, and the one falling on the most qualified traffic there is.
+    //
+    // All four keys go, not just the live one. Nothing pings any of them now,
+    // but rows written before the deploy are inside the window for another 30
+    // days, and a row for a screen that no longer exists makes the curve read
+    // as a funnel nobody walks: every rate below it would divide by a step
+    // today's traffic never sees. `diagnosis → paywall` is the real adjacency
+    // now, and it is the number the deletion has to be judged on.
+    //
+    // (`relief_intro` / `relief_running` / `relief_reward` are the 2026-09-03
+    // three-way split, reverted a day later. They were always the same phase.)
+    "relief",
+    "relief_intro",
     "relief_running",
     "relief_reward",
   ]);
   /**
-   * `relief_intro` **is** `relief` — both fire the moment the relief phase
-   * mounts — so the rows are summed rather than shown separately. A session
-   * pinged one key or the other depending on which deploy it landed on, never
-   * both, so the sum is exact rather than an over-count. Position is the
-   * earlier of the two, which keeps the row where the curve expects it.
+   * Screen-name aliases, for a key that was renamed rather than retired.
+   *
+   * `q4_symptoms` **is** `q_symptom_primary`: same slot, same question ("what is
+   * hitting you hardest"), same position 1 in `STEPS`. On 2026-09-05 the screen
+   * went from a nine-tile multi-select behind a Continue button to a single tap
+   * that auto-advances, and the key changed with it because the answer it
+   * records changed shape. The *screen* did not move, so the rows are summed and
+   * the entry row stays continuous across the change — which is the whole point:
+   * that row is the 33% loss the redesign exists to fix, and it can only be read
+   * as a before-and-after if both halves land in one row.
+   *
+   * Excluding `q4_symptoms` instead would have been the expensive mistake. It
+   * carries every pre-2026-09-05 session (563 of them) and it is `step_index` 1,
+   * so dropping it hands `entrySessions` — the 100% base for every bar in the
+   * block — to the age tile, and the historical half of the window prints as a
+   * funnel that opens at 100% on question 2.
+   *
+   * A session pinged one key or the other depending on the deploy it landed on,
+   * never both, so the sum is exact rather than an over-count. Position is the
+   * earlier of the two, which is 1 either way.
    */
-  const RELIEF_ALIASES: Record<string, string> = { relief_intro: "relief" };
+  const STEP_ALIASES: Record<string, string> = { q4_symptoms: "q_symptom_primary" };
   const screenRows: { step_index: number; step: string; sessions: number }[] = [];
   for (const row of (dropoffResult.data ?? []) as {
     step_index: number;
@@ -1064,7 +1088,7 @@ export async function POST(req: NextRequest) {
     sessions: number;
   }[]) {
     if (INACTIVE_STEPS.has(row.step)) continue;
-    const step = RELIEF_ALIASES[row.step] ?? row.step;
+    const step = STEP_ALIASES[row.step] ?? row.step;
     const existing = screenRows.find((r) => r.step === step);
     if (existing) {
       existing.sessions += row.sessions;
@@ -1107,7 +1131,6 @@ export async function POST(req: NextRequest) {
     "calculating",
     "results",
     "diagnosis",
-    "relief",
     "paywall",
   ]);
   const paidInCurve = revenue.firstChargeTimes.filter((t) => t >= curveSince).length;

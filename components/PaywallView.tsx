@@ -482,8 +482,7 @@ export function PaywallView({
               in 8 weeks or a full refund if it doesn't work", which spent the
               largest type on the page introducing the *possibility of failure*
               at the one moment belief is highest - she has just watched a plan
-              built from her own answers and done a breathing exercise that
-              worked. Risk reversal is a closer, not an opener: it answers "what
+              built from her own answers. Risk reversal is a closer, not an opener: it answers "what
               if this doesn't work for me", and that question only exists after
               she wants it. The guarantee card ~400px below states the whole
               promise in full, on green, under a shield - which is where a
@@ -510,6 +509,21 @@ export function PaywallView({
               price beside it. Negative tracking and 1.1 leading keep the extra
               size from costing a line, and the ink is a shade deeper than the
               funnel's body #3D3D3D so it separates from the subline under it. */}
+          {/* The bridge (2026-09-05). She came in on a free quiz and every
+              screen since has been free; this is the first one with a price on
+              it, and until now nothing said so. An unannounced price reads as a
+              bait — the quiz was the hook, the charge was the point — and it
+              lands on a 50-plus woman who has been told for years that the
+              internet is out to sell her something.
+
+              So one line names the switch before the headline makes the claim:
+              the audit is finished and free, the plan is the thing that costs.
+              It is deliberately small, deliberately above the headline, and
+              deliberately not reassuring — reassurance is the guarantee card's
+              job 400px below. This line only has to make the price expected. */}
+          <p className="text-[13px] font-semibold uppercase tracking-[0.08em] text-[#A8899B] mb-1.5">
+            Your audit is done &amp; free. This is the plan it built.
+          </p>
           <h1 className="text-[27px] sm:text-[32px] font-bold text-[#2B2627] leading-[1.1] tracking-[-0.02em] text-balance">
             <HighlightSweep variant="green">{promise}.</HighlightSweep>
             <br />
