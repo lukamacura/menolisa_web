@@ -391,7 +391,7 @@ Supabase (PostgreSQL) — no ORM, raw SQL queries via Supabase JS client:
 |---|---|
 | `symptoms` | `id`, `user_id`, `name`, `icon`, `is_default` |
 | `symptom_logs` | `id`, `user_id`, `symptom_id`, `severity` (1-3), `triggers[]`, `time_of_day`, `notes`, `logged_at` |
-| `user_profiles` | `user_id`, `name` (optional since 2026-09-08), `email` (optional, typed on the results screen — **not** her login; `auth.users.email` is), `is_test`, `top_problems[]`, `severity`, `timing`, `goal`, `doctor_status` |
+| `user_profiles` | `user_id`, `name`, `email` (optional, typed on the results screen — **not** her login; `auth.users.email` is), `is_test`, `top_problems[]`, `severity`, `timing`, `goal`, `doctor_status` |
 | `user_trials` | `user_id`, `account_status` ("pending_payment"/"paid"/"expired"), `subscription_ends_at`, `subscription_canceled`, `payment_failed_at`, `dispute_flagged_at`, `provider`, `plan_type` (`weekly` since 2026-09-08; `plan8w` on two historical rows), `plan_amount`, `fulfilled_at` (one-time-side-effect claim — see "Checkout fulfillment"), `renewal_notice_sent_for` / `trial_ends_at` / `first_paid_at` / `offer_variant` (dead since 2026-09-08 — nothing writes them; none is read by `getAccountState()`). The table name is legacy; it holds subscriptions. |
 | `documents` | Vector store — `id`, `content`, `metadata` (JSONB), `embedding` (vector 1536) |
 | `notifications` | `user_id`, `type`, `content`, `metadata` (JSONB), `is_read`, `created_at` |
@@ -707,10 +707,11 @@ cancelled. The paywall now sells **$1 for the first week, then $4.99/week**:
   `session.amount_total` ($1.00). No browser copy (`MetaPurchaseTracker` is
   deleted), no `Subscribe`, no `?offer=` on the success URL. `PLAN_VALUE`
   (`ViewContent` / `InitiateCheckout`) is `FIRST_WEEK_PRICE`.
-- **The name step is optional** — "Skip for now" is the CTA when the box is
-  empty. `save-quiz` writes only the keys it is sent on an update, so the app
-  can post `{ quizAnswers: { name } }` after purchase without nulling the
-  thirteen answers (docs/mobile-app-changes.md §26).
+- **The name step is required**, and the Continue button is always on screen
+  for it — lifted above the keyboard, disabled until she has typed. It was
+  optional for one day (2026-09-08) and the results headline greeted the
+  skippers as "You". `save-quiz` still writes only the keys it is sent on an
+  update, so a partial re-save from the app never nulls her answers.
 - **The results screen has an optional email box** ("Save your results and
   plan.") → `POST /api/auth/save-email` → `user_profiles.email`. It is never
   bound to `auth.users`: Stripe's address is the login and the collision/merge
@@ -1460,8 +1461,9 @@ the bank.** Full contract in §4 "The weekly plan". Touched: `lib/pricing.ts`
 `purchase_completed` / `subscription_canceled` / `payment_failed` rows, trial
 and `Subscribe` code deleted), `PaywallView` (rewritten: week-1 card, the
 blocks paragraph, `PRICE_LINE`, 14-day guarantee, exit question; countdown and
-anchor gone), `/register` (name optional with Skip, results email box, download
-copy; funnel helpers moved to `lib/funnelClient.ts`), `lib/resend.ts` (one
+anchor gone), `/register` (results email box, download copy; funnel helpers moved to
+`lib/funnelClient.ts`; the name step went optional and came back required the
+same day, now with an always-present disabled-until-typed Continue), `lib/resend.ts` (one
 welcome email), the cron (access-ending alert only), `/terms` §10–12,
 `/privacy`, the landing pricing and FAQ, `/admin` (by-day funnel,
 subscriptions by cohort week, exit distribution, `is_test` exclusion).
@@ -1469,7 +1471,8 @@ Migration `2026-09-08-weekly-plan.sql` applied; ten test profiles and two test
 visits flagged. Stripe test mode: weekly price + coupon created, $59 price
 archived. **Live mode still needs the script run with the live key and
 `STRIPE_PRICE_WEEKLY` set in Vercel.** The name-step regression could not be
-reproduced without a device, so the brief's fallback shipped instead.
+reproduced without a device; the name stays required, with the button always
+visible on that step.
 
 **2026-09-05 — the two biggest leaks in the funnel, both measured
 first.** The €300 campaign's real shape, read off `funnel_events` on the clean

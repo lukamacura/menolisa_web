@@ -1296,14 +1296,10 @@ Two things the app has to do:
       is "$4.99/week · cancel anytime". The plan still runs in 8-week blocks
       ("Your 8 weeks", the recap, "Start my next 8 weeks") — that is the plan,
       not the bill, and it stays.
-- [ ] **Ask for her first name after purchase when `first_name` is null.** The
-      web funnel's name step is optional since today (it was losing 43%). The
-      app already renders every surface without a name; add a one-field prompt
-      on first launch when `GET /api/account/status` returns `first_name: null`,
-      and save it with `POST /api/auth/save-quiz` sending
-      `{ quizAnswers: { name } }` alone — since 2026-09-08 the route leaves
-      every column it is not sent alone on an update, and a payload without a
-      `name` key never nulls a name she already gave.
+- [ ] Nothing to build for the name: the web step is required. (If a profile
+      ever arrives without one, `POST /api/auth/save-quiz` with
+      `{ quizAnswers: { name } }` alone is safe — since 2026-09-08 the route
+      writes only the keys it is sent on an update.)
 - [ ] Cancellation lives in the app ("Cancel anytime from the app" is printed at
       checkout): make sure the Account screen's manage/cancel path is one tap
       away.

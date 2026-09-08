@@ -161,9 +161,10 @@ import {
 } from "@/lib/quiz-results-helpers";
 
 /** Quiz step/phase -> illustration filename (from public/quiz/, same as mobile app assets/quiz/). */
-const QUIZ_ILLUSTRATION: Record<string, string> = {
-  q8_name: "name.webp",
-};
+// Empty since 2026-09-08: the name step lost its illustration so the
+// question, the box and the button all fit above an open keyboard. Kept as a
+// map so a future step can carry one without re-plumbing the card.
+const QUIZ_ILLUSTRATION: Record<string, string> = {};
 
 
 type Step =
@@ -880,7 +881,6 @@ const STEP_IMAGES: Partial<Record<Step, string[]>> = {
   q_nutrition: NUTRITION_STYLE_OPTIONS.map((o) => o.image),
   q_relaxation: RELAXATION_STYLE_OPTIONS.map((o) => o.image),
   q5_hrt: HRT_OPTIONS.map((o) => o.image),
-  q8_name: [`/quiz/${QUIZ_ILLUSTRATION.q8_name}`],
 };
 
 // Screenshots of the plan itself. Every one of these has to be *read* rather
@@ -3978,10 +3978,13 @@ function RegisterPageContent() {
           return relaxationStyle !== "";
         case "q5_hrt":
           return hrtStatus !== "";
-        // Optional since 2026-09-08 — the Skip is the CTA label when the box
-        // is empty. See the step's own note.
+        // Required. It was optional for one day (2026-09-08) and the results
+        // headline greeted the skippers as "You" — the one word that turns
+        // "your audit" into a form letter, on the screen where belief is
+        // formed. The keyboard mechanics (CTA lifted above the keyboard,
+        // tap-to-dismiss, Enter submits) are what make requiring it safe.
         case "q8_name":
-          return true;
+          return firstName.trim().length > 0;
         default:
           return false;
       }
@@ -5552,13 +5555,13 @@ function RegisterPageContent() {
             <div className="rounded-xl sm:rounded-2xl border border-foreground/10 bg-card backdrop-blur-sm p-2.5 mx-0 my-1 sm:p-3 sm:mx-1 space-y-1.5 sm:space-y-2 flex-1 min-h-0 shadow-lg shadow-primary/5 overflow-hidden flex flex-col">
               {/* Quiz step illustration (from public/quiz/, same as mobile assets/quiz/) */}
               {QUIZ_ILLUSTRATION[currentStep] && (
-                <div className={`shrink-0 flex justify-center ${currentStep === "q8_name" ? "mb-1" : "mb-2 sm:mb-3"}`}>
+                <div className="shrink-0 flex justify-center mb-2 sm:mb-3">
                   <Image
                     src={`/quiz/${QUIZ_ILLUSTRATION[currentStep]}`}
                     alt=""
                     width={320}
-                    height={currentStep === "q8_name" ? 200 : 160}
-                    className={`object-contain w-full ${currentStep === "q8_name" ? "max-h-[180px] sm:max-h-[220px]" : "max-h-[120px] sm:max-h-40"}`}
+                    height={160}
+                    className="object-contain w-full max-h-[120px] sm:max-h-40"
                     style={{ height: 'auto' }}
                   />
                 </div>
@@ -6250,11 +6253,18 @@ function RegisterPageContent() {
 
               {/* Q8: Name */}
               {currentStep === "q8_name" && (
-                <div className="flex-1 flex flex-col justify-center space-y-3 sm:space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                /* Laid out for an open keyboard (2026-09-08): question at the
+                   top of the card, the box right under it, the button right
+                   under the box, and nothing else on the screen. No
+                   illustration, no fixed bottom bar. A software keyboard takes
+                   the bottom half of a phone, and everything she needs on this
+                   step now fits in the top half — so there is no moment where
+                   she can see a text box and not the way forward, on any
+                   browser, whatever the visual viewport does. */
+                <div className="flex-1 flex flex-col justify-start gap-3 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div>
                     <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-1">
-                      What should Lisa call you?{" "}
-                      <span className="text-sm font-medium text-muted-foreground">(optional)</span>
+                      What should Lisa call you?
                     </h2>
                     <p className="text-sm sm:text-base text-muted-foreground">
                       First name only - it&apos;s what Lisa calls you from here on.
@@ -6263,28 +6273,12 @@ function RegisterPageContent() {
                   </div>
                   <div className="relative">
                     <UserCircle className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
-                    {/* The only text input in the funnel, and it was losing 22%
-                        of everyone who reached it — mechanically, not because of
-                        the question.
-
-                        `autoFocus` used to open the keyboard the instant the
-                        screen mounted. The Continue button below is
-                        `fixed bottom-0`, and a fixed element is laid out against
-                        the *layout* viewport, which does not shrink when the
-                        software keyboard opens — so on iOS Safari and the Meta
-                        in-app webview the keyboard covered the only way forward
-                        the moment she arrived. She saw a text box, a keyboard,
-                        and no button. The CTA bar is visualViewport-aware now
-                        (see `keyboardInset`), and the focus is hers to give.
-
-                        `enterKeyHint` + the Enter handler are the other half:
-                        the return key did nothing, on the one screen in
-                        seventeen where pressing it is the obvious move. iOS
-                        renders it as "Go" from the hint.
-
-                        `autoComplete="given-name"` lets the browser offer the
-                        name she has typed into a hundred other forms, which on a
-                        phone is the difference between one tap and eight. */}
+                    {/* No `autoFocus`: it used to open the keyboard on mount and
+                        the old fixed CTA sat underneath it, which is what this
+                        screen's 22% loss was. The focus is hers to give; Enter
+                        submits (iOS renders it as "Go" from the hint);
+                        `autoComplete="given-name"` lets the phone offer the
+                        name she has typed into a hundred other forms. */}
                     <input
                       type="text"
                       value={firstName}
@@ -6310,25 +6304,26 @@ function RegisterPageContent() {
                       </div>
                     )}
                   </div>
-                  {/* Optional, with a visible Skip (2026-09-08). This screen
-                      was losing 43% after the last deploy and the keyboard
-                      mechanics could not be reproduced on a device here, so
-                      the rule from the brief applies: the name is no longer a
-                      gate. With the box empty the fixed CTA reads "Skip for
-                      now" and the button below says the same thing in place;
-                      with a name in it the CTA reads Continue. Everything that
-                      used the name already reads fine without it (greetings
-                      fall back to "You", the boards omit it, Meta's `fn` is
-                      simply not sent) and the app asks for it after purchase. */}
-                  {firstName.trim().length === 0 && (
-                    <button
-                      type="button"
-                      onClick={goNext}
-                      className="self-center text-sm font-semibold text-[#7A7A7A] underline underline-offset-4 hover:text-[#3D3D3D]"
-                    >
-                      Skip for now
-                    </button>
-                  )}
+                  {/* The button, in flow, directly under the box. Disabled
+                      until she has typed rather than hidden: a box with no
+                      button under it is exactly what the keyboard used to make
+                      this screen look like. Required — a skipped name meant
+                      the results headline greeted her as "You". */}
+                  <button
+                    type="button"
+                    onClick={goNext}
+                    disabled={!stepIsAnswered(currentStep)}
+                    className={`${CTA_GRADIENT_CLASS} disabled:opacity-50 disabled:hover:scale-100 disabled:hover:shadow-none disabled:cursor-not-allowed`}
+                    style={CTA_GRADIENT_STYLE}
+                  >
+                    Continue
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                  <p className="text-xs text-[#9A9A9A] text-center" aria-live="polite">
+                    {firstName.trim().length === 0
+                      ? "Type your first name to continue."
+                      : `Nice to meet you, ${firstName.trim()}.`}
+                  </p>
                 </div>
               )}
             </div>
@@ -6381,7 +6376,10 @@ function RegisterPageContent() {
           {/* Navigation Buttons - fixed to bottom of viewport, safe-area aware.
               Absent on single-choice steps, which advance themselves, and while
               a reward step's meter is still running - see `onRewardMeter`. */}
-          {!autoAdvances && !onRewardMeter && stepIsAnswered(currentStep) && (
+          {/* Never on the name step: its Continue sits in the card directly
+              under the box, so nothing on that screen depends on a fixed bar
+              surviving an open keyboard. */}
+          {!autoAdvances && !onRewardMeter && currentStep !== "q8_name" && stepIsAnswered(currentStep) && (
             <div
               className="fixed inset-x-0 z-30 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 animate-in fade-in slide-in-from-bottom-2 duration-200"
               style={{
@@ -6402,11 +6400,7 @@ function RegisterPageContent() {
                   className={CTA_GRADIENT_CLASS}
                   style={CTA_GRADIENT_STYLE}
                 >
-                  {currentStep === "q8_name" && firstName.trim().length === 0
-                    ? "Skip for now"
-                    : REWARD_STEPS.includes(currentStep) || stepIndex === STEPS.length - 1
-                      ? "Continue"
-                      : "Next"}
+                  {REWARD_STEPS.includes(currentStep) || stepIndex === STEPS.length - 1 ? "Continue" : "Next"}
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
