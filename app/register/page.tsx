@@ -136,7 +136,13 @@ function warmPhaseChunks(phase: Phase, stepIndex: number) {
     void loadPlanFinishBoard();
   }
 }
-import { PLAN_PILLARS } from "@/lib/planPillars";
+import {
+  NUTRITION_START,
+  PLAN_PILLARS,
+  RELAXATION_START,
+  buildWeekOneRows,
+  type WeekOneRow,
+} from "@/lib/planPillars";
 import {
   FIRST_WEEK_PRICE,
   PLAN_ID,
@@ -802,21 +808,9 @@ const QUIZ_LOADER_MAX_PCT = 100;
 
 const QUIZ_LOADER_COLORS = ["#E91E8C", "#0EA5E9", "#7C3AED"];
 
-// Where her plan opens on each pillar, keyed off the answer she just gave.
-// Directional descriptions of what the plan does, not claims about her.
-const NUTRITION_START: Record<string, string> = {
-  skipping: "One real meal, anchored first",
-  convenience: "Swaps, not a new diet",
-  inconsistent: "Your good days, made repeatable",
-  intentional: "Fine-tuned, not rebuilt",
-};
-
-const RELAXATION_START: Record<string, string> = {
-  none: "Built from scratch, 3 min",
-  occasional: "Turned into a daily one",
-  routine: "Kept, aimed at your symptoms",
-  want_to: "Started this week, no experience",
-};
+// NUTRITION_START / RELAXATION_START moved to lib/planPillars.ts on 2026-09-08
+// - the paywall's week-1 card needs the same two strings, and a second copy is
+// a second thing to forget to update.
 
 /**
  * `lib/plan/catalog.ts` on demand.
@@ -3869,6 +3863,32 @@ function RegisterPageContent() {
     };
   }, [planCatalog, fitnessLevel]);
 
+  // Her week 1 as four pillar rows, for the paywall's "Your first week" card
+  // and the plan stage's phone mock.
+  //
+  // Same source as the three reward boards - her answers plus the catalog, no
+  // model call - and for the same reason: the paywall used to print
+  // `PLAN_PILLARS`'s fallback tasks there, which disagreed with the week
+  // <TrainingWeekBoard /> had just shown her and named a walk, a protein dose,
+  // a breathing pattern and a bedtime that exist nowhere in the plan she
+  // buys. See buildWeekOneRows().
+  const weekOneRows = useMemo<WeekOneRow[] | undefined>(() => {
+    if (!planCatalog) return undefined;
+    const rows = buildWeekOneRows(planCatalog, {
+      fitnessLevel,
+      nutritionStyle,
+      relaxationStyle,
+      topProblems,
+    });
+    return rows.length ? rows : undefined;
+  }, [planCatalog, fitnessLevel, nutritionStyle, relaxationStyle, topProblems]);
+
+  /** The same rows keyed by pillar, for <PlanStage />'s four-row mock. */
+  const pillarTasks = useMemo<Record<string, string> | undefined>(() => {
+    if (!weekOneRows) return undefined;
+    return Object.fromEntries(weekOneRows.map((r) => [r.key, r.task]));
+  }, [weekOneRows]);
+
 
   // There used to be an `estrogenPct` here: `80 + (burden/maxBurden) * 15`,
   // rendered at 5xl as "{n}% of your symptoms trace back to shifting estrogen".
@@ -5016,6 +5036,7 @@ function RegisterPageContent() {
                     <PlanStage
                       firstName={firstName.trim() || undefined}
                       goalLabel={goalLabel}
+                      tasks={pillarTasks}
                       className="pb-2"
                     />
                   </div>
@@ -5339,6 +5360,8 @@ function RegisterPageContent() {
           trackingSource="register"
           topProblems={topProblems}
           goal={goal}
+          weekOne={weekOneRows}
+          week={weekPlanner ?? undefined}
           userId={userId}
         />
       )}
@@ -6281,8 +6304,8 @@ function RegisterPageContent() {
                       What should Lisa call you?
                     </h2>
                     <p className="text-sm sm:text-base text-muted-foreground">
-                      First name only - it&apos;s what Lisa calls you from here on.
-                      No email needed to see your results.
+                      Just for personalization - a nickname, first name or alias
+                      is fine. No email needed to see your results.
                     </p>
                   </div>
                   <div className="relative">
@@ -6304,7 +6327,7 @@ function RegisterPageContent() {
                           goNext();
                         }
                       }}
-                      placeholder="First name"
+                      placeholder="First name or nickname"
                       enterKeyHint="go"
                       autoComplete="given-name"
                       autoCapitalize="words"

@@ -187,11 +187,20 @@ const FILL_STEP_MS = (FILL_SPAN_MS - FILL_DOT_MS) / (PLAN_DAYS - 1);
 export function PlanStage({
   firstName,
   goalLabel,
+  tasks,
   className,
 }: {
   firstName?: string;
   /** Her #1 goal, lowercased, as it reads after "Designed to help you …". */
   goalLabel: string;
+  /**
+   * Her real week-1 line per pillar key, from `buildWeekOneRows()`. Act 2 is a
+   * mock of the app's Today screen, and the mock sits one screen in front of
+   * the paywall's week-1 card - so if this shows the generic fallbacks while
+   * that shows her week, the two adjacent screens disagree about what she is
+   * buying. Missing keys fall back to `PlanPillar.task`.
+   */
+  tasks?: Record<string, string>;
   className?: string;
 }) {
   const reduced = !!useReducedMotion();
@@ -348,6 +357,7 @@ export function PlanStage({
                 playing={playing}
                 goalLabel={goalLabel}
                 progress={progress}
+                tasks={tasks}
               />
             )}
           </AnimatePresence>
@@ -551,12 +561,14 @@ function PhoneMock({
   playing,
   goalLabel,
   progress,
+  tasks,
 }: {
   screen: Exclude<ActId, "plan">;
   reduced: boolean;
   playing: boolean;
   goalLabel: string;
   progress: MotionValue<number>;
+  tasks?: Record<string, string>;
 }) {
   return (
     <motion.div
@@ -591,7 +603,7 @@ function PhoneMock({
               className="absolute inset-0 flex flex-col px-[5.5cqw] pt-[12cqw] pb-[4cqw]"
             >
               {screen === "today" ? (
-                <TodayScreen reduced={reduced} progress={progress} />
+                <TodayScreen reduced={reduced} progress={progress} tasks={tasks} />
               ) : (
                 <WeeksScreen
                   reduced={reduced}
@@ -635,7 +647,15 @@ const TODAY_HOLD = ACTS[1].hold;
 /** Today's four tasks, ticking themselves off one a beat. This is the product
     in one gesture - the same list, the same check, the same "day one, done" the
     tracker gives her. */
-function TodayScreen({ reduced, progress }: { reduced: boolean; progress: MotionValue<number> }) {
+function TodayScreen({
+  reduced,
+  progress,
+  tasks,
+}: {
+  reduced: boolean;
+  progress: MotionValue<number>;
+  tasks?: Record<string, string>;
+}) {
   const total = PLAN_PILLARS.length;
   const done = useActBeat(progress, TODAY_HOLD, (elapsed) => {
     if (reduced) return total;
@@ -706,7 +726,7 @@ function TodayScreen({ reduced, progress }: { reduced: boolean; progress: Motion
                   {p.label}
                 </span>
                 <span className="block truncate text-[3.6cqw] leading-tight text-[#B0A69E]">
-                  {p.task}
+                  {tasks?.[p.key] ?? p.task}
                 </span>
               </span>
 

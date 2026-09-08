@@ -44,7 +44,8 @@ import { HighlightSweep } from "@/components/HighlightSweep";
 import { PlanFinishBoard } from "@/components/PlanFinishBoard";
 import { PhoneShot, ShotStage, SHOT_W, SHOT_H } from "@/components/PhoneShots";
 import { getOfferPromise } from "@/lib/planTimeline";
-import { PLAN_PILLARS } from "@/lib/planPillars";
+import { pillarFor, type WeekOneRow } from "@/lib/planPillars";
+import type { PlannerDay } from "@/components/funnel/RewardBoards";
 import { SYMPTOM_FIRST_MOVE, SYMPTOM_LABELS } from "@/lib/quiz-results-helpers";
 
 export interface PaywallViewProps {
@@ -89,6 +90,21 @@ export interface PaywallViewProps {
    * end of the finish line is the outcome *she* picked, not one we assigned.
    */
   goal?: string[];
+  /**
+   * Her week 1, one row per pillar, from `buildWeekOneRows()` - her answers
+   * plus `lib/plan/catalog.ts`, no model call. Built by the caller because the
+   * catalog is a lazy chunk there and must not become a static import here.
+   *
+   * Absent (the dashboard paywall, which has no quiz to draw from) means the
+   * whole card is dropped. It is never filled in with defaults: see the note
+   * on <WeekOneCard />.
+   */
+  weekOne?: WeekOneRow[];
+  /**
+   * The same seven days <TrainingWeekBoard /> drew in the funnel, so the strip
+   * on the card is her real week rather than seven identical boxes.
+   */
+  week?: PlannerDay[];
 }
 
 const FIRST_WEEK = formatPrice(FIRST_WEEK_PRICE);
@@ -128,24 +144,68 @@ const TRUST_LABELS = [
 ];
 
 /**
- * Week 1 of her plan, above the price (2026-09-08).
+ * Week 1 of her plan, above the price.
  *
- * Built from two things she chose - her worst symptom and her goal - and the
- * catalog, never from a model call: the four pillar tasks are real day-one
- * tasks off the plan (`PLAN_PILLARS`), and the "tonight" row is the same
- * `SYMPTOM_FIRST_MOVE` line the reward board gave her on question 7. Nothing
- * here is a projected outcome; it is what the app asks of her on day one.
+ * **Every row is hers or it is not here.** The card printed the four
+ * `PLAN_PILLARS` fallback tasks until 2026-09-08 - "10-min walk", "25-30g
+ * protein at breakfast", "4-7-8 breathing", "Lights out by 10:30" - under a
+ * line saying it was built around the symptom she said hits hardest. Three
+ * things were wrong with that and they compound:
+ *
+ * - **It contradicted the funnel.** <TrainingWeekBoard /> had shown her a real
+ *   week four screens earlier: a 15-25 minute walk every day and two to four
+ *   strength sessions, read out of `MOVEMENT_VOLUME` and `cardioForWeek()`.
+ *   Then the screen with the price on it said "10-min walk". Whichever she
+ *   believed, one of them was selling her something the other denied.
+ * - **None of the four existed in the product.** No level is prescribed a
+ *   10-minute walk; the protein row's `target` is 3, not breakfast; 4-7-8 is
+ *   in no `RELAXATION` row; "Lights out by 10:30" is in no `FALLBACK_HABITS`
+ *   entry. Every one of them is discovered to be wrong on day 1 in the app,
+ *   which is inside the refund window.
+ * - **It de-escalated at the close.** The funnel's three payoffs escalate -
+ *   her ranking, her week, her session 1 - and each hands her something she
+ *   did not walk in with. This card then handed back four strings identical
+ *   for every woman, at the exact moment she is deciding whether the
+ *   personalisation was real.
+ *
+ * So the rows come from `buildWeekOneRows()` (her taps plus the catalog), the
+ * day strip is her actual seven days, and a pillar with nothing true to say is
+ * dropped. With no rows and no tonight-move - the dashboard paywall, which has
+ * no quiz behind it - the card does not render at all. Nothing on it is
+ * written for this screen; if it cannot be sourced, it is not shown.
  */
+const TONE_DOT: Record<PlannerDay["chips"][number]["tone"], { dot: string; label: string }> = {
+  strength: { dot: "bg-primary", label: "Strength" },
+  cardio: { dot: "bg-[#16A34A]", label: "Walk" },
+  power: { dot: "bg-[#F59E0B]", label: "Intervals" },
+};
+
 function WeekOneCard({
   symptom,
   goal,
+  rows,
+  week,
 }: {
   symptom: string | null;
   goal: string[];
+  rows?: WeekOneRow[];
+  week?: PlannerDay[];
 }) {
   const symptomLabel = symptom ? SYMPTOM_LABELS[symptom] ?? null : null;
   const firstMove = symptom ? SYMPTOM_FIRST_MOVE[symptom] ?? null : null;
   const promise = getOfferPromise(goal);
+  const pillarRows = rows ?? [];
+
+  // Nothing sourced, nothing shown.
+  if (!pillarRows.length && !firstMove) return null;
+
+  // Only the tones her week actually contains, in the order they are drawn.
+  const tones = week
+    ? (Object.keys(TONE_DOT) as (keyof typeof TONE_DOT)[]).filter((t) =>
+        week.some((d) => d.chips.some((c) => c.tone === t))
+      )
+    : [];
+
   return (
     <div className="mb-3 rounded-2xl border border-[#E8DDD9] bg-white p-4 shadow-sm">
       <div className="flex items-baseline justify-between gap-3">
@@ -166,30 +226,74 @@ function WeekOneCard({
           you said hits hardest.
         </p>
       )}
-      <div className="mt-3 flex gap-1">
-        {Array.from({ length: 7 }).map((_, i) => (
-          <span
-            key={i}
-            className="flex h-6 flex-1 items-center justify-center rounded-md bg-[#F7F1EE] text-[10px] font-bold text-[#8A7F7A]"
-          >
-            D{i + 1}
-          </span>
-        ))}
-      </div>
+
+      {/* Her seven days, at the shape the plan really schedules them - rest
+          days included. Seven identical boxes labelled D1-D7 said nothing and
+          implied the week was flat, which it is not. */}
+      {week && week.length > 0 && (
+        <>
+          <div className="mt-3 flex gap-1">
+            {week.map((day) => (
+              <div
+                key={day.label}
+                className={`flex-1 rounded-md px-0.5 py-1 text-center ${
+                  day.chips.length ? "bg-[#F7F1EE]" : "bg-[#FBF8F6]"
+                }`}
+              >
+                <span className="block text-[9.5px] font-bold uppercase tracking-wide text-[#8A7F7A]">
+                  {day.label}
+                </span>
+                <span className="mt-1 flex items-center justify-center gap-[3px]">
+                  {day.chips.length === 0 ? (
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#E4DAD5]" />
+                  ) : (
+                    day.chips.map((chip) => (
+                      <span
+                        key={chip.text}
+                        className={`h-1.5 w-1.5 rounded-full ${TONE_DOT[chip.tone].dot}`}
+                      />
+                    ))
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+          {tones.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+              {tones.map((t) => (
+                <span key={t} className="flex items-center gap-1 text-[10px] text-[#8A8A8A]">
+                  <span className={`h-1.5 w-1.5 rounded-full ${TONE_DOT[t].dot}`} />
+                  {TONE_DOT[t].label}
+                </span>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
       <ul className="mt-3 space-y-2">
-        {PLAN_PILLARS.map((p) => (
-          <li key={p.key} className="flex items-center gap-2.5">
-            <span className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${p.chip}`}>
-              <p.icon className={`h-4 w-4 ${p.tint}`} strokeWidth={2.2} />
-            </span>
-            <span className="min-w-0 text-sm leading-snug text-[#3D3D3D]">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-[#9A9A9A]">
-                {p.label}
+        {pillarRows.map((row) => {
+          const pillar = pillarFor(row.key);
+          if (!pillar) return null;
+          return (
+            <li key={row.key} className="flex items-center gap-2.5">
+              <span
+                className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${pillar.chip}`}
+              >
+                <pillar.icon className={`h-4 w-4 ${pillar.tint}`} strokeWidth={2.2} />
               </span>
-              <span className="block">{p.task}</span>
-            </span>
-          </li>
-        ))}
+              <span className="min-w-0 text-sm leading-snug text-[#3D3D3D]">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-[#9A9A9A]">
+                  {pillar.label}
+                </span>
+                <span className="block font-semibold">{row.task}</span>
+                {row.note && (
+                  <span className="block text-xs leading-snug text-[#8A8A8A]">{row.note}</span>
+                )}
+              </span>
+            </li>
+          );
+        })}
         {firstMove && (
           <li className="flex items-center gap-2.5">
             <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-rose-100">
@@ -199,13 +303,13 @@ function WeekOneCard({
               <span className="text-[11px] font-semibold uppercase tracking-wide text-[#9A9A9A]">
                 Tonight, for {symptomLabel?.toLowerCase()}
               </span>
-              <span className="block">{firstMove.do}</span>
+              <span className="block font-semibold">{firstMove.do}</span>
             </span>
           </li>
         )}
       </ul>
       <p className="mt-3 text-[11px] leading-snug text-[#8A8A8A]">
-        Every day. Week 2 builds on what you actually did.
+        Week 2 builds on what you actually did.
       </p>
     </div>
   );
@@ -291,6 +395,8 @@ export function PaywallView({
   trackingSource,
   topProblems,
   goal,
+  weekOne,
+  week,
   userId,
 }: PaywallViewProps) {
   // Same promise as the finish board's far end (lib/planTimeline.ts) - the
@@ -485,7 +591,12 @@ export function PaywallView({
         {/* Week 1, in full, before the number. What she is buying is a plan, so
             the plan is on the screen before the price is. */}
         <div ref={weekOneRef}>
-          <WeekOneCard symptom={primarySymptom} goal={goal ?? []} />
+          <WeekOneCard
+            symptom={primarySymptom}
+            goal={goal ?? []}
+            rows={weekOne}
+            week={week}
+          />
         </div>
 
         {/* What the subscription is, in one paragraph, above the price. She is
