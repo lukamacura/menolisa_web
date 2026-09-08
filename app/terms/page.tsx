@@ -26,12 +26,19 @@ import {
  * afternoon, and each was wrong. Before editing a description here, read the
  * route it describes.
  *
- * **3. The guarantee in §11 is a contract, not marketing.** Since 2026-09-08 it
- * is the 14-day money-back guarantee (`MONEY_BACK_DAYS`) — every payment
- * refunded, no reason required — stated in the same words as the green card in
+ * **3. The guarantee in §11 is a contract, not marketing.** It is the
+ * money-back guarantee of `MONEY_BACK_DAYS` days — every payment refunded, no
+ * reason required — stated in the same words as the green card in
  * `components/PaywallView.tsx`. There is no free trial, no adherence threshold
  * and no outcome promise; §12 says what it is not. Change the card and change
  * §11 in the same commit.
+ *
+ * At the current 5 days the window closes **before the first renewal is
+ * billed** (week 2, day 7), so the only charge it can reach is the first-week
+ * charge. §11.Scope says so in as many words rather than leaving her to work
+ * it out from two numbers: cancelling, not the refund, is what stops the
+ * weekly charge, and a customer who learns that after the fact files a
+ * chargeback instead of a cancellation.
  */
 
 export const metadata: Metadata = {
@@ -648,6 +655,10 @@ export default function TermsPage() {
               <strong>Scope.</strong> This covers the charges made inside the {MONEY_BACK_DAYS}-day
               window. Weekly charges made after the window closes are not refundable except as
               required by law or at our discretion; cancel from the app to stop them (Section 10.5).
+              <strong>
+                {" "}Your first weekly renewal is charged 7 days after your first charge, which is
+                after this window closes. Cancel before then and you are not charged again.
+              </strong>
             </li>
             <li>
               <strong>Processing.</strong> Approved refunds are returned to the original payment

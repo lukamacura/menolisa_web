@@ -10,6 +10,7 @@ import { motion, useReducedMotion } from "framer-motion"
 import { useReplayableInView } from "@/hooks/useReplayableInView"
 import { HighlightedTextByRows } from "@/components/landing/HighlightedTextByRows"
 import {
+  CANCEL_BEFORE_RENEWAL_COPY,
   FIRST_WEEK_PRICE,
   MONEY_BACK_DAYS,
   PLAN_WEEKS,
@@ -48,7 +49,7 @@ export default function LandingFAQ() {
     },
     {
       question: "How much does it cost, and how does the guarantee work?",
-      answer: `Your first week is ${formatPrice(FIRST_WEEK_PRICE)}, then it's ${formatPrice(WEEKLY_PRICE)} a week until you cancel - your plan, Lisa, the tracker, all of it. Your plan runs in ${PLAN_WEEKS}-week blocks and is rebuilt from your progress at the end of each block. Cancel anytime from the app in two taps. And if it isn't for you, tell us within ${MONEY_BACK_DAYS} days and we refund everything you've paid, no reason needed.`,
+      answer: `Your first week is ${formatPrice(FIRST_WEEK_PRICE)}, then it's ${formatPrice(WEEKLY_PRICE)} a week until you cancel - your plan, Lisa, the tracker, all of it. Your plan runs in ${PLAN_WEEKS}-week blocks and is rebuilt from your progress at the end of each block. Cancel anytime from the app in two taps. ${CANCEL_BEFORE_RENEWAL_COPY} And if you want the dollar back too, tell us within ${MONEY_BACK_DAYS} days and we refund everything you've paid, no reason needed.`,
     },
   ]
 

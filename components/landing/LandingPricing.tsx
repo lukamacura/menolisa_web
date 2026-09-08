@@ -10,6 +10,9 @@ import { useReplayableInView } from "@/hooks/useReplayableInView"
 import { HighlightedTextByRows } from "@/components/landing/HighlightedTextByRows"
 import {
   FIRST_WEEK_PRICE,
+  GUARANTEE_BODY,
+  GUARANTEE_HEADLINE,
+  REFUND_FOOTNOTE,
   MONEY_BACK_DAYS,
   PLAN_BLOCKS_COPY,
   PLAN_WEEKS,
@@ -212,7 +215,7 @@ export default function LandingPricing() {
 
             <Button asChild className="btn-landing-primary w-full px-4">
               <Link href="/register" prefetch={false} className="relative z-10 flex items-center justify-center gap-2">
-                Start my {PLAN_WEEKS}-week plan - {formatPrice(FIRST_WEEK_PRICE)}
+                Start my first week - {formatPrice(FIRST_WEEK_PRICE)}
               </Link>
             </Button>
           </div>
@@ -284,11 +287,18 @@ export default function LandingPricing() {
               borderColor: "var(--primary)",
             }}
           >
+            {/* Leads on the dollar, not the refund window - same reframe as the
+                paywall's green card, and the reasoning is in lib/pricing.ts
+                above GUARANTEE_HEADLINE. The refund stays as the footnote
+                because Terms §11 is a contract. */}
             <h4 className="text-xl sm:text-2xl font-bold mb-3 text-center" style={{ color: "var(--foreground)" }}>
-              {MONEY_BACK_DAYS}-day money-back guarantee
+              {GUARANTEE_HEADLINE}
             </h4>
             <p className="text-sm sm:text-base text-center max-w-2xl mx-auto leading-relaxed" style={{ color: "var(--muted-foreground)" }}>
-              {`Start for ${formatPrice(FIRST_WEEK_PRICE)}. If it isn't for you, tell us within ${MONEY_BACK_DAYS} days and we refund everything you've paid — no reason needed. Cancel anytime from the app in two taps, no email, no phone call. We can offer this because we're sure of the plan.`}
+              {GUARANTEE_BODY}
+            </p>
+            <p className="mt-3 text-xs sm:text-sm text-center max-w-2xl mx-auto leading-relaxed" style={{ color: "var(--muted-foreground)" }}>
+              {REFUND_FOOTNOTE}
             </p>
           </div>
         </div>

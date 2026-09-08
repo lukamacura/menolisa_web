@@ -113,7 +113,7 @@ export default function PaywallPage() {
 
   if (gateLoading) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-background">
+      <main className="min-h-dvh flex items-center justify-center bg-background">
         <div className="animate-pulse text-sm text-muted-foreground">Loading…</div>
       </main>
     );
@@ -121,7 +121,7 @@ export default function PaywallPage() {
 
   return (
     <main
-      className="min-h-screen flex flex-col"
+      className="min-h-dvh flex flex-col"
       style={{
         backgroundImage:
           "linear-gradient(135deg, #FDF2F8 0%, #FCE7F3 25%, #F5D0FE 50%, #E9D5FF 75%, #FDF2F8 100%)",

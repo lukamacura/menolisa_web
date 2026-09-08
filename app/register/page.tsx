@@ -1342,6 +1342,33 @@ function useKeyboardInset() {
  * that would have followed this `pointerdown` then lands on whatever slid under
  * her finger - so blurring on a tap *at* the button is how you break the button.
  */
+/**
+ * Kills the document-level bounce for the length of the funnel.
+ *
+ * The shell is `h-dvh` inside a `min-h-dvh` body, so after the `100vh` floor
+ * came off there is nothing left for the document to scroll. iOS Safari and
+ * Android Chrome still rubber-band it anyway - drag the quiz and the whole card
+ * lifts off the top of the screen and springs back - and on Android the same
+ * drag is pull-to-refresh, which reloads `/register` and throws away every
+ * answer she has given, on a funnel that keeps its state in React and has no
+ * resume path for the quiz.
+ *
+ * Set on <html>, because that is the element the gesture targets; the inner
+ * scrollers already carry `overscroll-contain` for chaining. Restored on
+ * unmount so it never leaks onto the rest of the app, and it is a no-op on
+ * anything older than Safari 16 rather than a break.
+ */
+function useLockDocumentBounce() {
+  useEffect(() => {
+    const root = document.documentElement;
+    const previous = root.style.overscrollBehaviorY;
+    root.style.overscrollBehaviorY = "none";
+    return () => {
+      root.style.overscrollBehaviorY = previous;
+    };
+  }, []);
+}
+
 function useDismissKeyboardOnTap() {
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
@@ -2867,7 +2894,19 @@ function ToneChoiceList({
   onSelect: (id: string) => void;
 }) {
   return (
-    <div className="flex-1 flex flex-col justify-center gap-2.5 min-h-0 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
+    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
+      {/*
+        `my-auto` on the list, never `justify-center` on the scroller - the same
+        rule REWARD_SCROLL_SHELL carries, and this list was the last place in
+        the funnel still breaking it. `justify-center` centres a list taller
+        than the box, which puts its first row ABOVE scrollTop 0 where no
+        gesture can reach it. Measured 2026-09-08 on `q_menopause_type`: the
+        top option was 11px unreachable at 360x480 and 24px at 320x480 - an
+        answer she cannot see and cannot scroll to. `my-auto` centres
+        identically while there is room and collapses to nothing when there is
+        not, so a tall list simply scrolls from its own first row.
+      */}
+      <div className="my-auto w-full shrink-0 flex flex-col gap-2.5">
       {options.map((option) => {
         const isSelected = selected === option.id;
         const tone = tones[option.id];
@@ -2915,6 +2954,7 @@ function ToneChoiceList({
           </button>
         );
       })}
+      </div>
     </div>
   );
 }
@@ -3410,6 +3450,7 @@ function RegisterPageContent() {
   // Lifts the quiz's fixed CTA bar clear of the software keyboard. See the hook.
   const keyboardInset = useKeyboardInset();
   useDismissKeyboardOnTap();
+  useLockDocumentBounce();
 
   const funnelStepsSent = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -5595,7 +5636,9 @@ function RegisterPageContent() {
                   numeric screens read as a form appearing mid-quiz; together they
                   are one short detour she can finish without the page moving. */}
               {currentStep === "q_body" && (
-                <div className="flex-1 flex flex-col justify-center gap-3 sm:gap-4 min-h-0 overflow-y-auto overscroll-contain animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex-1 flex flex-col min-h-0 overflow-y-auto overscroll-contain animate-in fade-in slide-in-from-right-4 duration-300">
+                  {/* `my-auto`, not `justify-center` on the scroller - see ToneChoiceList. */}
+                  <div className="my-auto w-full shrink-0 flex flex-col gap-3 sm:gap-4">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-1">
                       Your body baseline
@@ -5715,6 +5758,7 @@ function RegisterPageContent() {
                       }
                       className="w-full accent-primary cursor-pointer"
                     />
+                  </div>
                   </div>
                 </div>
               )}
@@ -6455,7 +6499,7 @@ export default function RegisterPage() {
   return (
     <Suspense
       fallback={
-        <main className="overflow-hidden relative mx-auto p-3 sm:p-4 h-screen flex flex-col pt-20 sm:pt-24 max-w-3xl min-h-0 items-center justify-center">
+        <main className="overflow-hidden relative mx-auto p-3 sm:p-4 h-dvh flex flex-col pt-20 sm:pt-24 max-w-3xl min-h-0 items-center justify-center">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-r-transparent" />
           <p className="text-sm text-muted-foreground mt-4">Loading...</p>
         </main>

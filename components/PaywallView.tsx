@@ -16,10 +16,9 @@ import {
   Sunrise,
   X,
   Zap,
-  CreditCard,
 } from "lucide-react";
 import AnimatedCounter from "@/components/landing/AnimatedCounter";
-import { SocialProofPolaroid, SymptomOutcomeCards } from "@/components/SocialProof";
+import { SocialProofPolaroid } from "@/components/SocialProof";
 import {
   META_CURRENCY,
   PLAN_VALUE,
@@ -28,7 +27,9 @@ import {
 } from "@/lib/metaPixel";
 import {
   FIRST_WEEK_PRICE,
+  GUARANTEE_HEADLINE,
   MONEY_BACK_DAYS,
+  REFUND_FOOTNOTE,
   PLAN_BLOCKS_COPY,
   PLAN_ID,
   PLAN_WEEKS,
@@ -42,7 +43,6 @@ import { pingFunnelStep } from "@/lib/funnelClient";
 import { SERVER_FUNNEL_STEPS, type PaywallExitReason } from "@/lib/funnelSteps";
 import { HighlightSweep } from "@/components/HighlightSweep";
 import { PlanFinishBoard } from "@/components/PlanFinishBoard";
-import { PhoneShot, ShotStage, SHOT_W, SHOT_H } from "@/components/PhoneShots";
 import { getOfferPromise } from "@/lib/planTimeline";
 import { pillarFor, type WeekOneRow } from "@/lib/planPillars";
 import type { PlannerDay } from "@/components/funnel/RewardBoards";
@@ -112,20 +112,29 @@ const WEEKLY = formatPrice(WEEKLY_PRICE);
 
 // Scannable 2x2 grid, one promise per box. At the payment moment she scans
 // rather than reads, so every box is a 2-3 word headline with one support line.
+//
+// **No box states the price.** One did (`$1 today / then $4.99 a week`) until
+// 2026-09-08, when the price card was still the eighth block on the page and
+// this grid was one of the few places the figure appeared at all. The price is
+// now the second block, above the fold, and it is also on the sticky bar - so
+// that box was the third printing of one number, spending a quarter of the grid
+// on nothing new. The slot went to the objection this screen actually leaves
+// unanswered: she is paying on a web page for a product that lives in an app
+// she has not downloaded.
 const TRUST_LABELS = [
-  {
-    icon: CreditCard,
-    bg: "bg-pink-100",
-    fg: "text-pink-600",
-    title: `${FIRST_WEEK} today`,
-    sub: `then ${WEEKLY} a week, cancel anytime`,
-  },
   {
     icon: Zap,
     bg: "bg-yellow-100",
     fg: "text-yellow-700",
     title: "Instant access",
     sub: "Your plan is ready now",
+  },
+  {
+    icon: Smartphone,
+    bg: "bg-pink-100",
+    fg: "text-pink-600",
+    title: "iPhone & Android",
+    sub: "Download right after checkout",
   },
   {
     icon: Check,
@@ -317,8 +326,19 @@ function WeekOneCard({
 
 /** Once per tab: the exit question is asked at most once, whatever the trigger. */
 const EXIT_ASKED_KEY = "menolisa:paywall-exit-asked";
-/** Seconds on the paywall without a tap before the question is asked. */
-const EXIT_IDLE_MS = 30_000;
+/**
+ * She has read to the bottom and then gone still: no scroll, no tap, this long.
+ * This is the trigger that fires on a phone, and it is the only one whose
+ * meaning is unambiguous - she saw the whole offer and stopped.
+ */
+const EXIT_SETTLED_MS = 10_000;
+/**
+ * Absolute fallback: this long on the page with no interaction of any kind.
+ * Catches the visitor who never scrolls at all, which is its own answer.
+ */
+const EXIT_IDLE_MS = 45_000;
+/** Fraction of the page she has to have reached for "read to the bottom". */
+const EXIT_DEPTH = 0.85;
 
 const EXIT_OPTIONS: { reason: Exclude<PaywallExitReason, "skipped">; label: string }[] = [
   { reason: "too_expensive", label: "Too expensive" },
@@ -328,16 +348,41 @@ const EXIT_OPTIONS: { reason: Exclude<PaywallExitReason, "skipped">; label: stri
 ];
 
 /**
- * The exit question (2026-09-08). One tap, skippable, asked once per tab, on
- * either of two triggers: the cursor leaving through the top of the viewport
- * (desktop back-button intent) or 30 seconds on the page with no tap at all.
- * Any tap on the page cancels the idle timer - a woman scrolling and reading
- * is not leaving. The answer is one allowlisted token written to
- * `funnel_events` (`paywall_exit`); it is why she did not buy, never anything
- * about her health.
+ * The exit question (2026-09-08). One tap, skippable, asked once per tab. The
+ * answer is one allowlisted token written to `funnel_events` (`paywall_exit`);
+ * it is why she did not buy, never anything about her health.
+ *
+ * **It collected nothing for a week and the reason is worth keeping written
+ * down.** The first cut had two triggers: `mouseleave` through the top of the
+ * viewport, and a 30-second timer cancelled permanently by the first
+ * `pointerdown`. On a phone `mouseleave` never fires at all, and a scroll *is*
+ * a `pointerdown` - so the timer was killed by the first flick of her thumb and
+ * the only visitor who could ever reach the question was one who never touched
+ * the screen. Against 169 paywall views it fired once. Traffic here is an
+ * Instagram in-app webview; a trigger that only works with a mouse measures
+ * nobody.
+ *
+ * Three triggers now, and the middle one is the one that does the work:
+ *
+ *  - `mouseleave` through the top - desktop back-button intent. Unchanged.
+ *  - **Read to the bottom, then went still.** Once she has passed
+ *    {@link EXIT_DEPTH} of the page, {@link EXIT_SETTLED_MS} with no scroll and
+ *    no tap asks the question. This is not exit *intent*, it is exit *fact*:
+ *    she saw the whole offer, including the price and the guarantee, and
+ *    stopped. Scrolling or tapping restarts the clock, so a slow reader is
+ *    never interrupted mid-page.
+ *  - A {@link EXIT_IDLE_MS} floor with no interaction at all, for the visitor
+ *    who lands and never scrolls.
+ *
+ * `scrollRef` is the paywall's own scroll container, not the window: the page
+ * scrolls inside a flex child, so `window.scrollY` is 0 for the whole session.
  */
-function useExitQuestion(opts: { disabled: boolean; onOpen: () => void }) {
-  const { disabled, onOpen } = opts;
+function useExitQuestion(opts: {
+  disabled: boolean;
+  onOpen: () => void;
+  scrollRef: React.RefObject<HTMLElement | null>;
+}) {
+  const { disabled, onOpen, scrollRef } = opts;
   const askedRef = useRef(false);
 
   const alreadyAsked = () => {
@@ -359,31 +404,113 @@ function useExitQuestion(opts: { disabled: boolean; onOpen: () => void }) {
 
   useEffect(() => {
     if (disabled || alreadyAsked()) return;
+    const el = scrollRef.current;
     let fired = false;
+    let deep = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
     const fire = () => {
       if (fired || alreadyAsked()) return;
       fired = true;
       markAsked();
       onOpen();
     };
-    let timer: ReturnType<typeof setTimeout> | null = setTimeout(fire, EXIT_IDLE_MS);
-    const cancelIdle = () => {
+    // One timer, rearmed on every interaction. Its delay is short once she has
+    // seen the whole page and long before that, so the question follows the
+    // reading rather than interrupting it.
+    const arm = () => {
       if (timer) clearTimeout(timer);
-      timer = null;
+      timer = setTimeout(fire, deep ? EXIT_SETTLED_MS : EXIT_IDLE_MS);
+    };
+    const onScroll = () => {
+      if (el && !deep) {
+        const max = el.scrollHeight - el.clientHeight;
+        // A page shorter than its container can never be scrolled to 85% of
+        // itself; treat "nothing to scroll" as already read.
+        if (max <= 0 || (el.scrollTop + el.clientHeight) / el.scrollHeight >= EXIT_DEPTH) {
+          deep = true;
+        }
+      }
+      arm();
     };
     const onLeave = (e: MouseEvent) => {
       if (e.clientY <= 0) fire();
     };
-    document.addEventListener("pointerdown", cancelIdle, { passive: true });
+
+    arm();
+    el?.addEventListener("scroll", onScroll, { passive: true });
+    document.addEventListener("pointerdown", arm, { passive: true });
     document.addEventListener("mouseleave", onLeave);
     return () => {
-      cancelIdle();
-      document.removeEventListener("pointerdown", cancelIdle);
+      if (timer) clearTimeout(timer);
+      el?.removeEventListener("scroll", onScroll);
+      document.removeEventListener("pointerdown", arm);
       document.removeEventListener("mouseleave", onLeave);
     };
     // Mount-only by design; `disabled` flips only while a checkout is in flight.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [disabled]);
+}
+
+/**
+ * The green CTA. Rendered twice - once in the fold directly under the price,
+ * once in the sticky bar - so it is one component rather than two gradients
+ * that drift apart.
+ *
+ * Green, layered so it reads bright without failing contrast (see the git
+ * history for the contrast maths), and green because it echoes the guarantee:
+ * "safe to press".
+ *
+ * **The label is the commitment, not the deliverable.** It read "Start my
+ * {PLAN_WEEKS}-week plan" until 2026-09-08, which asks for eight weeks on a
+ * screen that is charging for one - and every 8-week cue on the page had her
+ * pricing the block (8 x {WEEKLY}) before she had read the first dollar. The
+ * {PLAN_WEEKS}-week plan is what she gets; one week for {FIRST_WEEK} is what
+ * she agrees to.
+ */
+function CheckoutButton({
+  loading,
+  onClick,
+}: {
+  loading: boolean;
+  onClick: () => void | Promise<void>;
+}) {
+  return (
+    <motion.button
+      type="button"
+      disabled={loading}
+      onClick={onClick}
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+      className="relative w-full min-h-14 py-4 font-bold text-white rounded-2xl transition-all flex items-center justify-center gap-2 text-base sm:text-base disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden group"
+      style={{
+        background:
+          "linear-gradient(180deg, rgba(134,239,172,0.45) 0%, rgba(134,239,172,0) 46%), linear-gradient(135deg, #15803D 0%, #16A34A 50%, #15803D 100%)",
+        boxShadow:
+          "0 0 28px rgba(34,197,94,0.50), 0 8px 26px rgba(21,128,61,0.38), 0 2px 8px rgba(21,128,61,0.25)",
+      }}
+    >
+      <span
+        aria-hidden
+        className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out"
+        style={{
+          background:
+            "linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.55) 50%, transparent 70%)",
+        }}
+      />
+      {loading ? (
+        <>
+          <Loader2 className="w-5 h-5 animate-spin" />
+          Redirecting to checkout&hellip;
+        </>
+      ) : (
+        <>
+          <Lock className="w-4 h-4" />
+          Start my first week &middot; {FIRST_WEEK}
+        </>
+      )}
+    </motion.button>
+  );
 }
 
 export function PaywallView({
@@ -496,9 +623,11 @@ export function PaywallView({
   const [exitOpen, setExitOpen] = useState(false);
   const [exitAnswered, setExitAnswered] = useState(false);
   const weekOneRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   useExitQuestion({
     disabled: checkoutLoading,
     onOpen: () => setExitOpen(true),
+    scrollRef,
   });
   const answerExit = useCallback(
     (reason: PaywallExitReason) => {
@@ -520,7 +649,9 @@ export function PaywallView({
   );
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pt-4 sm:pt-6 pb-[calc(168px+env(safe-area-inset-bottom))] relative [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+    <div
+      ref={scrollRef}
+      className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pt-4 sm:pt-6 pb-[calc(168px+env(safe-area-inset-bottom))] relative [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -539,33 +670,42 @@ export function PaywallView({
 
         {banner && <div className="mb-3">{banner}</div>}
 
-        {/* Social proof: stars + count */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="flex items-center justify-center gap-2 mb-2"
-        >
-          <div className="flex">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-            ))}
-          </div>
-          <span className="text-xs sm:text-sm font-semibold text-[#3D3D3D]">
-            4.9 &middot;{" "}
-            <AnimatedCounter
-              target={12800}
-              formatter={(n) => `${n.toLocaleString("en-US")}+`}
-            />{" "}
-            women
-          </span>
-        </motion.div>
+        {/* ══ The offer, above the fold ═══════════════════════════════════════
+            The order of this screen is the whole change of 2026-09-08. It used
+            to run: stars → her goal as the headline → the finish chart → the
+            full week 1 card → a paragraph on billing blocks → the price. That
+            is the right architecture for a $59 charge, where the number is the
+            objection and every block above it exists to earn it.
 
+            It is the wrong architecture for {FIRST_WEEK}. At a dollar the price
+            is not the objection, it is the strongest asset on the page - it
+            collapses "is this worth $59?" into "is this worth a coffee?" - and
+            it was the eighth block, roughly two screens down. Above the fold
+            the figure appeared exactly once: at 16px, inside the sticky button,
+            at the very bottom edge of the screen. 169 women reached this page
+            over 30 days and essentially none of them bought.
+
+            Two more things were being spent badly:
+
+            - **The headline re-told her the previous screen.** The diagnosis
+              phase opens "{name}, here's your {PLAN_WEEKS}-week plan to
+              {goal}". This screen then opened on the same promise in different
+              words, so the largest type on the close carried information she
+              already had - while the only new information on the page had no
+              type at all.
+            - **The stars sat above everything.** "4.9 · 12,800+ women" is the
+              least substantiable claim on the screen, so it was the first claim
+              she evaluated, and it taxed the guarantee 1,600px below it. It now
+              sits with the rest of the social proof, low.
+
+            So: eyebrow, the price as the headline, the price card, the button -
+            all inside the first screen. Her goal stays, as the subline, which
+            is where continuity belongs. ────────────────────────────────────── */}
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
-          className="text-center mb-2.5"
+          transition={{ delay: 0.15 }}
+          className="text-center mb-3"
         >
           {/* The bridge: she came in on a free quiz and this is the first screen
               with a price on it. One line names the switch before the headline
@@ -573,48 +713,42 @@ export function PaywallView({
           <p className="text-[13px] font-semibold uppercase tracking-[0.08em] text-[#A8899B] mb-1.5">
             Your audit is done &amp; free. This is the plan it built.
           </p>
-          {/* Leads with the outcome she picked - the same promise as the finish
-              board's far end (getOfferPromise). The full stop lives inside the
-              sweep: <HighlightSweep> is an inline-block, so anything appended
-              after it wraps to a lone dot on the next line. */}
-          <h1 className="text-[27px] sm:text-[32px] font-bold text-[#2B2627] leading-[1.1] tracking-[-0.02em] text-balance">
-            <HighlightSweep variant="green">{promise}.</HighlightSweep>
+          {/* The full stop lives inside the sweep: <HighlightSweep> is an
+              inline-block, so anything appended after it wraps to a lone dot on
+              the next line. */}
+          <h1 className="text-[30px] sm:text-[36px] font-bold text-[#2B2627] leading-[1.08] tracking-[-0.02em] text-balance">
+            Start tonight
             <br />
-            {PLAN_WEEKS} weeks from today.
+            <HighlightSweep variant="green">for {FIRST_WEEK}.</HighlightSweep>
           </h1>
-          <p className="text-sm text-[#5A5A5A] mt-1">Starts the moment you join</p>
+          <p className="mt-2 text-[15px] leading-snug text-[#5A5A5A] text-balance">
+            Your full {PLAN_WEEKS}-week plan to{" "}
+            <b className="font-semibold text-[#3D3D3D]">{promise.toLowerCase()}</b>. Then {WEEKLY}
+            /week &mdash; cancel anytime.
+          </p>
         </motion.div>
 
-        {/* Her finish line. */}
-        <PlanFinishBoard topProblems={topProblems} goal={goal} className="mb-2.5" />
+        {/* ── The price, as a number rather than a sentence ──────────────────
+            There was no large numeral anywhere on this page. The offer was
+            stated only as PRICE_LINE at 19px, which is prose - and a price
+            screen is scanned before it is read. The figure gets the size; the
+            sentence keeps the small type under it (and the screen reader).
 
-        {/* Week 1, in full, before the number. What she is buying is a plan, so
-            the plan is on the screen before the price is. */}
-        <div ref={weekOneRef}>
-          <WeekOneCard
-            symptom={primarySymptom}
-            goal={goal ?? []}
-            rows={weekOne}
-            week={week}
-          />
-        </div>
+            The guarantee row is inside this card on purpose. "then {WEEKLY}/
+            week" raises its objection - *they will keep charging me* - the
+            instant she reads it, and the answer was four blocks and ~1,600px
+            below. Objection and answer have to fit in one eyeful. The full
+            green card is still down the page for the reader who wants terms.
 
-        {/* What the subscription is, in one paragraph, above the price. She is
-            agreeing to a weekly charge for a plan that runs in blocks; the two
-            cadences are different and this is where the difference is stated. */}
-        <p className="mb-2.5 px-1 text-center text-sm leading-relaxed text-[#5A5A5A]">
-          {PLAN_BLOCKS_COPY}
-        </p>
-
-        {/* Price card - the single plan, no choice to make. The price line is
-            PRICE_LINE from lib/pricing.ts, the same string Stripe Checkout
-            prints under its pay button (CHECKOUT_SUBMIT_TEXT is built from the
-            same constants). Keep them derived; never retype a figure here. */}
+            Both figures and both sentences come from lib/pricing.ts, and Stripe
+            Checkout prints the same sentence under its pay button
+            (CHECKOUT_SUBMIT_TEXT opens on PRICE_LINE verbatim). Never retype a
+            figure here. ─────────────────────────────────────────────────────── */}
         <motion.div
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, duration: 0.3 }}
-          className="relative rounded-2xl border bg-white p-4 mb-4 shadow-sm"
+          transition={{ delay: 0.22, duration: 0.3 }}
+          className="relative rounded-2xl border bg-white px-4 pb-4 pt-5 mb-3 shadow-sm"
           style={{
             borderColor: "#ff74b1",
             backgroundImage:
@@ -626,45 +760,91 @@ export function PaywallView({
             style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ff9d6c 100%)" }}
           >
             <Sparkles className="w-3 h-3" />
-            YOUR {PLAN_WEEKS} WEEK PLAN
+            YOUR FIRST WEEK
           </span>
 
-          <div className="pt-2 text-center">
-            <p className="text-[19px] sm:text-[21px] font-extrabold text-[#2B2627] leading-snug text-balance">
-              {PRICE_LINE}
+          <p className="flex items-baseline justify-center gap-1.5">
+            <span className="text-[56px] sm:text-[64px] font-extrabold leading-none tracking-[-0.03em] text-[#15803D] tabular-nums">
+              {FIRST_WEEK}
+            </span>
+            <span className="text-left text-[13px] font-semibold leading-tight text-[#5A5A5A]">
+              for your
+              <span className="block">first week</span>
+            </span>
+          </p>
+          {/* The offer as one sentence, for a screen reader and for the rule
+              that this page and Stripe say the same words. */}
+          <p className="sr-only">
+            {PRICE_LINE} {PRICE_SUBLINE}
+          </p>
+
+          <div className="mt-3.5 flex items-baseline justify-between gap-3 rounded-xl border border-[#EFE2E8] bg-white/70 px-3 py-2 text-left">
+            <span className="text-sm text-[#5A5A5A]">
+              From week 2
+              <span className="block text-xs text-[#8A8A8A]">every week, until you cancel</span>
+            </span>
+            <span className="shrink-0 whitespace-nowrap text-base font-extrabold tabular-nums text-[#3D3D3D]">
+              {WEEKLY}
+            </span>
+          </div>
+
+          {/* The answer to the objection the row above just raised - and the
+              answer is the dollar, not the refund clause. See the block on
+              GUARANTEE_HEADLINE in lib/pricing.ts for why this stopped leading
+              with the money-back window. */}
+          <div className="mt-2 flex items-start gap-2 rounded-xl border border-green-200 bg-green-50/80 px-3 py-2.5">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-green-600" strokeWidth={2.4} />
+            <p className="text-left text-xs leading-snug text-[#3D3D3D]">
+              <b className="text-green-800">Try it for {FIRST_WEEK}.</b>{" "}
+              Don&apos;t like it? Just cancel &mdash; you&apos;re never charged again.
             </p>
-            <p className="mt-1.5 text-sm font-semibold text-[#3D3D3D]">{PRICE_SUBLINE}</p>
+          </div>
 
-            <dl className="mt-3 overflow-hidden rounded-xl border border-[#EFE2E8] bg-white/70 text-left">
-              <div className="flex items-baseline justify-between gap-3 px-3 py-2">
-                <dt className="text-sm font-semibold text-[#3D3D3D]">Today</dt>
-                <dd className="text-sm font-extrabold tabular-nums text-[#15803D]">{FIRST_WEEK}</dd>
-              </div>
-              <div className="flex items-baseline justify-between gap-3 border-t border-[#F4EAEF] px-3 py-2">
-                <dt className="text-sm text-[#5A5A5A]">
-                  From week 2
-                  <span className="block text-xs text-[#8A8A8A]">every week, until you cancel</span>
-                </dt>
-                <dd className="shrink-0 whitespace-nowrap text-sm font-extrabold tabular-nums text-[#3D3D3D]">
-                  {WEEKLY}
-                </dd>
-              </div>
-            </dl>
-
-            {/* What Stripe will actually accept, shown as the card/wallet marks
-                she recognizes. */}
-            <div className="mt-3 flex justify-center border-t border-[#F0E6E2] pt-3">
-              <Image
-                src="/badges/payment-methods.webp"
-                alt="Visa, Mastercard, Google Pay and Apple Pay accepted"
-                width={430}
-                height={140}
-                className="h-auto w-full max-w-[200px] object-contain"
-              />
-            </div>
+          {/* What Stripe will actually accept, shown as the card/wallet marks
+              she recognizes. */}
+          <div className="mt-3 flex justify-center border-t border-[#F0E6E2] pt-3">
+            <Image
+              src="/badges/payment-methods.webp"
+              alt="Visa, Mastercard, Google Pay and Apple Pay accepted"
+              width={430}
+              height={140}
+              className="h-auto w-full max-w-[200px] object-contain"
+            />
           </div>
         </motion.div>
 
+        {/* No second CTA here, and it was measured rather than assumed. One was
+            added under the price on the reasoning that the decision should be
+            makeable without scrolling - then the fold was rendered at 390x700,
+            the height of an Instagram in-app webview, and the sticky bar
+            already starts at 555px with the identical green button in it. The
+            in-fold copy landed at 571px, i.e. behind the bar on a short phone
+            and as a second identical button ~90px above it on a tall one. The
+            sticky bar *is* the in-fold CTA. */}
+
+        {/* Her finish line, in dates. Below the price now - it is proof that
+            supports the offer, not the thing that opens the screen. */}
+        <PlanFinishBoard topProblems={topProblems} goal={goal} className="mb-2.5" />
+
+        {/* Week 1, in full. The strongest block on this page that the diagnosis
+            screen did not already show her, and the proof that the
+            personalisation she was promised is real. */}
+        <div ref={weekOneRef}>
+          <WeekOneCard
+            symptom={primarySymptom}
+            goal={goal ?? []}
+            rows={weekOne}
+            week={week}
+          />
+        </div>
+
+        {/* What the subscription is, in one paragraph. It sat directly above the
+            price until 2026-09-08: the densest sentence on the screen, placed
+            as the last thing she read before the number. A comprehension task
+            never goes in front of a decision, so it is disclosure down here. */}
+        <p className="mb-4 px-1 text-center text-sm leading-relaxed text-[#5A5A5A]">
+          {PLAN_BLOCKS_COPY}
+        </p>
         {/* What's included - reminds her what she's paying for at the decision point */}
         <div
           className="rounded-2xl border p-4 mb-3"
@@ -698,39 +878,16 @@ export function PaywallView({
             ))}
           </ul>
 
-          {/* The three promises as screens that exist. */}
-          <div className="mt-3.5 -mx-1 overflow-hidden rounded-xl ring-1 ring-yellow-300/50">
-            <ShotStage className="h-40" fadeFrom="from-[#FEFAEC]">
-              <PhoneShot
-                src="/screenshots/screen1.webp"
-                alt="Day 1 of your plan in the MenoLisa app"
-                rotate={-8}
-                className="w-[30%] -mr-3 mt-3"
-                width={SHOT_W}
-                height={SHOT_H}
-              />
-              <PhoneShot
-                src="/screenshots/screen3.webp"
-                alt="Your habits in the MenoLisa app"
-                rotate={0}
-                delay={0.1}
-                className="w-[32%] z-10"
-                width={SHOT_W}
-                height={SHOT_H}
-              />
-              <PhoneShot
-                src="/screenshots/screen4.webp"
-                alt="Streaks and badges in the MenoLisa app"
-                rotate={8}
-                delay={0.18}
-                className="w-[30%] -ml-3 mt-3"
-                width={SHOT_W}
-                height={SHOT_H}
-              />
-            </ShotStage>
-          </div>
-          <p className="mt-2 text-center text-[11px] text-[#8A7F6B] leading-snug">
-            Real screens from the app &mdash; yours the moment you join.
+          {/* A <ShotStage /> of screen1 / screen3 / screen4 closed this card
+              until 2026-09-08. All three are slides of <PlanHeroCarousel /> on
+              the diagnosis screen she was looking at seconds earlier, at a size
+              where they can actually be read - so this was the same three
+              images a second time, tilted to ~30% width behind a fade, on the
+              screen whose job is to close rather than to pitch. The list above
+              stays because Lisa and the tracker are named nowhere else in the
+              funnel; the pictures went. */}
+          <p className="mt-3 text-center text-[11px] text-[#8A7F6B] leading-snug">
+            All of it in the app, yours the moment you join.
           </p>
         </div>
 
@@ -759,35 +916,53 @@ export function PaywallView({
           })}
         </div>
 
-        {/* The money-back guarantee (2026-09-08). Terms §11 states it in the
-            same words; keep the two in step. */}
+        {/* The guarantee (2026-09-08, second pass). It leads on the dollar and
+            on cancelling; the money-back window is the footnote. Terms §11 is
+            still the contract behind that footnote and still states it in the
+            same words - the refund was demoted here, never removed, and the
+            two have to move together. Why the reframe: lib/pricing.ts, the
+            block above GUARANTEE_HEADLINE. */}
         <div
           className="rounded-2xl border-2 border-green-300 bg-green-50 p-4 mb-4"
           style={{ boxShadow: "0 0 0 2px rgba(22,163,74,0.12), 0 8px 28px rgba(22,163,74,0.12)" }}
         >
           <div className="flex flex-col items-center text-center">
             <ShieldCheck className="w-12 h-12 text-green-600 shrink-0 mb-2" />
-            <h2 className="text-base font-bold text-green-800 mb-2">
-              {MONEY_BACK_DAYS}-day money-back guarantee
-            </h2>
+            <h2 className="text-xl font-bold text-green-800 mb-2">{GUARANTEE_HEADLINE}</h2>
             <p className="text-sm text-[#3D3D3D] leading-relaxed">
-              Start for <b>{FIRST_WEEK}</b>. If it isn&apos;t for you, tell us within{" "}
-              {MONEY_BACK_DAYS} days and we refund <b className="text-green-700">everything</b>{" "}
-              you&apos;ve paid. No reason needed.
+              <b className="text-green-700">{FIRST_WEEK} is all you risk.</b>{" "}
+              If it isn&apos;t for you, cancel in two taps from the app before week 2 and you are
+              never charged again. No email, no phone call, no questions.
             </p>
             <div className="w-16 h-px bg-green-300 my-3" />
-            <p className="text-xs text-[#5A5A5A] leading-snug">
-              We can offer this because we&apos;re sure of the plan. Cancel in two taps from the
-              app &mdash; no email, no phone call, no questions.
-            </p>
+            <p className="text-xs text-[#5A5A5A] leading-snug">{REFUND_FOOTNOTE}</p>
           </div>
         </div>
 
-        {/* Social proof + outcome cards, reused from the /register diagnosis
-            screen (components/SocialProof.tsx) so the paywall carries the same
-            proof even when reached directly. */}
+        {/* Social proof, low on the page rather than above the headline.
+            <SymptomOutcomeCards /> went with it: those before/after cards are
+            `getSymptomTransforms` on her own symptoms, which is exactly what
+            the diagnosis screen renders one screen earlier from the same
+            function. A close that re-runs the previous screen's pitch buys no
+            belief and adds scroll between her and the button. The polaroid
+            stays - it rotates through different women, so a second viewing is
+            new proof rather than the same proof. */}
+        <div className="mb-2 flex items-center justify-center gap-2">
+          <div className="flex">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+            ))}
+          </div>
+          <span className="text-xs sm:text-sm font-semibold text-[#3D3D3D]">
+            4.9 &middot;{" "}
+            <AnimatedCounter
+              target={12800}
+              formatter={(n) => `${n.toLocaleString("en-US")}+`}
+            />{" "}
+            women
+          </span>
+        </div>
         <SocialProofPolaroid />
-        <SymptomOutcomeCards topProblems={topProblems} />
 
         {/* What actually happens when she taps the button. The last unanswered
             objection here is mechanical: she is paying on a web page for a
@@ -841,48 +1016,12 @@ export function PaywallView({
       {/* Sticky CTA bar - fixed to the bottom on every viewport */}
       <div className="fixed bottom-0 inset-x-0 z-40 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/85 px-4 pt-3 pb-[calc(10px+env(safe-area-inset-bottom))]">
         <div className="max-w-md mx-auto w-full">
-          <motion.button
-            type="button"
-            disabled={checkoutLoading}
-            onClick={handleCheckoutClick}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            // Green, layered so it reads bright without failing contrast (see
-            // the git history for the contrast maths). Green echoes the
-            // guarantee card above: "safe to press".
-            className="relative w-full min-h-14 py-4 font-bold text-white rounded-2xl transition-all flex items-center justify-center gap-2 text-base sm:text-base disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden group"
-            style={{
-              background:
-                "linear-gradient(180deg, rgba(134,239,172,0.45) 0%, rgba(134,239,172,0) 46%), linear-gradient(135deg, #15803D 0%, #16A34A 50%, #15803D 100%)",
-              boxShadow:
-                "0 0 28px rgba(34,197,94,0.50), 0 8px 26px rgba(21,128,61,0.38), 0 2px 8px rgba(21,128,61,0.25)",
-            }}
-          >
-            <span
-              aria-hidden
-              className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out"
-              style={{
-                background:
-                  "linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.55) 50%, transparent 70%)",
-              }}
-            />
-            {checkoutLoading ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                Redirecting to checkout&hellip;
-              </>
-            ) : (
-              <>
-                <Lock className="w-4 h-4" />
-                Start my {PLAN_WEEKS}-week plan &middot; {FIRST_WEEK}
-              </>
-            )}
-          </motion.button>
+          <CheckoutButton loading={checkoutLoading} onClick={handleCheckoutClick} />
           {/* The terms she is agreeing to, on the element she agrees with. The
               price card scrolls away and this bar does not, so the renewal is
               disclosed on the screen she is looking at when she taps. */}
           <p className="text-[11px] sm:text-xs text-[#5A5A5A] text-center mt-2 leading-relaxed">
-            {FIRST_WEEK} today &middot; then {WEEKLY}/week &middot;{" "}
+            {PRICE_LINE}{" "}
             <a href="/terms#subscription" className="underline">
               Cancel anytime
             </a>{" "}
@@ -1012,4 +1151,15 @@ export function DisputedAccountBanner() {
  *    first-charge date. The card is charged $1 at checkout.
  *  - **The browser `Purchase`.** Meta's Purchase fires from the Stripe webhook
  *    only, at the amount collected. See lib/metaPixel.ts.
+ *  - **The duplicate phone shots and the duplicate before/after cards.** Both
+ *    are the diagnosis screen's, one screen earlier, from the same sources
+ *    (`PLAN_HERO_SLIDES`, `getSymptomTransforms`). A close is not a second
+ *    pitch: re-running the previous screen buys no belief and adds scroll
+ *    between her and the button.
+ *  - **A price figure in the trust grid.** The price is above the fold and on
+ *    the sticky bar; a third printing spent a quarter of the grid on nothing
+ *    new.
+ *  - **"Start my {PLAN_WEEKS}-week plan" as the button.** The label states the
+ *    commitment now - one week - because the deliverable's length is not what
+ *    she is agreeing to pay for.
  */

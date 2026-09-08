@@ -33,7 +33,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Key Design Decisions
 - **Passwordless auth only** — 6-digit email OTP via Supabase (`signInWithOtp` + `verifyOtp`). No passwords, no magic links. Shared `<OtpForm />` (`components/auth/OtpForm.tsx`) is the only auth UI, and `/login` is now its only caller.
-- **The paywall sells a weekly subscription: $1 for the first week, then $4.99/week** (2026-09-08). Stripe price `$4.99` weekly plus the `OuChKp3c` coupon ($3.99 off, once) applied on every Checkout Session; no trial, no promo-code box. The *plan* still runs in 8-week blocks and is rebuilt at the end of each; the *bill* is weekly, and nothing may conflate the two. **The guarantee is a 14-day money-back** (`MONEY_BACK_DAYS`): every payment refunded, no reason required, Terms §11. See "The weekly plan" in §4.
+- **The paywall sells a weekly subscription: $1 for the first week, then $4.99/week** (2026-09-08). Stripe price `$4.99` weekly plus the `OuChKp3c` coupon ($3.99 off, once) applied on every Checkout Session; no trial, no promo-code box. The *plan* still runs in 8-week blocks and is rebuilt at the end of each; the *bill* is weekly, and nothing may conflate the two. **The guarantee is presented as the dollar, not as the refund** (2026-09-08): *Try MenoLisa for $1 — that's all you risk; cancel in two taps before week 2 and you are never charged again.* The `MONEY_BACK_DAYS` refund (14 → 5 the same day) still exists, is still Terms §11, and is still on every surface — as the **footnote** under that headline (`REFUND_FOOTNOTE`). It was demoted, never removed. Why: at 5 days the window closes **before week 2 is billed** (day 7), so the only charge it can ever refund is the $1, and leading on a refund process for a dollar introduces the possibility of failure at the moment belief is highest. Copy lives in `lib/pricing.ts` (`GUARANTEE_HEADLINE` / `GUARANTEE_BODY` / `GUARANTEE_INLINE` / `REFUND_FOOTNOTE`); the block above them carries the full argument. See "The weekly plan" in §4.
 - **The `/register` funnel never asks for an email** — it signs her in anonymously and lets Stripe collect the address at checkout. See "Anonymous accounts" below.
 - **Dual auth paths** — cookie (web) and Bearer token (mobile) coexist in every API route via `getAuthenticatedUser()`
 - **Verbatim KB-first RAG** — AI chat tries to return exact knowledge base content before falling back to LLM generation; this ensures medically accurate, consistent answers
@@ -689,7 +689,7 @@ cancelled. The paywall now sells **$1 for the first week, then $4.99/week**:
   `CHECKOUT_SUBMIT_TEXT`.
 - **`lib/pricing.ts` is the only place a figure lives:** `WEEKLY_PRICE`,
   `FIRST_WEEK_DISCOUNT`, `FIRST_WEEK_PRICE`, `FIRST_WEEK_COUPON_ID`,
-  `PLAN_WEEKS`, `MONEY_BACK_DAYS`, and the three copy strings `PRICE_LINE`,
+  `PLAN_WEEKS`, `MONEY_BACK_DAYS`, `CANCEL_BEFORE_RENEWAL_COPY`, and the copy strings `PRICE_LINE`,
   `PRICE_SUBLINE`, `PLAN_BLOCKS_COPY`. **The paywall's price line and Stripe's
   submit text are built from the same constants and must match word for
   word.** `/terms`, the landing page and the FAQ import them.
@@ -723,6 +723,70 @@ cancelled. The paywall now sells **$1 for the first week, then $4.99/week**:
   to see the plan first / I don't pay for apps / skipped → `funnel_events`
   `paywall_exit` with `detail`. The route allowlists the token; never widen it.
 - Migration: `scripts/sql/2026-09-08-weekly-plan.sql` (applied 2026-09-08).
+
+### The paywall's reading order (2026-09-08, second pass)
+
+The screen was architected for the $59 up-front charge and was never re-ordered
+when the offer became $1. Under $59 the right shape is build value → justify →
+reveal the price late → reverse the risk, and that is what it did: the price was
+the **eighth block**, roughly two screens down. Under $1 the price is not the
+objection, it is the best asset on the page — it collapses "is this worth $59?"
+into "is this worth a coffee?" — and it was the one thing being hidden. Over 30
+days 169 women reached this screen and essentially none bought.
+
+Rules that came out of the re-order, all of them about *sequence*, not styling:
+
+- **The price is above the fold, as a numeral.** Verified by render at 390x700
+  (an Instagram in-app webview): headline at 86px, the `$1` at 233px, the sticky
+  CTA bar at 555px. There had been no large numeral on the page at all — the
+  offer existed only as `PRICE_LINE` at 19px, which is prose, and a price screen
+  is scanned before it is read.
+- **The sticky bar *is* the in-fold CTA — do not add a second one.** A copy was
+  added under the price card on the reasoning that she should be able to decide
+  without scrolling, then measured: it landed at 571px, i.e. *behind* the bar on
+  a short phone and as a second identical green button ~90px above it on a tall
+  one.
+- **The headline sells the price, not the promise.** Her goal is the subline.
+  The diagnosis screen one tap earlier opens `"{name}, here's your 8-week plan
+  to {goal}"`; repeating it here spent the largest type on the close on
+  information she already had, while the only new information on the page had no
+  type at all.
+- **The ask is one week, everywhere it is stated.** The button says "Start my
+  first week", not "Start my 8-week plan", and `PRICE_LINE` no longer opens on
+  the plan length. Eight weeks is what she *gets*; a week for $1 is what she
+  *commits to*, and every 8-week cue had her pricing 8 × $4.99 before reading
+  the first dollar.
+- **The guarantee sits inside the price card.** "then $4.99/week" raises its
+  objection the instant it is read and the answer was ~1,600px below. The full
+  green card stays down the page for the reader who wants terms.
+- **Disclosure never goes in front of the decision.** `PLAN_BLOCKS_COPY` is the
+  densest sentence on the screen and was the last thing read before the number;
+  it is now below the price.
+- **A close is not a second pitch.** The duplicate phone shots
+  (`PLAN_HERO_SLIDES`) and the duplicate before/after cards
+  (`getSymptomTransforms`) are both the diagnosis screen's, from the same
+  sources, one screen earlier. They are gone. `diagnosis → paywall` was already
+  losing 20% (211 → 169), and re-running the previous screen buys no belief
+  while adding scroll between her and the button.
+- **The risk reversal is the dollar, not the refund clause.** "Try it for $1 —
+  don't like it? Just cancel" replaced "5-day money-back guarantee" as the
+  headline on both the inline row and the green card. A refund promise asks her
+  to imagine emailing us and to picture the product failing; "cancel" is two
+  taps, and at $1 there is nothing left to reverse. The refund is the footnote
+  under it, which is proportionate to the one charge it can reach.
+- **No price figure in the trust grid**, and **the stars are low on the page**.
+  "4.9 · 12,800+ women" is the least substantiable claim on the screen; first
+  position made it the first claim she evaluated and taxed the guarantee below
+  it.
+
+**The exit question could not fire on a phone, and that is why it collected
+nothing.** Its triggers were `mouseleave` through the top (desktop only) and a
+30s timer cancelled permanently by the first `pointerdown` — and on mobile a
+scroll *is* a `pointerdown`, so the first flick of her thumb killed it. One row
+against 169 paywall views. It now also fires on **read-to-the-bottom then went
+still** (past `EXIT_DEPTH`, then `EXIT_SETTLED_MS` with no scroll and no tap),
+which is exit *fact* rather than exit intent. Any new trigger has to work in an
+in-app webview or it measures nobody.
 
 ### Access control (who gets in)
 
@@ -1049,8 +1113,10 @@ for advertising — which was false. Three rules came out of it:
   misrepresentation about money.
 - **The guarantee is a contract.** Terms §11 must stay true to the green card
   in `components/PaywallView.tsx`. Since 2026-09-08 both say the same thing:
-  14-day money-back — every payment refunded, no reason required, once per
-  person. §12 says what it is not (no outcome promise). There is no free trial
+  the $1 try, with cancelling as the exit and the 5-day money-back as the
+  footnote beneath it (`GUARANTEE_HEADLINE` / `REFUND_FOOTNOTE`). §11 is the
+  contract behind that footnote: the refund is demoted on the marketing
+  surfaces, never removed, and the card and §11 still move together. §12 says what it is not (no outcome promise). There is no free trial
   and no adherence threshold. The landing page (`LandingPricing`,
   `LandingFAQ`) carries the same framing. `MAX_BACKFILL_DAYS` in
   `POST /api/plan/complete` stays at 7 on the plan's own account — the next
@@ -1463,7 +1529,7 @@ the bank.** Full contract in §4 "The weekly plan". Touched: `lib/pricing.ts`
 `fulfillCheckout` (server-only `Purchase` at the amount charged,
 `purchase_completed` / `subscription_canceled` / `payment_failed` rows, trial
 and `Subscribe` code deleted), `PaywallView` (rewritten: week-1 card, the
-blocks paragraph, `PRICE_LINE`, 14-day guarantee, exit question; countdown and
+blocks paragraph, `PRICE_LINE`, guarantee, exit question; countdown and
 anchor gone), `/register` (download copy; funnel helpers moved to
 `lib/funnelClient.ts`; the name step went optional and came back required the
 same day, now with an always-present disabled-until-typed Continue), `lib/resend.ts` (one

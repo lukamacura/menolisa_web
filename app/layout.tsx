@@ -80,7 +80,24 @@ export default function RootLayout({
         */}
         <link rel="preconnect" href="https://connect.facebook.net" crossOrigin="" />
       </head>
-      <body className="min-h-screen flex flex-col font-sans text-foreground bg-background">
+      {/*
+        `min-h-dvh`, never `min-h-screen`.
+
+        `min-h-screen` is `100vh`, and on every phone `100vh` is the LARGE
+        viewport - the height the page would have if the URL bar were hidden.
+        The /register funnel sizes its own shell in `100dvh` (the visible
+        height), so a body floored at `100vh` reserves a strip exactly as tall
+        as the toolbar underneath a shell that already fits the screen. Measured
+        2026-09-08: 88px of document scroll on 375x557, 100px on an iPhone 13,
+        112px on a Pixel 7 - on all 23 screens of a quiz whose entire premise is
+        that it does not move. She drags, the card slides, the toolbar collapses
+        under her thumb, and the layout resizes mid-question.
+
+        `100dvh` is the visible height on a phone and identical to `100vh`
+        everywhere else, so this floors the page at exactly the screen and
+        nothing anywhere else changes.
+      */}
+      <body className="min-h-dvh flex flex-col font-sans text-foreground bg-background">
         <MetaPixel />
         <ConditionalNavbar />
 
