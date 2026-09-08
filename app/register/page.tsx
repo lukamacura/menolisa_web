@@ -5922,18 +5922,34 @@ function RegisterPageContent() {
                       Tap it — you can add the rest next.
                     </p>
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 -mr-1 pb-1 [scrollbar-width:thin] scroll-smooth">
-                    {/* Three across on every width, and a 4:3 image rather than a
-                        square below sm. Nine tiles two-across is five rows of ~200px:
-                        on a 375x667 phone four of the nine were above the fold and the
-                        other five lived inside this div's own scroll, which the page
-                        shell (h-dvh, overflow-hidden) does not extend - a swipe
-                        starting on the header or the CTA bar moves nothing. That is
-                        the funnel's landing screen reading as frozen on the screen
-                        that takes 100% of paid traffic. Three rows of ~120px fit
-                        whole, and the scroller stays as a safety net for the shortest
-                        viewports rather than as the layout. */}
-                    <div className="flex flex-wrap justify-center gap-2">
+                  {/* Nine tiles, three by three, sized to the card rather than to
+                      their width. Until 2026-09-08 the tile was width-driven
+                      (a third of the row, 4:3 image, 40px footer), which on a
+                      375x667 phone left the bottom third of the card empty on
+                      the screen that takes 100% of paid traffic, and on taller
+                      phones left half of it. The grid now takes the whole
+                      remaining height of the card - `grid-rows-3` is
+                      `minmax(0, 1fr)` per row, the tile is `min-h-0` so a row
+                      can shrink, and the image is `flex-1` so it absorbs
+                      whatever the footer does not need. Nothing scrolls: nine
+                      tiles fit by construction, whatever the viewport.
+
+                      Two caps keep "fill the height" from becoming absurd. The
+                      wrapper is a size container, so the grid can measure
+                      itself against it: `max-h-[190cqw]` lets a phone fill
+                      the card (a 390x844 needs ~1.9x the width) but stops a
+                      freak tall-narrow viewport stretching a tile past ~1.85:1,
+                      and `max-w-[100cqh]` stops a wide desktop card turning a
+                      square illustration into a letterbox.
+                      `my-auto`/`mx-auto` centre the grid when a cap bites.
+                      `overflow-y-auto` remains only as the net for a viewport
+                      shorter than the grid's `min-h-[17.5rem]` (three 5.5rem
+                      rows plus gaps) - a landscape phone - where scrolling
+                      beats an unreadable tile. The floor is on the grid, not
+                      the tile: a grid track never grows for an item's
+                      min-height, the item just overflows it. */}
+                  <div className="flex-1 min-h-0 flex flex-col overflow-y-auto overscroll-contain [container-type:size] [scrollbar-width:thin]">
+                    <div className="grid grid-cols-3 grid-rows-3 gap-2 w-full h-full min-h-[17.5rem] max-h-[190cqw] max-w-[100cqh] my-auto mx-auto shrink-0">
                       {PROBLEM_OPTIONS.map((option) => {
                         // Her *primary* is the first key, not any selected key:
                         // coming back with Back onto a screen where three tiles
@@ -5944,18 +5960,18 @@ function RegisterPageContent() {
                             key={option.id}
                             type="button"
                             onClick={() => selectAndAdvance(() => selectPrimaryProblem(option.id))}
-                            className={`flex flex-col w-[calc(33.333%-0.334rem)] rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer outline-none focus:outline-none ${
+                            className={`flex flex-col min-h-0 min-w-0 rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer outline-none focus:outline-none ${
                               isSelected
                                 ? "ring-2 ring-inset ring-primary shadow-lg shadow-primary/30"
                                 : "hover:opacity-90"
                             }`}
                           >
-                            <div className="relative aspect-4/3 sm:aspect-square">
+                            <div className="relative flex-1 min-h-0">
                               <Image
                                 src={option.image}
                                 alt={option.label}
                                 fill
-                                sizes="33vw"
+                                sizes="(min-width: 640px) 33vw, 40vw"
                                 // This is the funnel's landing screen, so these
                                 // nine tiles are the LCP. Without `priority`
                                 // next/image ships them `loading="lazy"` —
@@ -5963,7 +5979,17 @@ function RegisterPageContent() {
                                 // paint is a grid of labels over empty boxes on a
                                 // phone.
                                 priority
-                                className="object-cover"
+                                // `contain`, not `cover`: these illustrations sit
+                                // on a transparent ground the same colour as the
+                                // card, so a taller-than-wide box adds cream
+                                // around the drawing rather than cropping it.
+                                // The 1.15 scale spends part of that ground:
+                                // measured on all nine 460px masters, the
+                                // tightest horizontal margin is 7% a side
+                                // (insomnia, joint_pain) and the tightest top
+                                // is 10% (hot_flashes), so 1.15 is the largest
+                                // factor that clips nothing but transparency.
+                                className="object-contain scale-[1.15]"
                               />
                               {isSelected && <div className="absolute inset-0 bg-primary/15" />}
                               {isSelected && (
@@ -5973,7 +5999,7 @@ function RegisterPageContent() {
                               )}
                             </div>
                             <div className={`${TILE_FOOTER_BASE} ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
-                              <span className={TILE_LABEL}>{option.label}</span>
+                              <span className="font-semibold text-xs sm:text-sm leading-tight text-white min-w-0">{option.label}</span>
                             </div>
                           </button>
                         );
