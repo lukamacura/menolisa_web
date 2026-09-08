@@ -24,46 +24,21 @@ import { writeSubscription } from "@/lib/subscriptionWrite";
 import { sendWelcomeEmail, sendAdminNotification } from "@/lib/resend";
 import { generatePlan, markPlanGenerating } from "@/lib/plan/generate";
 import { PLAN_WEEKS } from "@/lib/pricing";
-
-/** Stripe's `trial_end` as ISO, or null when the subscription never had one. */
-export function trialEndIso(subscription: Stripe.Subscription | null): string | null {
-  return subscription?.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null;
-}
-
-/**
- * Stamp `first_paid_at` once, ever. Returns true to the caller that set it.
- *
- * The same conditional-update claim as `claimFulfillment`, for a different
- * side effect: the Meta `Purchase` on a trial's first paid invoice, and the
- * "your free trial became a plan" email. Both must fire exactly once per
- * customer and `invoice.payment_succeeded` is retried by Stripe, so a
- * read-then-write is not enough. A non-trial checkout claims it at
- * fulfillment (money moved at the card), so the invoice handler that follows
- * finds it taken and stays quiet.
- */
-export async function claimFirstPayment(
-  supabaseAdmin: SupabaseClient,
-  userId: string,
-  atIso: string
-): Promise<boolean> {
-  const { data, error } = await supabaseAdmin
-    .from("user_trials")
-    .update({ first_paid_at: atIso })
-    .eq("user_id", userId)
-    .is("first_paid_at", null)
-    .select("user_id");
-  if (error) {
-    console.error("Fulfil: could not claim first payment:", error);
-    return false;
-  }
-  return !!data && data.length > 0;
-}
+import {
+  funnelSessionFromMetadata,
+  isTestFromMetadata,
+  logFunnelEvent,
+} from "@/lib/funnelEvents";
 
 /**
- * Values `plan_type` can hold. `plan8w` — $59 per 8 weeks — is the only plan
- * sold, and there are no legacy subscribers on anything else.
+ * Values `plan_type` can hold. `weekly` — $4.99 a week, first week $1 — is
+ * the plan sold since 2026-09-08. `plan8w` ($59 per 8 weeks) is what the two
+ * historical rows carry; nothing sells it and its price is archived.
  */
-export type PlanType = "plan8w";
+export type PlanType = "plan8w" | "weekly";
+
+/** One billing period of the weekly plan, for the fail-closed fallback below. */
+const BILLING_PERIOD_DAYS = 7;
 
 export function customerIdOf(
   customer: Stripe.Subscription["customer"] | Stripe.Invoice["customer"]
@@ -90,12 +65,14 @@ export function subscriptionPeriodEndIso(subscription: Stripe.Subscription): str
  * mark the account paid.
  *
  * getAccountState() fails closed on a paid row with no cutoff, so writing null
- * here would lock out someone who just paid. One plan length from the event is
- * the honest guess: it is exactly what the price bills, and the next renewal
- * webhook overwrites it with Stripe's real date anyway.
+ * here would lock out someone who just paid. One billing period from the event
+ * is the honest guess: it is exactly what the price bills, and the next
+ * renewal webhook overwrites it with Stripe's real date anyway. A legacy
+ * 8-week row gets the 8 weeks.
  */
-export function fallbackPeriodEndIso(fromSec: number): string {
-  return new Date(fromSec * 1000 + PLAN_WEEKS * 7 * 86_400_000).toISOString();
+export function fallbackPeriodEndIso(fromSec: number, planType: PlanType | null = "weekly"): string {
+  const days = planType === "plan8w" ? PLAN_WEEKS * 7 : BILLING_PERIOD_DAYS;
+  return new Date(fromSec * 1000 + days * 86_400_000).toISOString();
 }
 
 /** Derive billing period + amount (cents) from the subscription's first price. */
@@ -106,7 +83,11 @@ export function planFromSubscription(
   const interval = price?.recurring?.interval ?? null;
   const intervalCount = price?.recurring?.interval_count ?? 1;
   const plan_type: PlanType | null =
-    interval === "week" && intervalCount === PLAN_WEEKS ? "plan8w" : null;
+    interval === "week" && intervalCount === 1
+      ? "weekly"
+      : interval === "week" && intervalCount === PLAN_WEEKS
+        ? "plan8w"
+        : null;
   const plan_amount = typeof price?.unit_amount === "number" ? price.unit_amount : null;
   return { plan_type, plan_amount };
 }
@@ -284,7 +265,7 @@ export async function claimFulfillment(
 async function sendFulfillmentEmails(
   supabaseAdmin: SupabaseClient,
   userId: string,
-  trialEndsAt: string | null
+  opts: { amountPaid: number; nextChargeAt: string | null }
 ): Promise<void> {
   try {
     const { data: authData } = await supabaseAdmin.auth.admin.getUserById(userId);
@@ -299,11 +280,12 @@ async function sendFulfillmentEmails(
 
     await Promise.all([
       sendWelcomeEmail(email, profile?.name ?? null, {
-        trialEndsAt: trialEndsAt ? new Date(trialEndsAt) : null,
+        amountPaid: opts.amountPaid,
+        nextChargeAt: opts.nextChargeAt ? new Date(opts.nextChargeAt) : null,
       }),
       sendAdminNotification(
-        trialEndsAt ? "NEW FREE TRIAL" : "NEW PURCHASE",
-        `<p>${trialEndsAt ? "New trial" : "New subscriber"}: <strong>${email}</strong>${profile?.name ? ` (${profile.name})` : ""}</p><p>Started: ${new Date().toUTCString()}</p>${trialEndsAt ? `<p>First charge: ${new Date(trialEndsAt).toUTCString()}</p>` : ""}`
+        "NEW PURCHASE",
+        `<p>New subscriber: <strong>${email}</strong>${profile?.name ? ` (${profile.name})` : ""}</p><p>Paid: $${opts.amountPaid.toFixed(2)}</p><p>Started: ${new Date().toUTCString()}</p>${opts.nextChargeAt ? `<p>Next charge: ${new Date(opts.nextChargeAt).toUTCString()}</p>` : ""}`
       ),
     ]);
   } catch (e) {
@@ -322,19 +304,13 @@ export type FulfillResult = {
   planType: PlanType | null;
   planAmount: number | null;
   subscriptionEndsAt: string | null;
-  /** True when the subscription is in its free trial — nothing was collected. */
-  trialing: boolean;
-  /** Stripe's `trial_end`, when the subscription started with a trial. */
-  trialEndsAt: string | null;
+  /** What the checkout collected, in USD — the $1 first week. */
+  amountPaid: number;
 };
 
 /**
  * Bind the email, write the subscription, then — once — start the plan and send
  * the welcome email. Safe to call twice on the same session.
- *
- * A free-trial checkout runs the identical path: the plan is generated and the
- * welcome email sent the moment the card is saved, because the week is free
- * precisely so she can use the plan before paying for it.
  */
 export async function fulfillCheckout(opts: {
   supabaseAdmin: SupabaseClient;
@@ -380,15 +356,6 @@ export async function fulfillCheckout(opts: {
   let subscription_canceled = false;
   let plan_type: PlanType | null = null;
   let plan_amount: number | null = null;
-  // During the free trial Stripe reports `current_period_end === trial_end`, so
-  // `subscription_ends_at` lands on the first charge date with no special case
-  // — and getAccountState() needs none. `trial_ends_at` is kept beside it so
-  // the renewal cron and the account card can tell "a free trial" from "eight
-  // weeks paid" when the two dates coincide.
-  const trial_ends_at = trialEndIso(subscription);
-  const trialing =
-    subscription?.status === "trialing" ||
-    (!!trial_ends_at && new Date(trial_ends_at).getTime() > atSec * 1000);
 
   if (subscription) {
     subscription_ends_at = subscriptionPeriodEndIso(subscription);
@@ -405,25 +372,23 @@ export async function fulfillCheckout(opts: {
   if (subscription) extras.stripe_subscription_id = subscription.id;
   if (plan_type) extras.plan_type = plan_type;
   if (plan_amount !== null) extras.plan_amount = plan_amount;
-  if (trial_ends_at) extras.trial_ends_at = trial_ends_at;
-  if (session.metadata?.offer_variant) extras.offer_variant = session.metadata.offer_variant;
 
   const result = await writeSubscription(supabaseAdmin, {
     userId,
     provider: "stripe",
     active: true,
-    expiresAt: subscription_ends_at ?? fallbackPeriodEndIso(atSec),
+    expiresAt: subscription_ends_at ?? fallbackPeriodEndIso(atSec, plan_type),
     canceled: subscription_canceled,
     extras,
   });
 
+  const amountPaid = (session.amount_total ?? 0) / 100;
   const base = {
     userId,
     planType: plan_type,
     planAmount: plan_amount,
     subscriptionEndsAt: subscription_ends_at,
-    trialing,
-    trialEndsAt: trial_ends_at,
+    amountPaid,
   };
 
   if (!result.written) {
@@ -433,16 +398,20 @@ export async function fulfillCheckout(opts: {
     return { ...base, written: false, fulfilled: false };
   }
 
-  // Money moved at the card: this checkout is her first payment. A trial
-  // session collects nothing (`amount_total` 0) and leaves the claim for the
-  // first paid invoice a week later — see `claimFirstPayment`.
-  if ((session.amount_total ?? 0) > 0) {
-    await claimFirstPayment(supabaseAdmin, userId, new Date(atSec * 1000).toISOString());
-  }
-
   if (!(await claimFulfillment(supabaseAdmin, userId))) {
     return { ...base, written: true, fulfilled: false };
   }
+
+  // `purchase_completed`, once per checkout, keyed to the funnel visit the
+  // Checkout Session carried. Behind the claim so the webhook and the
+  // success-screen fallback cannot write it twice.
+  after(() =>
+    logFunnelEvent(supabaseAdmin, {
+      step: "purchase_completed",
+      sessionId: funnelSessionFromMetadata(session.metadata),
+      isTest: isTestFromMetadata(session.metadata),
+    })
+  );
 
   // Her 8-week plan. The row is claimed synchronously so the app can show
   // "building your plan" the moment she opens it; the slow LLM call runs after
@@ -450,7 +419,12 @@ export async function fulfillCheckout(opts: {
   // it.
   await markPlanGenerating(userId);
   after(() => generatePlan(userId));
-  after(() => sendFulfillmentEmails(supabaseAdmin, userId, trialing ? trial_ends_at : null));
+  after(() =>
+    sendFulfillmentEmails(supabaseAdmin, userId, {
+      amountPaid,
+      nextChargeAt: subscription_ends_at,
+    })
+  );
 
   return { ...base, written: true, fulfilled: true };
 }

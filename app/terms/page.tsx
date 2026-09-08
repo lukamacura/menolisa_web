@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import {
-  PLAN_PRICE,
+  FIRST_WEEK_PRICE,
+  MONEY_BACK_DAYS,
   PLAN_WEEKS,
-  RENEWAL_NOTICE_DAYS,
-  TRIAL_NOTICE_DAYS,
-  TRIAL_DAYS,
+  WEEKLY_PRICE,
   formatPrice,
 } from "@/lib/pricing";
 
@@ -27,19 +26,18 @@ import {
  * afternoon, and each was wrong. Before editing a description here, read the
  * route it describes.
  *
- * **3. The guarantee in §12 is a contract, not marketing.** Since 2026-09-04 it
- * *is* the free trial in §10.7 — cancel before the first charge, pay nothing —
- * stated in the same words as the card in `components/PaywallView.tsx`. There
- * is no adherence threshold, no claim process and no refund behind it any more:
- * the 8-week refund guarantee, its 90% measurement and the
- * contemporaneous-recording rule that disclosed `MAX_BACKFILL_DAYS` were removed
- * that day. Change the card and change §12 in the same commit.
+ * **3. The guarantee in §11 is a contract, not marketing.** Since 2026-09-08 it
+ * is the 14-day money-back guarantee (`MONEY_BACK_DAYS`) — every payment
+ * refunded, no reason required — stated in the same words as the green card in
+ * `components/PaywallView.tsx`. There is no free trial, no adherence threshold
+ * and no outcome promise; §12 says what it is not. Change the card and change
+ * §11 in the same commit.
  */
 
 export const metadata: Metadata = {
   title: "Terms and Conditions | MenoLisa",
   description:
-    "The terms governing your use of MenoLisa, including subscription, free trial, cancellation and refund terms.",
+    "The terms governing your use of MenoLisa, including subscription, cancellation and refund terms.",
 };
 
 const LAST_UPDATED = "September 4, 2026";
@@ -78,10 +76,10 @@ export default function TermsPage() {
               activity and confirm you are medically cleared to do it (Section 5).
             </li>
             <li>
-              <strong>Your subscription renews automatically</strong> at {formatPrice(PLAN_PRICE)}{" "}
-              every {PLAN_WEEKS} weeks until you cancel (Section 10). The free trial requires a
-              payment method and converts to a paid subscription at {formatPrice(PLAN_PRICE)} when
-              the trial ends unless you cancel first (Section 10.7).
+              <strong>Your subscription renews automatically</strong>: {formatPrice(FIRST_WEEK_PRICE)}{" "}
+              for the first week, then {formatPrice(WEEKLY_PRICE)} every week until you cancel
+              (Section 10). Cancel anytime from the app. {MONEY_BACK_DAYS}-day money-back guarantee
+              (Section 11).
             </li>
             <li>
               <strong>Disputes go to individual arbitration</strong> and you waive class actions and
@@ -220,7 +218,7 @@ export default function TermsPage() {
             You agree to provide accurate, current, and complete information, and to keep it
             accurate. Your plan is generated from your answers; inaccurate answers produce a plan that
             may be unsuitable or unsafe for you. You may hold only one account. Creating multiple
-            accounts to obtain repeated introductory pricing, repeated refunds, or repeated free trials is
+            accounts to obtain repeated introductory pricing or repeated refunds is
             a material breach of these Terms.
           </p>
         </section>
@@ -494,14 +492,13 @@ export default function TermsPage() {
               other harmful code;
             </li>
             <li>
-              Create multiple accounts to obtain repeated introductory pricing, free trials, or
-              refunds; or
+              Create multiple accounts to obtain repeated introductory pricing or refunds; or
             </li>
             <li>Harass, threaten, or abuse our staff, including in support correspondence.</li>
           </ul>
           <p>
             We may investigate suspected violations and may suspend or terminate access under Section
-            21. We may also refuse a refund request, or a free trial, that is the product of a
+            21. We may also refuse a refund request, or introductory pricing, that is the product of a
             violation of this Section.
           </p>
         </section>
@@ -534,15 +531,18 @@ export default function TermsPage() {
         <section className="mb-8">
           <h2 className="text-2xl font-semibold mb-4">10. Subscriptions, Pricing, and Automatic Renewal</h2>
 
-          <h3 className="text-xl font-semibold mb-3">10.1 What you are buying</h3>
+          <h3 id="subscription" className="text-xl font-semibold mb-3">10.1 What you are buying</h3>
           <p>
-            Access to the Service requires a paid subscription. The subscription is{" "}
-            <strong>{formatPrice(PLAN_PRICE)} per {PLAN_WEEKS}-week period</strong> unless a
-            different price is clearly displayed to you at checkout. Where checkout offers a free
-            trial, your payment method is saved at the time of purchase and{" "}
-            <strong>first charged when the trial ends</strong> (Section 10.7); otherwise it is
-            charged <strong>in full at the time of purchase</strong>. Prices are in U.S. dollars and
-            exclude any tax, which is added where applicable.
+            Access to the Service requires a paid subscription, billed <strong>weekly</strong>. The
+            price is <strong>{formatPrice(WEEKLY_PRICE)} per week</strong>, and a one-time discount
+            makes your <strong>first week {formatPrice(FIRST_WEEK_PRICE)}</strong>, unless a different
+            price is clearly displayed to you at checkout. Your payment method is charged{" "}
+            <strong>{formatPrice(FIRST_WEEK_PRICE)} at the time of purchase</strong> and then{" "}
+            {formatPrice(WEEKLY_PRICE)} every seven days. Your plan runs in {PLAN_WEEKS}-week blocks
+            and is rebuilt from your progress at the end of each block; the billing period and the
+            plan block are different lengths and this Section governs the billing. Prices are in
+            U.S. dollars and exclude any tax, which is added where applicable. There is no free
+            trial.
           </p>
 
           <h3 className="text-xl font-semibold mb-3 mt-6">10.2 Automatic renewal — please read</h3>
@@ -553,12 +553,13 @@ export default function TermsPage() {
                 <strong>What recurs:</strong> your MenoLisa subscription.
               </li>
               <li>
-                <strong>How often:</strong> automatically every {PLAN_WEEKS} weeks ({PLAN_WEEKS * 7}{" "}
-                days), at the end of each period.
+                <strong>How often:</strong> automatically every week (7 days), at the end of each
+                weekly period.
               </li>
               <li>
-                <strong>How much:</strong> {formatPrice(PLAN_PRICE)} per period, charged to the
+                <strong>How much:</strong> {formatPrice(WEEKLY_PRICE)} per week, charged to the
                 payment method on file, unless we have told you in advance that the price has changed.
+                The first week is {formatPrice(FIRST_WEEK_PRICE)}; the discount applies once.
               </li>
               <li>
                 <strong>For how long:</strong> until you cancel. There is no fixed end date.
@@ -568,10 +569,9 @@ export default function TermsPage() {
                 taps, with no phone call and no need to contact us (Section 10.5).
               </li>
               <li>
-                <strong>Reminder:</strong> we email you approximately {RENEWAL_NOTICE_DAYS} days
-                before each renewal charge, to the address on your account. It remains your
-                responsibility to cancel before the renewal date; a reminder that is delayed, filtered,
-                or not delivered does not by itself entitle you to a refund.
+                <strong>No reminder before each weekly charge.</strong> Your welcome email states
+                the weekly amount and your first renewal date. It is your responsibility to cancel
+                before a renewal date if you do not want to be charged for the next week.
               </li>
             </ul>
           </div>
@@ -603,9 +603,9 @@ export default function TermsPage() {
           <h3 className="text-xl font-semibold mb-3 mt-6">10.5 Cancellation</h3>
           <p>
             <strong>You may cancel at any time</strong>, for any reason, from{" "}
-            <strong>Account settings</strong> on the website — the same place you manage your
+            <strong>Account</strong> in the app or on the website — the same place you manage your
             subscription — or by emailing <Mail /> from the address on your account. Cancellation is
-            self-service and takes effect at the <strong>end of your current paid period</strong>.
+            self-service and takes effect at the <strong>end of your current paid week</strong>.
           </p>
           <p>
             You keep full access until that period ends, and you are not charged again. Cancelling does
@@ -620,74 +620,34 @@ export default function TermsPage() {
             properly owed for periods already provided.
           </p>
 
-          <h3 id="free-trial" className="text-xl font-semibold mb-3 mt-6">
-            10.7 Free trial
-          </h3>
-          <div className="rounded-lg border-2 border-foreground/20 bg-muted p-5">
-            <p className="mb-2 font-semibold">Where checkout offers a free trial, these are its terms.</p>
-            <ul className="mb-0">
-              <li>
-                <strong>Length:</strong> {TRIAL_DAYS} days, starting when you complete checkout.
-                Nothing is charged during the trial.
-              </li>
-              <li>
-                <strong>Payment method required:</strong> you must provide a valid payment method to
-                start the trial. Stripe may place a temporary authorization on it to confirm it is
-                valid; that is not a charge.
-              </li>
-              <li>
-                <strong>What happens when it ends:</strong> unless you cancel before the trial ends,
-                your subscription begins automatically and your payment method is charged{" "}
-                <strong>{formatPrice(PLAN_PRICE)}</strong> for the first {PLAN_WEEKS}-week period, and
-                then {formatPrice(PLAN_PRICE)} every {PLAN_WEEKS} weeks under Section 10.2. The exact
-                date and amount of the first charge are shown at checkout, on the screen after it, and
-                in your welcome email.
-              </li>
-              <li>
-                <strong>Reminder:</strong> we email you approximately {TRIAL_NOTICE_DAYS} days before
-                the first charge, to the address on your account. As in Section 10.2, it remains your
-                responsibility to cancel in time.
-              </li>
-              <li>
-                <strong>How to cancel:</strong> at any time during the trial from{" "}
-                <strong>Account settings</strong> (Section 10.5). Cancelling during the trial ends the
-                trial at its scheduled end date and you are not charged.
-              </li>
-              <li>
-                <strong>One per person:</strong> the free trial is for first-time subscribers. An
-                account or person that has previously held a MenoLisa subscription, on any billing
-                platform, is charged at the time of purchase and does not receive a second trial.
-              </li>
-              <li>
-                <strong>Refunds and the guarantee:</strong> nothing is charged during the trial, so
-                there is nothing to refund from it. Cancelling before the trial ends is the 100%
-                Guarantee in Section 12 — you are simply never charged. The refund window in Section
-                11 runs from the date of your first charge.
-              </li>
-            </ul>
-          </div>
         </section>
 
         <section className="mb-8">
-          <h2 className="text-2xl font-semibold mb-4">11. Refund Policy (7 Days)</h2>
+          <h2 id="money-back" className="text-2xl font-semibold mb-4">11. {MONEY_BACK_DAYS}-Day Money-Back Guarantee</h2>
+          <p>
+            <strong>
+              If MenoLisa is not for you, tell us within {MONEY_BACK_DAYS} days of your first charge and
+              we refund everything you have paid.
+            </strong>
+          </p>
           <p>
             Except where a longer or unconditional right is required by the law that applies to you,
-            these are our refund terms:
+            these are the terms:
           </p>
           <ul>
             <li>
-              <strong>Window.</strong> You may request a full refund of your{" "}
-              <strong>first</strong> subscription payment within <strong>seven (7) days</strong> of
-              the date that payment was made.
+              <strong>Window.</strong> You may request a full refund of <strong>every subscription
+              payment made so far</strong> within <strong>{MONEY_BACK_DAYS} days</strong> of the
+              date of your first charge (the {formatPrice(FIRST_WEEK_PRICE)} first-week charge).
             </li>
             <li>
               <strong>How.</strong> Email <Mail /> from the email address on your account, stating
               that you are requesting a refund. No reason is required.
             </li>
             <li>
-              <strong>Scope.</strong> This applies to your initial purchase only, not to renewal
-              charges. Renewal charges are not refundable except as required by law
-              or at our discretion.
+              <strong>Scope.</strong> This covers the charges made inside the {MONEY_BACK_DAYS}-day
+              window. Weekly charges made after the window closes are not refundable except as
+              required by law or at our discretion; cancel from the app to stop them (Section 10.5).
             </li>
             <li>
               <strong>Processing.</strong> Approved refunds are returned to the original payment
@@ -705,44 +665,18 @@ export default function TermsPage() {
         </section>
 
         <section className="mb-8">
-          <h2 className="text-2xl font-semibold mb-4">12. The 100% Guarantee</h2>
+          <h2 className="text-2xl font-semibold mb-4">12. What the Guarantee Is Not</h2>
           <p>
-            <strong>
-              Try MenoLisa free for {TRIAL_DAYS} days. If it is not for you, cancel before your first
-              charge and you pay nothing.
-            </strong>
+            The {MONEY_BACK_DAYS}-day money-back guarantee in Section 11 is the whole of the guarantee,
+            and Section 11 states its complete terms. Where it and any advertisement differ, Section
+            11 governs.
           </p>
           <p>
-            That is the whole of the guarantee, and this Section states its complete terms. Where it
-            and any advertisement differ, this Section governs.
-          </p>
-
-          <h3 className="text-xl font-semibold mb-3 mt-6">12.1 What it is</h3>
-          <p>
-            The guarantee is the free trial described in Section 10.7, stated as a promise: for the
-            length of the trial you have the full Service — your plan, Lisa, and symptom tracking —
-            and nothing is charged. Cancelling at any time before the trial ends, from Account
-            settings (Section 10.5), means your payment method is never charged. There is nothing to
-            claim, nothing to submit, and no reason is required.
-          </p>
-
-          <h3 className="text-xl font-semibold mb-3 mt-6">12.2 Who it applies to</h3>
-          <p>
-            Anyone whose checkout offered the free trial — first-time subscribers, once per person, as
-            Section 10.7 sets out. A returning subscriber is charged at the time of purchase and is
-            covered by Section 11 rather than this Section.
-          </p>
-
-          <h3 className="text-xl font-semibold mb-3 mt-6">12.3 What it is not</h3>
-          <p>
-            It is <strong>not a refund promise</strong>. Once the trial has ended and your payment
-            method has been charged, the only refund terms are those in Section 11 and any right you
-            have under applicable law. It is also <strong>not a promise about outcomes</strong>.
-            MenoLisa is a wellness product, not a medical treatment. We do not promise, and this
-            guarantee does not create, any health, clinical, symptom, weight, fitness, or other
-            outcome, and no statement in it should be read as a representation that the Service will
-            improve your health. Individual results vary and depend on many factors outside our
-            control. Section 4 applies in full.
+            It is <strong>not a promise about outcomes</strong>. MenoLisa is a wellness product, not
+            a medical treatment. We do not promise, and the guarantee does not create, any health,
+            clinical, symptom, weight, fitness, or other outcome, and no statement in it should be
+            read as a representation that the Service will improve your health. Individual results
+            vary and depend on many factors outside our control. Section 4 applies in full.
           </p>
           <p>
             <strong>Nothing in this Section limits any right you have under consumer law that cannot
@@ -961,7 +895,7 @@ export default function TermsPage() {
           </p>
           <p>
             We may suspend or terminate your access, with or without notice, if you materially breach
-            these Terms, if we reasonably suspect fraud or abuse (including refund or free-trial abuse),
+            these Terms, if we reasonably suspect fraud or abuse (including refund or introductory-pricing abuse),
             if you fail to pay, if your account has been inactive for an extended period, if required
             by law, or if we discontinue the Service. Where we discontinue the Service entirely, we
             will give reasonable notice and refund the unused portion of any period you have paid for.

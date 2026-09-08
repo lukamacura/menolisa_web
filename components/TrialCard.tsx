@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { AlertTriangle, Clock, CreditCard } from "lucide-react";
+import { Clock, CreditCard } from "lucide-react";
 import type { AccountState } from "@/lib/getAccountState";
-import { PLAN_PRICE, PLAN_WEEKS, formatPrice } from "@/lib/pricing";
+import { WEEKLY_PRICE, formatPrice } from "@/lib/pricing";
 
 export type { AccountState };
 
@@ -21,12 +21,6 @@ export interface TrialCardProps {
   subscriptionCanceled?: boolean;
   paymentFailedAt?: Date | null;
   isThirdPartyProvider?: boolean;
-  /**
-   * The free trial is running: `trial.end` is the first charge, not a renewal.
-   * "Renews Sep 11" to a woman who has paid nothing reads as a charge she
-   * did not agree to; "Free trial ends Sep 11 · then $59" is the fact.
-   */
-  inTrial?: boolean;
 }
 
 function formatCountdown(remaining: { d: number; h: number; m: number }): string {
@@ -134,7 +128,6 @@ export function TrialCard({
   subscriptionCanceled = false,
   paymentFailedAt = null,
   isThirdPartyProvider = false,
-  inTrial = false,
 }: TrialCardProps) {
   const [now, setNow] = useState(new Date());
   const [isPortalLoading, setIsPortalLoading] = useState(false);
@@ -227,12 +220,8 @@ export function TrialCard({
           {!when
             ? "Your subscription is active"
             : state === "canceling"
-              ? inTrial
-                ? `Free trial ends ${when} · you won't be charged`
-                : `Access until ${when}`
-              : inTrial
-                ? `Free trial ends ${when} · then ${formatPrice(PLAN_PRICE)} for ${PLAN_WEEKS} weeks`
-                : `Renews ${when}`}
+              ? `Access until ${when}`
+              : `Renews ${when} · ${formatPrice(WEEKLY_PRICE)}/week`}
         </p>
       );
     }
@@ -282,9 +271,7 @@ export function TrialCard({
                     ? "days of access left"
                     : state === "past_due"
                       ? "days to update card"
-                      : inTrial
-                        ? "days of free trial left"
-                        : "days until renewal"}
+                      : "days until renewal"}
                 </span>
               </div>
             </div>

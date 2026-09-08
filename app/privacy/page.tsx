@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { RENEWAL_NOTICE_DAYS } from "@/lib/pricing";
 
 /**
  * Privacy Policy.
@@ -124,9 +123,11 @@ export default function PrivacyPage() {
             <li>
               <strong>Email address</strong> — used to sign you in and to send account and billing
               messages. <strong>Note how you give it to us:</strong> the questionnaire on our website
-              does not ask for an email address. Your account is created without one, and the address
+              does not require an email address. Your account is created without one, and the address
               you enter on the payment page becomes the address on your account. If you sign up in the
-              mobile app, you give it directly.
+              mobile app, you give it directly. The results screen offers an optional box to save your
+              results and plan; an address typed there is stored with your profile as a contact
+              address and is not used to sign you in.
             </li>
             <li>
               <strong>First name</strong> — if you tell us what Lisa should call you.
@@ -285,13 +286,13 @@ export default function PrivacyPage() {
             </li>
             <li>
               <strong>To process payments</strong> — take payment, manage renewals and cancellations,
-              and handle free trials, refunds, and payment disputes.
+              and handle refunds and payment disputes.
             </li>
             <li>
-              <strong>To communicate with you</strong> — sign-in codes, a welcome message, payment and
-              renewal notices (we email you about {RENEWAL_NOTICE_DAYS} days before each renewal charge), replies to
-              your support requests, and important service or policy announcements. These are
-              service messages and are not marketing.
+              <strong>To communicate with you</strong> — sign-in codes, a welcome message stating what
+              you paid and what you will be charged each week, payment notices, replies to your
+              support requests, and important service or policy announcements. These are service
+              messages and are not marketing.
             </li>
             <li>
               <strong>To send reminders you turned on</strong> — push notifications, which you can

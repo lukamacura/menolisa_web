@@ -97,14 +97,12 @@ const loadHowLisaRuns = () =>
   import("@/components/HowLisaRuns").then((m) => ({ default: m.HowLisaRuns }));
 const loadSocialProofPolaroid = () =>
   import("@/components/SocialProof").then((m) => ({ default: m.SocialProofPolaroid }));
-const loadMetaPurchaseTracker = () => import("@/components/MetaPurchaseTracker");
 
 const PaywallView = dynamic(loadPaywallView);
 const PlanFinishBoard = dynamic(loadPlanFinishBoard);
 const PlanStage = dynamic(loadPlanStage);
 const HowLisaRuns = dynamic(loadHowLisaRuns);
 const SocialProofPolaroid = dynamic(loadSocialProofPolaroid);
-const MetaPurchaseTracker = dynamic(loadMetaPurchaseTracker);
 
 /**
  * Pull the chunks for the screens that come after `phase`.
@@ -137,21 +135,18 @@ function warmPhaseChunks(phase: Phase, stepIndex: number) {
     void loadPaywallView();
     void loadPlanFinishBoard();
   }
-  if (phase === "paywall") {
-    void loadMetaPurchaseTracker();
-  }
 }
 import { PLAN_PILLARS } from "@/lib/planPillars";
 import {
+  FIRST_WEEK_PRICE,
   PLAN_ID,
-  PLAN_PRICE,
   PLAN_WEEKS,
-  TRIAL_DAYS,
+  WEEKLY_PRICE,
   formatChargeDate,
   formatPrice,
-  isTrialOffer,
-  trialEndDate,
 } from "@/lib/pricing";
+import { funnelSessionId, isQaSession, pingFunnelStep } from "@/lib/funnelClient";
+import { ResultsEmailCapture } from "@/components/funnel/ResultsEmailCapture";
 import { getSymptomTransforms } from "@/lib/testimonials";
 import { getOfferPromise } from "@/lib/planTimeline";
 import {
@@ -716,7 +711,7 @@ const TILE_LABEL = "font-semibold text-[11px] leading-tight text-white min-w-0";
 
 // ─── The calculating screen ─────────────────────────────────────────────────
 // This loader is not a spinner, it is the receipt for the price. She is about to
-// be asked $59 for a plan whose entire claim is that it was built from her 13
+// be asked for money for a plan whose entire claim is that it was built from her 13
 // answers, and the only evidence she will ever get that any computation happened
 // is the time this screen takes and what it says while it runs.
 //
@@ -1244,85 +1239,9 @@ function clearFunnelResume() {
  * on 2026-08-17. "Which screen leaks" is a product question, answered in our own
  * database.
  */
-const FUNNEL_SESSION_KEY = "menolisa:funnel-session";
-
-/**
- * A random id for this visit. Not an account and not a device id: it lives in
- * `sessionStorage`, so it dies with the tab and never links two visits.
- *
- * Returns null when storage or `randomUUID` is unavailable rather than falling
- * back to something weaker — a measurement that cannot identify a visit is not
- * worth a row, and in-app webviews are exactly where a half-working id would
- * quietly corrupt the drop-off curve this table exists to draw.
- */
-function funnelSessionId(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const existing = window.sessionStorage.getItem(FUNNEL_SESSION_KEY);
-    if (existing) return existing;
-    if (typeof crypto?.randomUUID !== "function") return null;
-    const id = crypto.randomUUID();
-    window.sessionStorage.setItem(FUNNEL_SESSION_KEY, id);
-    return id;
-  } catch {
-    // Private mode, storage disabled, quota. Losing the measurement costs a row;
-    // throwing here would cost her the page.
-    return null;
-  }
-}
-
-const FUNNEL_QA_KEY = "menolisa:funnel-qa";
-
-/**
- * True when this visit is a QA run, which must leave no trace in the curve.
- *
- * Set by `?qa=1` on any load of `/register`, then remembered for the rest of the
- * tab. Remembering is the whole point: the funnel is one page and the parameter
- * does not survive the phase machine, and the Stripe round-trip returns to
- * `?phase=download` — so re-reading the URL on every ping would stop skipping
- * halfway through the run and record the half that matters most.
- *
- * Scope is `funnel_events` only. Suppressing Meta is Global Privacy Control's
- * job (`lib/privacySignals.ts`), already wired to all five call sites; a second
- * mechanism aimed at the same events is how one of them ends up unguarded.
- */
-function isQaSession(): boolean {
-  if (typeof window === "undefined") return false;
-  const fromUrl = new URLSearchParams(window.location.search).get("qa") === "1";
-  try {
-    if (fromUrl) {
-      window.sessionStorage.setItem(FUNNEL_QA_KEY, "1");
-      return true;
-    }
-    return window.sessionStorage.getItem(FUNNEL_QA_KEY) === "1";
-  } catch {
-    // Private mode, storage disabled, quota. The URL alone still marks the run
-    // for as long as the parameter is on screen.
-    return fromUrl;
-  }
-}
-
-/**
- * Fire and forget. `keepalive` so a ping started as she taps through survives
- * the render that follows it, and every failure is swallowed: this is
- * instrumentation, and instrumentation must never be visible to the woman being
- * instrumented.
- */
-function pingFunnelStep(step: string, stepIndex: number) {
-  if (isQaSession()) return;
-  const sessionId = funnelSessionId();
-  if (!sessionId) return;
-  try {
-    void fetch("/api/funnel-step", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session_id: sessionId, step, step_index: stepIndex }),
-      keepalive: true,
-    }).catch(() => {});
-  } catch {
-    // Ignored, deliberately.
-  }
-}
+// `funnelSessionId()`, `isQaSession()` and `pingFunnelStep()` live in
+// lib/funnelClient.ts since 2026-09-08, shared with the paywall (the exit
+// question) and both checkout callers.
 
 /**
  * Where each screen sits in the funnel, as one monotonic sequence, so the
@@ -1601,12 +1520,11 @@ const DIAGNOSIS_CTA_LABEL = "I'm ready to feel better";
 // that now leads straight to the card.
 //
 // It answers the only question live at this moment, which is not "is it worth
-// $59" - the paywall states the price in full one tap later, in its own
-// headline - but "does this tap cost me anything". The ad promised a free
-// trial and this is the last screen before the offer, so it says so plainly
-// and hands over.
+// it" - the paywall states the price in full one tap later, in its own
+// headline - but "what does this cost me". This is the last screen before the
+// offer, so it says so plainly and hands over.
 function getDiagnosisForwardCopy(): { sub: React.ReactNode } {
-  return { sub: `Free for ${TRIAL_DAYS} days \u00b7 cancel anytime` };
+  return { sub: `${formatPrice(FIRST_WEEK_PRICE)} for your first week \u00b7 cancel anytime` };
 }
 
 
@@ -4060,8 +3978,10 @@ function RegisterPageContent() {
           return relaxationStyle !== "";
         case "q5_hrt":
           return hrtStatus !== "";
+        // Optional since 2026-09-08 — the Skip is the CTA label when the box
+        // is empty. See the step's own note.
         case "q8_name":
-          return firstName.trim().length > 0;
+          return true;
         default:
           return false;
       }
@@ -4278,7 +4198,10 @@ function RegisterPageContent() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ quizAnswers: quizPayload }),
+        body: JSON.stringify({
+          quizAnswers: quizPayload,
+          ...(isQaSession() ? { is_test: true } : {}),
+        }),
       });
 
       if (!res.ok) {
@@ -4399,18 +4322,11 @@ function RegisterPageContent() {
    */
   const [checkoutEmail, setCheckoutEmail] = useState<string | null>(null);
   /**
-   * Whether this landing is a free trial rather than a purchase — `offer` is
-   * stamped on the success URL by `create-checkout` from the same variable
-   * that set `trial_period_days`, so the screen and the charge agree.
+   * When the first $4.99 lands — Stripe's period end, read back through
+   * `/api/account/status` once fulfillment has written it. Null until then;
+   * the copy falls back to "in a week".
    */
-  const isTrialLanding = isTrialOffer(searchParams.get("offer"));
-  /**
-   * The first-charge date printed on the trial landing. Stripe's own
-   * `trial_end` when fulfillment has already written it (read back through
-   * `/api/account/status`), else the same arithmetic the paywall used — the
-   * two only differ if checkout straddled local midnight.
-   */
-  const [trialChargeDate, setTrialChargeDate] = useState<string | null>(null);
+  const [nextChargeDate, setNextChargeDate] = useState<string | null>(null);
 
   useEffect(() => {
     if (phase !== "download") return;
@@ -4443,37 +4359,34 @@ function RegisterPageContent() {
       }
       if (!cancelled) setCheckoutEmail(email);
 
-      if (isTrialLanding) {
-        let chargeAt = trialEndDate();
-        try {
-          const res = await fetch("/api/account/status", {
-            credentials: "include",
-            cache: "no-store",
-          });
-          const json = res.ok ? ((await res.json()) as { ends_at?: string | null }) : null;
-          const ends = json?.ends_at ? new Date(json.ends_at) : null;
-          // Trust the server date only if it looks like *this* trial: in the
-          // future and no further out than the free trial plus a day. A stale
-          // period end on a merged account would otherwise print last year.
-          if (
-            ends &&
-            !Number.isNaN(ends.getTime()) &&
-            ends.getTime() > Date.now() &&
-            ends.getTime() <= Date.now() + (TRIAL_DAYS + 1) * 86_400_000
-          ) {
-            chargeAt = ends;
-          }
-        } catch {
-          // Fall through to the client-side date.
+      try {
+        const res = await fetch("/api/account/status", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        const json = res.ok ? ((await res.json()) as { ends_at?: string | null }) : null;
+        const ends = json?.ends_at ? new Date(json.ends_at) : null;
+        // Trust the server date only if it looks like *this* period: in the
+        // future and no further out than a week plus a day. A stale period
+        // end on a merged account would otherwise print last year.
+        if (
+          ends &&
+          !Number.isNaN(ends.getTime()) &&
+          ends.getTime() > Date.now() &&
+          ends.getTime() <= Date.now() + 8 * 86_400_000 &&
+          !cancelled
+        ) {
+          setNextChargeDate(formatChargeDate(ends));
         }
-        if (!cancelled) setTrialChargeDate(formatChargeDate(chargeAt));
+      } catch {
+        // The copy reads fine without a date.
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [phase, searchParams, isTrialLanding]);
+  }, [phase, searchParams]);
 
   /** Back to question 1. The funnel's only recovery move — there is no state to
    *  restore, so restarting is both the simplest repair and the honest one.
@@ -4576,7 +4489,7 @@ function RegisterPageContent() {
       // So a missing session means the funnel is not in the state it looks like
       // it is in — a wiped storage mid-visit, an expired token. Restart the quiz
       // rather than minting a blank anonymous account, which is what this used
-      // to do: that account has no profile, and the plan she paid $59 for would
+      // to do: that account has no profile, and the plan she paid for would
       // come out generic. Two minutes of quiz beats the wrong plan.
       // (If she is really an existing customer, the email she types at Stripe
       // collides in the webhook and the subscription is merged onto her real
@@ -4599,6 +4512,10 @@ function RegisterPageContent() {
           return_origin: origin || undefined,
           // Dedup key for the server-side InitiateCheckout the route fires.
           meta_event_id: metaEventId,
+          // The funnel visit, so the webhook's purchase_completed row joins the
+          // screens she walked; and the QA flag, so a test buy stays a test.
+          funnel_session_id: funnelSessionId() ?? undefined,
+          ...(isQaSession() ? { is_test: true } : {}),
         }),
         credentials: "include",
       });
@@ -4966,6 +4883,16 @@ function RegisterPageContent() {
                 goal={goal}
                 className="mt-3.5"
               />
+            </motion.div>
+
+            {/* Optional email, after the payoff rather than between her and
+                it. Not her login — see the component. */}
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1.6 }}
+            >
+              <ResultsEmailCapture className="mt-3.5" />
             </motion.div>
 
           </motion.div>
@@ -5409,29 +5336,25 @@ function RegisterPageContent() {
         </div>
       )}
 
-      {/* Paywall Phase. The card is saved at Stripe and first charged
-          TRIAL_DAYS later. The funnel's account is minutes old, so it is
-          trial-eligible — `create-checkout` re-checks the account's history
-          and is the side that decides what Stripe is told. */}
+      {/* Paywall Phase. $1 today at Stripe, $4.99/week from week 2 —
+          `create-checkout` applies the coupon and is the side that decides
+          what Stripe is told. */}
       {phase === "paywall" && (
         <PaywallView
           onCheckout={handleStartCheckout}
           checkoutLoading={checkoutLoading}
           error={error}
           onBack={() => setPhase("diagnosis")}
-          firstName={firstName}
           trackingSource="register"
           topProblems={topProblems}
           goal={goal}
           userId={userId}
-          trialEligible
         />
       )}
 
       {/* Download Phase - redirect users to mobile app */}
       {phase === "download" && (
         <div className="flex-1 flex flex-col min-h-0 overflow-y-auto -mx-4 sm:-mx-6 px-4 sm:px-6 py-4 sm:py-6">
-          <MetaPurchaseTracker />
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -5442,18 +5365,10 @@ function RegisterPageContent() {
               {firstName.trim() ? `${firstName.trim()}, you're all set!` : "You're all set!"}
             </h2>
             <p className="text-sm sm:text-base text-[#5A5A5A] mb-5 leading-relaxed">
-              {isTrialLanding ? (
-                <>
-                  Your free trial has started. Your first charge, if you keep the plan, is{" "}
-                  {formatPrice(PLAN_PRICE)}
-                  {trialChargeDate ? ` on ${trialChargeDate}` : ` in ${TRIAL_DAYS} days`}. Your{" "}
-                  {PLAN_WEEKS}-week plan is being built right now &mdash; download the app to start it.
-                </>
-              ) : (
-                <>
-                  Your {PLAN_WEEKS}-week plan is being built right now. Download the app to start it.
-                </>
-              )}
+              Your first week is paid ({formatPrice(FIRST_WEEK_PRICE)}). From{" "}
+              {nextChargeDate ?? "next week"} it&apos;s {formatPrice(WEEKLY_PRICE)}/week &mdash; cancel
+              anytime from the app. Your {PLAN_WEEKS}-week plan is being built right now; download the
+              app to start it.
             </p>
 
             {/* How she gets in, stated before the store badges rather than left
@@ -6338,7 +6253,8 @@ function RegisterPageContent() {
                 <div className="flex-1 flex flex-col justify-center space-y-3 sm:space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div>
                     <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-1">
-                      What should Lisa call you?
+                      What should Lisa call you?{" "}
+                      <span className="text-sm font-medium text-muted-foreground">(optional)</span>
                     </h2>
                     <p className="text-sm sm:text-base text-muted-foreground">
                       First name only - it&apos;s what Lisa calls you from here on.
@@ -6394,15 +6310,25 @@ function RegisterPageContent() {
                       </div>
                     )}
                   </div>
-                  {/* No skip on this step, deliberately. Her name is a required
-                      answer like the other twelve: it carries the greetings, the
-                      reward boards and the Meta `fn` match parameter, and an
-                      opt-out on the last screen before the account is minted
-                      would be taken by people who would otherwise have typed
-                      four letters. The 22% this screen was losing was the
-                      keyboard covering the Continue button (see the input
-                      above), not the question — fix the mechanism, keep the
-                      question. */}
+                  {/* Optional, with a visible Skip (2026-09-08). This screen
+                      was losing 43% after the last deploy and the keyboard
+                      mechanics could not be reproduced on a device here, so
+                      the rule from the brief applies: the name is no longer a
+                      gate. With the box empty the fixed CTA reads "Skip for
+                      now" and the button below says the same thing in place;
+                      with a name in it the CTA reads Continue. Everything that
+                      used the name already reads fine without it (greetings
+                      fall back to "You", the boards omit it, Meta's `fn` is
+                      simply not sent) and the app asks for it after purchase. */}
+                  {firstName.trim().length === 0 && (
+                    <button
+                      type="button"
+                      onClick={goNext}
+                      className="self-center text-sm font-semibold text-[#7A7A7A] underline underline-offset-4 hover:text-[#3D3D3D]"
+                    >
+                      Skip for now
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -6476,7 +6402,11 @@ function RegisterPageContent() {
                   className={CTA_GRADIENT_CLASS}
                   style={CTA_GRADIENT_STYLE}
                 >
-                  {REWARD_STEPS.includes(currentStep) || stepIndex === STEPS.length - 1 ? "Continue" : "Next"}
+                  {currentStep === "q8_name" && firstName.trim().length === 0
+                    ? "Skip for now"
+                    : REWARD_STEPS.includes(currentStep) || stepIndex === STEPS.length - 1
+                      ? "Continue"
+                      : "Next"}
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>

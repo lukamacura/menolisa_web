@@ -194,15 +194,40 @@ const PALETTE = {
 
 type Bucket = { count: number; net: number; kept: number };
 
-type TrialRunning = {
-  userId: string;
-  name: string | null;
-  email: string | null;
-  startedAt: string;
-  chargesAt: string;
-  /** `ended`: the week passed and no charge landed — a declined card or a lost webhook. */
-  status: "running" | "cancelled" | "ended";
+type DailyCounts = {
+  entered: number;
+  q2: number;
+  finished: number;
+  paywall: number;
+  checkout: number;
+  paid: number;
 };
+
+type DailyRow = {
+  /** ISO day, or "total". */
+  day: string;
+  counts: DailyCounts;
+  /** Column i → i+1, as a share of column i. Null on an empty column. */
+  lostPct: (number | null)[];
+};
+
+type CohortRow = {
+  /** ISO date of the cohort's Monday, or "all". */
+  week: string;
+  size: number;
+  active: number;
+  canceled: number;
+  failed: number;
+  paid: [number, number, number];
+  retention: [number | null, number | null, number | null];
+};
+
+type ExitReason =
+  | "too_expensive"
+  | "not_sure_helps"
+  | "see_plan_first"
+  | "dont_pay_for_apps"
+  | "skipped";
 
 type Sale = {
   id: string;
@@ -234,12 +259,23 @@ type Stats = {
     yesterdaySpend: number | null;
     fixedMonthly: number;
   };
-  acq: { newCustomers30: number; cac: number | null; keptPerSale: number; feeRate: number };
+  acq: {
+    newCustomers30: number;
+    cac: number | null;
+    /** The $1 first week, after Stripe's fee. */
+    keptPerSale: number;
+    /** Every later week, after Stripe's fee. */
+    keptPerWeek: number;
+    feeRate: number;
+  };
+  prices: { firstWeek: number; weekly: number; moneyBackDays: number };
   retention: {
     renewalRate: number | null;
     cohortSize: number;
     cohortRenewed: number;
     maturesAt: string | null;
+    /** Week 1 → week 2, from the cohort table (or the charge-based rate). */
+    weeklyRetention: number | null;
     ltv: number | null;
     roas: number | null;
   };
@@ -309,20 +345,19 @@ type Stats = {
     dropoffError: string | null;
   };
   contribution30: number;
-  /** The free trial. */
-  trials: {
-    trialDays: number;
-    /** Free trials started in the curve window — a completed $0 checkout. */
-    started: number;
-    /** Started long enough ago to have charged (or not). */
-    matured: number;
-    converted: number;
-    /** converted / matured, one decimal; null until a trial has matured. */
-    convertRate: number | null;
-    canceledDuringTrial: number;
-    checkoutByOffer: { trial: number; paid: number; unknown: number };
-    /** Free trials that have not become money yet, soonest charge first. */
-    running: TrialRunning[];
+  funnelDaily: { rows: DailyRow[]; totals: DailyRow; error: string | null };
+  subscriptions: {
+    error: string | null;
+    truncated: boolean;
+    cohorts: CohortRow[];
+    totals: CohortRow;
+    week2Rate: number | null;
+  };
+  exitQuestion: {
+    asked: number;
+    paywallViews: number;
+    rows: { reason: ExitReason; count: number; pct: number }[];
+    error: string | null;
   };
   sales: Sale[];
   salesTotal: number;
@@ -667,7 +702,7 @@ export default function AdminPage() {
     );
   }
 
-  const { money: m, costs, acq, retention, forward, funnel, verdict, sales, alerts, trials } = stats;
+  const { money: m, costs, acq, retention, forward, funnel, verdict, sales, alerts, prices } = stats;
 
   return (
     <main
@@ -881,43 +916,6 @@ export default function AdminPage() {
                 value={String(acq.newCustomers30)}
                 tone="her"
               />
-              {/* The free trial. Three figures and a split: how many saved a
-                  card, how many of the matured ones let it charge, how many
-                  said no before it could — and which paywall opened the card
-                  forms, because the trial paywall and the $59 paywall
-                  (returning customers) are two different offers and averaging
-                  them says nothing about either. `convertRate` is the number
-                  the trial exists to find out; it is blank until a trial is
-                  old enough to have charged. */}
-              <Row
-                label={`Free trials started, ${plural(funnel.days, "day")}`}
-                hint={
-                  trials.checkoutByOffer.paid > 0
-                    ? `Card forms opened: ${trials.checkoutByOffer.trial} on the trial paywall, ${trials.checkoutByOffer.paid} on the $59 paywall`
-                    : "A card saved at $0 — nothing collected yet"
-                }
-                value={String(trials.started)}
-                tone="her"
-              />
-              <Row
-                label="Free trial → paid"
-                hint={
-                  trials.convertRate === null
-                    ? `No free trial is ${trials.trialDays} days old yet`
-                    : `${trials.converted} of the ${trials.matured} whose free trial has ended`
-                }
-                value={trials.convertRate === null ? "Not yet known" : `${trials.convertRate}%`}
-                tone={
-                  trials.convertRate === null ? "mute" : trials.convertRate >= 35 ? "good" : "bad"
-                }
-                big
-              />
-              <Row
-                label="Cancelled in the free trial"
-                hint="Saved a card, then cancelled before it charged — last 30 days"
-                value={String(trials.canceledDuringTrial)}
-                tone={trials.canceledDuringTrial > 0 ? "spend" : "mute"}
-              />
               <Row
                 label="Cost per new customer"
                 hint={
@@ -926,8 +924,8 @@ export default function AdminPage() {
                       ? "No new customers to divide by yet"
                       : "Log a day of ad spend to see it"
                     : acq.cac <= acq.keptPerSale
-                      ? `Under the ${money(acq.keptPerSale)} you keep on the first sale`
-                      : `Over the ${money(acq.keptPerSale)} you keep on the first sale`
+                      ? `Under the ${money(acq.keptPerSale)} you keep on the ${money(prices.firstWeek)} first week`
+                      : `Over the ${money(acq.keptPerSale)} you keep on the ${money(prices.firstWeek)} first week — the weeks after have to earn it back`
                 }
                 value={acq.cac === null ? "—" : money(acq.cac)}
                 tone={acq.cac === null ? "mute" : acq.cac <= acq.keptPerSale ? "good" : "bad"}
@@ -949,31 +947,39 @@ export default function AdminPage() {
             <div className="border-t border-[var(--line)] px-6 py-4 lg:border-l lg:border-t-0">
               <ColumnHead color="var(--cash)">What she returns</ColumnHead>
               <Row
-                label="Kept per sale"
-                hint={`$59 less Stripe's measured fee (${(acq.feeRate * 100).toFixed(2)}%)`}
+                label="Kept on the first week"
+                hint={`${money(prices.firstWeek)} less Stripe's fee. Measured fee rate across all charges: ${(acq.feeRate * 100).toFixed(2)}%`}
                 value={money(acq.keptPerSale)}
                 tone="cash"
               />
               <Row
-                label="Renewal rate"
+                label="Kept on every week after"
+                hint={`${money(prices.weekly)} less Stripe's fee`}
+                value={money(acq.keptPerWeek)}
+                tone="cash"
+              />
+              <Row
+                label="Week 1 → week 2"
                 hint={
-                  retention.renewalRate === null
+                  retention.weeklyRetention === null
                     ? retention.maturesAt
-                      ? `No first period has closed yet — the earliest matures ${shortDate(retention.maturesAt)}`
+                      ? `No second week has come due yet — the earliest does ${shortDate(retention.maturesAt)}`
                       : "Nobody has bought yet"
-                    : `${retention.cohortRenewed} of the ${retention.cohortSize} whose first 8 weeks ended`
+                    : "Share of sign-ups who paid a second week. See the cohort table below."
                 }
                 value={
-                  retention.renewalRate === null ? "Not yet known" : `${retention.renewalRate}%`
+                  retention.weeklyRetention === null
+                    ? "Not yet known"
+                    : `${retention.weeklyRetention}%`
                 }
-                tone={retention.renewalRate === null ? "mute" : "ahead"}
+                tone={retention.weeklyRetention === null ? "mute" : "ahead"}
               />
               <Row
                 label="Lifetime value, kept"
                 hint={
                   retention.ltv === null
-                    ? "Locked until the first 8-week period closes"
-                    : "What one woman is worth across all the periods she stays"
+                    ? "Locked until a second week has come due"
+                    : "The first week plus every week she is expected to stay, after fees"
                 }
                 value={retention.ltv === null ? "—" : money(retention.ltv)}
                 tone={retention.ltv === null ? "mute" : "cash"}
@@ -981,13 +987,13 @@ export default function AdminPage() {
               />
               <Row
                 label="Payback"
-                hint="How many 8-week periods to earn back what she cost"
+                hint="How many paid weeks to earn back what she cost"
                 value={
                   acq.cac === null
                     ? "—"
                     : acq.cac <= acq.keptPerSale
                       ? "Immediate"
-                      : `${Math.ceil(acq.cac / acq.keptPerSale)} periods`
+                      : `${1 + Math.ceil((acq.cac - acq.keptPerSale) / Math.max(acq.keptPerWeek, 0.01))} weeks`
                 }
                 tone={acq.cac === null ? "mute" : acq.cac <= acq.keptPerSale ? "good" : "ahead"}
               />
@@ -1095,6 +1101,32 @@ export default function AdminPage() {
           />
         </Panel>
 
+        {/* ── 3b. The funnel, by day ──────────────────────────────────────── */}
+        <SectionHead
+          title="The funnel, by day"
+          dot="var(--her)"
+          source="Supabase"
+          note="Visits reaching each step · loss to the next step"
+        />
+        <Panel accent="var(--her)">
+          <FunnelByDay rows={stats.funnelDaily.rows} totals={stats.funnelDaily.totals} error={stats.funnelDaily.error} />
+        </Panel>
+
+        {/* ── 3c. The exit question ───────────────────────────────────────── */}
+        <SectionHead
+          title="Why they didn't buy"
+          dot="var(--her)"
+          source="Supabase"
+          note={
+            stats.exitQuestion.asked > 0
+              ? `${plural(stats.exitQuestion.asked, "answer")} · ${stats.exitQuestion.paywallViews} saw the paywall`
+              : "The one-tap question on the paywall"
+          }
+        />
+        <Panel accent="var(--her)">
+          <ExitQuestion data={stats.exitQuestion} />
+        </Panel>
+
         {/* ── 4. Latest sales ─────────────────────────────────────────────── */}
         <SectionHead
           title="Latest sales"
@@ -1189,76 +1221,19 @@ export default function AdminPage() {
           )}
         </Panel>
 
-        {/* ── 4b. Free trials running ──────────────────────────────────────── */}
-        {/* Who saved a card and when it charges. A trial produces no charge for
-            TRIAL_DAYS days, so nobody in her free trial can appear in the sales table
-            above — this is the only place she is visible until the trial ends. */}
+        {/* ── 4b. Subscriptions by cohort week ────────────────────────────── */}
         <SectionHead
-          title="Free trials running"
+          title="Subscriptions, by sign-up week"
           dot="var(--ahead)"
-          source="Supabase"
+          source="Stripe"
           note={
-            trials.running.length === 0
-              ? "Soonest charge first"
-              : `${plural(trials.running.length, "card")} saved, not charged yet`
+            stats.subscriptions.totals.size > 0
+              ? `${plural(stats.subscriptions.totals.size, "subscription")} · retention is share who paid week 1, 2, 3`
+              : "Retention is the share who paid week 1, 2, 3"
           }
         />
         <Panel accent="var(--ahead)">
-          {trials.running.length === 0 ? (
-            <div className="px-6 py-8 text-center">
-              <h3 className="text-base font-semibold">No free trial running</h3>
-              <p className="mx-auto mt-1.5 max-w-[48ch] text-sm text-[var(--ink-2)]">
-                A row lands here the moment a card is saved at $0 on the trial paywall, and moves
-                to Latest sales when it charges on day {trials.trialDays}.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-left text-sm">
-                <thead>
-                  <tr className="border-b border-[var(--line)] text-[10.5px] uppercase tracking-[0.11em] text-[var(--ink-3)]">
-                    <th className="px-5 py-3 font-semibold">Started</th>
-                    <th className="px-5 py-3 font-semibold">Customer</th>
-                    <th className="px-5 py-3 font-semibold" />
-                    <th className="px-5 py-3 font-semibold">Charges</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {trials.running.map((t) => (
-                    <tr
-                      key={t.userId}
-                      className="border-b border-[var(--line-soft)] transition-colors last:border-0 hover:bg-[var(--her-bg)]/45"
-                    >
-                      <td className="whitespace-nowrap px-5 py-3 text-[13px]">
-                        {relative(t.startedAt)}
-                        <span className="block text-[11.5px] text-[var(--ink-3)]">
-                          {stamp(t.startedAt)}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3">
-                        <span className="font-semibold text-[var(--her-deep)]">
-                          {t.name ?? "—"}
-                        </span>
-                        <span className="block text-[12.5px] text-[var(--ink-2)]">
-                          {t.email ?? "no email bound yet"}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3">
-                        <TrialTag status={t.status} />
-                      </td>
-                      <td className="whitespace-nowrap px-5 py-3 text-[13px] tabular-nums">
-                        {t.status === "running" ? (
-                          <span className="text-[var(--ahead-deep)]">{shortDate(t.chargesAt)}</span>
-                        ) : (
-                          <span className="text-[var(--ink-3)]">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <Cohorts data={stats.subscriptions} />
         </Panel>
 
         {/* ── 5. Needs a human ────────────────────────────────────────────── */}
@@ -1777,23 +1752,6 @@ const TAG: Record<string, string> = {
   refunded: "border-[var(--stop-line)] bg-[var(--stop-bg)] text-[var(--stop-deep)]",
 };
 
-const TRIAL_TAG: Record<TrialRunning["status"], { label: string; cls: string }> = {
-  running: { label: "free trial", cls: "border-[var(--ahead-line)] bg-[var(--ahead-bg)] text-[var(--ahead-deep)]" },
-  cancelled: { label: "cancelled", cls: "border-[var(--line)] bg-white text-[var(--ink-3)]" },
-  ended: { label: "not charged", cls: "border-[var(--stop-line)] bg-[var(--stop-bg)] text-[var(--stop-deep)]" },
-};
-
-function TrialTag({ status }: { status: TrialRunning["status"] }) {
-  const t = TRIAL_TAG[status];
-  return (
-    <span
-      className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.07em] ${t.cls}`}
-    >
-      {t.label}
-    </span>
-  );
-}
-
 function Tag({ kind }: { kind: "new" | "renewal" | "refunded" }) {
   return (
     <span
@@ -1807,7 +1765,7 @@ function Tag({ kind }: { kind: "new" | "renewal" | "refunded" }) {
 /**
  * Cash collected against ad spend, both as running totals over 30 days.
  *
- * Running totals rather than daily bars because daily revenue on a $59 product
+ * Running totals rather than daily bars because daily revenue on a $4.99-a-week product
  * is lumpy — two sales one day and none the next says nothing. The crossing
  * point is the whole picture: the day the month's ads paid for themselves. The
  * band between the lines is the gap, green while collected is ahead of spend
@@ -2066,9 +2024,6 @@ const STEP_LABELS: Record<string, string> = {
   // on the curve, because it measures the same event `stripe_paid` measures and
   // Stripe is the side that knows whether money moved.
   stripe_checkout: "Opened the card form",
-  // A completed $0 Checkout Session. Between the card form and the charge,
-  // because that is where the week sits.
-  stripe_trial: "Started the free trial",
   stripe_paid: "Paid",
 };
 
@@ -2408,9 +2363,9 @@ function WholeFunnel({
             {" "}
             Every 100 quiz finishers are worth{" "}
             <b className="font-semibold tabular-nums text-[var(--cash-deep)]">
-              {money((paid / quizDone) * 100 * keptPerSale, 0)}
+              {money((paid / quizDone) * 100 * keptPerSale, 2)}
             </b>{" "}
-            kept — that is what a click is allowed to cost.
+            kept on the first week alone — the weeks after are what a click is really allowed to cost.
           </>
         )}
       </p>
@@ -2440,6 +2395,272 @@ function WholeFunnel({
         of the funnel to red at the money. The paywall and the Stripe rows are never named as the
         worst screen: a price is the steepest drop in any funnel by nature, and their losses print on
         the rows without taking the verdict.
+      </p>
+    </div>
+  );
+}
+
+// ─── The funnel, by day ─────────────────────────────────────────────────────
+
+const DAILY_COLUMNS: { key: keyof DailyCounts; label: string }[] = [
+  { key: "entered", label: "Entered" },
+  { key: "q2", label: "Q2" },
+  { key: "finished", label: "Finished quiz" },
+  { key: "paywall", label: "Paywall" },
+  { key: "checkout", label: "Checkout opened" },
+  { key: "paid", label: "Paid" },
+];
+
+/**
+ * One row per operator-local day, newest first, the six steps across. Under
+ * each count (except the last) sits what that column lost to the next one, as
+ * a share of the column — the same rule as the curve above: the loss belongs
+ * to the screen she was on. The route computes every figure; this only prints.
+ */
+function FunnelByDay({
+  rows,
+  totals,
+  error,
+}: {
+  rows: DailyRow[];
+  totals: DailyRow;
+  error: string | null;
+}) {
+  if (error) return <p className="px-6 py-5 text-[13px] text-[var(--ink-2)]">{error}</p>;
+  if (rows.length === 0 || totals.counts.entered === 0) {
+    return (
+      <p className="px-6 py-8 text-center text-[12.5px] text-[var(--ink-3)]">
+        No visits in the window yet. Rows fill in as women open{" "}
+        <code className="rounded bg-[var(--quiet)] px-1 py-0.5 text-[12px]">/register</code>.
+      </p>
+    );
+  }
+  const cell = (r: DailyRow, i: number) => {
+    const key = DAILY_COLUMNS[i].key;
+    const n = r.counts[key];
+    const lost = i < DAILY_COLUMNS.length - 1 ? r.lostPct[i] : null;
+    const last = key === "paid";
+    return (
+      <td key={key} className="whitespace-nowrap px-3 py-2 text-right align-top tabular-nums">
+        <b
+          className={`font-semibold ${
+            n === 0 ? "text-[var(--ink-3)]" : last ? "text-[var(--cash-deep)]" : "text-[var(--ink)]"
+          }`}
+        >
+          {n.toLocaleString("en-US")}
+        </b>
+        {lost !== null && (
+          <span
+            className={`block text-[10.5px] ${
+              lost >= CLIFF_PCT && n >= 10 ? "text-[#C2410C]" : "text-[var(--ink-3)]"
+            }`}
+          >
+            −{lost}%
+          </span>
+        )}
+      </td>
+    );
+  };
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[640px] text-left text-[13px]">
+        <thead>
+          <tr className="border-b border-[var(--line)] text-[10.5px] uppercase tracking-[0.11em] text-[var(--ink-3)]">
+            <th className="px-5 py-3 font-semibold">Day</th>
+            {DAILY_COLUMNS.map((c, i) => (
+              <th key={c.key} className="px-3 py-3 text-right font-semibold">
+                {c.label}
+                {i < DAILY_COLUMNS.length - 1 && (
+                  <span className="block text-[9.5px] normal-case tracking-normal text-[var(--ink-3)]">
+                    lost to next
+                  </span>
+                )}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          <tr className="border-b border-[var(--line)] bg-[var(--quiet)]">
+            <td className="whitespace-nowrap px-5 py-2 font-semibold text-[var(--ink)]">
+              Whole window
+            </td>
+            {DAILY_COLUMNS.map((_, i) => cell(totals, i))}
+          </tr>
+          {rows.map((r) => (
+            <tr
+              key={r.day}
+              className={`border-b border-[var(--line-soft)] last:border-0 ${
+                r.counts.entered === 0 ? "text-[var(--ink-3)]" : ""
+              }`}
+            >
+              <td className="whitespace-nowrap px-5 py-2 text-[12.5px]">
+                <span className="font-semibold text-[var(--her-deep)]">{weekdayLabel(r.day)}</span>{" "}
+                <span className="text-[var(--ink-3)]">{dayLabel(r.day)}</span>
+              </td>
+              {DAILY_COLUMNS.map((_, i) => cell(r, i))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="px-5 py-3 text-[11.5px] leading-relaxed text-[var(--ink-3)]">
+        Days are yours, not UTC&rsquo;s. Entered, Q2, finished and paywall are screens rendered
+        (`funnel_events`, visits); checkout opened and paid are what the server saw (a Checkout
+        Session created, a checkout completed with money on it), keyed to the same visit. QA runs
+        are excluded. The loss under a figure is the share of that column that never reached the
+        next one — orange when it is a quarter or more on ten or more women.
+      </p>
+    </div>
+  );
+}
+
+// ─── Subscriptions by cohort week ───────────────────────────────────────────
+
+const pctText = (v: number | null) => (v === null ? "—" : `${v}%`);
+
+function Cohorts({ data }: { data: Stats["subscriptions"] }) {
+  if (data.error) {
+    return <p className="px-6 py-5 text-[13px] text-[var(--ink-2)]">{data.error}</p>;
+  }
+  if (data.cohorts.length === 0) {
+    return (
+      <div className="px-6 py-8 text-center">
+        <h3 className="text-base font-semibold">No subscriptions in the window</h3>
+        <p className="mx-auto mt-1.5 max-w-[48ch] text-sm text-[var(--ink-2)]">
+          A row lands here for the week of the first sign-up. Retention fills in as each cohort
+          reaches its second and third week.
+        </p>
+      </div>
+    );
+  }
+  const row = (c: CohortRow, strong = false) => (
+    <tr
+      key={c.week}
+      className={`border-b border-[var(--line-soft)] last:border-0 ${
+        strong ? "bg-[var(--quiet)] font-semibold" : ""
+      }`}
+    >
+      <td className="whitespace-nowrap px-5 py-2.5 text-[12.5px]">
+        {c.week === "all" ? (
+          <span className="font-semibold text-[var(--ink)]">All weeks</span>
+        ) : (
+          <>
+            <span className="font-semibold text-[var(--ahead-deep)]">w/c {dayLabel(c.week)}</span>
+          </>
+        )}
+      </td>
+      <td className="px-3 py-2.5 text-right tabular-nums text-[var(--ink)]">{c.size}</td>
+      <td className="px-3 py-2.5 text-right tabular-nums text-[var(--cash-deep)]">{c.active}</td>
+      <td className={`px-3 py-2.5 text-right tabular-nums ${c.canceled > 0 ? "text-[var(--spend-deep)]" : "text-[var(--ink-3)]"}`}>
+        {c.canceled}
+      </td>
+      <td className={`px-3 py-2.5 text-right tabular-nums ${c.failed > 0 ? "text-[var(--stop)]" : "text-[var(--ink-3)]"}`}>
+        {c.failed}
+      </td>
+      {c.retention.map((r, i) => (
+        <td
+          key={i}
+          className={`px-3 py-2.5 text-right tabular-nums ${
+            r === null ? "text-[var(--ink-3)]" : "text-[var(--ahead-deep)]"
+          }`}
+        >
+          {pctText(r)}
+          {r !== null && (
+            <span className="block text-[10.5px] text-[var(--ink-3)]">{c.paid[i]}</span>
+          )}
+        </td>
+      ))}
+    </tr>
+  );
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[680px] text-left text-[13px]">
+        <thead>
+          <tr className="border-b border-[var(--line)] text-[10.5px] uppercase tracking-[0.11em] text-[var(--ink-3)]">
+            <th className="px-5 py-3 font-semibold">Signed up</th>
+            <th className="px-3 py-3 text-right font-semibold">Total</th>
+            <th className="px-3 py-3 text-right font-semibold">Active</th>
+            <th className="px-3 py-3 text-right font-semibold">Cancelled</th>
+            <th className="px-3 py-3 text-right font-semibold">Card failed</th>
+            <th className="px-3 py-3 text-right font-semibold">Week 1</th>
+            <th className="px-3 py-3 text-right font-semibold">Week 2</th>
+            <th className="px-3 py-3 text-right font-semibold">Week 3</th>
+          </tr>
+        </thead>
+        <tbody>
+          {row(data.totals, true)}
+          {data.cohorts.map((c) => row(c))}
+        </tbody>
+      </table>
+      <p className="px-5 py-3 text-[11.5px] leading-relaxed text-[var(--ink-3)]">
+        Cohort = the Monday-to-Sunday week she subscribed in, your timezone. Active, cancelled
+        (including a cancel scheduled for the end of the week) and card failed are the subscription
+        as it stands now. Week 1/2/3 is the share of the cohort that has paid one, two, three
+        weekly invoices — &ldquo;—&rdquo; means that week has not come due for the cohort yet, never
+        that nobody paid. QA sign-ups are excluded.
+        {data.truncated && " Capped at the most recent thousand."}
+      </p>
+    </div>
+  );
+}
+
+// ─── The exit question ──────────────────────────────────────────────────────
+
+const EXIT_LABELS: Record<ExitReason, string> = {
+  too_expensive: "Too expensive",
+  not_sure_helps: "Not sure it'll help me",
+  see_plan_first: "Want to see the plan first",
+  dont_pay_for_apps: "I don't pay for apps",
+  skipped: "Skipped the question",
+};
+
+function ExitQuestion({ data }: { data: Stats["exitQuestion"] }) {
+  if (data.error) return <p className="px-6 py-5 text-[13px] text-[var(--ink-2)]">{data.error}</p>;
+  if (data.asked === 0) {
+    return (
+      <p className="px-6 py-8 text-center text-[12.5px] text-[var(--ink-3)]">
+        Nobody has been asked yet. The sheet opens on the paywall after 30 seconds without a tap,
+        or when the cursor leaves through the top of the page — once per visit.
+      </p>
+    );
+  }
+  const max = Math.max(...data.rows.map((r) => r.count), 1);
+  return (
+    <div className="px-6 py-4">
+      <div className="space-y-1.5">
+        {data.rows.map((r) => (
+          <div
+            key={r.reason}
+            className="grid grid-cols-[172px_1fr_40px_52px] items-center gap-x-3 sm:grid-cols-[220px_1fr_44px_56px]"
+          >
+            <span
+              className={`truncate text-[12.5px] ${
+                r.reason === "skipped" ? "text-[var(--ink-3)]" : "text-[var(--ink)]"
+              }`}
+            >
+              {EXIT_LABELS[r.reason]}
+            </span>
+            <span className="flex h-[18px] items-center">
+              <span
+                className="h-[14px] min-w-[2px] rounded"
+                style={{
+                  width: `${Math.max((r.count / max) * 100, r.count > 0 ? 1.5 : 0)}%`,
+                  background:
+                    r.reason === "skipped"
+                      ? "var(--line)"
+                      : "linear-gradient(90deg, var(--her-line), var(--her))",
+                }}
+              />
+            </span>
+            <b className="text-right text-[12.5px] font-semibold tabular-nums text-[var(--ink)]">
+              {r.count}
+            </b>
+            <span className="text-right text-[12px] tabular-nums text-[var(--ink-3)]">{r.pct}%</span>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-[11.5px] leading-relaxed text-[var(--ink-3)]">
+        {data.asked} answered out of {data.paywallViews} who saw the paywall in the window. Share is
+        of answers, skips included. One answer per visit; nothing about her health is on the row.
       </p>
     </div>
   );

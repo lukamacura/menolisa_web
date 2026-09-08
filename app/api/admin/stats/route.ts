@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import {
-  PLAN_PRICE,
-  PLAN_WEEKS,
-  TRIAL_DAYS,
-  isTrialOffer,
-} from "@/lib/pricing";
+import { FIRST_WEEK_PRICE, MONEY_BACK_DAYS, WEEKLY_PRICE } from "@/lib/pricing";
 import { getAccountState, type AccountState, TRIAL_SELECT_COLS } from "@/lib/getAccountState";
+import { PAYWALL_EXIT_REASONS, type PaywallExitReason } from "@/lib/funnelSteps";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -127,15 +123,15 @@ const MAX_SALES_SHOWN = 40;
 
 const DAY_MS = 86_400_000;
 
-/** The billing period, in days. */
-const PERIOD_DAYS = PLAN_WEEKS * 7;
+/** The billing period, in days. Weekly since 2026-09-08. */
+const PERIOD_DAYS = 7;
 /**
- * Terms §11: a first charge is refundable, no reason required, for this many
- * days. The only refund promise left since the 8-week adherence guarantee was
- * removed on 2026-09-04 — the "100% guarantee" on the paywall is the free trial
- * and costs nothing once the trial has charged.
+ * Terms §11: everything paid is refundable, no reason required, for this many
+ * days from the first charge. The only refund promise in the product.
  */
-const REFUND_WINDOW_DAYS = 7;
+const REFUND_WINDOW_DAYS = MONEY_BACK_DAYS;
+/** Weeks in a 30-day window — what one active weekly subscriber books. */
+const WEEKS_PER_30_DAYS = 30 / 7;
 /**
  * Grace added to a period before a customer counts as "should have renewed by
  * now". Stripe dunning retries a failed renewal for several days; without the
@@ -144,11 +140,19 @@ const REFUND_WINDOW_DAYS = 7;
  */
 const RENEWAL_GRACE_DAYS = 3;
 
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
 /** Stripe's standard US card rate, used only until a real charge exists to measure. */
 const STRIPE_PCT = 0.029;
 const STRIPE_FIXED = 0.3;
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
+/**
+ * What one charge of `amount` nets after Stripe's published fee. Per amount,
+ * not a blended rate: on a $1 first week the 30¢ fixed part is a third of the
+ * charge, on a $4.99 week it is six percent, and one measured rate across both
+ * flatters the small one.
+ */
+const keptOf = (amount: number) => round2(amount - (amount * STRIPE_PCT + STRIPE_FIXED));
 
 // ─── Stripe: what was actually collected ────────────────────────────────────
 
@@ -201,28 +205,18 @@ type Revenue = {
    * is what lets it do that without a second walk over Stripe.
    */
   firstChargeTimes: number[];
-  /**
-   * customer id → her first charge, as ms. What lets the trial block say which
-   * free trials turned into money without a second walk over Stripe.
-   */
-  firstChargeByCustomer: Record<string, number>;
-  /**
-   * Subscriptions created in the last 30 days that were cancelled before their
-   * trial ended — by her, in the app's Account screen, or by Stripe when the
-   * trial ran out with no card. The "she tried it and said no" figure.
-   */
-  trialsCanceled30: number;
   /** Customers who have ever paid a first charge. */
   newCustomersAll: number;
-  /** Renewal cohort: first charge is old enough that a renewal was due. */
+  /** Renewal cohort: first charge is old enough that a second week was due. */
   cohortSize: number;
   cohortRenewed: number;
-  /** When the earliest unmatured customer's first period closes. */
+  /** When the earliest unmatured customer's first week closes. */
   cohortMaturesAt: string | null;
   /**
-   * First charges still inside Terms §11's REFUND_WINDOW_DAYS-day refund
-   * window. Not revenue you can spend yet — it is the only contingent liability
-   * in the business.
+   * Every net dollar from customers whose first charge is still inside Terms
+   * §11's REFUND_WINDOW_DAYS-day money-back window — all of their weeks, not
+   * only the first, because the guarantee refunds everything. Not revenue you
+   * can spend yet; it is the only contingent liability in the business.
    */
   refundExposure: number;
   /** Hit MAX_CHARGES — the figures above are a recent slice, not all time. */
@@ -246,11 +240,9 @@ function emptyRevenue(error: string | null): Revenue {
     daily: new Array(30).fill(0),
     refunds30: { count: 0, amount: 0 },
     failedLast30: 0,
-    feeRate: STRIPE_PCT + STRIPE_FIXED / PLAN_PRICE,
+    feeRate: STRIPE_PCT + STRIPE_FIXED / WEEKLY_PRICE,
     newCustomers30: 0,
     firstChargeTimes: [],
-    firstChargeByCustomer: {},
-    trialsCanceled30: 0,
     newCustomersAll: 0,
     cohortSize: 0,
     cohortRenewed: 0,
@@ -267,7 +259,7 @@ function emptyRevenue(error: string | null): Revenue {
  * **The Stripe account is shared with other products**, so `charges.list()`
  * returns every business's money and nothing on this screen may read it raw.
  * The MenoLisa price id is the product boundary: every MenoLisa payment is a
- * subscription to `STRIPE_PRICE_8WEEK`, so the customers holding such a
+ * subscription to `STRIPE_PRICE_WEEKLY`, so the customers holding such a
  * subscription — any status, canceled included — are exactly the customers
  * whose charges belong here. One subscriptions walk builds that set; every
  * other product's charges are dropped before they touch a bucket.
@@ -290,12 +282,12 @@ async function loadRevenue(
   startOfToday: number,
   newCustomerSince: number
 ): Promise<Revenue> {
-  const priceId = process.env.STRIPE_PRICE_8WEEK;
+  const priceId = process.env.STRIPE_PRICE_WEEKLY;
   if (!priceId) {
     // Fail closed: without the price id there is no way to tell MenoLisa's
     // charges from the other products' on this account, and account-wide
     // figures presented as MenoLisa revenue are worse than no figures.
-    return emptyRevenue("STRIPE_PRICE_8WEEK is not set, so MenoLisa's charges can't be told apart");
+    return emptyRevenue("STRIPE_PRICE_WEEKLY is not set, so MenoLisa's charges can't be told apart");
   }
 
   let charges: Stripe.Charge[];
@@ -311,7 +303,7 @@ async function loadRevenue(
     ]);
   } catch (err) {
     console.error("Admin stats: Stripe charge/subscription list failed:", err);
-    // A bad STRIPE_PRICE_8WEEK ("No such price") is a config problem, not an
+    // A bad STRIPE_PRICE_WEEKLY ("No such price") is a config problem, not an
     // outage — say which it was, or the fix is a wild goose chase.
     const msg =
       err instanceof Stripe.errors.StripeInvalidRequestError
@@ -320,28 +312,19 @@ async function loadRevenue(
     return emptyRevenue(msg);
   }
 
-  /** Customers who have ever held a MenoLisa subscription. */
+  /**
+   * Customers who have ever held a MenoLisa subscription. A subscription
+   * opened by a QA run (`is_test` metadata, stamped by create-checkout) is
+   * left out, so a $1 test purchase never reads as a sale.
+   */
   const ownCustomers = new Set<string>();
   for (const s of subs) {
+    if (s.metadata?.is_test === "1") continue;
     const cid = typeof s.customer === "string" ? s.customer : s.customer?.id;
     if (cid) ownCustomers.add(cid);
   }
 
   const rev = emptyRevenue(null);
-
-  // Trials cancelled before they charged. Read off the subscription list that
-  // was already fetched: a subscription that had a `trial_end` and is either
-  // gone with `canceled_at` inside the trial, or still trialing with a cancel
-  // scheduled, never became money. Windowed on when the trial started.
-  const trialWindowStart = Date.now() - 30 * DAY_MS;
-  for (const s of subs) {
-    if (!s.trial_end || s.created * 1000 < trialWindowStart) continue;
-    const canceledInTrial =
-      (s.status === "canceled" && s.canceled_at !== null && s.canceled_at <= s.trial_end) ||
-      (s.status === "trialing" &&
-        (s.cancel_at_period_end || (s.cancel_at !== null && s.cancel_at <= s.trial_end)));
-    if (canceledInTrial) rev.trialsCanceled30 += 1;
-  }
   rev.truncated = charges.length >= MAX_CHARGES || subs.length >= MAX_SUBS;
   rev.livemode = charges[0]?.livemode ?? null;
 
@@ -349,8 +332,8 @@ async function loadRevenue(
   const currencies = new Set<string>();
   /** customer → every succeeded charge time, ascending. */
   const byCustomer = new Map<string, number[]>();
-  /** customer → net amount of that customer's first charge, for refund exposure. */
-  const firstChargeNet = new Map<string, number>();
+  /** customer → net collected across all her charges, for refund exposure. */
+  const netByCustomer = new Map<string, number>();
   let gross = 0;
   let fees = 0;
 
@@ -422,7 +405,7 @@ async function loadRevenue(
     // "is this her oldest charge".
     const firstAt = customerId ? byCustomer.get(customerId)?.[0] : undefined;
     const isFirst = !customerId || firstAt === at;
-    if (isFirst && customerId) firstChargeNet.set(customerId, net);
+    if (customerId) netByCustomer.set(customerId, (netByCustomer.get(customerId) ?? 0) + net);
 
     if (rev.sales.length < MAX_SALES_SHOWN) {
       rev.sales.push({
@@ -449,7 +432,6 @@ async function loadRevenue(
     rev.newCustomersAll += 1;
     if (first >= newCustomerSince) rev.newCustomers30 += 1;
     rev.firstChargeTimes.push(first);
-    rev.firstChargeByCustomer[customerId] = first;
 
     if (first <= maturedBefore) {
       rev.cohortSize += 1;
@@ -458,9 +440,10 @@ async function loadRevenue(
       earliestUnmatured = first;
     }
 
-    // Still refundable under §11: her first charge is under a week old.
+    // Still refundable under §11: her first charge is inside the money-back
+    // window, and the guarantee returns everything she has paid since.
     if (first >= refundableAfter) {
-      rev.refundExposure += firstChargeNet.get(customerId) ?? 0;
+      rev.refundExposure += netByCustomer.get(customerId) ?? 0;
     }
   }
   if (earliestUnmatured !== null) {
@@ -500,26 +483,12 @@ async function loadRevenue(
  */
 type CheckoutStarts = {
   started: number;
-  /**
-   * The same sessions split by what the paywall was selling. The trial paywall
-   * and the $59 paywall must never be averaged: a session opened under one
-   * offer says nothing about the other.
-   */
-  byOffer: { trial: number; paid: number; unknown: number };
-  /**
-   * Free trials that actually began — a *completed* session under the trial
-   * offer, i.e. a card saved at $0. Carries the customer and the time so the
-   * conversion cohort can be built against first charges.
-   */
-  trialStarts: { customerId: string | null; at: number }[];
   error: string | null;
   truncated: boolean;
 };
 
 const emptyCheckoutStarts = (error: string | null): CheckoutStarts => ({
   started: 0,
-  byOffer: { trial: 0, paid: 0, unknown: 0 },
-  trialStarts: [],
   error,
   truncated: false,
 });
@@ -533,24 +502,202 @@ async function loadCheckoutStarts(stripe: Stripe, since: number): Promise<Checko
     out.truncated = sessions.length >= MAX_SESSIONS;
     for (const s of sessions) {
       if (s.metadata?.checkout_surface !== "web") continue;
+      // A QA run's checkout is stamped by create-checkout; it is not a woman.
+      if (s.metadata?.is_test === "1") continue;
       out.started += 1;
-      const offer = s.metadata?.offer_variant;
-      const isTrial = isTrialOffer(offer);
-      if (isTrial) out.byOffer.trial += 1;
-      else if (offer) out.byOffer.paid += 1;
-      else out.byOffer.unknown += 1;
-      if (isTrial && s.status === "complete") {
-        out.trialStarts.push({
-          customerId: typeof s.customer === "string" ? s.customer : s.customer?.id ?? null,
-          at: s.created * 1000,
-        });
-      }
     }
     return out;
   } catch (err) {
     console.error("Admin stats: Stripe session list failed:", err);
     return emptyCheckoutStarts("Could not read checkout sessions");
   }
+}
+
+// ─── Stripe: subscriptions by cohort week ───────────────────────────────────
+
+/**
+ * One row per week of sign-ups, and how each week is doing now.
+ *
+ * Weekly billing turns "did she renew" into a weekly question, so the shape is
+ * a cohort table: who signed up in a given week (Monday-labelled, in the
+ * operator's timezone), how many are still active / cancelled / failing, and
+ * what share paid a first, second and third weekly invoice. The paid-invoice
+ * count is the retention measure — a `$1` first invoice is week 1, the first
+ * `$4.99` is week 2 — because it is what actually moved, not what Stripe
+ * scheduled.
+ *
+ * Two walks, both windowed on `created >= since` and capped: the subscriptions
+ * on the MenoLisa price, and the paid invoices, joined on subscription id in
+ * memory. A subscription (and every invoice of it) opened by a QA run
+ * (`is_test` metadata) is dropped.
+ */
+type CohortRow = {
+  /** ISO date of the cohort's Monday, operator-local. */
+  week: string;
+  size: number;
+  active: number;
+  canceled: number;
+  failed: number;
+  /** How many of the cohort have paid ≥1, ≥2, ≥3 invoices. */
+  paid: [number, number, number];
+  /** Share of the cohort at each week, one decimal; null when the cohort is
+   *  too young for that week to have come due. */
+  retention: [number | null, number | null, number | null];
+};
+
+type Subscriptions = {
+  error: string | null;
+  truncated: boolean;
+  cohorts: CohortRow[];
+  totals: CohortRow;
+  /**
+   * Week 1 → week 2 retention across every cohort old enough to have reached
+   * week 2. The one number the LTV needs; null until a cohort has matured.
+   */
+  week2Rate: number | null;
+};
+
+const emptyCohort = (week: string): CohortRow => ({
+  week,
+  size: 0,
+  active: 0,
+  canceled: 0,
+  failed: 0,
+  paid: [0, 0, 0],
+  retention: [null, null, null],
+});
+
+const emptySubscriptions = (error: string | null): Subscriptions => ({
+  error,
+  truncated: false,
+  cohorts: [],
+  totals: emptyCohort("all"),
+  week2Rate: null,
+});
+
+/** The Monday (operator-local, as ms at local midnight) of the week containing `ms`. */
+function mondayOf(ms: number, tzOffsetMinutes: number): number {
+  const shifted = ms - tzOffsetMinutes * 60_000;
+  const dayStart = Math.floor(shifted / DAY_MS) * DAY_MS;
+  const dow = new Date(dayStart).getUTCDay(); // 0 = Sunday
+  const monday = dayStart - ((dow + 6) % 7) * DAY_MS;
+  return monday + tzOffsetMinutes * 60_000;
+}
+
+/** Which subscription an invoice belongs to, across the two API shapes. */
+function invoiceSubscriptionId(inv: Stripe.Invoice): string | null {
+  const legacy = (inv as Stripe.Invoice & { subscription?: string | { id: string } | null })
+    .subscription;
+  if (typeof legacy === "string") return legacy;
+  if (legacy && typeof legacy === "object") return legacy.id;
+  const parent = (inv as Stripe.Invoice & {
+    parent?: { subscription_details?: { subscription?: string | { id: string } | null } | null } | null;
+  }).parent;
+  const sub = parent?.subscription_details?.subscription;
+  if (typeof sub === "string") return sub;
+  if (sub && typeof sub === "object") return sub.id;
+  return null;
+}
+
+async function loadSubscriptions(
+  stripe: Stripe,
+  since: number,
+  now: number,
+  tzOffsetMinutes: number
+): Promise<Subscriptions> {
+  const priceId = process.env.STRIPE_PRICE_WEEKLY;
+  if (!priceId) return emptySubscriptions("STRIPE_PRICE_WEEKLY is not set");
+  let subs: Stripe.Subscription[];
+  let invoices: Stripe.Invoice[];
+  try {
+    [subs, invoices] = await Promise.all([
+      stripe.subscriptions
+        .list({
+          price: priceId,
+          status: "all",
+          created: { gte: Math.floor(since / 1000) },
+          limit: 100,
+        })
+        .autoPagingToArray({ limit: MAX_SUBS }),
+      stripe.invoices
+        .list({ status: "paid", created: { gte: Math.floor(since / 1000) }, limit: 100 })
+        .autoPagingToArray({ limit: MAX_SUBS }),
+    ]);
+  } catch (err) {
+    console.error("Admin stats: Stripe subscription/invoice list failed:", err);
+    return emptySubscriptions("Could not read subscriptions");
+  }
+
+  const out = emptySubscriptions(null);
+  out.truncated = subs.length >= MAX_SUBS || invoices.length >= MAX_SUBS;
+
+  const own = new Map<string, Stripe.Subscription>();
+  for (const sub of subs) {
+    if (sub.metadata?.is_test === "1") continue;
+    own.set(sub.id, sub);
+  }
+
+  /** subscription id → paid invoices with money on them. */
+  const paidCount = new Map<string, number>();
+  for (const inv of invoices) {
+    const subId = invoiceSubscriptionId(inv);
+    if (!subId || !own.has(subId)) continue;
+    if ((inv.amount_paid ?? 0) <= 0) continue;
+    paidCount.set(subId, (paidCount.get(subId) ?? 0) + 1);
+  }
+
+  const byWeek = new Map<number, CohortRow>();
+  for (const sub of own.values()) {
+    const monday = mondayOf(sub.created * 1000, tzOffsetMinutes);
+    let row = byWeek.get(monday);
+    if (!row) {
+      row = emptyCohort(isoDay(monday + 12 * 3_600_000, tzOffsetMinutes));
+      byWeek.set(monday, row);
+    }
+    row.size += 1;
+    const cancelScheduled = sub.cancel_at_period_end || sub.cancel_at !== null;
+    if (sub.status === "canceled" || cancelScheduled) row.canceled += 1;
+    else if (sub.status === "past_due" || sub.status === "unpaid") row.failed += 1;
+    else if (sub.status === "active" || sub.status === "trialing") row.active += 1;
+    const n = paidCount.get(sub.id) ?? 0;
+    for (let k = 0; k < 3; k++) if (n >= k + 1) row.paid[k] += 1;
+  }
+
+  // Week 1 is the first invoice, paid at sign-up, so it is observable at once.
+  // Week N > 1 has come due only once the cohort's Monday is N weeks behind us;
+  // before that the column is "—", never a false zero.
+  const matured = (monday: number, k: number) => k === 0 || monday + (k + 1) * 7 * DAY_MS <= now;
+  const pct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 1000) / 10 : null);
+
+  let week2Num = 0;
+  let week2Den = 0;
+  const cohorts = [...byWeek.entries()]
+    .sort(([a], [b]) => b - a)
+    .map(([monday, row]) => {
+      row.retention = [0, 1, 2].map((k) =>
+        matured(monday, k) ? pct(row.paid[k], row.size) : null
+      ) as CohortRow["retention"];
+      if (matured(monday, 1)) {
+        week2Num += row.paid[1];
+        week2Den += row.size;
+      }
+      out.totals.size += row.size;
+      out.totals.active += row.active;
+      out.totals.canceled += row.canceled;
+      out.totals.failed += row.failed;
+      for (let k = 0; k < 3; k++) out.totals.paid[k] += row.paid[k];
+      return row;
+    });
+  out.cohorts = cohorts;
+  // Totals: each week's share is taken over the cohorts old enough for it.
+  const maturedSize = (k: number) =>
+    [...byWeek.entries()].reduce((acc, [monday, row]) => acc + (matured(monday, k) ? row.size : 0), 0);
+  out.totals.retention = [0, 1, 2].map((k) => {
+    const den = maturedSize(k);
+    return den > 0 ? pct(out.totals.paid[k], den) : null;
+  }) as CohortRow["retention"];
+  out.week2Rate = week2Den > 0 ? week2Num / week2Den : null;
+  return out;
 }
 
 // ─── Supabase: who they are ─────────────────────────────────────────────────
@@ -708,27 +855,26 @@ export async function POST(req: NextRequest) {
     checkout,
     emails,
     dropoffResult,
+    dailyResult,
+    exitResult,
+    subscriptions,
   ] = await Promise.all([
     supabaseAdmin
       .from("user_trials")
       // Built from TRIAL_SELECT_COLS, never hand-listed: a missing column
       // comes back undefined, which getAccountState reads as "no dispute,
       // not canceled, no failed payment".
-      // The three trial columns are appended for the "free trials running"
-      // list; getAccountState() does not read them (see CLAUDE.md, "The free
-      // trial") — they only say who is in a free trial and when it charges.
-      .select(
-        `user_id, created_at, stripe_customer_id, trial_ends_at, first_paid_at, offer_variant, ${TRIAL_SELECT_COLS}`
-      )
+      .select(`user_id, created_at, stripe_customer_id, ${TRIAL_SELECT_COLS}`)
       .order("created_at", { ascending: false })
       .limit(MAX_CLIENTS),
-    supabaseAdmin.from("user_profiles").select("user_id, name"),
+    supabaseAdmin.from("user_profiles").select("user_id, name").eq("is_test", false),
     // One row per cycle; `planMap` keeps the last, so ascending order shows
     // the newest cycle's status rather than an arbitrary one.
     supabaseAdmin.from("user_plans").select("user_id, status").order("cycle", { ascending: true }),
     supabaseAdmin
       .from("user_profiles")
       .select("user_id", { count: "exact", head: true })
+      .eq("is_test", false)
       .gte("created_at", new Date(funnelSince).toISOString()),
     supabaseAdmin
       .from("ad_spend")
@@ -757,6 +903,22 @@ export async function POST(req: NextRequest) {
     supabaseAdmin.rpc("funnel_dropoff", {
       since: new Date(curveSince).toISOString(),
     }),
+    // The same curve, per operator-local day — the table under it.
+    supabaseAdmin.rpc("funnel_daily", {
+      since: new Date(curveSince).toISOString(),
+      tz_offset_minutes: tzOffsetMinutes,
+    }),
+    // The exit question. Small table, so the grouping happens here.
+    supabaseAdmin
+      .from("funnel_events")
+      .select("detail")
+      .eq("step", "paywall_exit")
+      .eq("is_test", false)
+      .gte("created_at", new Date(curveSince).toISOString())
+      .limit(5000),
+    stripe
+      ? loadSubscriptions(stripe, curveSince, now, tzOffsetMinutes)
+      : Promise.resolve(emptySubscriptions(null)),
   ]);
 
   if (trialsResult.error) {
@@ -809,46 +971,6 @@ export async function POST(req: NextRequest) {
     };
   });
 
-  // ─── Free trials running: who saved a card and when it charges ─────────────
-  //
-  // The trial block above counts free trials; this names them. A woman in her
-  // free trial has produced no charge yet, so she cannot appear in the sales
-  // list for TRIAL_DAYS days — and "who started a trial today" is the first thing
-  // the desk asks the morning after the trial paywall goes live. Read off the
-  // `user_trials` rows already fetched: a trial-offer row with `trial_ends_at`
-  // set and `first_paid_at` still null is a free trial that has not become
-  // money. Soonest-to-charge first, so the top of the list is tomorrow's cash.
-  const trialsRunning = rows
-    .filter(
-      (r) =>
-        isTrialOffer(r.offer_variant) &&
-        typeof r.trial_ends_at === "string" &&
-        !r.first_paid_at
-    )
-    .map((r) => {
-      const chargesAt = new Date(r.trial_ends_at as string);
-      const s = state.get(r.user_id);
-      // `ended` is a free trial that passed without a charge landing on the
-      // row — a declined card (past_due) or a webhook that never arrived.
-      // Either way it is not a paying customer and not a cancel.
-      const status: "running" | "cancelled" | "ended" =
-        s === "canceling" || s === "disputed" || r.subscription_canceled
-          ? "cancelled"
-          : chargesAt.getTime() <= now
-            ? "ended"
-            : "running";
-      return {
-        userId: r.user_id,
-        name: nameMap.get(r.user_id) ?? null,
-        email: emails.get(r.user_id) ?? null,
-        startedAt: new Date(chargesAt.getTime() - TRIAL_DAYS * DAY_MS).toISOString(),
-        chargesAt: chargesAt.toISOString(),
-        status,
-      };
-    })
-    .sort((a, b) => a.chargesAt.localeCompare(b.chargesAt))
-    .slice(0, MAX_SALES_SHOWN);
-
   // ─── Ad spend ─────────────────────────────────────────────────────────────
 
   const spendByDay = new Map<string, number>();
@@ -881,8 +1003,10 @@ export async function POST(req: NextRequest) {
 
   // ─── Unit economics ───────────────────────────────────────────────────────
 
-  /** What one $59 sale is worth after Stripe takes its cut. The break-even unit. */
-  const keptPerSale = round2(PLAN_PRICE - PLAN_PRICE * revenue.feeRate);
+  /** What the $1 first week nets after Stripe's fee. The break-even unit for CAC. */
+  const keptPerSale = keptOf(FIRST_WEEK_PRICE);
+  /** What every later week nets. */
+  const keptPerWeek = keptOf(WEEKLY_PRICE);
 
   const cac =
     revenue.newCustomers30 > 0 && adSpend30 > 0
@@ -892,49 +1016,22 @@ export async function POST(req: NextRequest) {
   const renewalRate =
     revenue.cohortSize > 0 ? revenue.cohortRenewed / revenue.cohortSize : null;
   /**
-   * Expected lifetime value, kept. A renewal rate of r means she buys 1/(1-r)
-   * periods on average. Capped: a tiny cohort that all renewed would divide by
-   * zero and print an infinite customer.
+   * Expected lifetime value, kept: the $1 week plus the weeks she goes on to
+   * pay. Weekly retention r from the cohort table (week 1 → week 2, matured
+   * cohorts only; the charge-based rate is the fallback) means r/(1-r) further
+   * weeks on average. Capped at a year so a tiny all-retained cohort cannot
+   * print an infinite customer.
    */
+  const weeklyRetention = subscriptions.week2Rate ?? renewalRate;
   const ltv =
-    renewalRate === null
+    weeklyRetention === null
       ? null
-      : round2(keptPerSale * Math.min(1 / Math.max(1 - renewalRate, 0.05), 20));
+      : round2(
+          keptPerSale +
+            keptPerWeek * Math.min(weeklyRetention / Math.max(1 - weeklyRetention, 0.02), 52)
+        );
 
   const contribution30 = round2(revenue.last30.kept - adSpend30 - FIXED_MONTHLY_USD);
-
-  // ─── The free trial ───────────────────────────────────────────────────────
-  //
-  // With the trial on, "completed checkout" and "paid" are a week apart, and
-  // the question between them is the one the trial was introduced to answer:
-  // of the women who saved a card, how many let it charge? Only trials old
-  // enough to have charged are scored — TRIAL_DAYS plus the same dunning
-  // grace the renewal cohort uses, because a card that is being retried is
-  // not a "no" yet. Cancels are counted separately, off the subscription
-  // list, so the two figures never have to add up: a matured trial that
-  // neither charged nor cancelled is a failed card, and that is a third thing.
-  const trialMatureBefore = now - (TRIAL_DAYS + RENEWAL_GRACE_DAYS) * DAY_MS;
-  const trialsMatured = checkout.trialStarts.filter((t) => t.at <= trialMatureBefore);
-  const trialsConverted = trialsMatured.filter((t) => {
-    const first = t.customerId ? revenue.firstChargeByCustomer[t.customerId] : undefined;
-    return first !== undefined && first >= t.at;
-  }).length;
-  const trials = {
-    trialDays: TRIAL_DAYS,
-    /** Free trials started in the curve window (card saved, $0). */
-    started: checkout.trialStarts.length,
-    matured: trialsMatured.length,
-    converted: trialsConverted,
-    convertRate:
-      trialsMatured.length > 0
-        ? Math.round((trialsConverted / trialsMatured.length) * 1000) / 10
-        : null,
-    canceledDuringTrial: revenue.trialsCanceled30,
-    /** Card-form opens split by which paywall opened them. */
-    checkoutByOffer: checkout.byOffer,
-    /** Every free trial that has not become money yet, soonest charge first. */
-    running: trialsRunning,
-  };
 
   // ─── Forward view: money already on the calendar ──────────────────────────
 
@@ -945,15 +1042,16 @@ export async function POST(req: NextRequest) {
     if (s !== "active" && s !== "canceling" && s !== "past_due") continue;
     const ends = endsAt.get(r.user_id);
     if (!ends) continue;
-    const withinMonth = ends.getTime() <= now + 30 * DAY_MS;
     if (s === "canceling") {
       cancelsPending += 1;
-    } else if (withinMonth) {
+    } else {
       bookedCount += 1;
     }
   }
-  const booked30 = round2(bookedCount * PLAN_PRICE);
-  const cancelsAtRisk = round2(cancelsPending * PLAN_PRICE);
+  // Weekly: an active subscriber books ~4.3 weeks in 30 days; a cancel costs
+  // one week of what she would have paid next.
+  const booked30 = round2(bookedCount * WEEKLY_PRICE * WEEKS_PER_30_DAYS);
+  const cancelsAtRisk = round2(cancelsPending * WEEKLY_PRICE);
 
   // ─── Funnel, last 30 days ─────────────────────────────────────────────────
 
@@ -1057,6 +1155,14 @@ export async function POST(req: NextRequest) {
     "relief_intro",
     "relief_running",
     "relief_reward",
+    // Server-side rows (lib/funnelSteps.ts). They are events, not screens: the
+    // exit question, and what Stripe told the webhook. The curve's money rows
+    // come from Stripe directly; the by-day table below reads these.
+    "paywall_exit",
+    "checkout_opened",
+    "purchase_completed",
+    "subscription_canceled",
+    "payment_failed",
   ]);
   /**
    * Screen-name aliases, for a key that was renamed rather than retired.
@@ -1159,18 +1265,6 @@ export async function POST(req: NextRequest) {
             source: "stripe" as const,
           },
         ]),
-    // The free trial, between the card form and the money: a completed $0
-    // session.
-    ...(checkout.error
-      ? []
-      : [
-          {
-            step: "stripe_trial",
-            sessions: checkout.trialStarts.length,
-            group: "money" as const,
-            source: "stripe" as const,
-          },
-        ]),
     {
       step: "stripe_paid",
       sessions: paidInCurve,
@@ -1225,8 +1319,7 @@ export async function POST(req: NextRequest) {
     };
   });
   // The paywall and the Stripe rows are never named as the worst screen. A
-  // price is the steepest drop in any funnel by nature, and with the trial the
-  // "paid" row lags the card form by a week — so the sentence that tells you
+  // price is the steepest drop in any funnel by nature — so the sentence that tells you
   // which screen to fix would otherwise point at the offer every single day
   // and never at a screen a copy change can help. Their losses still print on
   // the rows; they just don't get the verdict.
@@ -1242,6 +1335,85 @@ export async function POST(req: NextRequest) {
           )
           .sort((a, b) => (b.lostPct ?? 0) - (a.lostPct ?? 0))[0] ?? null)
       : null;
+
+  // ─── The funnel, by day ───────────────────────────────────────────────────
+  //
+  // Six columns, operator-local days, newest first, over the curve window.
+  // Same rule as the curve: the loss is printed on the column she was looking
+  // at, as a share of that column. Zero-days are kept so a quiet Sunday reads
+  // as quiet rather than missing.
+  const DAILY_STEPS = [
+    "entered",
+    "q2",
+    "finished",
+    "paywall",
+    "checkout",
+    "paid",
+  ] as const;
+  const DAILY_SOURCE: Record<(typeof DAILY_STEPS)[number], string[]> = {
+    entered: ["q_symptom_primary", "q4_symptoms"],
+    q2: ["q1_age"],
+    finished: ["calculating"],
+    paywall: ["paywall"],
+    checkout: ["checkout_opened"],
+    paid: ["purchase_completed"],
+  };
+  const dailyByDay = new Map<string, Record<(typeof DAILY_STEPS)[number], number>>();
+  const emptyDaily = () => ({ entered: 0, q2: 0, finished: 0, paywall: 0, checkout: 0, paid: 0 });
+  const curveFirstDay = isoDay(curveSince, tzOffsetMinutes);
+  for (let d = startOfToday; ; d -= DAY_MS) {
+    const day = isoDay(d, tzOffsetMinutes);
+    dailyByDay.set(day, emptyDaily());
+    if (day <= curveFirstDay) break;
+  }
+  for (const row of (dailyResult.data ?? []) as { day: string; step: string; sessions: number }[]) {
+    const bucket = dailyByDay.get(String(row.day));
+    if (!bucket) continue;
+    for (const key of DAILY_STEPS) {
+      if (DAILY_SOURCE[key].includes(row.step)) bucket[key] += Number(row.sessions) || 0;
+    }
+  }
+  const dailyRow = (day: string, counts: Record<(typeof DAILY_STEPS)[number], number>) => ({
+    day,
+    counts,
+    /** Loss from each column to the next, as a share of that column; null on
+     *  an empty column. Index i is column i → i+1. */
+    lostPct: DAILY_STEPS.slice(0, -1).map((key, i) => {
+      const from = counts[key];
+      const to = counts[DAILY_STEPS[i + 1]];
+      return from > 0 ? Math.round((Math.max(from - to, 0) / from) * 100) : null;
+    }),
+  });
+  const funnelDaily = [...dailyByDay.entries()].map(([day, counts]) => dailyRow(day, counts));
+  const dailyTotals = emptyDaily();
+  for (const { counts } of funnelDaily) {
+    for (const key of DAILY_STEPS) dailyTotals[key] += counts[key];
+  }
+  const funnelDailyTotals = dailyRow("total", dailyTotals);
+
+  // ─── The exit question ────────────────────────────────────────────────────
+  const exitCounts: Record<PaywallExitReason, number> = {
+    too_expensive: 0,
+    not_sure_helps: 0,
+    see_plan_first: 0,
+    dont_pay_for_apps: 0,
+    skipped: 0,
+  };
+  for (const row of (exitResult.data ?? []) as { detail: string | null }[]) {
+    if (row.detail && row.detail in exitCounts) exitCounts[row.detail as PaywallExitReason] += 1;
+  }
+  const exitTotal = PAYWALL_EXIT_REASONS.reduce((acc, r) => acc + exitCounts[r], 0);
+  const exitQuestion = {
+    asked: exitTotal,
+    /** Women who reached the paywall in the same window, for context. */
+    paywallViews: screenRows.find((r) => r.step === "paywall")?.sessions ?? 0,
+    rows: PAYWALL_EXIT_REASONS.map((reason) => ({
+      reason,
+      count: exitCounts[reason],
+      pct: exitTotal > 0 ? Math.round((exitCounts[reason] / exitTotal) * 100) : 0,
+    })),
+    error: exitResult.error ? "Could not read the exit question" : null,
+  };
 
   // ─── Anything that needs a human ──────────────────────────────────────────
 
@@ -1318,7 +1490,7 @@ export async function POST(req: NextRequest) {
     alerts.push({
       tone: "money",
       label: "Owed",
-      text: `$${revenue.refundExposure.toFixed(2)} of first charges is still inside the ${REFUND_WINDOW_DAYS}-day refund window (Terms §11). Treat it as borrowed.`,
+      text: `$${revenue.refundExposure.toFixed(2)} is still inside the ${REFUND_WINDOW_DAYS}-day money-back window (Terms §11). Treat it as borrowed.`,
     });
   }
 
@@ -1367,7 +1539,7 @@ export async function POST(req: NextRequest) {
         text:
           `You pay $${cac.toFixed(2)} for a woman who returns $${keptPerSale.toFixed(2)} on her first payment — ` +
           `${gap > 0 ? `$${gap.toFixed(2)} short` : `$${Math.abs(gap).toFixed(2)} ahead`}. ` +
-          `Whether that is a loss or a bargain depends entirely on renewals, and no first period has closed yet. Keep the budget flat until it does.`,
+          `Whether that is a loss or a bargain depends entirely on how many weeks she stays, and no week-2 renewal has come due yet. Keep the budget flat until it does.`,
       };
     }
     const ratio = ltv / cac;
@@ -1375,7 +1547,7 @@ export async function POST(req: NextRequest) {
       return {
         tone: "good" as const,
         word: "Scale",
-        text: `$${cac.toFixed(2)} to acquire her, $${ltv.toFixed(2)} back over her lifetime — ${ratio.toFixed(2)}×. ${gap <= 0 ? "She pays for herself on the first charge, so raising the daily budget costs you nothing but patience." : `You are ${gap.toFixed(2)} down on the first charge and ahead by the second, so raising the budget needs cash to bridge the gap.`}`,
+        text: `$${cac.toFixed(2)} to acquire her, $${ltv.toFixed(2)} back over the weeks she stays — ${ratio.toFixed(2)}×. ${gap <= 0 ? "She pays for herself on the $1 week, so raising the daily budget costs you nothing but patience." : `You are $${gap.toFixed(2)} down on the first week and earn it back over the weeks that follow, so raising the budget needs cash to bridge the gap.`}`,
       };
     }
     if (ratio >= 1) {
@@ -1423,13 +1595,19 @@ export async function POST(req: NextRequest) {
       newCustomers30: revenue.newCustomers30,
       cac,
       keptPerSale,
+      keptPerWeek,
       feeRate: Math.round(revenue.feeRate * 10000) / 10000,
     },
+    /** The offer, so the page prints figures the route vouches for. */
+    prices: { firstWeek: FIRST_WEEK_PRICE, weekly: WEEKLY_PRICE, moneyBackDays: MONEY_BACK_DAYS },
     retention: {
       renewalRate: renewalRate === null ? null : Math.round(renewalRate * 1000) / 10,
       cohortSize: revenue.cohortSize,
       cohortRenewed: revenue.cohortRenewed,
       maturesAt: revenue.cohortMaturesAt,
+      /** Week 1 → week 2 from the cohort table, or the charge-based rate. */
+      weeklyRetention:
+        weeklyRetention === null ? null : Math.round(weeklyRetention * 1000) / 10,
       ltv,
       roas: ltv !== null && cac ? Math.round((ltv / cac) * 100) / 100 : null,
     },
@@ -1471,7 +1649,13 @@ export async function POST(req: NextRequest) {
       dropoffError: dropoffResult.error ? "Could not read funnel steps" : null,
     },
     contribution30,
-    trials,
+    funnelDaily: {
+      rows: funnelDaily,
+      totals: funnelDailyTotals,
+      error: dailyResult.error ? "Could not read the daily funnel" : null,
+    },
+    subscriptions,
+    exitQuestion,
     sales,
     /** Total succeeded charges walked, so the list can say "newest 40 of 112". */
     salesTotal: revenue.allTime.count,

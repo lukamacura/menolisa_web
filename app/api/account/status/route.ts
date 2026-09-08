@@ -28,10 +28,7 @@ export async function GET(req: NextRequest) {
   const [{ data, error }, { data: profile }] = await Promise.all([
     supabase
       .from("user_trials")
-      // `trial_ends_at` comes from scripts/sql/2026-09-04-free-trial.sql;
-      // naming it before that runs fails this read for every caller, app
-      // included. Apply the migration before deploying.
-      .select(`${TRIAL_SELECT_COLS}, trial_ends_at`)
+      .select(TRIAL_SELECT_COLS)
       .eq("user_id", user.id)
       .maybeSingle(),
     supabase
@@ -46,21 +43,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Failed to load account status" }, { status: 500 });
   }
 
-  const row =
-    (data as (TrialRow & AccountStateRow & { trial_ends_at?: string | null }) | null) ?? null;
+  const row = (data as (TrialRow & AccountStateRow) | null) ?? null;
   const decision = evaluateTrialStatus(row);
   const expired = decision === "paywall";
   const account = getAccountState(row);
-  // The free trial, for a client that wants to say "first charge" rather than
-  // "renews". Nothing in the app *needs* it: a trialing row is an ordinary
-  // paid subscriber whose period ends in TRIAL_DAYS days, and `days_left` already
-  // says so.
-  const trialEndsAt = row?.trial_ends_at ?? null;
-  const inTrial =
-    !!trialEndsAt &&
-    !!account.endsAt &&
-    new Date(trialEndsAt).getTime() === account.endsAt.getTime() &&
-    account.hasAccess;
 
   return NextResponse.json({
     expired,
@@ -75,8 +61,10 @@ export async function GET(req: NextRequest) {
     subscription_ends_at: row?.subscription_ends_at ?? null,
     subscription_canceled: row?.subscription_canceled ?? false,
     payment_failed_at: row?.payment_failed_at ?? null,
-    trial_ends_at: trialEndsAt,
-    in_trial: inTrial,
+    // The free trial is gone (2026-09-08). Kept at their "no trial" values for
+    // one release so an app build that reads them keeps working.
+    trial_ends_at: null,
+    in_trial: false,
     has_onboarding: row !== null,
     // First name only, already trimmed. Null when the quiz never captured one —
     // every surface that uses it must read fine without it.

@@ -1264,7 +1264,7 @@ screen that told her what it was claiming.
 - [ ] Expect a one-movement power block at beginner level — `I01` alone (§24)
 
 
-## §25 — The free 7-day trial needs nothing from the app (2026-09-04)
+## §25 — The free trial (2026-09-04) — SUPERSEDED by §26
 
 The web paywall now sells a free trial (TRIAL_DAYS days, 5 at the time of writing): Stripe saves the card at $0
 and charges $59 when it ends. Nothing in the API
@@ -1278,3 +1278,32 @@ and `in_trial` (boolean), null / false for anyone not in a free trial. Use them 
 if a screen wants to say "first charge Sep 11" rather than "renews Sep 11".
 
 - [ ] Nothing to build. Do not add a trial state; branch on `in_trial` for copy only, if at all.
+
+
+## §26 — Weekly billing, no trial; the name is optional (2026-09-08)
+
+The web paywall now sells the plan at **$1 for the first week, then $4.99 a
+week** (Stripe coupon on the first invoice, no trial of any kind). Nothing in
+the access contract changes: a weekly subscriber is `account_status: "paid"`
+with `subscription_ends_at` = the end of the current week, so `GET
+/api/account/status` returns `has_access: true` and `days_left` counts down
+from 7 and resets every renewal. `trial_ends_at` is always `null` and
+`in_trial` always `false` now; stop reading them.
+
+Two things the app has to do:
+
+- [ ] **Never say "$59", "every 8 weeks" or "free trial" anywhere.** Billing copy
+      is "$4.99/week · cancel anytime". The plan still runs in 8-week blocks
+      ("Your 8 weeks", the recap, "Start my next 8 weeks") — that is the plan,
+      not the bill, and it stays.
+- [ ] **Ask for her first name after purchase when `first_name` is null.** The
+      web funnel's name step is optional since today (it was losing 43%). The
+      app already renders every surface without a name; add a one-field prompt
+      on first launch when `GET /api/account/status` returns `first_name: null`,
+      and save it with `POST /api/auth/save-quiz` sending
+      `{ quizAnswers: { name } }` alone — since 2026-09-08 the route leaves
+      every column it is not sent alone on an update, and a payload without a
+      `name` key never nulls a name she already gave.
+- [ ] Cancellation lives in the app ("Cancel anytime from the app" is printed at
+      checkout): make sure the Account screen's manage/cancel path is one tap
+      away.

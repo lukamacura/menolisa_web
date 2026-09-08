@@ -23,7 +23,6 @@
  * and nothing may send them from here again.
  */
 
-import { PLAN_PRICE, PLAN_WEEKS, formatPrice } from "@/lib/pricing";
 
 export type AlertKind =
   | "daily_nudge"
@@ -142,40 +141,14 @@ export function weeklyRecapCopy(input: {
   };
 }
 
-/** RENEWAL_NOTICE_DAYS before the card is charged again. Reassurance, not a warning. */
 /**
- * A couple of days out from the charge — the moment she decides whether to keep going.
- *
- * This used to read "Your plan renews on the 14th / Nothing to do". Accurate,
- * and completely forgettable: it treated the one point in eight weeks where she
- * actively chooses to continue as a receipt. It is now the nudge back into the
- * app, and it still names the date, because a motivating line that hides the
- * charge is a dark pattern rather than a nudge.
+ * The card could not be charged at a weekly renewal. Said out loud because
+ * she keeps access while Stripe retries, so nothing else in the product would
+ * let her notice before the subscription is cancelled from under her.
+ * (The pre-renewal "nearly up" nudge and the trial-ending alert went with
+ * 8-week billing on 2026-09-08: a heads-up before every weekly charge is noise.)
  */
-export function renewalCopy(renewsOn: Date, firstName: string | null): AlertCopy {
-  return {
-    title: firstName
-      ? `${firstName}, your 8 weeks are nearly up`
-      : "Your 8 weeks are nearly up",
-    body: `Your plan renews on ${formatAlertDate(renewsOn)} and carries straight on. This is not the week to stop.`,
-  };
-}
-
-/**
- * TRIAL_NOTICE_DAYS before a free trial ends. The renewal alert above says "your 8
- * weeks are nearly up", which is false for her — she has had TRIAL_DAYS days and
- * paid nothing. Date and amount, and the exit, in two lines.
- */
-export function trialEndingCopy(endsOn: Date, firstName: string | null): AlertCopy {
-  return {
-    title: firstName
-      ? `${firstName}, your free trial ends ${formatAlertDate(endsOn)}`
-      : `Your free trial ends ${formatAlertDate(endsOn)}`,
-    body: `${formatPrice(PLAN_PRICE)} is charged that day for your next ${PLAN_WEEKS} weeks. Cancel before then and you pay nothing.`,
-  };
-}
-
-/** RENEWAL_NOTICE_DAYS before a cancelled subscription's paid period runs out. */
+/** A couple of days before a cancelled subscription's paid period runs out. */
 export function accessEndingCopy(endsOn: Date): AlertCopy {
   return {
     title: `Your access ends on ${formatAlertDate(endsOn)}`,

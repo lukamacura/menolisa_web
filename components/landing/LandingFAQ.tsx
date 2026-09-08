@@ -10,11 +10,10 @@ import { motion, useReducedMotion } from "framer-motion"
 import { useReplayableInView } from "@/hooks/useReplayableInView"
 import { HighlightedTextByRows } from "@/components/landing/HighlightedTextByRows"
 import {
-  PLAN_PRICE,
+  FIRST_WEEK_PRICE,
+  MONEY_BACK_DAYS,
   PLAN_WEEKS,
-  RENEWAL_NOTICE_DAYS,
-  TRIAL_DAYS,
-  TRIAL_NOTICE_DAYS,
+  WEEKLY_PRICE,
   formatPrice,
 } from "@/lib/pricing"
 
@@ -48,8 +47,8 @@ export default function LandingFAQ() {
       answer: "Yes. Your conversations with Lisa and your symptom data are encrypted and never shared. Only you can see them.",
     },
     {
-      question: "How does the guarantee work?",
-      answer: `Try everything free for ${TRIAL_DAYS} days - your plan, Lisa, the tracker, all of it. Nothing is charged when you start. If it isn't for you, cancel before the trial ends from your account in two taps and you pay nothing at all. That's the whole guarantee: we're sure enough of the plan to let you use it first. If you stay, ${formatPrice(PLAN_PRICE)} is charged when the trial ends and covers your full ${PLAN_WEEKS}-week plan; it renews every ${PLAN_WEEKS} weeks, we email you ${TRIAL_NOTICE_DAYS} days before that first charge and ${RENEWAL_NOTICE_DAYS} days before every renewal after it, and you can cancel renewal anytime.`,
+      question: "How much does it cost, and how does the guarantee work?",
+      answer: `Your first week is ${formatPrice(FIRST_WEEK_PRICE)}, then it's ${formatPrice(WEEKLY_PRICE)} a week until you cancel - your plan, Lisa, the tracker, all of it. Your plan runs in ${PLAN_WEEKS}-week blocks and is rebuilt from your progress at the end of each block. Cancel anytime from the app in two taps. And if it isn't for you, tell us within ${MONEY_BACK_DAYS} days and we refund everything you've paid, no reason needed.`,
     },
   ]
 

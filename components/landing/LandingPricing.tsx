@@ -9,12 +9,13 @@ import { motion, useReducedMotion } from "framer-motion"
 import { useReplayableInView } from "@/hooks/useReplayableInView"
 import { HighlightedTextByRows } from "@/components/landing/HighlightedTextByRows"
 import {
-  PLAN_ANCHOR_PRICE,
-  PLAN_PRICE,
-  PLAN_PRICE_PER_DAY,
-  PLAN_PRICE_PER_WEEK,
+  FIRST_WEEK_PRICE,
+  MONEY_BACK_DAYS,
+  PLAN_BLOCKS_COPY,
   PLAN_WEEKS,
-  TRIAL_DAYS,
+  PRICE_LINE,
+  PRICE_SUBLINE,
+  WEEKLY_PRICE,
   formatPrice,
 } from "@/lib/pricing"
 
@@ -80,10 +81,7 @@ export default function LandingPricing() {
             <HighlightedTextByRows text={`One plan. ${PLAN_WEEKS} weeks. Ask anything.`} isInView={isInView} prefersReducedMotion={prefersReducedMotion} delayMs={500} />
           </h2>
           <p className="text-xl sm:text-2xl text-center text-muted-foreground mb-4">
-            <strong>
-              {formatPrice(PLAN_PRICE)} for your full {PLAN_WEEKS}-week plan.
-            </strong>{" "}
-            Try it free for {TRIAL_DAYS} days first. Cancel before your first charge and pay nothing.
+            <strong>{PRICE_LINE}</strong> {PRICE_SUBLINE}
           </p>
           <Badge 
             variant="outline" 
@@ -167,7 +165,7 @@ export default function LandingPricing() {
               }}
             >
               <Crown className="w-3 h-3" />
-              SAVE 50%
+              FIRST WEEK {formatPrice(FIRST_WEEK_PRICE)}
             </div>
 
             {/* Icon */}
@@ -187,32 +185,25 @@ export default function LandingPricing() {
               <h3 className="text-xl sm:text-3xl font-bold mb-2" style={{ color: "var(--foreground)" }}>
                 Your {PLAN_WEEKS}-Week Plan
               </h3>
-              {/* Price anchoring with strikethrough */}
+              {/* The offer, the same words as the paywall and the Stripe sheet. */}
               <div className="flex items-baseline gap-2 mb-1 flex-wrap">
-                <span
-                  className="text-xl sm:text-2xl font-bold line-through"
-                  style={{ color: "var(--muted-foreground)" }}
-                >
-                  {formatPrice(PLAN_ANCHOR_PRICE)}
-                </span>
-                <span className="text-2xl sm:text-3xl font-bold" style={{ color: "var(--chart-1)" }}>→</span>
                 <span
                   className="text-3xl sm:text-4xl font-extrabold transition-all duration-300"
                   style={{ color: "var(--primary)" }}
                 >
-                  {formatPrice(PLAN_PRICE)}
+                  {formatPrice(FIRST_WEEK_PRICE)}
                 </span>
                 <span className="text-base sm:text-lg font-medium" style={{ color: "var(--foreground)" }}>
-                  /{PLAN_WEEKS} weeks
+                  for the first week
                 </span>
               </div>
               <div className="mb-1">
                 <span className="text-lg sm:text-xl font-medium" style={{ color: "var(--foreground)" }}>
-                  ${PLAN_PRICE_PER_WEEK.toFixed(2)}/week
+                  then {formatPrice(WEEKLY_PRICE)}/week
                 </span>
               </div>
               <p className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>
-                About ${PLAN_PRICE_PER_DAY.toFixed(2)} a day • renews every {PLAN_WEEKS} weeks • cancel anytime
+                {PLAN_BLOCKS_COPY}
               </p>
               <p className="text-xs mt-1" style={{ color: "var(--muted-foreground)" }}>
                 Everything included. No add-ons, no upsells.
@@ -221,7 +212,7 @@ export default function LandingPricing() {
 
             <Button asChild className="btn-landing-primary w-full px-4">
               <Link href="/register" prefetch={false} className="relative z-10 flex items-center justify-center gap-2">
-                Get my plan - {formatPrice(PLAN_PRICE)}
+                Start my {PLAN_WEEKS}-week plan - {formatPrice(FIRST_WEEK_PRICE)}
               </Link>
             </Button>
           </div>
@@ -294,10 +285,10 @@ export default function LandingPricing() {
             }}
           >
             <h4 className="text-xl sm:text-2xl font-bold mb-3 text-center" style={{ color: "var(--foreground)" }}>
-              100% guarantee
+              {MONEY_BACK_DAYS}-day money-back guarantee
             </h4>
             <p className="text-sm sm:text-base text-center max-w-2xl mx-auto leading-relaxed" style={{ color: "var(--muted-foreground)" }}>
-              {`Try everything free for ${TRIAL_DAYS} days. If it isn't for you, cancel before your first charge and you pay nothing — two taps from your account, no email, no phone call, no questions. We can offer this because we're sure of the plan.`}
+              {`Start for ${formatPrice(FIRST_WEEK_PRICE)}. If it isn't for you, tell us within ${MONEY_BACK_DAYS} days and we refund everything you've paid — no reason needed. Cancel anytime from the app in two taps, no email, no phone call. We can offer this because we're sure of the plan.`}
             </p>
           </div>
         </div>
@@ -315,11 +306,11 @@ export default function LandingPricing() {
             >
               <Lock className="h-4 w-4" />
               <span className="text-xs sm:text-sm font-bold">
-                {TRIAL_DAYS} days free &middot; cancel anytime
+                {formatPrice(FIRST_WEEK_PRICE)} first week &middot; cancel anytime
               </span>
             </div>
             <p className="text-sm text-center max-w-md" style={{ color: "var(--muted-foreground)" }}>
-              Nothing is charged until your trial ends. Cancel before then and you pay nothing.
+              {formatPrice(WEEKLY_PRICE)} a week after that, until you cancel. {MONEY_BACK_DAYS}-day money-back guarantee.
             </p>
           </div>
         </div>

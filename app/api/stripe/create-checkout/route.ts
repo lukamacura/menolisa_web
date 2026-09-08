@@ -3,16 +3,20 @@ import Stripe from "stripe";
 import { getAuthenticatedUser } from "@/lib/getAuthenticatedUser";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import {
-  OFFER_VARIANT_PAID,
-  OFFER_VARIANT_TRIAL,
+  CHECKOUT_SUBMIT_TEXT,
+  FIRST_WEEK_COUPON_ID,
   PLAN_ID,
-  TRIAL_DAYS,
   isPlanId,
-  type OfferVariant,
 } from "@/lib/pricing";
 import { sendMetaInitiateCheckout } from "@/lib/metaCapi";
 import { GPC_METADATA_KEY, hasGpcOptOut } from "@/lib/privacySignals";
 import { META_CURRENCY, PLAN_VALUE, isValidMetaEventId } from "@/lib/metaPixel";
+import {
+  FUNNEL_SESSION_METADATA_KEY,
+  IS_TEST_METADATA_KEY,
+  isFunnelSessionId,
+  logFunnelEvent,
+} from "@/lib/funnelEvents";
 
 export const runtime = "nodejs";
 
@@ -83,9 +87,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const priceId = process.env.STRIPE_PRICE_8WEEK;
+    // Renamed from STRIPE_PRICE_8WEEK on 2026-09-08 on purpose: the old
+    // variable held the $59 price, and a deploy that still read it would have
+    // charged $59 under a paywall promising $1. A missing variable fails the
+    // checkout loudly instead.
+    const priceId = process.env.STRIPE_PRICE_WEEKLY;
     if (!priceId) {
-      console.error("Missing STRIPE_PRICE_8WEEK env var");
+      console.error("Missing STRIPE_PRICE_WEEKLY env var");
       return NextResponse.json(
         { error: "Checkout is not configured for this plan." },
         { status: 500 }
@@ -108,52 +116,18 @@ export async function POST(req: NextRequest) {
     // asks for no email, so nothing before the card recognises a returning
     // customer, and a retargeting ad puts her back at the paywall as readily as
     // it puts a stranger there.
-    //
-    // The same read decides the free trial. One free trial per person: an
-    // account that has ever held a subscription (`stripe_subscription_id`,
-    // `fulfilled_at`) buys at $59 from day one, and if it has a Stripe customer
-    // we ask Stripe too, since a subscription cancelled before this code
-    // existed may not have left a local trace. What this cannot see is the
-    // returning customer on a *fresh* anonymous account — the funnel collects
-    // no email before Stripe, so she is recognised only in the webhook, when
-    // the address collides and the subscription is merged onto her old account
-    // (`resolveCheckoutAccount`). That woman gets a second free trial. Accepted:
-    // the alternative is asking for an email before the card, which is the
-    // thing the funnel exists not to do.
-    let trialEligible = true;
     {
       const supabaseAdmin = getSupabaseAdmin();
       const { data: existing } = await supabaseAdmin
         .from("user_trials")
-        .select(
-          "provider, account_status, subscription_ends_at, stripe_subscription_id, stripe_customer_id, fulfilled_at"
-        )
+        .select("provider, account_status, subscription_ends_at")
         .eq("user_id", user.id)
         .maybeSingle();
-
-      if (trialEligible && existing) {
-        if (existing.stripe_subscription_id || existing.fulfilled_at) {
-          trialEligible = false;
-        } else if (existing.stripe_customer_id) {
-          try {
-            const prior = await stripe.subscriptions.list({
-              customer: existing.stripe_customer_id,
-              status: "all",
-              limit: 1,
-            });
-            if (prior.data.length > 0) trialEligible = false;
-          } catch (err) {
-            // Fail towards charging: an unknown history is not a first visit.
-            console.error("create-checkout: could not read prior subscriptions:", err);
-            trialEligible = false;
-          }
-        }
-      }
 
       // (1) This account is already paid up with Stripe. Previously only a
       // *foreign* provider was blocked, so a customer who clicked a retargeting
       // ad in the browser she bought in walked back through the funnel and was
-      // sold a second $59 subscription against the same account. Refusing here
+      // sold a second subscription against the same account. Refusing here
       // costs nothing — she has access; the client sends her to the dashboard.
       const endsMs = existing?.subscription_ends_at
         ? new Date(existing.subscription_ends_at).getTime()
@@ -201,24 +175,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // session_id + plan let the success page fire the browser-side Meta Purchase
-    // with the right value and the event_id that dedupes it against the
-    // Conversions API copy sent from the Stripe webhook.
+    // `session_id` + `plan` are read by the download screen, which calls
+    // `sync-session` with the id if the webhook is late. Meta's `Purchase` is
+    // server-only since 2026-09-08 (fired from the webhook at the amount
+    // charged), so the landing no longer carries any pixel work.
     //
-    // One web destination, unconditionally. `/checkout/success` used to be the
-    // non-funnel branch, but it sent her to the web dashboard to "open Lisa" -
-    // a product surface deleted in 2026-08-14 - and no caller reached it: both
-    // web callers pass `from_registration`, and the mobile app passes explicit
-    // deep links that win above. It was deleted rather than left as a fallback
-    // nothing exercised. `?phase=download` is the funnel's own post-purchase
-    // screen and does the same two jobs (mounts MetaPurchaseTracker, calls
-    // sync-session if the webhook is late) while pointing her at the app.
-    // `offer` tells the landing whether money moved, which decides the copy
-    // the download screen shows ("your free trial has started" vs "you're all
-    // set"). Stamped from the same variable that sets `trial_period_days`
-    // below, so the two cannot disagree.
-    const offerVariant: OfferVariant = trialEligible ? OFFER_VARIANT_TRIAL : OFFER_VARIANT_PAID;
-    const defaultSuccess = `${baseUrl}/register?phase=download&session_id={CHECKOUT_SESSION_ID}&plan=${plan}&offer=${offerVariant}`;
+    // One web destination, unconditionally. `?phase=download` is the funnel's
+    // own post-purchase screen; the mobile app passes explicit deep links that
+    // win above.
+    const defaultSuccess = `${baseUrl}/register?phase=download&session_id={CHECKOUT_SESSION_ID}&plan=${plan}`;
     // Backing out of Stripe returns her to `/paywall`, not into the funnel. She
     // is coming back from another origin with her React state gone, and
     // `/register` always restarts at question 1 — which would be a fresh quiz as
@@ -258,6 +223,20 @@ export async function POST(req: NextRequest) {
     const gpcOptOut = hasGpcOptOut(req);
     if (gpcOptOut) metaMetadata[GPC_METADATA_KEY] = "1";
 
+    // The funnel visit this checkout belongs to, and whether it is a QA run.
+    // Both ride on the session AND the subscription metadata so the webhook can
+    // write `purchase_completed` / `subscription_canceled` / `payment_failed`
+    // rows keyed to the same visit that walked the quiz, and flag them as test
+    // when the quiz was. Neither is trusted for anything else: a forged visit
+    // id changes which row of `funnel_events` a purchase joins to, nothing more.
+    const funnelSessionId = isFunnelSessionId(body?.funnel_session_id)
+      ? (body.funnel_session_id as string)
+      : null;
+    const isTest = body?.is_test === true;
+    const funnelMetadata: Record<string, string> = {};
+    if (funnelSessionId) funnelMetadata[FUNNEL_SESSION_METADATA_KEY] = funnelSessionId;
+    if (isTest) funnelMetadata[IS_TEST_METADATA_KEY] = "1";
+
     // Which surface started this checkout, recorded for the webhook.
     //
     // A checkout begun in the Expo app is not a web ad conversion, and reporting
@@ -271,8 +250,22 @@ export async function POST(req: NextRequest) {
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: "subscription",
       payment_method_types: ["card"],
-      payment_method_collection: "always",
       line_items: [{ price: priceId, quantity: 1 }],
+      // The first week is $1: the $4.99 weekly price less the $3.99-once
+      // coupon, applied here on every session. There is no promo-code box —
+      // Stripe refuses `allow_promotion_codes` alongside `discounts`, and the
+      // box is off by default; the discount is the offer, not something she
+      // has to know a code for. No trial of any kind (2026-09-08): the card is
+      // charged $1 at checkout.
+      discounts: [{ coupon: FIRST_WEEK_COUPON_ID }],
+      // USD, always. Stripe's Adaptive Pricing otherwise converts the sheet to
+      // the visitor's local currency off her IP ("Then RSD 523.87 per week"
+      // was the first thing this build showed from a non-US address), which
+      // would put a number on the card form the paywall never printed. The
+      // campaign is US-only and the paywall says $4.99; the sheet must too.
+      adaptive_pricing: { enabled: false },
+      // The same sentence the paywall shows, under Stripe's pay button.
+      custom_text: { submit: { message: CHECKOUT_SUBMIT_TEXT } },
       success_url: useMobileReturns ? customSuccess : defaultSuccess,
       cancel_url: useMobileReturns ? customCancel : defaultCancel,
       client_reference_id: user.id,
@@ -289,39 +282,26 @@ export async function POST(req: NextRequest) {
         user_id: user.id,
         plan,
         checkout_surface: checkoutSurface,
-        offer_variant: offerVariant,
-        ...(trialEligible && { trial_days: String(TRIAL_DAYS) }),
+        ...funnelMetadata,
         ...metaMetadata,
       },
       subscription_data: {
-        // The browser snapshot rides on the subscription too. The trial's
-        // `Subscribe` fires off `invoice.payment_succeeded` a week after
-        // checkout, and an invoice knows its subscription but not the Checkout
-        // Session that started it — so the subscription is the only object
-        // that event can reach which still carries her `_fbp`/`_fbc`, IP, UA,
+        // The browser snapshot rides on the subscription too: an invoice or a
+        // subscription event knows its subscription but not the Checkout
+        // Session that started it, so this is the only object those events
+        // can reach which still carries her visit id, `_fbp`/`_fbc`, IP, UA,
         // GPC answer and surface.
         metadata: {
           user_id: user.id,
           checkout_surface: checkoutSurface,
-          offer_variant: offerVariant,
+          ...funnelMetadata,
           ...metaMetadata,
         },
-        // The free trial. `payment_method_collection: "always"` above is what
-        // makes the card mandatory on a $0 session — Stripe would otherwise
-        // offer to skip it, and a trial with no card on file just expires.
-        // `missing_payment_method: "cancel"` is the belt to that brace: if a
-        // card somehow is not attached when the trial ends, the subscription
-        // cancels rather than inventing an unpaid invoice.
-        //
         // No `consent_collection.terms_of_service` here: Stripe rejects the
         // whole session unless a Terms URL is set in Dashboard → Settings →
         // Public details, and a checkout that 500s on a missing dashboard field
         // is a worse failure than a missing checkbox. Add it once that URL is
         // confirmed set in live mode.
-        ...(trialEligible && {
-          trial_period_days: TRIAL_DAYS,
-          trial_settings: { end_behavior: { missing_payment_method: "cancel" } },
-        }),
       },
     };
     const session = await stripe.checkout.sessions.create(sessionParams);
@@ -332,6 +312,16 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       );
     }
+
+    // `checkout_opened`, keyed to her visit. Deferred: nothing about
+    // measurement may sit between her tap and the card form.
+    after(() =>
+      logFunnelEvent(getSupabaseAdmin(), {
+        step: "checkout_opened",
+        sessionId: funnelSessionId,
+        isTest,
+      })
+    );
 
     // Server-side InitiateCheckout, deduped against the browser copy the paywall
     // fired a moment ago on the same event_id. Sent only once the checkout
@@ -380,7 +370,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    return NextResponse.json({ url: session.url, offer_variant: offerVariant });
+    return NextResponse.json({ url: session.url });
   } catch (err) {
     console.error("Stripe create-checkout error:", err);
     return NextResponse.json(

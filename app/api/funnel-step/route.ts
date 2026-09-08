@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import {
+  SERVER_FUNNEL_STEPS,
+  UUID_RE,
+  isPaywallExitReason,
+} from "@/lib/funnelEvents";
 
 export const runtime = "nodejs";
 
@@ -15,7 +20,7 @@ export const runtime = "nodejs";
  * left on.
  *
  * Being unauthenticated makes the payload the entire attack surface, so it is
- * kept to three bounded values and nothing is trusted:
+ * kept to a few bounded values and nothing is trusted:
  *
  *   - `session_id` must parse as a uuid. It is minted in the browser per visit
  *     and identifies a visit, not a person; it is never joined to `auth.users`
@@ -26,13 +31,18 @@ export const runtime = "nodejs";
  *     list would not stop pollution with *valid* names, so it buys accuracy it
  *     cannot actually deliver. Bounded shape is what keeps it safe.
  *   - `step_index` must be an integer in 0..40.
+ *   - `detail` is accepted for exactly one step, `paywall_exit`, and only from
+ *     a five-value allowlist (`PAYWALL_EXIT_REASONS`). It is why she did not
+ *     buy, not anything about her health. Do not widen it.
+ *   - `is_test` marks a QA visit (`?qa=1`). Anyone can set it on their own
+ *     rows; all it does is remove them from `/admin`.
  *
  * Anything else is a 400 and writes nothing. Note what is absent: no user id
  * (never take one from a request body — see `/api/intake`'s history), no free
- * text, no answers. **Never add the answer she gave on the screen.** The safety
- * argument for storing this at all is that a leak would disclose that somebody
- * reached question 9 and nothing more; a symptom or a goal here would make it
- * health data about a re-identifiable visit, which is the exact thing
+ * text, no answers. **Never add the answer she gave on a quiz screen.** The
+ * safety argument for storing this at all is that a leak would disclose that
+ * somebody reached question 9 and nothing more; a symptom or a goal here would
+ * make it health data about a re-identifiable visit, which is the exact thing
  * `sendMetaLead` had to stop doing on 2026-08-30.
  *
  * Known and accepted: an open endpoint can be spammed to inflate the table. The
@@ -42,8 +52,6 @@ export const runtime = "nodejs";
  * field in the body.
  */
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STEP_RE = /^[a-z0-9_]{1,32}$/;
 const MAX_STEP_INDEX = 40;
 
@@ -55,8 +63,13 @@ export async function POST(req: NextRequest) {
     return new NextResponse(null, { status: 400 });
   }
 
-  const { session_id: sessionId, step, step_index: stepIndex } =
-    (body ?? {}) as Record<string, unknown>;
+  const {
+    session_id: sessionId,
+    step,
+    step_index: stepIndex,
+    detail,
+    is_test: isTest,
+  } = (body ?? {}) as Record<string, unknown>;
 
   if (typeof sessionId !== "string" || !UUID_RE.test(sessionId)) {
     return new NextResponse(null, { status: 400 });
@@ -72,10 +85,28 @@ export async function POST(req: NextRequest) {
   ) {
     return new NextResponse(null, { status: 400 });
   }
+  // `detail` rides on one step only. Any other combination is a 400: a client
+  // that sends a token on a quiz screen is a client this route must not trust.
+  if (detail !== undefined) {
+    if (step !== "paywall_exit" || !isPaywallExitReason(detail)) {
+      return new NextResponse(null, { status: 400 });
+    }
+  } else if (step === "paywall_exit") {
+    return new NextResponse(null, { status: 400 });
+  }
+  if (step === "paywall_exit" && stepIndex !== SERVER_FUNNEL_STEPS.paywall_exit) {
+    return new NextResponse(null, { status: 400 });
+  }
 
   const { error } = await getSupabaseAdmin()
     .from("funnel_events")
-    .insert({ session_id: sessionId, step, step_index: stepIndex });
+    .insert({
+      session_id: sessionId,
+      step,
+      step_index: stepIndex,
+      detail: typeof detail === "string" ? detail : null,
+      is_test: isTest === true,
+    });
 
   if (error) {
     // Logged, never surfaced. A failed measurement must not be visible to her:

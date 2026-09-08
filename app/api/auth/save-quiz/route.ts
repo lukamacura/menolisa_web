@@ -81,6 +81,9 @@ const QuizSchema = z.object({
 
 const BodySchema = z.object({
   quizAnswers: QuizSchema,
+  // A QA walk of the funnel (`?qa=1`). All it does is set
+  // `user_profiles.is_test`, which removes the row from /admin's counts.
+  is_test: z.boolean().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -98,7 +101,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { quizAnswers } = parsed.data;
+    const { quizAnswers, is_test: isTest } = parsed.data;
     const userId = user.id;
     const supabaseAdmin = getSupabaseAdmin();
 
@@ -133,6 +136,7 @@ export async function POST(request: NextRequest) {
       weight_unit: quizAnswers.weight_unit ?? null,
       fitness_level: quizAnswers.fitness_level ?? null,
       training_time: quizAnswers.training_time ?? null,
+      ...(isTest && { is_test: true }),
     };
 
     const { data: existingProfile } = await supabaseAdmin
@@ -149,9 +153,25 @@ export async function POST(request: NextRequest) {
     const isNewProfile = !existingProfile;
 
     if (existingProfile) {
+      // A re-save writes only the keys it was sent (2026-09-08). The web name
+      // step is optional now and the app collects the name after purchase
+      // with `{ quizAnswers: { name } }` alone — a payload like that must not
+      // null out thirteen answers she gave on the web. A key that is present
+      // is written even when null; a key that is absent is left alone. (Zod
+      // keeps present keys and drops absent ones, so `in` is the right test.)
+      // `goal`/`goals` are derived from either key, so either one counts.
+      const goalSent = "goal" in quizAnswers || "goals" in quizAnswers;
+      const updateData = Object.fromEntries(
+        Object.entries(profileData).filter(
+          ([k]) =>
+            k === "user_id" ||
+            k === "is_test" ||
+            (k === "goal" || k === "goals" ? goalSent : k in quizAnswers)
+        )
+      );
       const { error: updateError } = await supabaseAdmin
         .from("user_profiles")
-        .update(profileData)
+        .update(updateData)
         .eq("user_id", userId);
 
       if (updateError) {

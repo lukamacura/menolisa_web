@@ -64,10 +64,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // A free-trial checkout completes with `payment_status: "no_payment_required"`
-  // — nothing was charged — and is every bit as fulfilled as a paid one: the
-  // card is on file and the subscription is `trialing`. `session.status` is
-  // the check that covers both.
+  // `no_payment_required` is kept for a $0 session (nothing sells one since
+  // the trial went on 2026-09-08; a 100%-off coupon would). `session.status`
+  // is the check that covers both.
   const completed =
     session.status === "complete" &&
     (session.payment_status === "paid" || session.payment_status === "no_payment_required");
