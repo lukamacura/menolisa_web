@@ -63,7 +63,8 @@ export async function POST(req: NextRequest) {
     const subscription_ends_at = new Date(endTs * 1000).toISOString();
     const subscription_canceled = !!subscription.cancel_at;
 
-    const isActive = subscription.status === "active" || subscription.status === "trialing";
+    // No trial is sold (2026-09-08): only `active` grants access.
+    const isActive = subscription.status === "active";
     const { error: updateError } = await supabaseAdmin
       .from("user_trials")
       .update({

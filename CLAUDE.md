@@ -1383,8 +1383,13 @@ below reads like a rule, it is a pointer to one of those.
   and renders at `opacity-15` as a wash, so most of that weight is invisible.
 
 **Migrations: `2026-09-08-weekly-plan.sql` applied through the Supabase MCP on
-2026-09-08 (verify `funnel_daily` exists if in doubt).** The referral
-leftovers went with the 2026-08-29 cleanup below.
+2026-09-08 (verify `funnel_daily` exists if in doubt).**
+`2026-09-08-drop-trial-columns.PROPOSED.sql` is written and **not applied** —
+it drops `user_trials.trial_ends_at / first_paid_at / offer_variant /
+renewal_notice_sent_for` behind a backup table, and waits for the 2026-09-08
+build to be live and for sign-off. Nothing else in the schema is dead: every
+table has live readers and writers and no RLS policy references a removed
+feature (checked 2026-09-08).
 
 **Events Manager housekeeping, not code**
 - Archive the eight dark Custom Conversions (the seven funnel events plus

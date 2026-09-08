@@ -231,10 +231,10 @@ async function handleSubscriptionUpsert(
     }
   }
 
-  // Subscription is active → mark paid and clear payment-failed flag.
-  // (`trialing` is kept in the test for a subscription created before
-  // 2026-09-08 — nothing sells a trial now.)
-  const isActive = subscription.status === "active" || subscription.status === "trialing";
+  // Subscription is active → mark paid and clear payment-failed flag. Nothing
+  // sells a trial, so `trialing` is not an active state here: a subscription
+  // that somehow arrives in it has not paid and does not get access.
+  const isActive = subscription.status === "active";
 
   const updatePayload: Record<string, unknown> = {
     provider: "stripe",

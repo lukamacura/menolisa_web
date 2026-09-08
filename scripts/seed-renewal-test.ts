@@ -128,10 +128,7 @@ async function main() {
   );
 
   // ── Subscription ──────────────────────────────────────────────────────────
-  // A paying, non-cancelled Stripe subscriber. `renewal_notice_sent_for` is
-  // cleared so the cron would still consider her due, and the app's own marker
-  // is keyed off `subscription_ends_at` — moving that date re-arms the screen
-  // on the device without anyone having to clear app storage.
+  // A paying, non-cancelled Stripe subscriber.
   const renewsAt = new Date(Date.now() + renewalInDays * 86_400_000).toISOString();
   must("user_trials", (await db.from("user_trials").upsert(
     {
@@ -142,12 +139,11 @@ async function main() {
       payment_failed_at: null,
       dispute_flagged_at: null,
       provider: "stripe",
-      plan_type: "plan8w",
-      plan_amount: 5900,
+      plan_type: "weekly",
+      plan_amount: 499,
       stripe_customer_id: `cus_seed_${userId.slice(0, 8)}`,
       stripe_subscription_id: `sub_seed_${userId.slice(0, 8)}`,
       fulfilled_at: new Date().toISOString(),
-      renewal_notice_sent_for: null,
     },
     { onConflict: "user_id" }
   )).error);

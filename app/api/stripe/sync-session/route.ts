@@ -64,12 +64,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // `no_payment_required` is kept for a $0 session (nothing sells one since
-  // the trial went on 2026-09-08; a 100%-off coupon would). `session.status`
-  // is the check that covers both.
-  const completed =
-    session.status === "complete" &&
-    (session.payment_status === "paid" || session.payment_status === "no_payment_required");
+  // Money must have moved: the first week is $1 and there is no $0 session
+  // any more (2026-09-08). A session that completed without a payment is not
+  // fulfilled here — it would be a coupon or a trial nobody configured.
+  const completed = session.status === "complete" && session.payment_status === "paid";
   if (!completed || !session.subscription) {
     return NextResponse.json({ paid: false });
   }
