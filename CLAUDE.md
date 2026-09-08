@@ -712,10 +712,12 @@ cancelled. The paywall now sells **$1 for the first week, then $4.99/week**:
   optional for one day (2026-09-08) and the results headline greeted the
   skippers as "You". `save-quiz` still writes only the keys it is sent on an
   update, so a partial re-save from the app never nulls her answers.
-- **The results screen has an optional email box** ("Save your results and
-  plan.") → `POST /api/auth/save-email` → `user_profiles.email`. It is never
-  bound to `auth.users`: Stripe's address is the login and the collision/merge
-  logic in `resolveCheckoutAccount` depends on that.
+- **No email capture in the funnel.** An optional "Save your results and
+  plan." box sat on the results screen for one day (2026-09-08) and was removed
+  the same day: an optional field is a half-measure — it neither captures the
+  list a sequence would need nor stays out of the way. If capture comes back it
+  is a required standalone screen between results and the plan, and it lands in
+  `user_profiles.email`, never `auth.users` (see "Decided against").
 - **The paywall asks an exit question** (`PaywallView`): on cursor-leaves-top or
   30s without a tap, once per tab — too expensive / not sure it'll help me / want
   to see the plan first / I don't pay for apps / skipped → `funnel_events`
@@ -1422,7 +1424,8 @@ feature (checked 2026-09-08).
 | Set `allow_promotion_codes` on the Checkout Session | Stripe rejects it alongside `discounts` and the whole checkout 500s. The box is off by default; the coupon is applied server-side. |
 | Send a renewal notice email or alert on the weekly plan | A heads-up before every $4.99 week is an email a week to every customer. The paywall and Terms promise "cancel anytime from the app", not a reminder. |
 | Read `STRIPE_PRICE_8WEEK` | Renamed to `STRIPE_PRICE_WEEKLY` on purpose: the old name held the archived $59 price. |
-| Bind the results-screen email to `auth.users` | Stripe's address is the login and the collision/merge in `resolveCheckoutAccount` depends on it. `user_profiles.email` is a contact detail. |
+| Put an *optional* email box back on the funnel | Tried on results for one day (2026-09-08). Optional is the worst of both: it does not build the list a sequence needs and it still adds a field to the payoff screen. Either no capture, or a required standalone screen between results and the plan — and that one only once there is a sequence to send. |
+| Bind a funnel-collected email to `auth.users` | Stripe's address is the login and the collision/merge in `resolveCheckoutAccount` depends on it. `user_profiles.email` is a contact detail. |
 | Widen `funnel_events.detail` past the five exit tokens | The table's safety argument is that it holds screen names. A free-text or quiz-answer column makes it health data about a re-identifiable visit. |
 | Skip `funnel_events` rows on a `?qa=1` visit | They are written with `is_test` now so the checkout and charge that follow are flagged too. Skipping left those unflagged. |
 | Add an unauthenticated route that runs DDL | An unauthenticated route holding the service role key is a remote SQL console. The old one-time admin endpoints are gone; don't add another. |
@@ -1461,7 +1464,7 @@ the bank.** Full contract in §4 "The weekly plan". Touched: `lib/pricing.ts`
 `purchase_completed` / `subscription_canceled` / `payment_failed` rows, trial
 and `Subscribe` code deleted), `PaywallView` (rewritten: week-1 card, the
 blocks paragraph, `PRICE_LINE`, 14-day guarantee, exit question; countdown and
-anchor gone), `/register` (results email box, download copy; funnel helpers moved to
+anchor gone), `/register` (download copy; funnel helpers moved to
 `lib/funnelClient.ts`; the name step went optional and came back required the
 same day, now with an always-present disabled-until-typed Continue), `lib/resend.ts` (one
 welcome email), the cron (access-ending alert only), `/terms` §10–12,

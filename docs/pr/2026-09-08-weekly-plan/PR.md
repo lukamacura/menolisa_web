@@ -19,7 +19,6 @@ Could not reproduce on a physical device (no iOS Safari / Android Chrome availab
 ![Pixel 5, input focused](https://github.com/lukamacura/menolisa_web/blob/weekly-plan/docs/pr/2026-09-08-weekly-plan/name-step-pixel5-focused.png?raw=true)
 
 ## Email capture, tracking, funnel_events
-- Results screen: optional "Save your results and plan." → `POST /api/auth/save-email` → `user_profiles.email` (never bound to `auth.users`; Stripe's address stays the login).
 - Meta: `ViewContent` once per woman on the paywall, `InitiateCheckout` on the Checkout redirect, `Purchase` server-only from the webhook at `session.amount_total` ($1.00). `MetaPurchaseTracker` and `Subscribe` deleted.
 - `funnel_events`: `checkout_opened`, `purchase_completed`, `subscription_canceled`, `payment_failed`, `paywall_exit` (+`detail`), keyed to the visit via `funnel_session_id` on Stripe metadata. `is_test` on `funnel_events` and `user_profiles`; `?qa=1` flags the whole chain; 10 existing test profiles and their visits flagged.
 

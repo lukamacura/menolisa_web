@@ -146,7 +146,6 @@ import {
   formatPrice,
 } from "@/lib/pricing";
 import { funnelSessionId, isQaSession, pingFunnelStep } from "@/lib/funnelClient";
-import { ResultsEmailCapture } from "@/components/funnel/ResultsEmailCapture";
 import { getSymptomTransforms } from "@/lib/testimonials";
 import { getOfferPromise } from "@/lib/planTimeline";
 import {
@@ -4887,17 +4886,6 @@ function RegisterPageContent() {
                 className="mt-3.5"
               />
             </motion.div>
-
-            {/* Optional email, after the payoff rather than between her and
-                it. Not her login — see the component. */}
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 1.6 }}
-            >
-              <ResultsEmailCapture className="mt-3.5" />
-            </motion.div>
-
           </motion.div>
 
           {/* Fixed bottom CTA */}
