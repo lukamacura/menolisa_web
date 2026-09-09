@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { ReactNode, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -28,8 +28,6 @@ import {
 import {
   FIRST_WEEK_PRICE,
   GUARANTEE_HEADLINE,
-  MONEY_BACK_DAYS,
-  REFUND_FOOTNOTE,
   PLAN_BLOCKS_COPY,
   PLAN_ID,
   PLAN_WEEKS,
@@ -41,9 +39,10 @@ import {
 import { trackFb } from "@/lib/metaPixelClient";
 import { pingFunnelStep } from "@/lib/funnelClient";
 import { SERVER_FUNNEL_STEPS, type PaywallExitReason } from "@/lib/funnelSteps";
+import { BlurStack } from "@/components/BlurStack";
 import { HighlightSweep } from "@/components/HighlightSweep";
 import { PlanFinishBoard } from "@/components/PlanFinishBoard";
-import { getOfferPromise } from "@/lib/planTimeline";
+import { getOfferPromise, getOutcomeHeadline } from "@/lib/planTimeline";
 import { pillarFor, type WeekOneRow } from "@/lib/planPillars";
 import type { PlannerDay } from "@/components/funnel/RewardBoards";
 import { SYMPTOM_FIRST_MOVE, SYMPTOM_LABELS } from "@/lib/quiz-results-helpers";
@@ -109,6 +108,30 @@ export interface PaywallViewProps {
 
 const FIRST_WEEK = formatPrice(FIRST_WEEK_PRICE);
 const WEEKLY = formatPrice(WEEKLY_PRICE);
+
+/**
+ * "Start tonight" is a promise about her evening, so it has to be true when she
+ * reads it. Before {@link EVENING_HOUR} her local time it is "today"; after it,
+ * "tonight" - the same offer, in the word that is not already wrong.
+ *
+ * Read through `useSyncExternalStore` rather than computed during render,
+ * because the server has no clock she shares: the build runs in UTC, so a
+ * component that read the hour inline would hydrate one word and repaint
+ * another. The server snapshot is the word the copy was written in; the client
+ * snapshot is the truth, and React swaps it in after hydration. There is
+ * nothing to subscribe to - the word only has to be right when the page loads,
+ * and a woman who sits on this screen through 5pm has a bigger problem than
+ * the tense.
+ */
+const EVENING_HOUR = 17;
+
+const subscribeToNothing = () => () => {};
+const startWordNow = (): "tonight" | "today" =>
+  new Date().getHours() >= EVENING_HOUR ? "tonight" : "today";
+
+function useStartWord(): "tonight" | "today" {
+  return useSyncExternalStore(subscribeToNothing, startWordNow, () => "tonight");
+}
 
 // Scannable 2x2 grid, one promise per box. At the payment moment she scans
 // rather than reads, so every box is a 2-3 word headline with one support line.
@@ -208,6 +231,48 @@ function WeekOneCard({
   // Nothing sourced, nothing shown.
   if (!pillarRows.length && !firstMove) return null;
 
+  // The rows, as one list: her pillars, then the tonight-move. Built before the
+  // return because only the first one is shown in full - see the block on the
+  // blur below.
+  const items = [
+    ...pillarRows.map((row) => {
+      const pillar = pillarFor(row.key);
+      if (!pillar) return null;
+      return (
+        <li key={row.key} className="flex items-center gap-2.5">
+          <span
+            className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${pillar.chip}`}
+          >
+            <pillar.icon className={`h-4 w-4 ${pillar.tint}`} strokeWidth={2.2} />
+          </span>
+          <span className="min-w-0 text-sm leading-snug text-[#3D3D3D]">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-[#9A9A9A]">
+              {pillar.label}
+            </span>
+            <span className="block font-semibold">{row.task}</span>
+            {row.note && (
+              <span className="block text-xs leading-snug text-[#8A8A8A]">{row.note}</span>
+            )}
+          </span>
+        </li>
+      );
+    }),
+    firstMove ? (
+      <li key="tonight" className="flex items-center gap-2.5">
+        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-rose-100">
+          <Sunrise className="h-4 w-4 text-rose-500" strokeWidth={2.2} />
+        </span>
+        <span className="min-w-0 text-sm leading-snug text-[#3D3D3D]">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-[#9A9A9A]">
+            Tonight, for {symptomLabel?.toLowerCase()}
+          </span>
+          <span className="block font-semibold">{firstMove.do}</span>
+        </span>
+      </li>
+    ) : null,
+  ].filter(Boolean);
+  const hidden = items.slice(1);
+
   // Only the tones her week actually contains, in the order they are drawn.
   const tones = week
     ? (Object.keys(TONE_DOT) as (keyof typeof TONE_DOT)[]).filter((t) =>
@@ -280,45 +345,32 @@ function WeekOneCard({
         </>
       )}
 
-      <ul className="mt-3 space-y-2">
-        {pillarRows.map((row) => {
-          const pillar = pillarFor(row.key);
-          if (!pillar) return null;
-          return (
-            <li key={row.key} className="flex items-center gap-2.5">
-              <span
-                className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${pillar.chip}`}
-              >
-                <pillar.icon className={`h-4 w-4 ${pillar.tint}`} strokeWidth={2.2} />
-              </span>
-              <span className="min-w-0 text-sm leading-snug text-[#3D3D3D]">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-[#9A9A9A]">
-                  {pillar.label}
-                </span>
-                <span className="block font-semibold">{row.task}</span>
-                {row.note && (
-                  <span className="block text-xs leading-snug text-[#8A8A8A]">{row.note}</span>
-                )}
-              </span>
-            </li>
-          );
-        })}
-        {firstMove && (
-          <li className="flex items-center gap-2.5">
-            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-rose-100">
-              <Sunrise className="h-4 w-4 text-rose-500" strokeWidth={2.2} />
-            </span>
-            <span className="min-w-0 text-sm leading-snug text-[#3D3D3D]">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-[#9A9A9A]">
-                Tonight, for {symptomLabel?.toLowerCase()}
-              </span>
-              <span className="block font-semibold">{firstMove.do}</span>
-            </span>
-          </li>
-        )}
-      </ul>
-      <p className="mt-3 text-[11px] leading-snug text-[#8A8A8A]">
-        Week 2 builds on what you actually did.
+      {/* One row plain, the rest going out of focus (2026-09-09).
+          ────────────────────────────────────────────────────────────────
+          The card printed her whole week in full. Everything on it is real -
+          that rule has not moved - but printing all of it answers the question
+          the screen exists to make her ask. She reads four sourced rows, agrees
+          they look sensible, and has nothing left to find out.
+
+          So the first row is hers to read and the ones under it fade out of
+          focus: increasing blur, falling opacity, and a mask that takes the
+          stack to nothing at the bottom edge. Not a fake list and not a lock
+          screen - it is her own week, at the resolution of a page she has not
+          turned yet.
+
+          Blurred rows are inert (`pointer-events-none`, `select-none`) and
+          `aria-hidden`: a screen reader would otherwise read out, in full, the
+          exact content the sighted page is withholding, which is both a
+          contradiction and a worse experience than the summary line under it.
+          That line states what is behind the blur in numbers, so nothing here
+          claims more than the card holds. */}
+      <ul className="mt-3 space-y-2">{items[0]}</ul>
+      <BlurStack items={hidden} as="ul" className="mt-2 space-y-2" />
+      <p className="mt-3 flex items-center gap-1.5 text-[11px] leading-snug text-[#8A8A8A]">
+        {hidden.length > 0 && <Lock className="h-3 w-3 shrink-0 text-[#B5ADA9]" />}
+        {hidden.length > 0
+          ? `${hidden.length} more in week 1 — yours the moment you join.`
+          : "Week 2 builds on what you actually did."}
       </p>
     </div>
   );
@@ -526,9 +578,10 @@ export function PaywallView({
   week,
   userId,
 }: PaywallViewProps) {
-  // Same promise as the finish board's far end (lib/planTimeline.ts) - the
-  // headline and the chart should name the same outcome.
-  const promise = getOfferPromise(goal ?? []);
+  // Same outcome as the finish board's far end (lib/planTimeline.ts) - the
+  // headline and the chart have to name the same thing.
+  const outcome = getOutcomeHeadline(goal ?? []);
+  const startWord = useStartWord();
   const primarySymptom = topProblems?.[0] ?? null;
 
   // ViewContent: she has seen the offer. Reported twice, browser and server, and
@@ -713,19 +766,32 @@ export function PaywallView({
           <p className="text-[13px] font-semibold uppercase tracking-[0.08em] text-[#A8899B] mb-1.5">
             Your audit is done &amp; free. This is the plan it built.
           </p>
-          {/* The full stop lives inside the sweep: <HighlightSweep> is an
+          {/* The headline is her outcome and when she has it (2026-09-09). It
+              was the price - "Start tonight for {FIRST_WEEK}." - from the
+              2026-09-08 re-order, which put the page's only new information
+              in its largest type and was right to. The price kept the size; it
+              moved one block down into the card that already carries the
+              numeral, so the headline can do the thing a headline is for.
+
+              What she is buying is not a dollar, it is a date: the outcome she
+              picked on the goal question, with the timeframe attached. The
+              timeframe is what makes it a claim rather than a wish, and it is
+              the same {PLAN_WEEKS} weeks <PlanFinishBoard /> draws in real
+              dates 400px below.
+
+              The subline went with it. "Your full {PLAN_WEEKS}-week plan to
+              {goal}" said the headline's job twice and re-told the diagnosis
+              screen a third time; the renewal it carried is on the price card,
+              the sticky bar and Stripe's own submit text.
+
+              The full stop lives inside the sweep: <HighlightSweep> is an
               inline-block, so anything appended after it wraps to a lone dot on
               the next line. */}
           <h1 className="text-[30px] sm:text-[36px] font-bold text-[#2B2627] leading-[1.08] tracking-[-0.02em] text-balance">
-            Start tonight
+            {outcome}.
             <br />
-            <HighlightSweep variant="green">for {FIRST_WEEK}.</HighlightSweep>
+            <HighlightSweep variant="green">{PLAN_WEEKS} weeks from now.</HighlightSweep>
           </h1>
-          <p className="mt-2 text-[15px] leading-snug text-[#5A5A5A] text-balance">
-            Your full {PLAN_WEEKS}-week plan to{" "}
-            <b className="font-semibold text-[#3D3D3D]">{promise.toLowerCase()}</b>. Then {WEEKLY}
-            /week &mdash; cancel anytime.
-          </p>
         </motion.div>
 
         {/* ── The price, as a number rather than a sentence ──────────────────
@@ -763,13 +829,17 @@ export function PaywallView({
             YOUR FIRST WEEK
           </span>
 
-          <p className="flex items-baseline justify-center gap-1.5">
+          {/* The old headline, in the block that owns the number. It reads as
+              one sentence with the numeral inside it - "Start tonight for $1" -
+              rather than as a figure with a caption beside it, so the price is
+              still the largest thing above the fold and still says what the
+              dollar buys: an evening, not a subscription. */}
+          <p className="flex flex-wrap items-baseline justify-center gap-x-2 gap-y-0.5 text-center">
+            <span className="text-[22px] sm:text-[24px] font-bold leading-tight tracking-[-0.01em] text-[#2B2627]">
+              Start {startWord} for
+            </span>
             <span className="text-[56px] sm:text-[64px] font-extrabold leading-none tracking-[-0.03em] text-[#15803D] tabular-nums">
               {FIRST_WEEK}
-            </span>
-            <span className="text-left text-[13px] font-semibold leading-tight text-[#5A5A5A]">
-              for your
-              <span className="block">first week</span>
             </span>
           </p>
           {/* The offer as one sentence, for a screen reader and for the rule
@@ -789,9 +859,9 @@ export function PaywallView({
           </div>
 
           {/* The answer to the objection the row above just raised - and the
-              answer is the dollar, not the refund clause. See the block on
-              GUARANTEE_HEADLINE in lib/pricing.ts for why this stopped leading
-              with the money-back window. */}
+              answer is the dollar and cancelling. There is no refund clause to
+              fall back on since 2026-09-09; see the block on GUARANTEE_HEADLINE
+              in lib/pricing.ts. */}
           <div className="mt-2 flex items-start gap-2 rounded-xl border border-green-200 bg-green-50/80 px-3 py-2.5">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-green-600" strokeWidth={2.4} />
             <p className="text-left text-xs leading-snug text-[#3D3D3D]">
@@ -838,10 +908,15 @@ export function PaywallView({
           />
         </div>
 
-        {/* What the subscription is, in one paragraph. It sat directly above the
-            price until 2026-09-08: the densest sentence on the screen, placed
-            as the last thing she read before the number. A comprehension task
-            never goes in front of a decision, so it is disclosure down here. */}
+        {/* What the subscription is, in one paragraph - and the answer to
+            "what happens after week 8", which the headline above raises and
+            nothing else on the page answered. Deliberately here and not in the
+            headline's type: it sat directly above the price until 2026-09-08,
+            the densest sentence on the screen and the last thing she read
+            before the number, and a comprehension task never goes in front of a
+            decision. An answer to a question she has not asked yet is the same
+            mistake enlarged. See the block on PLAN_BLOCKS_COPY in
+            lib/pricing.ts. */}
         <p className="mb-4 px-1 text-center text-sm leading-relaxed text-[#5A5A5A]">
           {PLAN_BLOCKS_COPY}
         </p>
@@ -916,12 +991,11 @@ export function PaywallView({
           })}
         </div>
 
-        {/* The guarantee (2026-09-08, second pass). It leads on the dollar and
-            on cancelling; the money-back window is the footnote. Terms §11 is
-            still the contract behind that footnote and still states it in the
-            same words - the refund was demoted here, never removed, and the
-            two have to move together. Why the reframe: lib/pricing.ts, the
-            block above GUARANTEE_HEADLINE. */}
+        {/* The guarantee. It is the dollar and cancelling, and as of 2026-09-09
+            that is all it is - the money-back footnote that sat under it is
+            gone from here and from Terms §11 in the same commit, which is the
+            coupling that has to hold in both directions. Why the reframe:
+            lib/pricing.ts, the block above GUARANTEE_HEADLINE. */}
         <div
           className="rounded-2xl border-2 border-green-300 bg-green-50 p-4 mb-4"
           style={{ boxShadow: "0 0 0 2px rgba(22,163,74,0.12), 0 8px 28px rgba(22,163,74,0.12)" }}
@@ -934,8 +1008,6 @@ export function PaywallView({
               If it isn&apos;t for you, cancel in two taps from the app before week 2 and you are
               never charged again. No email, no phone call, no questions.
             </p>
-            <div className="w-16 h-px bg-green-300 my-3" />
-            <p className="text-xs text-[#5A5A5A] leading-snug">{REFUND_FOOTNOTE}</p>
           </div>
         </div>
 
@@ -1024,8 +1096,7 @@ export function PaywallView({
             {PRICE_LINE}{" "}
             <a href="/terms#subscription" className="underline">
               Cancel anytime
-            </a>{" "}
-            &middot; {MONEY_BACK_DAYS}-day money-back guarantee
+            </a>
           </p>
           <p className="text-[11px] sm:text-xs text-[#7A7A7A] text-center mt-1 sm:mt-1.5 leading-relaxed">
             <span className="inline-flex items-center justify-center gap-1 flex-wrap">

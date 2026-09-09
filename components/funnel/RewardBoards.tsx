@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Dumbbell, Footprints, Moon, Utensils, Zap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { BlurStack } from "@/components/BlurStack";
 import { cn } from "@/lib/utils";
 
 /**
@@ -39,6 +40,15 @@ import { cn } from "@/lib/utils";
  * back with a prevalence figure attached, which is a receipt, and it did it in
  * the most expensive slot in the funnel. It now ranks those answers and gives
  * her one free thing to do tonight. See the note above <StartingPointBoard />.
+ *
+ * A third rule, added 2026-09-09 with the blur: **boards 2 and 3 now show one
+ * row and fade the rest** (<BlurStack />). It reads against the second rule and
+ * does not break it - what she is handed is still hers and still real, and the
+ * count under each stack states exactly how much is behind it. What changes is
+ * that the board stops answering the question it exists to make her ask. Two
+ * consequences to keep: the blurred rows must never become invented ones, and
+ * the plain row has to be the one that carries the claim - day 1 on board 2,
+ * movement 1 on board 3, not a bookend or a header.
  */
 
 const PAPER = {
@@ -726,10 +736,11 @@ export function TrainingWeekBoard({
   food?: string;
   windDown?: string;
 }) {
-  return (
-    <RewardPaper title="Your week 1" meta={<CountUp value={totalMinutes} suffix=" min total" />}>
-      <div className="mt-1.5">
-        {days.map((day, i) => (
+  // Day 1 is hers to read; the rest of the week goes out of focus behind it.
+  // See <BlurStack />. The board still says what is under there - the total
+  // minutes in the header and the day count in the line below the stack - so
+  // the blur withholds the detail, never the size of the ask.
+  const dayLines = days.map((day, i) => (
           <Line
             key={day.label + i}
             i={i}
@@ -766,10 +777,9 @@ export function TrainingWeekBoard({
               </span>
             )}
           </Line>
-        ))}
-      </div>
+  ));
 
-      {(food || windDown) && (
+  const extras = (food || windDown) && (
         <div className="mt-2 border-t border-dashed border-[#E0D5D0] pt-1.5 space-y-1">
           {food && (
             <Line i={7} base={0.12} className="flex items-center justify-between gap-2">
@@ -792,6 +802,21 @@ export function TrainingWeekBoard({
             </Line>
           )}
         </div>
+      );
+
+  const hidden = [...dayLines.slice(1), ...(extras ? [extras] : [])];
+
+  return (
+    <RewardPaper title="Your week 1" meta={<CountUp value={totalMinutes} suffix=" min total" />}>
+      <div className="mt-1.5">{dayLines[0]}</div>
+      <BlurStack items={hidden} />
+      {days.length > 1 && (
+        <p className="mt-1.5 text-[10px] leading-snug text-[#9A9A9A]">
+          <span className="font-bold text-[#7A7A7A]">
+            {days.length - 1} more days
+          </span>{" "}
+          already scheduled — every one of them is in your plan.
+        </p>
       )}
 
       <Signoff delay={1.3}>
@@ -837,17 +862,21 @@ export function FirstSessionBoard({
 }) {
   const bookendCls = cn(SECTION_BAR, "rounded-md");
   let i = 0;
-  return (
-    <RewardPaper title={heading} meta={minutesLabel}>
-      <div className="mt-2 space-y-1">
-        {warmup && (
+
+  // The warm-up bar and movement 1 are hers to read; the rest of the session
+  // goes out of focus behind them (<BlurStack />). The bookend stays plain
+  // because it is chrome - "Warm-up · 4 moves" names no exercise, so blurring
+  // it would hide the frame and reveal nothing. Movement 1 is the row that
+  // discharges the claim, and the line under the stack counts what is behind
+  // it, so the board still says how big session 1 is.
+  const warmupLine = warmup && (
           <Line i={i++} className={bookendCls}>
             <span>Warm-up · {warmup.count} moves</span>
             <span className="tabular-nums">{warmup.minutes} min</span>
           </Line>
-        )}
+        );
 
-        {rows.map((row, n) => (
+  const rowLines = rows.map((row, n) => (
           <Line key={row.name} i={i++} className="flex items-center gap-2">
             <span
               className={cn(
@@ -864,15 +893,33 @@ export function FirstSessionBoard({
               {row.dose}
             </span>
           </Line>
-        ))}
+        ));
 
-        {cooldown && (
+  const cooldownLine = cooldown && (
           <Line i={i++} className={bookendCls}>
             <span>Cool-down · {cooldown.count} stretches</span>
             <span className="tabular-nums">{cooldown.minutes} min</span>
           </Line>
-        )}
+        );
+
+  const hidden = [...rowLines.slice(1), ...(cooldownLine ? [cooldownLine] : [])];
+  const moreMoves = Math.max(rows.length - 1, 0);
+
+  return (
+    <RewardPaper title={heading} meta={minutesLabel}>
+      <div className="mt-2 space-y-1">
+        {warmupLine}
+        {rowLines[0]}
       </div>
+      <BlurStack items={hidden} className="mt-1 space-y-1" />
+      {moreMoves > 0 && (
+        <p className="mt-1.5 text-[10px] leading-snug text-[#9A9A9A]">
+          <span className="font-bold text-[#7A7A7A]">
+            {moreMoves} more {moreMoves === 1 ? "movement" : "movements"}
+          </span>{" "}
+          in session 1, with your sets and seconds on each.
+        </p>
+      )}
 
       <p className="mt-2 border-t border-dashed border-[#E0D5D0] pt-1.5 text-[10px] leading-snug text-[#9A9A9A]">
         Picked from the <span className="font-bold text-[#7A7A7A]">{poolCount} movements</span>{" "}

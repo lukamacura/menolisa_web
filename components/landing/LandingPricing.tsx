@@ -9,11 +9,10 @@ import { motion, useReducedMotion } from "framer-motion"
 import { useReplayableInView } from "@/hooks/useReplayableInView"
 import { HighlightedTextByRows } from "@/components/landing/HighlightedTextByRows"
 import {
+  CANCEL_BEFORE_RENEWAL_COPY,
   FIRST_WEEK_PRICE,
   GUARANTEE_BODY,
   GUARANTEE_HEADLINE,
-  REFUND_FOOTNOTE,
-  MONEY_BACK_DAYS,
   PLAN_BLOCKS_COPY,
   PLAN_WEEKS,
   PRICE_LINE,
@@ -287,18 +286,15 @@ export default function LandingPricing() {
               borderColor: "var(--primary)",
             }}
           >
-            {/* Leads on the dollar, not the refund window - same reframe as the
-                paywall's green card, and the reasoning is in lib/pricing.ts
-                above GUARANTEE_HEADLINE. The refund stays as the footnote
-                because Terms §11 is a contract. */}
+            {/* The dollar and cancelling, and nothing else - same as the
+                paywall's green card and Terms §11, all three changed together
+                on 2026-09-09. The reasoning is in lib/pricing.ts above
+                GUARANTEE_HEADLINE. */}
             <h4 className="text-xl sm:text-2xl font-bold mb-3 text-center" style={{ color: "var(--foreground)" }}>
               {GUARANTEE_HEADLINE}
             </h4>
             <p className="text-sm sm:text-base text-center max-w-2xl mx-auto leading-relaxed" style={{ color: "var(--muted-foreground)" }}>
               {GUARANTEE_BODY}
-            </p>
-            <p className="mt-3 text-xs sm:text-sm text-center max-w-2xl mx-auto leading-relaxed" style={{ color: "var(--muted-foreground)" }}>
-              {REFUND_FOOTNOTE}
             </p>
           </div>
         </div>
@@ -320,7 +316,7 @@ export default function LandingPricing() {
               </span>
             </div>
             <p className="text-sm text-center max-w-md" style={{ color: "var(--muted-foreground)" }}>
-              {formatPrice(WEEKLY_PRICE)} a week after that, until you cancel. {MONEY_BACK_DAYS}-day money-back guarantee.
+              {formatPrice(WEEKLY_PRICE)} a week after that, until you cancel. {CANCEL_BEFORE_RENEWAL_COPY}
             </p>
           </div>
         </div>
