@@ -1,5 +1,5 @@
 import { Resend } from "resend";
-import { MONEY_BACK_DAYS, PLAN_WEEKS, WEEKLY_PRICE, formatPrice } from "@/lib/pricing";
+import { PLAN_WEEKS, WEEKLY_PRICE, formatPrice } from "@/lib/pricing";
 
 let resendClient: Resend | null = null;
 
@@ -115,7 +115,7 @@ function longDate(d: Date): string {
  * Sent when Stripe checkout completes — the one email a purchase produces.
  *
  * It states the deal in writing: what was charged today, what is charged
- * every week from when, how to stop it, and the money-back window. That
+ * every week from when, and how to stop it before the next charge. That
  * paragraph is the disclosure the auto-renewal rules want in writing and the
  * one thing she will search her inbox for when the first $4.99 lands.
  */
@@ -131,7 +131,7 @@ export async function sendWelcomeEmail(
     : ` From next week it is ${formatPrice(WEEKLY_PRICE)} a week until you cancel.`;
   const body = `
 <p style="margin:0 0 16px;font-size:17px;font-weight:600;color:#2d1b3d">Hi ${greeting},</p>
-<p style="margin:0 0 16px">Your ${PLAN_WEEKS}-week plan is ready. Today you paid <strong>${formatPrice(opts.amountPaid)}</strong> for your first week.${nextCharge} Cancel anytime from the app, and if it isn't for you, tell us within ${MONEY_BACK_DAYS} days of today and we refund everything you've paid.</p>
+<p style="margin:0 0 16px">Your ${PLAN_WEEKS}-week plan is ready. Today you paid <strong>${formatPrice(opts.amountPaid)}</strong> for your first week.${nextCharge} Cancel anytime from the app - cancel before week 2 and you are never charged again.</p>
 <p style="margin:0 0 28px">Lisa is ready. Open the app, say hi, and log how you feel today. Even one symptom helps her start spotting patterns for you.</p>
 <table cellpadding="0" cellspacing="0" border="0">
   <tr>

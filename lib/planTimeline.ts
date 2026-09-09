@@ -32,6 +32,19 @@ export function getOfferPromise(goals: string[]): string {
   return GOAL_PROMISE[goals[0]] ?? "Feel like yourself again";
 }
 
+/**
+ * The same promise as a headline: her outcome with the trailing "again"
+ * dropped, so it can carry a full stop and a timeframe after it
+ * ("Feel calm and steady. 8 weeks from now.").
+ *
+ * "again" is right mid-sentence and wrong as the last word before a period —
+ * it looks back at a state she has lost, and a headline over a plan has to
+ * point forward at the date it finishes.
+ */
+export function getOutcomeHeadline(goals: string[]): string {
+  return getOfferPromise(goals).replace(/\s+again$/i, "");
+}
+
 /** The day her plan ends: `start` + the full {@link PLAN_DAYS}. */
 export function planFinishDate(start: Date): Date {
   const finish = new Date(start);

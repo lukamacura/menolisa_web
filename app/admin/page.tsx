@@ -268,7 +268,7 @@ type Stats = {
     keptPerWeek: number;
     feeRate: number;
   };
-  prices: { firstWeek: number; weekly: number; moneyBackDays: number };
+  prices: { firstWeek: number; weekly: number };
   retention: {
     renewalRate: number | null;
     cohortSize: number;
@@ -286,7 +286,6 @@ type Stats = {
     renewingCount: number;
     cancelsPending: number;
     cancelsAtRisk: number;
-    refundExposure: number;
     refunds30: { count: number; amount: number };
     declined30: number;
   };

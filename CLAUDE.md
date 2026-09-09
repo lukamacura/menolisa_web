@@ -33,7 +33,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Key Design Decisions
 - **Passwordless auth only** — 6-digit email OTP via Supabase (`signInWithOtp` + `verifyOtp`). No passwords, no magic links. Shared `<OtpForm />` (`components/auth/OtpForm.tsx`) is the only auth UI, and `/login` is now its only caller.
-- **The paywall sells a weekly subscription: $1 for the first week, then $4.99/week** (2026-09-08). Stripe price `$4.99` weekly plus the `OuChKp3c` coupon ($3.99 off, once) applied on every Checkout Session; no trial, no promo-code box. The *plan* still runs in 8-week blocks and is rebuilt at the end of each; the *bill* is weekly, and nothing may conflate the two. **The guarantee is presented as the dollar, not as the refund** (2026-09-08): *Try MenoLisa for $1 — that's all you risk; cancel in two taps before week 2 and you are never charged again.* The `MONEY_BACK_DAYS` refund (14 → 5 the same day) still exists, is still Terms §11, and is still on every surface — as the **footnote** under that headline (`REFUND_FOOTNOTE`). It was demoted, never removed. Why: at 5 days the window closes **before week 2 is billed** (day 7), so the only charge it can ever refund is the $1, and leading on a refund process for a dollar introduces the possibility of failure at the moment belief is highest. Copy lives in `lib/pricing.ts` (`GUARANTEE_HEADLINE` / `GUARANTEE_BODY` / `GUARANTEE_INLINE` / `REFUND_FOOTNOTE`); the block above them carries the full argument. See "The weekly plan" in §4.
+- **The paywall sells a weekly subscription: $1 for the first week, then $4.99/week** (2026-09-08). Stripe price `$4.99` weekly plus the `OuChKp3c` coupon ($3.99 off, once) applied on every Checkout Session; no trial, no promo-code box. The *plan* still runs in 8-week blocks and is rebuilt at the end of each; the *bill* is weekly, and nothing may conflate the two. **The guarantee is the dollar and cancelling, and there is no refund promise anywhere** (2026-09-09): *Try MenoLisa for $1 — that's all you risk; cancel in two taps before week 2 and you are never charged again.* The money-back guarantee was demoted to a footnote on 2026-09-08 and **removed on 2026-09-09** — from the paywall card, the landing page, the FAQ, the welcome email, Stripe's submit text and Terms §11, in one commit. `MONEY_BACK_DAYS` and `REFUND_FOOTNOTE` are deleted; `/admin`'s `refundExposure` figure and its "Owed" alert went with them. Why: at 5 days the window closed **before week 2 was billed** (day 7), so the only charge it could ever refund was the $1, and a refund process for a dollar introduces the possibility of failure at the moment belief is highest. Copy lives in `lib/pricing.ts` (`GUARANTEE_HEADLINE` / `GUARANTEE_BODY` / `GUARANTEE_INLINE` / `CANCEL_BEFORE_RENEWAL_COPY`); the block above them carries the full argument. **A refund promise on a marketing surface and Terms §11 move in the same commit, in both directions.** See "The weekly plan" in §4.
 - **The `/register` funnel never asks for an email** — it signs her in anonymously and lets Stripe collect the address at checkout. See "Anonymous accounts" below.
 - **Dual auth paths** — cookie (web) and Bearer token (mobile) coexist in every API route via `getAuthenticatedUser()`
 - **Verbatim KB-first RAG** — AI chat tries to return exact knowledge base content before falling back to LLM generation; this ensures medically accurate, consistent answers
@@ -715,7 +715,7 @@ cancelled. The paywall now sells **$1 for the first week, then $4.99/week**:
   `CHECKOUT_SUBMIT_TEXT`.
 - **`lib/pricing.ts` is the only place a figure lives:** `WEEKLY_PRICE`,
   `FIRST_WEEK_DISCOUNT`, `FIRST_WEEK_PRICE`, `FIRST_WEEK_COUPON_ID`,
-  `PLAN_WEEKS`, `MONEY_BACK_DAYS`, `CANCEL_BEFORE_RENEWAL_COPY`, and the copy strings `PRICE_LINE`,
+  `PLAN_WEEKS`, `CANCEL_BEFORE_RENEWAL_COPY`, and the copy strings `PRICE_LINE`,
   `PRICE_SUBLINE`, `PLAN_BLOCKS_COPY`. **The paywall's price line and Stripe's
   submit text are built from the same constants and must match word for
   word.** `/terms`, the landing page and the FAQ import them.
@@ -772,11 +772,33 @@ Rules that came out of the re-order, all of them about *sequence*, not styling:
   without scrolling, then measured: it landed at 571px, i.e. *behind* the bar on
   a short phone and as a second identical green button ~90px above it on a tall
   one.
-- **The headline sells the price, not the promise.** Her goal is the subline.
-  The diagnosis screen one tap earlier opens `"{name}, here's your 8-week plan
-  to {goal}"`; repeating it here spent the largest type on the close on
-  information she already had, while the only new information on the page had no
-  type at all.
+- **The headline is the outcome and the timeframe; the price is the block
+  under it** (2026-09-09, superseding the 2026-09-08 rule that the headline
+  sells the price). `getOutcomeHeadline(goal)` + "8 weeks from now." — her own
+  goal from the quiz, with the date attached, in the same words
+  `PlanFinishBoard` draws below it. The 2026-09-08 pass was right that the
+  price had no type at all and wrong about where it belongs: the numeral kept
+  its size and moved one block down into the price card, which now reads
+  "Start today for $1" as one sentence with the figure inside it. That phrase
+  is time-aware — "tonight" from 17:00 local, "today" before it, through
+  `useSyncExternalStore` so the UTC server render never hydrates the wrong
+  word. **The subline is gone**: "Your full 8-week plan to {goal}" said the
+  headline's job twice and re-told the diagnosis screen a third time, and the
+  renewal it carried is already on the price card, the sticky bar and Stripe's
+  submit text.
+- **One row plain, the rest out of focus — `<BlurStack />`, and it is one
+  component for all three surfaces** (2026-09-09): the paywall's
+  `<WeekOneCard />`, and the funnel's `<TrainingWeekBoard />` and
+  `<FirstSessionBoard />` reward boards. Every row is still sourced — that rule
+  has not moved — but printing the whole list answers the question the screen
+  exists to make her ask. Rules that come with it: the blur ladders live in
+  `components/BlurStack.tsx` and nowhere else (three copies drift, and the
+  effect only reads as deliberate while every surface fades at the same rate);
+  the stack is `aria-hidden` and inert, because a screen reader must not read
+  out in full exactly what the sighted page is withholding; the caller prints a
+  one-line count of what is behind it, so nothing claims more than it holds;
+  and the plain row is the one carrying the claim — day 1, movement 1, not a
+  bookend or a header. What is under the blur is never invented rows.
 - **The ask is one week, everywhere it is stated.** The button says "Start my
   first week", not "Start my 8-week plan", and `PRICE_LINE` no longer opens on
   the plan length. Eight weeks is what she *gets*; a week for $1 is what she
@@ -796,10 +818,10 @@ Rules that came out of the re-order, all of them about *sequence*, not styling:
   while adding scroll between her and the button.
 - **The risk reversal is the dollar, not the refund clause.** "Try it for $1 —
   don't like it? Just cancel" replaced "5-day money-back guarantee" as the
-  headline on both the inline row and the green card. A refund promise asks her
-  to imagine emailing us and to picture the product failing; "cancel" is two
-  taps, and at $1 there is nothing left to reverse. The refund is the footnote
-  under it, which is proportionate to the one charge it can reach.
+  headline on both the inline row and the green card, and on 2026-09-09 the
+  refund footnote under it went too. A refund promise asks her to imagine
+  emailing us and to picture the product failing; "cancel" is two taps, and at
+  $1 there is nothing left to reverse.
 - **No price figure in the trust grid**, and **the stars are low on the page**.
   "4.9 · 12,800+ women" is the least substantiable claim on the screen; first
   position made it the first claim she evaluated and taxed the guarantee below
@@ -1134,16 +1156,18 @@ omitted the Meta pixel while promising in bold that health data is never used
 for advertising — which was false. Three rules came out of it:
 
 - **Every figure comes from `lib/pricing.ts`.** Terms imports `WEEKLY_PRICE`,
-  `FIRST_WEEK_PRICE`, `PLAN_WEEKS` and `MONEY_BACK_DAYS`. A Terms page
-  stating a price Stripe does not charge is not a stale doc, it is a
-  misrepresentation about money.
-- **The guarantee is a contract.** Terms §11 must stay true to the green card
-  in `components/PaywallView.tsx`. Since 2026-09-08 both say the same thing:
-  the $1 try, with cancelling as the exit and the 5-day money-back as the
-  footnote beneath it (`GUARANTEE_HEADLINE` / `REFUND_FOOTNOTE`). §11 is the
-  contract behind that footnote: the refund is demoted on the marketing
-  surfaces, never removed, and the card and §11 still move together. §12 says what it is not (no outcome promise). There is no free trial
-  and no adherence threshold. The landing page (`LandingPricing`,
+  `FIRST_WEEK_PRICE` and `PLAN_WEEKS`. A Terms page stating a price Stripe does
+  not charge is not a stale doc, it is a misrepresentation about money.
+- **The guarantee is a contract, and §11 moves with the paywall in both
+  directions.** Terms §11 must stay true to the green card in
+  `components/PaywallView.tsx`. Since 2026-09-09 both say the same thing: the
+  $1 try, cancelling as the exit, and **no money-back guarantee** — §11 is now
+  "Refunds" (charges are non-refundable except where the law or these Terms
+  provide one; cancelling before the day-7 renewal is the remedy) and §12 is
+  "What We Do Not Promise" (no guarantee, no outcome promise). If a refund
+  promise is ever printed on a marketing surface again, §11 states its terms in
+  the same commit — advertised and absent from the Terms is a
+  misrepresentation. There is no free trial and no adherence threshold. The landing page (`LandingPricing`,
   `LandingFAQ`) carries the same framing. `MAX_BACKFILL_DAYS` in
   `POST /api/plan/complete` stays at 7 on the plan's own account — the next
   cycle is built from those rows.
@@ -1535,6 +1559,7 @@ feature (checked 2026-09-08).
 | Bypass `lib/privacySignals.ts` on any Meta call site | Privacy §6.4 states we honor GPC. A policy that claims it while pixels fire is the Sephora fine ($1.2M, first CCPA action). |
 | Write a figure into `/terms` or `/privacy` by hand | Both import from `lib/pricing.ts`. A Terms page stating a price Stripe does not charge is a misrepresentation about money, not a stale doc. |
 | Hardcode `$59` in a component | `lib/pricing.ts` is the single source for the price, the plan id sent as `plan`, and every displayed figure. |
+| Re-add a money-back guarantee to any surface without changing Terms §11 in the same commit | Removed everywhere 2026-09-09. At $1 the window closed before the day-7 renewal, so the only charge it could reach was the dollar — it promised a process for recovering an amount nobody needs a process for, and asked her to picture the product failing at the close. A guarantee advertised and absent from the Terms is a misrepresentation, not a stale doc. |
 | Put the refund back in the paywall headline | It spends the largest type on the page introducing the possibility of failure, at the moment belief is highest. Risk reversal answers a question she only has after she wants the thing. The guarantee card 400px below states it in full. |
 | Shorten `PLAN_DISCOUNT_WINDOW_MINUTES` back to 10 | The paywall is ~2000px and is read by a woman in her fifties on a phone. Ten minutes expired mid-read, doubled the displayed price to `PLAN_ANCHOR_PRICE`, and did it to the careful reader — who is the buyer. It also fired on the return-from-Stripe path. An expired countdown converts at roughly nothing. |
 | Move her symptoms back behind age, stage and menopause type | Every live creative is a symptom or mechanism argument and Ad 1 ends on "tap your symptom". Three categorising screens before the funnel mentions what she came for is a form, not the audit she was promised. |

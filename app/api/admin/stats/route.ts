@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { FIRST_WEEK_PRICE, MONEY_BACK_DAYS, WEEKLY_PRICE } from "@/lib/pricing";
+import { FIRST_WEEK_PRICE, WEEKLY_PRICE } from "@/lib/pricing";
 import { getAccountState, type AccountState, TRIAL_SELECT_COLS } from "@/lib/getAccountState";
 import { PAYWALL_EXIT_REASONS, type PaywallExitReason } from "@/lib/funnelSteps";
 
@@ -126,10 +126,12 @@ const DAY_MS = 86_400_000;
 /** The billing period, in days. Weekly since 2026-09-08. */
 const PERIOD_DAYS = 7;
 /**
- * Terms §11: everything paid is refundable, no reason required, for this many
- * days from the first charge. The only refund promise in the product.
+ * There is no refund window to track. The money-back guarantee was removed on
+ * 2026-09-09 (paywall, landing page, welcome email and Terms §11 together), so
+ * the "Owed" alert and the `refundExposure` figure it printed went with it —
+ * a contingent liability the product no longer carries. Stripe refunds issued
+ * by hand still show up in `refunds30`.
  */
-const REFUND_WINDOW_DAYS = MONEY_BACK_DAYS;
 /**
  * Grace added to a period before a customer counts as "should have renewed by
  * now". Stripe dunning retries a failed renewal for several days; without the
@@ -210,13 +212,6 @@ type Revenue = {
   cohortRenewed: number;
   /** When the earliest unmatured customer's first week closes. */
   cohortMaturesAt: string | null;
-  /**
-   * Every net dollar from customers whose first charge is still inside Terms
-   * §11's REFUND_WINDOW_DAYS-day money-back window — all of their weeks, not
-   * only the first, because the guarantee refunds everything. Not revenue you
-   * can spend yet; it is the only contingent liability in the business.
-   */
-  refundExposure: number;
   /** Hit MAX_CHARGES — the figures above are a recent slice, not all time. */
   truncated: boolean;
   sales: RawSale[];
@@ -245,7 +240,6 @@ function emptyRevenue(error: string | null): Revenue {
     cohortSize: 0,
     cohortRenewed: 0,
     cohortMaturesAt: null,
-    refundExposure: 0,
     truncated: false,
     sales: [],
   };
@@ -330,8 +324,6 @@ async function loadRevenue(
   const currencies = new Set<string>();
   /** customer → every succeeded charge time, ascending. */
   const byCustomer = new Map<string, number[]>();
-  /** customer → net collected across all her charges, for refund exposure. */
-  const netByCustomer = new Map<string, number>();
   let gross = 0;
   let fees = 0;
 
@@ -403,7 +395,6 @@ async function loadRevenue(
     // "is this her oldest charge".
     const firstAt = customerId ? byCustomer.get(customerId)?.[0] : undefined;
     const isFirst = !customerId || firstAt === at;
-    if (customerId) netByCustomer.set(customerId, (netByCustomer.get(customerId) ?? 0) + net);
 
     if (rev.sales.length < MAX_SALES_SHOWN) {
       rev.sales.push({
@@ -420,12 +411,11 @@ async function loadRevenue(
     }
   }
 
-  // ── Acquisition, retention and refund exposure, off the same map ──────────
+  // ── Acquisition and retention, off the same map ───────────────────────────
   const maturedBefore = now - (PERIOD_DAYS + RENEWAL_GRACE_DAYS) * DAY_MS;
-  const refundableAfter = now - REFUND_WINDOW_DAYS * DAY_MS;
   let earliestUnmatured: number | null = null;
 
-  for (const [customerId, times] of byCustomer) {
+  for (const times of byCustomer.values()) {
     const first = times[0];
     rev.newCustomersAll += 1;
     if (first >= newCustomerSince) rev.newCustomers30 += 1;
@@ -436,12 +426,6 @@ async function loadRevenue(
       if (times.length > 1) rev.cohortRenewed += 1;
     } else if (earliestUnmatured === null || first < earliestUnmatured) {
       earliestUnmatured = first;
-    }
-
-    // Still refundable under §11: her first charge is inside the money-back
-    // window, and the guarantee returns everything she has paid since.
-    if (first >= refundableAfter) {
-      rev.refundExposure += netByCustomer.get(customerId) ?? 0;
     }
   }
   if (earliestUnmatured !== null) {
@@ -460,7 +444,6 @@ async function loadRevenue(
   }
   rev.daily = rev.daily.map(round2);
   rev.refunds30.amount = round2(rev.refunds30.amount);
-  rev.refundExposure = round2(rev.refundExposure);
 
   return rev;
 }
@@ -1590,14 +1573,6 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  if (revenue.refundExposure > 0) {
-    alerts.push({
-      tone: "money",
-      label: "Owed",
-      text: `$${revenue.refundExposure.toFixed(2)} is still inside the ${REFUND_WINDOW_DAYS}-day money-back window (Terms §11). Treat it as borrowed.`,
-    });
-  }
-
   if (revenue.currencies.length > 1) {
     alerts.push({
       tone: "warn",
@@ -1703,7 +1678,7 @@ export async function POST(req: NextRequest) {
       feeRate: Math.round(revenue.feeRate * 10000) / 10000,
     },
     /** The offer, so the page prints figures the route vouches for. */
-    prices: { firstWeek: FIRST_WEEK_PRICE, weekly: WEEKLY_PRICE, moneyBackDays: MONEY_BACK_DAYS },
+    prices: { firstWeek: FIRST_WEEK_PRICE, weekly: WEEKLY_PRICE },
     retention: {
       renewalRate: renewalRate === null ? null : Math.round(renewalRate * 1000) / 10,
       cohortSize: revenue.cohortSize,
@@ -1720,7 +1695,6 @@ export async function POST(req: NextRequest) {
       renewingCount,
       cancelsPending,
       cancelsAtRisk,
-      refundExposure: revenue.refundExposure,
       refunds30: revenue.refunds30,
       declined30: revenue.failedLast30,
     },

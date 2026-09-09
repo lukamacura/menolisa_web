@@ -1544,7 +1544,11 @@ const DIAGNOSIS_CTA_LABEL = "I'm ready to feel better";
 // headline - but "what does this cost me". This is the last screen before the
 // offer, so it says so plainly and hands over.
 function getDiagnosisForwardCopy(): { sub: React.ReactNode } {
-  return { sub: `${formatPrice(FIRST_WEEK_PRICE)} for your first week \u00b7 cancel anytime` };
+  return {
+    sub: `${formatPrice(FIRST_WEEK_PRICE)} for your first week \u00b7 ${formatPrice(
+      WEEKLY_PRICE
+    )} after first week \u00b7 cancel anytime`,
+  };
 }
 
 
@@ -5214,12 +5218,19 @@ function RegisterPageContent() {
               );
             })()}
 
-            {/* ── Block 3: Someone already walking it. Placed after the plan
-                because this is the moment the plan is at its most abstract - she
-                has just been shown eight weeks of tasks she hasn't done yet, and
-                the next honest question is "does this work for
-                anyone real". ────────────────────────────────────────────────────── */}
-            <SocialProofPolaroid reduced={!!prefersReducedMotion} />
+            {/* ── Block 3 was <SocialProofPolaroid />, deleted 2026-09-09 as the
+                middle of three viewings of the same card. `useMemberRotation`
+                starts at index 0 on every mount, so the quiz's
+                `reward_social_proof` board, this block and the paywall all
+                opened on the same woman - the rotation only pays off for
+                someone who holds the card for `ROTATE_MS`, which nobody does
+                mid-scroll. Of the three, this is the one that buys least: the
+                quiz board *is* its screen's whole payoff, the paywall's answers
+                the last objection before the card, and this one sat ~1500px
+                into a screen already losing ~20% to the tap below it. Same rule
+                the paywall applied when it dropped the duplicated before/after
+                cards - a close is not a second pitch, and this was a second
+                pitch before the close. ──────────────────── */}
 
             {/* ── Block 4: Where this is heading.
                 Moved down from the top of the page. Opening on fear spent
@@ -5303,7 +5314,10 @@ function RegisterPageContent() {
                 It was a three-row icon list until 2026-08-17 - a feature list,
                 answering "what do you get" on a screen that has already shown
                 her the product. What it has to answer is *how the days work*,
-                which is a sequence, so `<HowLisaRuns />` plays it as one. ───── */}
+                and where the app she runs them in actually lives - so
+                `<HowLisaRuns />` states the loop and shows both store listings
+                under it. It was an animated numbered sequence until 2026-09-09;
+                the numbers made a daily loop read as a one-off checklist. ───── */}
             {(() => {
               const topSymptom = [...topProblems]
                 .sort((a, b) => (scoredSeverity[b] ?? 0) - (scoredSeverity[a] ?? 0))[0];
@@ -5313,20 +5327,11 @@ function RegisterPageContent() {
                 ? (SYMPTOM_LABELS[topSymptom] || topSymptom).toLowerCase()
                 : "symptoms";
               return (
-                <motion.div
-                  initial={{ opacity: 0, y: 16 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, amount: 0.15 }}
-                  transition={{
-                    duration: prefersReducedMotion ? 0 : 0.5,
-                    ease: [0.16, 1, 0.3, 1],
-                  }}
-                  className="mb-5"
-                >
+                <div className="mb-5">
                   <div className="px-1 mb-3">
                     <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] leading-tight">
                       The plan doesn&apos;t{" "}
-                      <HighlightSweep>run itself</HighlightSweep>. Lisa does.
+                      <HighlightSweep>run itself</HighlightSweep>. Mobile app runs it.
                     </h2>
                     <p className="text-xs text-[#5A5A5A] mt-1.5">
                       Every day for {PLAN_WEEKS} weeks, she decides what you do next - so you
@@ -5335,7 +5340,7 @@ function RegisterPageContent() {
                   </div>
 
                   <HowLisaRuns topLabel={topLabel} />
-                </motion.div>
+                </div>
               );
             })()}
 

@@ -12,7 +12,6 @@ import { HighlightedTextByRows } from "@/components/landing/HighlightedTextByRow
 import {
   CANCEL_BEFORE_RENEWAL_COPY,
   FIRST_WEEK_PRICE,
-  MONEY_BACK_DAYS,
   PLAN_WEEKS,
   WEEKLY_PRICE,
   formatPrice,
@@ -48,8 +47,8 @@ export default function LandingFAQ() {
       answer: "Yes. Your conversations with Lisa and your symptom data are encrypted and never shared. Only you can see them.",
     },
     {
-      question: "How much does it cost, and how does the guarantee work?",
-      answer: `Your first week is ${formatPrice(FIRST_WEEK_PRICE)}, then it's ${formatPrice(WEEKLY_PRICE)} a week until you cancel - your plan, Lisa, the tracker, all of it. Your plan runs in ${PLAN_WEEKS}-week blocks and is rebuilt from your progress at the end of each block. Cancel anytime from the app in two taps. ${CANCEL_BEFORE_RENEWAL_COPY} And if you want the dollar back too, tell us within ${MONEY_BACK_DAYS} days and we refund everything you've paid, no reason needed.`,
+      question: "How much does it cost, and can I cancel?",
+      answer: `Your first week is ${formatPrice(FIRST_WEEK_PRICE)}, then it's ${formatPrice(WEEKLY_PRICE)} a week until you cancel - your plan, Lisa, the tracker, all of it. Your plan runs in ${PLAN_WEEKS}-week blocks and is rebuilt from your progress at the end of each block. Cancel anytime from the app in two taps. ${CANCEL_BEFORE_RENEWAL_COPY}`,
     },
   ]
 

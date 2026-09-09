@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import {
   FIRST_WEEK_PRICE,
-  MONEY_BACK_DAYS,
   PLAN_WEEKS,
   WEEKLY_PRICE,
   formatPrice,
@@ -26,19 +25,19 @@ import {
  * afternoon, and each was wrong. Before editing a description here, read the
  * route it describes.
  *
- * **3. The guarantee in §11 is a contract, not marketing.** It is the
- * money-back guarantee of `MONEY_BACK_DAYS` days — every payment refunded, no
- * reason required — stated in the same words as the green card in
- * `components/PaywallView.tsx`. There is no free trial, no adherence threshold
- * and no outcome promise; §12 says what it is not. Change the card and change
- * §11 in the same commit.
+ * **3. §11 is a contract, not marketing, and it moves with the paywall.**
+ * There is **no money-back guarantee**: it was removed on 2026-09-09 from the
+ * green card in `components/PaywallView.tsx`, the landing page, the welcome
+ * email and this section, all in one commit. The risk reversal is the dollar
+ * and cancelling — `CANCEL_BEFORE_RENEWAL_COPY` — and cancelling is what stops
+ * the weekly charge, which §10.5 and §11 both say in as many words. A customer
+ * who learns that after the fact files a chargeback instead of a cancellation.
  *
- * At the current 5 days the window closes **before the first renewal is
- * billed** (week 2, day 7), so the only charge it can reach is the first-week
- * charge. §11.Scope says so in as many words rather than leaving her to work
- * it out from two numbers: cancelling, not the refund, is what stops the
- * weekly charge, and a customer who learns that after the fact files a
- * chargeback instead of a cancellation.
+ * The coupling holds in both directions. If a refund promise is ever printed
+ * on a marketing surface again, §11 states its terms in the same commit; a
+ * guarantee advertised and absent from the Terms is a misrepresentation, not a
+ * stale doc. There is no free trial, no adherence threshold and no outcome
+ * promise; §12 says so.
  */
 
 export const metadata: Metadata = {
@@ -47,7 +46,7 @@ export const metadata: Metadata = {
     "The terms governing your use of MenoLisa, including subscription, cancellation and refund terms.",
 };
 
-const LAST_UPDATED = "September 4, 2026";
+const LAST_UPDATED = "September 9, 2026";
 const SUPPORT_EMAIL = "support@macurasolutions.us";
 
 function Mail() {
@@ -85,8 +84,8 @@ export default function TermsPage() {
             <li>
               <strong>Your subscription renews automatically</strong>: {formatPrice(FIRST_WEEK_PRICE)}{" "}
               for the first week, then {formatPrice(WEEKLY_PRICE)} every week until you cancel
-              (Section 10). Cancel anytime from the app. {MONEY_BACK_DAYS}-day money-back guarantee
-              (Section 11).
+              (Section 10). Cancel anytime from the app — cancel before week 2 and you are never
+              charged again. Charges already made are not refundable except as set out in Section 11.
             </li>
             <li>
               <strong>Disputes go to individual arbitration</strong> and you waive class actions and
@@ -630,69 +629,77 @@ export default function TermsPage() {
         </section>
 
         <section className="mb-8">
-          <h2 id="money-back" className="text-2xl font-semibold mb-4">11. {MONEY_BACK_DAYS}-Day Money-Back Guarantee</h2>
+          <h2 id="money-back" className="text-2xl font-semibold mb-4">11. Refunds</h2>
           <p>
             <strong>
-              If MenoLisa is not for you, tell us within {MONEY_BACK_DAYS} days of your first charge and
-              we refund everything you have paid.
+              Your first week is {formatPrice(FIRST_WEEK_PRICE)}, and you can cancel at any time
+              before your next weekly charge. Cancelling is how you stop being billed.
             </strong>
           </p>
           <p>
-            Except where a longer or unconditional right is required by the law that applies to you,
-            these are the terms:
+            Except where a refund is required by the law that applies to you, or is expressly
+            provided elsewhere in these Terms, these are the terms:
           </p>
           <ul>
             <li>
-              <strong>Window.</strong> You may request a full refund of <strong>every subscription
-              payment made so far</strong> within <strong>{MONEY_BACK_DAYS} days</strong> of the
-              date of your first charge (the {formatPrice(FIRST_WEEK_PRICE)} first-week charge).
+              <strong>Charges already made are not refundable.</strong> We do not offer a
+              money-back guarantee. A charge pays for the week of access it buys, and that access
+              is provided in full whether or not you use it.
             </li>
             <li>
-              <strong>How.</strong> Email <Mail /> from the email address on your account, stating
-              that you are requesting a refund. No reason is required.
-            </li>
-            <li>
-              <strong>Scope.</strong> This covers the charges made inside the {MONEY_BACK_DAYS}-day
-              window. Weekly charges made after the window closes are not refundable except as
-              required by law or at our discretion; cancel from the app to stop them (Section 10.5).
+              <strong>Cancelling is the remedy, and it is immediate and self-service.</strong>{" "}
+              Cancel from <strong>Account</strong> in the app or on the website (Section 10.5). You
+              keep access to the end of the week you have paid for and are not charged again.{" "}
               <strong>
-                {" "}Your first weekly renewal is charged 7 days after your first charge, which is
-                after this window closes. Cancel before then and you are not charged again.
+                Your first weekly renewal is charged 7 days after your first charge. Cancel before
+                then and {formatPrice(FIRST_WEEK_PRICE)} is all you ever pay.
               </strong>
             </li>
             <li>
-              <strong>Processing.</strong> Approved refunds are returned to the original payment
-              method, typically within 5–10 business days after approval. Your bank’s timing is outside
-              our control.
+              <strong>Where these Terms do provide a refund</strong> — for example a pro-rated
+              refund if we permanently discontinue the {PLAN_WEEKS}-week plan during a period you
+              have paid for (Section 2) — request it by emailing <Mail /> from the email address on
+              your account.
             </li>
             <li>
-              <strong>Effect.</strong> On refund, your subscription is cancelled and your access ends.
+              <strong>Discretion.</strong> We may issue a refund in a particular case at our
+              discretion. Doing so once does not create a right to another, and is not a waiver of
+              this Section.
             </li>
             <li>
-              <strong>Limit.</strong> One refund per person and per account. A person who has received
-              any refund from us is not eligible for another.
+              <strong>Processing.</strong> Any refund we do issue is returned to the original
+              payment method, typically within 5–10 business days after approval. Your bank’s timing
+              is outside our control.
+            </li>
+            <li>
+              <strong>Effect.</strong> On refund, your subscription is cancelled and your access
+              ends.
+            </li>
+            <li>
+              <strong>Your statutory rights are unaffected.</strong> Nothing in this Section limits
+              any right you have under consumer law that cannot be waived, including any statutory
+              right of withdrawal or cancellation.
             </li>
           </ul>
         </section>
 
         <section className="mb-8">
-          <h2 className="text-2xl font-semibold mb-4">12. What the Guarantee Is Not</h2>
+          <h2 className="text-2xl font-semibold mb-4">12. What We Do Not Promise</h2>
           <p>
-            The {MONEY_BACK_DAYS}-day money-back guarantee in Section 11 is the whole of the guarantee,
-            and Section 11 states its complete terms. Where it and any advertisement differ, Section
-            11 governs.
+            <strong>We do not offer a money-back guarantee</strong>, and no advertisement, page, or
+            message should be read as creating one. Section 11 states the whole of our refund
+            position, and where it and any other statement differ, Section 11 governs.
           </p>
           <p>
-            It is <strong>not a promise about outcomes</strong>. MenoLisa is a wellness product, not
-            a medical treatment. We do not promise, and the guarantee does not create, any health,
-            clinical, symptom, weight, fitness, or other outcome, and no statement in it should be
+            We also make <strong>no promise about outcomes</strong>. MenoLisa is a wellness product,
+            not a medical treatment. We do not promise, and nothing in these Terms creates, any health,
+            clinical, symptom, weight, fitness, or other outcome, and no statement of ours should be
             read as a representation that the Service will improve your health. Individual results
             vary and depend on many factors outside our control. Section 4 applies in full.
           </p>
           <p>
             <strong>Nothing in this Section limits any right you have under consumer law that cannot
-            be waived</strong>, including any statutory right of withdrawal or cancellation, and any
-            such right applies in addition to this guarantee.
+            be waived</strong>, including any statutory right of withdrawal or cancellation.
           </p>
         </section>
 
