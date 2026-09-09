@@ -572,6 +572,32 @@ top to bottom, latest sales, needs a human.
   age out. Bars clamp; the rates print the true figure.
 - **The verdict sentence is computed server-side**, so the panel and any future
   alert can never disagree about what the numbers mean.
+- **Nothing forward-looking may report further than the next charge.** The Cash
+  block's calendar line was `subscribers x $4.99 x 30/7` printed as "N renewals
+  scheduled" — the money was ~4.3 renewals each and the count was subscribers,
+  so the two halves of one sentence described different things. Weekly billing
+  makes the honest version trivial: every renewing subscription renews exactly
+  once in the next 7 days, so `booked7 = renewingCount x WEEKLY_PRICE`, and that
+  is checkable against Stripe. `past_due` is excluded — Stripe is retrying an
+  invoice that has *already* come due, and counting it forward books the same
+  money twice. Everything past week 1 is a forecast: she can cancel in two taps.
+- **The funnel block has a day picker, and it moves only the funnel.** `range:
+  { from, to }` on `POST /api/admin/stats` is two operator-local calendar days,
+  both inclusive; it drives the curve, the by-day table and the exit question,
+  and it overrides both server-side floors (that is what picking a window
+  means). It must never touch a money bucket, CAC, LTV or the cohort table —
+  `week2Rate` feeds the verdict at the top of the page, and a filter inside the
+  funnel that can rewrite "should I spend more tomorrow?" is the fastest way to
+  make this screen lie. That is why `loadSubscriptions` runs on `funnelSince`
+  rather than `curveSince`. Both RPCs take `until` as an **exclusive** end,
+  defaulted to null (`scripts/sql/2026-09-09-funnel-window-until.sql`), and the
+  route omits the key when there is no range, so the default window still works
+  against a database where the migration hasn't been applied.
+- **Two views of the funnel, one window, one heading.** "Top to bottom" and "By
+  day" are tabs inside a single panel because they were two panels silently
+  sharing a window: the only way to know they covered the same days was to read
+  the route. The window is stated once, above the tabs. Never say "last 30 days"
+  when it isn't — `windowNote()` is the one place that decides.
 - **`ADMIN_FIXED_MONTHLY_USD`** is hosting + database + email + domain. Unset
   reads as 0 and the panel says so, rather than reporting a contribution figure
   that quietly ignores the bills.

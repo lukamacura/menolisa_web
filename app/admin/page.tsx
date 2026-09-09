@@ -280,8 +280,10 @@ type Stats = {
     roas: number | null;
   };
   forward: {
-    booked30: number;
-    bookedCount: number;
+    /** What Stripe will attempt to charge in the next 7 days. Weekly billing,
+     *  so every renewing subscription renews exactly once inside it. */
+    booked7: number;
+    renewingCount: number;
     cancelsPending: number;
     cancelsAtRisk: number;
     refundExposure: number;
@@ -295,7 +297,11 @@ type Stats = {
     sessionsError: string | null;
     /** The one window every row of the curve is measured over. */
     since: string;
+    /** Exclusive end of that window, or null when it runs up to now. */
+    until: string | null;
     days: number;
+    /** True when the operator picked the window rather than inheriting it. */
+    custom: boolean;
     /** True when ADMIN_CAMPAIGN_START cut the window short of 30 days. */
     clamped: boolean;
     /** The acquisition window the CAC tile uses, which need not be the curve's. */
@@ -417,6 +423,34 @@ const weekdayLabel = (day: string) =>
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * The operator's calendar day for an instant.
+ *
+ * `iso.slice(0, 10)` is the trap here and it is not hypothetical: the route
+ * sends local midnight *as a UTC instant*, so 1 September in Belgrade arrives
+ * as `2026-08-31T22:00:00Z` and slicing the string reads back 31 August. The
+ * date boxes would then show, and send, a window one day wider than the one on
+ * screen.
+ */
+function localDayOf(iso: string): string {
+  const d = new Date(iso);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+}
+
+/** Today as the operator's own calendar day — never `toISOString()`, which
+ *  renders the UTC date and is a day behind east of Greenwich after midnight. */
+function todayIso(): string {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+}
+
+/** `n` days before `day`, as another `YYYY-MM-DD`. Noon-anchored so a DST
+ *  boundary inside the span cannot roll the answer onto the wrong date. */
+function dayMinus(day: string, n: number): string {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d, 12) - n * DAY_MS).toISOString().slice(0, 10);
+}
+
 /** The last `n` days ending at `endIso`, oldest first. */
 function lastNDays(endIso: string, n: number): string[] {
   const [y, m, d] = endIso.split("-").map(Number);
@@ -471,6 +505,18 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ── The funnel window, and which view of it is on screen ──────────────────
+  //
+  // Both live here rather than inside the funnel block: the window is a request
+  // parameter (every reload, including the 30-second one, has to carry it or
+  // the panel would silently snap back to the default), and the tab has to
+  // survive that reload. The ref is what `load` reads — `load` is a stable
+  // callback and a stale closure over `range` would send the previous window
+  // for the rest of the session.
+  const [funnelTab, setFunnelTab] = useState<"curve" | "day">("curve");
+  const [range, setRange] = useState<{ from: string; to: string } | null>(null);
+  const rangeRef = useRef<{ from: string; to: string } | null>(null);
+
   // Ad spend: one draft string per day, auto-saved — see AdSpendStrip below.
   const [spendDrafts, setSpendDrafts] = useState<Record<string, string>>({});
   const [savingDays, setSavingDays] = useState<Record<string, boolean>>({});
@@ -501,6 +547,10 @@ export default function AdminPage() {
           password: pw,
           // So "Collected today" means your today, not UTC's.
           tzOffsetMinutes: new Date().getTimezoneOffset(),
+          // Read off the ref, not off state: this callback is stable by design
+          // and a closure over `range` would pin the window to whatever it was
+          // when the page mounted.
+          ...(rangeRef.current ? { range: rangeRef.current } : {}),
           ...(spend ? { spend } : {}),
         }),
       });
@@ -628,6 +678,18 @@ export default function AdminPage() {
       }, 1600);
     },
     [load, stats]
+  );
+
+  /** Apply a funnel window (or `null` for the default) and re-read at once —
+   *  a filter that waited for the next 30-second tick would read as broken. */
+  const applyRange = useCallback(
+    (next: { from: string; to: string } | null) => {
+      rangeRef.current = next;
+      setRange(next);
+      const pw = sessionStorage.getItem(SESSION_KEY);
+      if (pw) void load(pw, undefined, true);
+    },
+    [load]
   );
 
   const handleSpendChange = (day: string, value: string) => {
@@ -837,14 +899,23 @@ export default function AdminPage() {
             </div>
           </div>
           <div className="flex flex-wrap items-baseline gap-x-7 gap-y-2 border-t border-[var(--line)] bg-[var(--quiet)] px-6 py-3 text-[12.5px] text-[var(--ink-2)]">
+            {/* Seven days, because seven days is all that is scheduled. The
+                30-day version of this line multiplied subscribers by 4.3 weeks
+                and then labelled the result "N renewals", so the money and the
+                count described different things — and every week past the next
+                one is a forecast, not a calendar entry: she can cancel in two
+                taps before any of them. */}
             <Footnote dot="var(--ahead)">
-              Already on the calendar, next 30 days{" "}
+              Scheduled to renew, next 7 days{" "}
               <b className="font-semibold tabular-nums text-[var(--ahead-deep)]">
-                {money(forward.booked30)}
+                {money(forward.booked7)}
               </b>{" "}
               <span className="text-[var(--ink-3)]">
-                ({plural(forward.bookedCount, "renewal")} scheduled
-                {forward.cancelsPending > 0 && `, ${forward.cancelsPending} already cancelled`})
+                ({plural(forward.renewingCount, "subscription")} at{" "}
+                {money(prices.weekly, 2)}
+                {forward.cancelsPending > 0 &&
+                  `; ${forward.cancelsPending} cancelled, ${money(forward.cancelsAtRisk, 2)} that won't arrive`}
+                )
               </span>
             </Footnote>
             <Footnote dot="var(--stop)">
@@ -1075,41 +1146,45 @@ export default function AdminPage() {
             against the first bar of the other. They are now one curve over one
             window; see WholeFunnel for why the units allow that. */}
         <SectionHead
-          title="The funnel, top to bottom"
+          title="The funnel"
           dot="linear-gradient(90deg, hsl(221 68% 51%), hsl(360 68% 51%))"
           source="Supabase + Stripe"
-          // Never say "30 days" when the window is shorter — whether it was the
-          // campaign floor or the age of the screen data that cut it.
-          note={
-            funnel.clamped || funnel.boundedByTracking
-              ? `Since ${shortDate(funnel.since)} · ${plural(funnel.days, "day")}`
-              : "Last 30 days"
-          }
+          note={windowNote(funnel)}
         />
         <Panel accent="linear-gradient(90deg, hsl(221 68% 51%) 0%, hsl(290 60% 56%) 55%, hsl(360 68% 51%) 100%)">
-          <WholeFunnel
-            rows={funnel.dropoff}
-            worst={funnel.worstStep}
-            entrySessions={funnel.entrySessions}
-            minVerdictEntry={funnel.minVerdictEntry}
-            error={funnel.dropoffError}
-            sessionsError={funnel.sessionsError}
-            keptPerSale={acq.keptPerSale}
-            since={funnel.since}
-            days={funnel.days}
-            boundedByTracking={funnel.boundedByTracking}
+          {/* One window, two views of it. They were two stacked panels with two
+              headings, and the second silently reused the first's window — so
+              the only way to tell they were the same days was to know the code.
+              The window is now stated once, above the tabs, and both views are
+              underneath it. */}
+          <FunnelControls
+            tab={funnelTab}
+            onTab={setFunnelTab}
+            range={range}
+            onRange={applyRange}
+            funnel={funnel}
           />
-        </Panel>
-
-        {/* ── 3b. The funnel, by day ──────────────────────────────────────── */}
-        <SectionHead
-          title="The funnel, by day"
-          dot="var(--her)"
-          source="Supabase"
-          note="Visits reaching each step · loss to the next step"
-        />
-        <Panel accent="var(--her)">
-          <FunnelByDay rows={stats.funnelDaily.rows} totals={stats.funnelDaily.totals} error={stats.funnelDaily.error} />
+          {funnelTab === "curve" ? (
+            <WholeFunnel
+              rows={funnel.dropoff}
+              worst={funnel.worstStep}
+              entrySessions={funnel.entrySessions}
+              minVerdictEntry={funnel.minVerdictEntry}
+              error={funnel.dropoffError}
+              sessionsError={funnel.sessionsError}
+              keptPerSale={acq.keptPerSale}
+              since={funnel.since}
+              until={funnel.until}
+              days={funnel.days}
+              boundedByTracking={funnel.boundedByTracking}
+            />
+          ) : (
+            <FunnelByDay
+              rows={stats.funnelDaily.rows}
+              totals={stats.funnelDaily.totals}
+              error={stats.funnelDaily.error}
+            />
+          )}
         </Panel>
 
         {/* ── 3c. The exit question ───────────────────────────────────────── */}
@@ -1119,8 +1194,8 @@ export default function AdminPage() {
           source="Supabase"
           note={
             stats.exitQuestion.asked > 0
-              ? `${plural(stats.exitQuestion.asked, "answer")} · ${stats.exitQuestion.paywallViews} saw the paywall`
-              : "The one-tap question on the paywall"
+              ? `${plural(stats.exitQuestion.asked, "answer")} · ${windowNote(funnel)}`
+              : `The one-tap question on the paywall · ${windowNote(funnel)}`
           }
         />
         <Panel accent="var(--her)">
@@ -2040,6 +2115,193 @@ const GROUP_HEAD: Record<"quiz" | "after" | "money", { title: string; source: st
 };
 
 /**
+ * The window, in the words the panel uses everywhere else.
+ *
+ * There is one rule: **never say "last 30 days" when the window is not 30
+ * days.** It can be shorter for three different reasons — the operator picked
+ * a range, `ADMIN_CAMPAIGN_START` floored it, or screen tracking simply hadn't
+ * started 30 days ago — and a block that reports a floored window as a full one
+ * makes every rate under it look worse than it is.
+ */
+function windowNote(funnel: Stats["funnel"]): string {
+  if (funnel.custom) {
+    // `until` is the exclusive end, so the last day it covers is the day before.
+    const lastDay = funnel.until
+      ? localDayOf(new Date(new Date(funnel.until).getTime() - DAY_MS).toISOString())
+      : todayIso();
+    const first = localDayOf(funnel.since);
+    return first === lastDay
+      ? dayLabel(first)
+      : `${dayLabel(first)} – ${dayLabel(lastDay)} · ${plural(funnel.days, "day")}`;
+  }
+  if (funnel.clamped || funnel.boundedByTracking) {
+    return `Since ${shortDate(funnel.since)} · ${plural(funnel.days, "day")}`;
+  }
+  return "Last 30 days";
+}
+
+/** Quick windows, in the sizes you actually reach for. `null` days = the
+ *  default window, which is 30 days floored by the campaign start and by the
+ *  day screen tracking began. */
+const RANGE_PRESETS: { label: string; days: number | null }[] = [
+  { label: "Today", days: 1 },
+  { label: "7 days", days: 7 },
+  { label: "14 days", days: 14 },
+  { label: "30 days", days: 30 },
+  { label: "Default", days: null },
+];
+
+/**
+ * The funnel's window and which view of it is showing.
+ *
+ * Two things sit together here because they are read together: the tab, and the
+ * days the numbers under it cover. Before this the two views were separate
+ * panels with separate headings and no window control at all, so "which days is
+ * this?" was answerable only from the code, and "just show me Tuesday" was not
+ * answerable at all.
+ *
+ * The date boxes are the real control and the presets are shortcuts into it —
+ * pressing "7 days" fills the boxes, so the chip and the dates can never
+ * disagree about what is on screen. A picked window overrides both server-side
+ * floors, which is the point of picking one; the block says so underneath
+ * rather than quietly widening it back out.
+ */
+function FunnelControls({
+  tab,
+  onTab,
+  range,
+  onRange,
+  funnel,
+}: {
+  tab: "curve" | "day";
+  onTab: (t: "curve" | "day") => void;
+  range: { from: string; to: string } | null;
+  onRange: (r: { from: string; to: string } | null) => void;
+  funnel: Stats["funnel"];
+}) {
+  const today = todayIso();
+  const from = range?.from ?? localDayOf(funnel.since);
+  const to =
+    range?.to ??
+    (funnel.until
+      ? localDayOf(new Date(new Date(funnel.until).getTime() - DAY_MS).toISOString())
+      : today);
+
+  /** Which preset, if any, the current window is exactly. Compared rather than
+   *  remembered, so a hand-typed 7-day span lights the 7-day chip. */
+  const activePreset = (days: number | null) => {
+    if (days === null) return range === null;
+    return range !== null && range.to === today && range.from === dayMinus(today, days - 1);
+  };
+
+  const setDay = (which: "from" | "to", value: string) => {
+    if (!value) return;
+    const next = { from, to, [which]: value } as { from: string; to: string };
+    // A backwards range is a slip, not an instruction: pull the other end with
+    // it rather than sending the server something it will ignore.
+    if (next.from > next.to) {
+      if (which === "from") next.to = next.from;
+      else next.from = next.to;
+    }
+    onRange(next);
+  };
+
+  const tabClass = (active: boolean) =>
+    `rounded-md px-3 py-1.5 text-[12.5px] font-semibold transition-colors ${
+      active
+        ? "bg-white text-[var(--ink)] shadow-[0_1px_2px_rgba(28,24,31,0.12)]"
+        : "text-[var(--ink-3)] hover:text-[var(--ink-2)]"
+    }`;
+  const chipClass = (active: boolean) =>
+    `rounded-full border px-2.5 py-1 text-[11.5px] font-medium transition-colors ${
+      active
+        ? "border-[var(--her-line)] bg-[var(--her-bg)] text-[var(--her-deep)]"
+        : "border-[var(--line)] text-[var(--ink-3)] hover:border-[var(--line)] hover:text-[var(--ink-2)]"
+    }`;
+
+  return (
+    <div className="border-b border-[var(--line)] bg-[var(--quiet)] px-6 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+        <div
+          role="tablist"
+          aria-label="Funnel view"
+          className="inline-flex gap-1 rounded-lg bg-[var(--line-soft)] p-1"
+        >
+          <button
+            role="tab"
+            aria-selected={tab === "curve"}
+            onClick={() => onTab("curve")}
+            className={tabClass(tab === "curve")}
+          >
+            Top to bottom
+          </button>
+          <button
+            role="tab"
+            aria-selected={tab === "day"}
+            onClick={() => onTab("day")}
+            className={tabClass(tab === "day")}
+          >
+            By day
+          </button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="flex flex-wrap gap-1.5">
+            {RANGE_PRESETS.map((p) => (
+              <button
+                key={p.label}
+                onClick={() =>
+                  onRange(p.days === null ? null : { from: dayMinus(today, p.days - 1), to: today })
+                }
+                className={chipClass(activePreset(p.days))}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5 text-[11.5px] text-[var(--ink-3)]">
+            <input
+              type="date"
+              aria-label="Window starts"
+              value={from}
+              max={to}
+              onChange={(e) => setDay("from", e.target.value)}
+              className="rounded-md border border-[var(--line)] bg-white px-2 py-1 text-[12px] tabular-nums text-[var(--ink)] outline-none focus:border-[var(--her)]"
+            />
+            <span aria-hidden>→</span>
+            <input
+              type="date"
+              aria-label="Window ends"
+              value={to}
+              min={from}
+              max={today}
+              onChange={(e) => setDay("to", e.target.value)}
+              className="rounded-md border border-[var(--line)] bg-white px-2 py-1 text-[12px] tabular-nums text-[var(--ink)] outline-none focus:border-[var(--her)]"
+            />
+          </div>
+        </div>
+      </div>
+      <p className="mt-2 text-[11px] text-[var(--ink-3)]">
+        {funnel.custom ? (
+          <>
+            <b className="font-semibold text-[var(--ink-2)]">{windowNote(funnel)}</b>, inclusive of
+            both days. A picked window ignores the campaign floor and the day tracking began, so it
+            can reach back into your own pre-launch testing.
+          </>
+        ) : (
+          <>
+            <b className="font-semibold text-[var(--ink-2)]">{windowNote(funnel)}</b> — the default:
+            30 days, cut short by the campaign start and by the day screen tracking began, whichever
+            is later.
+          </>
+        )}{" "}
+        Money, cost per customer and retention keep their own windows and are not affected by this.
+      </p>
+    </div>
+  );
+}
+
+/**
  * The whole funnel in one block: the landing screen down to the charge.
  *
  * This was two panels — "Where they stop" (quiz finished -> checkout -> paid)
@@ -2193,6 +2455,7 @@ function WholeFunnel({
   sessionsError,
   keptPerSale,
   since,
+  until,
   days,
   boundedByTracking,
 }: {
@@ -2204,6 +2467,7 @@ function WholeFunnel({
   sessionsError: string | null;
   keptPerSale: number;
   since: string;
+  until: string | null;
   days: number;
   boundedByTracking: boolean;
 }) {
@@ -2385,7 +2649,9 @@ function WholeFunnel({
       )}
 
       <p className="mt-3 text-[11.5px] leading-relaxed text-[var(--ink-3)]">
-        One curve, measured over one window — {shortDate(since)} to today, {plural(days, "day")}
+        One curve, measured over one window — {shortDate(since)} to{" "}
+        {until ? shortDate(new Date(new Date(until).getTime() - DAY_MS).toISOString()) : "today"},{" "}
+        {plural(days, "day")}
         {boundedByTracking ? ", from the day screen tracking began" : ""}. Bar length is share of the
         first row. The figure on the right belongs to the row it sits on: it is the share of the
         women who reached that screen and never got to the next one, so it accuses the screen they
@@ -2539,13 +2805,17 @@ function Cohorts({ data }: { data: Stats["subscriptions"] }) {
         strong ? "bg-[var(--quiet)] font-semibold" : ""
       }`}
     >
+      {/* "w/c Sep 7" was trade shorthand for "week commencing" and read as a
+          typo. The week is Monday to Sunday, so print both ends of it: no
+          abbreviation to decode, and no ambiguity about which seven days a
+          retention figure covers. */}
       <td className="whitespace-nowrap px-5 py-2.5 text-[12.5px]">
         {c.week === "all" ? (
           <span className="font-semibold text-[var(--ink)]">All weeks</span>
         ) : (
-          <>
-            <span className="font-semibold text-[var(--ahead-deep)]">w/c {dayLabel(c.week)}</span>
-          </>
+          <span className="font-semibold text-[var(--ahead-deep)]">
+            {dayLabel(c.week)} – {dayLabel(dayMinus(c.week, -6))}
+          </span>
         )}
       </td>
       <td className="px-3 py-2.5 text-right tabular-nums text-[var(--ink)]">{c.size}</td>
@@ -2592,7 +2862,7 @@ function Cohorts({ data }: { data: Stats["subscriptions"] }) {
         </tbody>
       </table>
       <p className="px-5 py-3 text-[11.5px] leading-relaxed text-[var(--ink-3)]">
-        Cohort = the Monday-to-Sunday week she subscribed in, your timezone. Active, cancelled
+        Each row is the Monday-to-Sunday week she subscribed in, your timezone. Active, cancelled
         (including a cancel scheduled for the end of the week) and card failed are the subscription
         as it stands now. Week 1/2/3 is the share of the cohort that has paid one, two, three
         weekly invoices — &ldquo;—&rdquo; means that week has not come due for the cohort yet, never

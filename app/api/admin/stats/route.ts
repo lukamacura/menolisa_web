@@ -130,8 +130,6 @@ const PERIOD_DAYS = 7;
  * days from the first charge. The only refund promise in the product.
  */
 const REFUND_WINDOW_DAYS = MONEY_BACK_DAYS;
-/** Weeks in a 30-day window — what one active weekly subscriber books. */
-const WEEKS_PER_30_DAYS = 30 / 7;
 /**
  * Grace added to a period before a customer counts as "should have renewed by
  * now". Stripe dunning retries a failed renewal for several days; without the
@@ -493,10 +491,20 @@ const emptyCheckoutStarts = (error: string | null): CheckoutStarts => ({
   truncated: false,
 });
 
-async function loadCheckoutStarts(stripe: Stripe, since: number): Promise<CheckoutStarts> {
+async function loadCheckoutStarts(
+  stripe: Stripe,
+  since: number,
+  until: number | null
+): Promise<CheckoutStarts> {
   try {
     const sessions = await stripe.checkout.sessions
-      .list({ limit: 100, created: { gte: Math.floor(since / 1000) } })
+      .list({
+        limit: 100,
+        created: {
+          gte: Math.floor(since / 1000),
+          ...(until === null ? {} : { lt: Math.floor(until / 1000) }),
+        },
+      })
       .autoPagingToArray({ limit: MAX_SESSIONS });
     const out = emptyCheckoutStarts(null);
     out.truncated = sessions.length >= MAX_SESSIONS;
@@ -736,6 +744,25 @@ function isoDay(ms: number, tzOffsetMinutes: number): string {
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * Local midnight at the start of a `YYYY-MM-DD` day, in the operator's
+ * timezone — the same `+ tzOffsetMinutes` convention as {@link isoDay} and
+ * {@link campaignFloorMs}.
+ *
+ * Round-tripped rather than trusted: "2026-02-31" passes the regex and would
+ * otherwise roll silently into March, which would quietly shift the window the
+ * operator is reading.
+ */
+function localDayStart(day: string, tzOffsetMinutes: number): number | null {
+  if (!DAY_RE.test(day)) return null;
+  const [y, m, d] = day.split("-").map(Number);
+  const probe = new Date(Date.UTC(y, m - 1, d));
+  if (probe.getUTCFullYear() !== y || probe.getUTCMonth() !== m - 1 || probe.getUTCDate() !== d) {
+    return null;
+  }
+  return Date.UTC(y, m - 1, d) + tzOffsetMinutes * 60_000;
+}
+
 type Alert = { tone: "bad" | "warn" | "money"; label: string; text: string };
 
 export async function POST(req: NextRequest) {
@@ -764,6 +791,36 @@ export async function POST(req: NextRequest) {
   const shiftedNow = now - tzOffsetMinutes * 60_000;
   const startOfToday =
     Math.floor(shiftedNow / DAY_MS) * DAY_MS + tzOffsetMinutes * 60_000;
+
+  /**
+   * The funnel window the operator picked, as two operator-local calendar days,
+   * both inclusive. `{ from: "2026-09-01", to: "2026-09-05" }` means those five
+   * days and nothing else.
+   *
+   * It drives the funnel block and the exit question only — never a money
+   * bucket, never CAC, never LTV. Those keep their own fixed windows so that
+   * scrubbing the funnel back to one day cannot move the verdict at the top of
+   * the page, which would be the fastest way to make this screen lie.
+   *
+   * Anything that doesn't parse, or a range that runs backwards, is ignored
+   * rather than repaired: the default window is a defensible thing to show, a
+   * silently corrected one is not. The end is clamped to the end of today —
+   * there is no data in the future, and a window that claims to cover it
+   * divides real counts by days that have not happened.
+   */
+  const rawRange = body?.range;
+  let rangeFrom: number | null = null;
+  let rangeTo: number | null = null; // exclusive
+  if (rawRange && typeof rawRange === "object") {
+    const from =
+      typeof rawRange.from === "string" ? localDayStart(rawRange.from, tzOffsetMinutes) : null;
+    const to = typeof rawRange.to === "string" ? localDayStart(rawRange.to, tzOffsetMinutes) : null;
+    if (from !== null && to !== null && from <= to) {
+      rangeFrom = from;
+      rangeTo = Math.min(to + DAY_MS, startOfToday + DAY_MS);
+    }
+  }
+  const customRange = rangeFrom !== null && rangeTo !== null;
 
   // ── Optional write: log a day of ad spend, then report on it in the same
   // round trip. One endpoint, one password check, and the numbers you get back
@@ -840,10 +897,31 @@ export async function POST(req: NextRequest) {
   const trackingStart = trackingStartResult.data?.[0]?.created_at
     ? new Date(trackingStartResult.data[0].created_at as string).getTime()
     : null;
-  const curveSince = Math.max(funnelSince, trackingStart ?? funnelSince);
-  const curveDays = Math.max(1, Math.ceil((now - curveSince) / DAY_MS));
+  //
+  // A picked range overrides both floors, which is the whole point of picking
+  // one: the campaign floor exists to keep your own pre-launch testing out of a
+  // window nobody chose, and the tracking floor to stop the block spanning days
+  // it has no data for. An explicit "show me 1–5 September" is a choice, and
+  // silently widening it back out would make the control a suggestion.
+  const curveSince = customRange ? (rangeFrom as number) : Math.max(funnelSince, trackingStart ?? funnelSince);
+  /** Exclusive end of the curve window, or null for "up to now". */
+  const curveUntil = customRange ? (rangeTo as number) : null;
+  const curveDays = Math.max(1, Math.ceil(((curveUntil ?? now) - curveSince) / DAY_MS));
   /** True while the screen data, not the campaign floor, is what bounds the block. */
-  const curveBoundedByTracking = trackingStart !== null && trackingStart > funnelSince;
+  const curveBoundedByTracking =
+    !customRange && trackingStart !== null && trackingStart > funnelSince;
+  const curveUntilIso = curveUntil === null ? null : new Date(curveUntil).toISOString();
+
+  // Built here rather than inline because the upper bound is conditional and
+  // the Supabase builder has no "maybe add a filter" form.
+  let exitQuery = supabaseAdmin
+    .from("funnel_events")
+    .select("detail")
+    .eq("step", "paywall_exit")
+    .eq("is_test", false)
+    .gte("created_at", new Date(curveSince).toISOString())
+    .limit(5000);
+  if (curveUntilIso) exitQuery = exitQuery.lt("created_at", curveUntilIso);
 
   const [
     trialsResult,
@@ -885,7 +963,7 @@ export async function POST(req: NextRequest) {
       ? loadRevenue(stripe, startOfToday, funnelSince)
       : Promise.resolve(emptyRevenue("STRIPE_SECRET_KEY is not set")),
     stripe
-      ? loadCheckoutStarts(stripe, curveSince)
+      ? loadCheckoutStarts(stripe, curveSince, curveUntil)
       : Promise.resolve(emptyCheckoutStarts(null)),
     loadEmails(),
     // Screen-by-screen drop-off inside the funnel — the seventeen quiz steps
@@ -900,24 +978,28 @@ export async function POST(req: NextRequest) {
     // rather than by pulling
     // rows: PostgREST cannot express count-distinct-group-by, and the fallback
     // would ship the whole table to a serverless function for twenty numbers.
+    // `until` is passed only when there is one. Both functions default it to
+    // null, so omitting the key lets the call resolve against the pre-2026-09-09
+    // signature too — the default window keeps working on a database where the
+    // migration hasn't been applied yet, and only a picked range needs it.
     supabaseAdmin.rpc("funnel_dropoff", {
       since: new Date(curveSince).toISOString(),
+      ...(curveUntilIso ? { until: curveUntilIso } : {}),
     }),
     // The same curve, per operator-local day — the table under it.
     supabaseAdmin.rpc("funnel_daily", {
       since: new Date(curveSince).toISOString(),
       tz_offset_minutes: tzOffsetMinutes,
+      ...(curveUntilIso ? { until: curveUntilIso } : {}),
     }),
     // The exit question. Small table, so the grouping happens here.
-    supabaseAdmin
-      .from("funnel_events")
-      .select("detail")
-      .eq("step", "paywall_exit")
-      .eq("is_test", false)
-      .gte("created_at", new Date(curveSince).toISOString())
-      .limit(5000),
+    exitQuery,
+    // Cohorts run on the acquisition window, deliberately **not** the funnel
+    // window: `week2Rate` feeds LTV, LTV feeds the verdict at the top of the
+    // page, and a filter that sits inside the funnel block must not be able to
+    // rewrite the sentence telling you whether to spend more tomorrow.
     stripe
-      ? loadSubscriptions(stripe, curveSince, now, tzOffsetMinutes)
+      ? loadSubscriptions(stripe, funnelSince, now, tzOffsetMinutes)
       : Promise.resolve(emptySubscriptions(null)),
   ]);
 
@@ -1033,24 +1115,40 @@ export async function POST(req: NextRequest) {
 
   const contribution30 = round2(revenue.last30.kept - adSpend30 - FIXED_MONTHLY_USD);
 
-  // ─── Forward view: money already on the calendar ──────────────────────────
-
-  let bookedCount = 0;
+  // ─── Forward view: the renewals Stripe has actually scheduled ─────────────
+  //
+  // **One week, because one week is all that is scheduled.** This used to
+  // report a 30-day figure — `subscribers x $4.99 x 30/7` — and label it
+  // "N renewals scheduled", which was wrong twice over: the count was
+  // subscribers while the money was ~4.3 renewals each, so the two halves of
+  // the same sentence described different things; and nothing beyond the next
+  // charge is on any calendar. A weekly subscriber can cancel in two taps
+  // before every one of those later weeks, and at a week-2 retention that is
+  // not yet known, projecting four of them forward is a forecast wearing a
+  // ledger's clothes.
+  //
+  // Weekly billing makes the honest version simple: every subscription that is
+  // going to renew renews exactly once in the next seven days, at
+  // `WEEKLY_PRICE`, including the woman who paid $1 for her first week. That
+  // figure is checkable against Stripe, which is the bar every number on this
+  // screen has to clear.
+  //
+  // `past_due` is excluded on purpose. Stripe is retrying an invoice that has
+  // *already* come due; counting it as future revenue books the same money
+  // twice and hides a failure inside a forward-looking figure. It has its own
+  // alert.
+  let renewingCount = 0;
   let cancelsPending = 0;
   for (const r of rows) {
     const s = state.get(r.user_id);
-    if (s !== "active" && s !== "canceling" && s !== "past_due") continue;
     const ends = endsAt.get(r.user_id);
     if (!ends) continue;
-    if (s === "canceling") {
-      cancelsPending += 1;
-    } else {
-      bookedCount += 1;
-    }
+    if (s === "canceling") cancelsPending += 1;
+    else if (s === "active") renewingCount += 1;
   }
-  // Weekly: an active subscriber books ~4.3 weeks in 30 days; a cancel costs
-  // one week of what she would have paid next.
-  const booked30 = round2(bookedCount * WEEKLY_PRICE * WEEKS_PER_30_DAYS);
+  /** What Stripe will attempt to charge in the next seven days. */
+  const booked7 = round2(renewingCount * WEEKLY_PRICE);
+  /** One week each — what cancelling costs at the next renewal, and no more. */
   const cancelsAtRisk = round2(cancelsPending * WEEKLY_PRICE);
 
   // ─── Funnel, last 30 days ─────────────────────────────────────────────────
@@ -1239,7 +1337,9 @@ export async function POST(req: NextRequest) {
     "diagnosis",
     "paywall",
   ]);
-  const paidInCurve = revenue.firstChargeTimes.filter((t) => t >= curveSince).length;
+  const paidInCurve = revenue.firstChargeTimes.filter(
+    (t) => t >= curveSince && (curveUntil === null || t < curveUntil)
+  ).length;
   const curveRows: {
     step: string;
     sessions: number;
@@ -1361,7 +1461,11 @@ export async function POST(req: NextRequest) {
   const dailyByDay = new Map<string, Record<(typeof DAILY_STEPS)[number], number>>();
   const emptyDaily = () => ({ entered: 0, q2: 0, finished: 0, paywall: 0, checkout: 0, paid: 0 });
   const curveFirstDay = isoDay(curveSince, tzOffsetMinutes);
-  for (let d = startOfToday; ; d -= DAY_MS) {
+  // The window's last day: the day before the exclusive end when a range was
+  // picked, today otherwise. Capped so a hand-typed range can't ask this loop
+  // to build a decade of empty rows.
+  const curveLastDayMs = curveUntil === null ? startOfToday : curveUntil - DAY_MS;
+  for (let d = curveLastDayMs, guard = 0; guard < 400; d -= DAY_MS, guard++) {
     const day = isoDay(d, tzOffsetMinutes);
     dailyByDay.set(day, emptyDaily());
     if (day <= curveFirstDay) break;
@@ -1612,8 +1716,8 @@ export async function POST(req: NextRequest) {
       roas: ltv !== null && cac ? Math.round((ltv / cac) * 100) / 100 : null,
     },
     forward: {
-      booked30,
-      bookedCount,
+      booked7,
+      renewingCount,
       cancelsPending,
       cancelsAtRisk,
       refundExposure: revenue.refundExposure,
@@ -1627,8 +1731,12 @@ export async function POST(req: NextRequest) {
       sessionsError: checkout.error,
       /** The one window every row of the curve is measured over. */
       since: new Date(curveSince).toISOString(),
+      /** Exclusive end of that window, or null when it runs up to now. */
+      until: curveUntilIso,
       days: curveDays,
-      clamped: funnelClamped,
+      /** True when the operator picked the window rather than inheriting it. */
+      custom: customRange,
+      clamped: !customRange && funnelClamped,
       /** The acquisition window, which the CAC tile still uses and which is not
        *  necessarily the curve's. */
       acqSince: new Date(funnelSince).toISOString(),
