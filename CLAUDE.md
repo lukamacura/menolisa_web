@@ -590,7 +590,9 @@ top to bottom, latest sales, needs a human.
   funnel that can rewrite "should I spend more tomorrow?" is the fastest way to
   make this screen lie. That is why `loadSubscriptions` runs on `funnelSince`
   rather than `curveSince`. Both RPCs take `until` as an **exclusive** end,
-  defaulted to null (`scripts/sql/2026-09-09-funnel-window-until.sql`), and the
+  defaulted to null (`scripts/sql/2026-09-09-funnel-window-until.sql`, applied
+  2026-09-09 — until it was, every picked range returned PGRST202 and the block
+  read "Could not read funnel steps"), and the
   route omits the key when there is no range, so the default window still works
   against a database where the migration hasn't been applied.
 - **Two views of the funnel, one window, one heading.** "Top to bottom" and "By

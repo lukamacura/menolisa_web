@@ -1008,6 +1008,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Failed to load stats" }, { status: 500 });
   }
 
+  // The funnel RPCs degrade to an error string on the panel rather than failing
+  // the whole request — the money blocks are still worth showing. Log the real
+  // cause: a swallowed PGRST202 from the `until` argument (the 2026-09-09
+  // migration unapplied) read as "Could not read funnel steps" and nothing else
+  // for a day, which is exactly the failure this line exists to make legible.
+  if (dropoffResult.error) console.error("funnel_dropoff failed:", dropoffResult.error);
+  if (dailyResult.error) console.error("funnel_daily failed:", dailyResult.error);
+
   const nameMap = new Map(
     (profilesResult.data ?? []).map((p) => [p.user_id, p.name as string | null])
   );
