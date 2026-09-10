@@ -5979,7 +5979,7 @@ function RegisterPageContent() {
                       Which one is hitting you hardest?
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                      Tap it — you can add the rest next.
+                      Just tap it.
                     </p>
                   </div>
                   {/* Nine tiles, three by three, sized to the card rather than to
