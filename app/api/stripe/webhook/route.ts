@@ -15,7 +15,7 @@ import {
 import { META_CURRENCY, purchaseEventId } from "@/lib/metaPixel";
 import {
   customerIdOf,
-  fallbackPeriodEndIso,
+  fallbackAccessEndIso,
   fulfillCheckout,
   planFromSubscription,
   subscriptionPeriodEndIso,
@@ -143,7 +143,7 @@ async function handleCheckoutSessionCompleted(
     });
 
     // Meta `Purchase` — server-only, on the first successful payment, at the
-    // amount Stripe collected ($1.00 for the first week). There is no browser
+    // amount Stripe collected ($29 for the plan block). There is no browser
     // copy any more; the id still derives from the session so a retried
     // webhook collapses to one event. Deferred with after() so Stripe gets its
     // 200 without waiting on Meta.
@@ -275,7 +275,7 @@ async function handleSubscriptionUpsert(
       active: isActive,
       expiresAt:
         isActive && !subscription_ends_at
-          ? fallbackPeriodEndIso(eventCreatedSec, plan_type)
+          ? fallbackAccessEndIso(eventCreatedSec, plan_type)
           : subscription_ends_at,
       canceled: subscription_canceled,
       extras: {
@@ -423,11 +423,11 @@ async function handleInvoicePaymentSucceeded(
     return { ok: false, error: error.message };
   }
 
-  // No renewal email. The plan bills weekly (2026-09-08) and a receipt every
-  // seven days is noise; the paywall promises "cancel anytime from the app",
-  // not a reminder, and Stripe's own receipts cover the paper trail if they
-  // are switched on in the dashboard. The welcome email states the $4.99/week
-  // and the first renewal date once.
+  // No renewal email. The paywall promises "cancel anytime from the app", not
+  // a reminder, and Terms §10.2 says so in as many words; Stripe's own receipts
+  // cover the paper trail if they are switched on in the dashboard. The welcome
+  // email states the amount, the renewal price and the first renewal date once,
+  // which is the disclosure the auto-renewal rules want in writing.
 
   if (updated && updated.length > 0) return { ok: true };
 

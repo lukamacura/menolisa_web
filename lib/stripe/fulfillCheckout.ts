@@ -23,7 +23,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { writeSubscription } from "@/lib/subscriptionWrite";
 import { sendWelcomeEmail, sendAdminNotification } from "@/lib/resend";
 import { generatePlan, markPlanGenerating } from "@/lib/plan/generate";
-import { PLAN_WEEKS } from "@/lib/pricing";
+import { PLAN_ACCESS_DAYS, PLAN_WEEKS } from "@/lib/pricing";
 import {
   funnelSessionFromMetadata,
   isTestFromMetadata,
@@ -31,14 +31,22 @@ import {
 } from "@/lib/funnelEvents";
 
 /**
- * Values `plan_type` can hold. `weekly` — $4.99 a week, first week $1 — is
- * the plan sold since 2026-09-08. `plan8w` ($59 per 8 weeks) is what the two
- * historical rows carry; nothing sells it and its price is archived.
+ * Values `plan_type` can hold.
+ *
+ * `plan8w` is the {@link PLAN_WEEKS}-week block, and it is the only type a new
+ * checkout can produce. It covers both the historical $59 recurring block and
+ * today's one-time $29 — `plan_amount` is what tells those apart, and no
+ * behaviour branches on the difference.
+ *
+ * `weekly` ($4.99 a week, first week $1) is what the 2026-09-08 → 09-11 rows
+ * carry. Nothing sells it and its price is archived, but a subscription bills
+ * against the price stored on it, so those rows keep renewing every seven days
+ * and {@link fallbackAccessEndIso} has to keep knowing their period.
  */
 export type PlanType = "plan8w" | "weekly";
 
-/** One billing period of the weekly plan, for the fail-closed fallback below. */
-const BILLING_PERIOD_DAYS = 7;
+/** One billing period of the legacy weekly subscription. */
+const WEEKLY_PERIOD_DAYS = 7;
 
 export function customerIdOf(
   customer: Stripe.Subscription["customer"] | Stripe.Invoice["customer"]
@@ -61,21 +69,25 @@ export function subscriptionPeriodEndIso(subscription: Stripe.Subscription): str
 }
 
 /**
- * Access cutoff to use when Stripe gave us no period end but we are about to
- * mark the account paid.
+ * When access ends.
  *
- * getAccountState() fails closed on a paid row with no cutoff, so writing null
- * here would lock out someone who just paid. One billing period from the event
- * is the honest guess: it is exactly what the price bills, and the next
- * renewal webhook overwrites it with Stripe's real date anyway. A legacy
- * 8-week row gets the 8 weeks.
+ * **This is no longer a fallback — it is the rule.** A one-time payment has no
+ * Stripe period at all, so for every new customer this computes the only
+ * cutoff there is: {@link PLAN_ACCESS_DAYS} from the payment. Nothing later
+ * overwrites it, because no renewal webhook is coming.
+ *
+ * getAccountState() fails closed on a paid row with no cutoff, so returning
+ * null here would lock out someone who just paid.
+ *
+ * A legacy `weekly` subscription still gets its seven days, for the case where
+ * Stripe hands back no period end on one of those renewals.
  */
-export function fallbackPeriodEndIso(fromSec: number, planType: PlanType | null = "weekly"): string {
-  const days = planType === "plan8w" ? PLAN_WEEKS * 7 : BILLING_PERIOD_DAYS;
+export function fallbackAccessEndIso(fromSec: number, planType: PlanType | null = "plan8w"): string {
+  const days = planType === "weekly" ? WEEKLY_PERIOD_DAYS : PLAN_ACCESS_DAYS;
   return new Date(fromSec * 1000 + days * 86_400_000).toISOString();
 }
 
-/** Derive billing period + amount (cents) from the subscription's first price. */
+/** Derive plan type + amount (cents) from a legacy subscription's first price. */
 export function planFromSubscription(
   subscription: Stripe.Subscription
 ): { plan_type: PlanType | null; plan_amount: number | null } {
@@ -83,10 +95,10 @@ export function planFromSubscription(
   const interval = price?.recurring?.interval ?? null;
   const intervalCount = price?.recurring?.interval_count ?? 1;
   const plan_type: PlanType | null =
-    interval === "week" && intervalCount === 1
-      ? "weekly"
-      : interval === "week" && intervalCount === PLAN_WEEKS
-        ? "plan8w"
+    interval === "week" && intervalCount === PLAN_WEEKS
+      ? "plan8w"
+      : interval === "week" && intervalCount === 1
+        ? "weekly"
         : null;
   const plan_amount = typeof price?.unit_amount === "number" ? price.unit_amount : null;
   return { plan_type, plan_amount };
@@ -265,7 +277,7 @@ export async function claimFulfillment(
 async function sendFulfillmentEmails(
   supabaseAdmin: SupabaseClient,
   userId: string,
-  opts: { amountPaid: number; nextChargeAt: string | null }
+  opts: { amountPaid: number; accessEndsAt: string | null }
 ): Promise<void> {
   try {
     const { data: authData } = await supabaseAdmin.auth.admin.getUserById(userId);
@@ -281,11 +293,11 @@ async function sendFulfillmentEmails(
     await Promise.all([
       sendWelcomeEmail(email, profile?.name ?? null, {
         amountPaid: opts.amountPaid,
-        nextChargeAt: opts.nextChargeAt ? new Date(opts.nextChargeAt) : null,
+        accessEndsAt: opts.accessEndsAt ? new Date(opts.accessEndsAt) : null,
       }),
       sendAdminNotification(
         "NEW PURCHASE",
-        `<p>New subscriber: <strong>${email}</strong>${profile?.name ? ` (${profile.name})` : ""}</p><p>Paid: $${opts.amountPaid.toFixed(2)}</p><p>Started: ${new Date().toUTCString()}</p>${opts.nextChargeAt ? `<p>Next charge: ${new Date(opts.nextChargeAt).toUTCString()}</p>` : ""}`
+        `<p>New customer: <strong>${email}</strong>${profile?.name ? ` (${profile.name})` : ""}</p><p>Paid: $${opts.amountPaid.toFixed(2)} (one-time)</p><p>Started: ${new Date().toUTCString()}</p>${opts.accessEndsAt ? `<p>Access ends: ${new Date(opts.accessEndsAt).toUTCString()}</p>` : ""}`
       ),
     ]);
   } catch (e) {
@@ -373,11 +385,18 @@ export async function fulfillCheckout(opts: {
   if (plan_type) extras.plan_type = plan_type;
   if (plan_amount !== null) extras.plan_amount = plan_amount;
 
+  // One-time purchases take the second branch every time: no subscription, so
+  // no period end, so access runs PLAN_ACCESS_DAYS from this payment. Computed
+  // once and reused, because the welcome email has to state the *same* date
+  // the access gate will enforce — deriving it twice is how the email and the
+  // lockout come to disagree by a day.
+  const accessEndsAt = subscription_ends_at ?? fallbackAccessEndIso(atSec, plan_type);
+
   const result = await writeSubscription(supabaseAdmin, {
     userId,
     provider: "stripe",
     active: true,
-    expiresAt: subscription_ends_at ?? fallbackPeriodEndIso(atSec, plan_type),
+    expiresAt: accessEndsAt,
     canceled: subscription_canceled,
     extras,
   });
@@ -387,7 +406,7 @@ export async function fulfillCheckout(opts: {
     userId,
     planType: plan_type,
     planAmount: plan_amount,
-    subscriptionEndsAt: subscription_ends_at,
+    subscriptionEndsAt: accessEndsAt,
     amountPaid,
   };
 
@@ -422,7 +441,7 @@ export async function fulfillCheckout(opts: {
   after(() =>
     sendFulfillmentEmails(supabaseAdmin, userId, {
       amountPaid,
-      nextChargeAt: subscription_ends_at,
+      accessEndsAt,
     })
   );
 

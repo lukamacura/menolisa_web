@@ -9,15 +9,13 @@ import { motion, useReducedMotion } from "framer-motion"
 import { useReplayableInView } from "@/hooks/useReplayableInView"
 import { HighlightedTextByRows } from "@/components/landing/HighlightedTextByRows"
 import {
-  CANCEL_BEFORE_RENEWAL_COPY,
-  FIRST_WEEK_PRICE,
   GUARANTEE_BODY,
   GUARANTEE_HEADLINE,
   PLAN_BLOCKS_COPY,
+  PLAN_PRICE,
   PLAN_WEEKS,
   PRICE_LINE,
   PRICE_SUBLINE,
-  WEEKLY_PRICE,
   formatPrice,
 } from "@/lib/pricing"
 
@@ -167,7 +165,7 @@ export default function LandingPricing() {
               }}
             >
               <Crown className="w-3 h-3" />
-              FIRST WEEK {formatPrice(FIRST_WEEK_PRICE)}
+              {PLAN_WEEKS} WEEKS FOR {formatPrice(PLAN_PRICE)}
             </div>
 
             {/* Icon */}
@@ -193,15 +191,15 @@ export default function LandingPricing() {
                   className="text-3xl sm:text-4xl font-extrabold transition-all duration-300"
                   style={{ color: "var(--primary)" }}
                 >
-                  {formatPrice(FIRST_WEEK_PRICE)}
+                  {formatPrice(PLAN_PRICE)}
                 </span>
                 <span className="text-base sm:text-lg font-medium" style={{ color: "var(--foreground)" }}>
-                  for the first week
+                  once, for all {PLAN_WEEKS} weeks
                 </span>
               </div>
               <div className="mb-1">
                 <span className="text-lg sm:text-xl font-medium" style={{ color: "var(--foreground)" }}>
-                  then {formatPrice(WEEKLY_PRICE)}/week
+                  No subscription. No auto-renewal.
                 </span>
               </div>
               <p className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>
@@ -214,7 +212,7 @@ export default function LandingPricing() {
 
             <Button asChild className="btn-landing-primary w-full px-4">
               <Link href="/register" prefetch={false} className="relative z-10 flex items-center justify-center gap-2">
-                Start my first week - {formatPrice(FIRST_WEEK_PRICE)}
+                Start my {PLAN_WEEKS}-week plan - {formatPrice(PLAN_PRICE)}
               </Link>
             </Button>
           </div>
@@ -228,7 +226,7 @@ export default function LandingPricing() {
             </span>
             <span>•</span>
             <span className="flex items-center gap-1">
-              Cancel anytime
+              No subscription
             </span>
             <span>•</span>
             <span className="flex items-center gap-1">
@@ -286,9 +284,8 @@ export default function LandingPricing() {
               borderColor: "var(--primary)",
             }}
           >
-            {/* The dollar and cancelling, and nothing else - same as the
-                paywall's green card and Terms §11, all three changed together
-                on 2026-09-09. The reasoning is in lib/pricing.ts above
+            {/* One payment and no renewal, same as the paywall's green card
+                and Terms §10/§11. The reasoning is in lib/pricing.ts above
                 GUARANTEE_HEADLINE. */}
             <h4 className="text-xl sm:text-2xl font-bold mb-3 text-center" style={{ color: "var(--foreground)" }}>
               {GUARANTEE_HEADLINE}
@@ -312,11 +309,11 @@ export default function LandingPricing() {
             >
               <Lock className="h-4 w-4" />
               <span className="text-xs sm:text-sm font-bold">
-                {formatPrice(FIRST_WEEK_PRICE)} first week &middot; cancel anytime
+                {formatPrice(PLAN_PRICE)} once &middot; {PLAN_WEEKS} weeks &middot; no subscription
               </span>
             </div>
             <p className="text-sm text-center max-w-md" style={{ color: "var(--muted-foreground)" }}>
-              {formatPrice(WEEKLY_PRICE)} a week after that, until you cancel. {CANCEL_BEFORE_RENEWAL_COPY}
+              One payment. We don&apos;t keep your card, and there is no subscription to cancel.
             </p>
           </div>
         </div>

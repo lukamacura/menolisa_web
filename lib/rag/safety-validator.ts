@@ -123,7 +123,7 @@ export function validateMenopauseQuery(
 /**
  * Generate a polite refusal response for refused queries
  */
-export function generateRefusalResponse(query: string): string {
+export function generateRefusalResponse(_query: string): string {
   return `I understand you're looking for information about medications or dosages. I'm not able to provide specific medication recommendations or dosage advice, as these need to be determined by your healthcare provider based on your individual health profile.
 
 For questions about:

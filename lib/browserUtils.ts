@@ -53,14 +53,3 @@ export function hasBrowserMismatchIssue(browserInfo: BrowserInfo): boolean {
   // On Android, if user is on Samsung Internet, they might have registered in Chrome
   return browserInfo.isAndroid && browserInfo.isSamsungBrowser;
 }
-
-/**
- * Get helpful message for browser mismatch
- */
-export function getBrowserMismatchMessage(browserInfo: BrowserInfo): string {
-  if (browserInfo.isAndroid && browserInfo.isSamsungBrowser) {
-    return "You're using Samsung Internet, but you may have registered in Chrome. Please open the email link in the same browser where you registered, or copy the link and paste it into Chrome.";
-  }
-  return "Please make sure you're using the same browser where you registered or logged in.";
-}
-

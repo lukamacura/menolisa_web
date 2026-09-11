@@ -7,13 +7,6 @@ import { checkTrialExpired } from "@/lib/checkTrialStatus";
 
 export const runtime = "nodejs";
 
-// Format severity number to word
-function formatSeverity(severity: number): string {
-  if (severity <= 1) return "Mild";
-  if (severity <= 2) return "Moderate";
-  return "Severe";
-}
-
 // Calculate days tracked - only counts logs within the date range
 function calculateDaysTracked(symptomLogs: any[], startDate: Date, endDate: Date): { daysTracked: number; totalDays: number; percentage: number } {
   // Normalize dates for comparison (set to start/end of day)
@@ -162,7 +155,7 @@ function calculateTriggerFrequencies(symptomLogs: any[]) {
 }
 
 // Generate personalized "Things to Explore" based on data
-function generateExploreItems(summary: any, symptomLogs: any[]): string[] {
+function generateExploreItems(summary: any, _symptomLogs: any[]): string[] {
   const items: string[] = [];
   
   // Pattern-based items

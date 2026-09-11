@@ -142,17 +142,21 @@ export function weeklyRecapCopy(input: {
 }
 
 /**
- * The card could not be charged at a weekly renewal. Said out loud because
- * she keeps access while Stripe retries, so nothing else in the product would
- * let her notice before the subscription is cancelled from under her.
- * (The pre-renewal "nearly up" nudge and the trial-ending alert went with
- * 8-week billing on 2026-09-08: a heads-up before every weekly charge is noise.)
+ * A couple of days before her access runs out.
+ *
+ * **This reaches every customer now** (2026-09-11), not just someone who
+ * cancelled: the plan is a single charge buying a fixed window, so every
+ * window ends. It is the only warning she gets that the app is about to stop,
+ * and the only moment another block is a live question — so it says what ends,
+ * when, and that nothing she has done is lost.
+ *
+ * It does not say "renew". Nothing renews, and a word implying an automatic
+ * charge would contradict the paywall, the welcome email and Terms §10.2.
  */
-/** A couple of days before a cancelled subscription's paid period runs out. */
 export function accessEndingCopy(endsOn: Date): AlertCopy {
   return {
     title: `Your access ends on ${formatAlertDate(endsOn)}`,
-    body: "Your plan and everything you have logged stay saved if you come back.",
+    body: "Your plan and everything you have logged stay saved. You can pick up another block whenever you want one.",
   };
 }
 

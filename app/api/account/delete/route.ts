@@ -42,7 +42,7 @@ function isAlreadyGone(err: unknown): boolean {
  *
  * `user_trials` holds the only mapping from this user to her Stripe customer
  * and subscription, and we are about to delete it. If the subscription is still
- * live when that row goes, she keeps getting charged $4.99 every week with no
+ * live when that row goes, she keeps getting charged every 8 weeks with no
  * record left tying the charge to anyone — and the renewal webhook can no
  * longer resolve a user_id, so its metadata-fallback insert fails the FK to a
  * now-deleted auth user.

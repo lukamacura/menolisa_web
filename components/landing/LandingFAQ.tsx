@@ -9,13 +9,7 @@ import {
 import { motion, useReducedMotion } from "framer-motion"
 import { useReplayableInView } from "@/hooks/useReplayableInView"
 import { HighlightedTextByRows } from "@/components/landing/HighlightedTextByRows"
-import {
-  CANCEL_BEFORE_RENEWAL_COPY,
-  FIRST_WEEK_PRICE,
-  PLAN_WEEKS,
-  WEEKLY_PRICE,
-  formatPrice,
-} from "@/lib/pricing"
+import { PLAN_PRICE, PLAN_WEEKS, formatPrice } from "@/lib/pricing"
 
 export default function LandingFAQ() {
   const prefersReducedMotion = useReducedMotion()
@@ -47,8 +41,8 @@ export default function LandingFAQ() {
       answer: "Yes. Your conversations with Lisa and your symptom data are encrypted and never shared. Only you can see them.",
     },
     {
-      question: "How much does it cost, and can I cancel?",
-      answer: `Your first week is ${formatPrice(FIRST_WEEK_PRICE)}, then it's ${formatPrice(WEEKLY_PRICE)} a week until you cancel - your plan, Lisa, the tracker, all of it. Your plan runs in ${PLAN_WEEKS}-week blocks and is rebuilt from your progress at the end of each block. Cancel anytime from the app in two taps. ${CANCEL_BEFORE_RENEWAL_COPY}`,
+      question: "How much does it cost, and will I be charged again?",
+      answer: `${formatPrice(PLAN_PRICE)}, paid once, covers your full ${PLAN_WEEKS}-week plan - the plan, Lisa, the tracker, all of it. It is not a subscription: there is no auto-renewal, we don't keep your card for a later charge, and there is nothing to cancel. Your access runs for the ${PLAN_WEEKS} weeks and then ends, and you can come back for another block whenever you want one.`,
     },
   ]
 

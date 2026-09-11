@@ -212,12 +212,11 @@ type DailyRow = {
 };
 
 type CohortRow = {
-  /** ISO date of the cohort's Monday, or "all". */
+  /** ISO date of the week of her FIRST purchase, or "all". The `paid` /
+   *  `retention` columns count purchases, not renewals: nothing recurs, so
+   *  purchase 2 is a deliberate decision to buy another block. */
   week: string;
   size: number;
-  active: number;
-  canceled: number;
-  failed: number;
   paid: [number, number, number];
   retention: [number | null, number | null, number | null];
 };
@@ -262,30 +261,31 @@ type Stats = {
   acq: {
     newCustomers30: number;
     cac: number | null;
-    /** The $1 first week, after Stripe's fee. */
+    /** One charge, after Stripe's fee — a sale and a renewal are the same
+     *  amount now, so this is the whole unit. */
     keptPerSale: number;
-    /** Every later week, after Stripe's fee. */
-    keptPerWeek: number;
     feeRate: number;
   };
-  prices: { firstWeek: number; weekly: number };
+  /** The offer, from the route. One price, charged once. */
+  prices: { plan: number; planWeeks: number };
   retention: {
+    /** Share of matured customers who bought a second block. */
     renewalRate: number | null;
     cohortSize: number;
     cohortRenewed: number;
     maturesAt: string | null;
-    /** Week 1 → week 2, from the cohort table (or the charge-based rate). */
-    weeklyRetention: number | null;
+    periodRetention: number | null;
     ltv: number | null;
     roas: number | null;
   };
+  /** Nothing is scheduled — one-time pricing means no booked revenue exists.
+   *  These describe who holds access and who is about to lose it. */
   forward: {
-    /** What Stripe will attempt to charge in the next 7 days. Weekly billing,
-     *  so every renewing subscription renews exactly once inside it. */
-    booked7: number;
-    renewingCount: number;
-    cancelsPending: number;
-    cancelsAtRisk: number;
+    activeNow: number;
+    expiringSoon: number;
+    expirySoonDays: number;
+    /** Paid once, access has since run out. */
+    lapsed: number;
     refunds30: { count: number; amount: number };
     declined30: number;
   };
@@ -898,23 +898,28 @@ export default function AdminPage() {
             </div>
           </div>
           <div className="flex flex-wrap items-baseline gap-x-7 gap-y-2 border-t border-[var(--line)] bg-[var(--quiet)] px-6 py-3 text-[12.5px] text-[var(--ink-2)]">
-            {/* Seven days, because seven days is all that is scheduled. The
-                30-day version of this line multiplied subscribers by 4.3 weeks
-                and then labelled the result "N renewals", so the money and the
-                count described different things — and every week past the next
-                one is a forecast, not a calendar entry: she can cancel in two
-                taps before any of them. */}
+            {/* Only the renewals that actually fall inside the window. An
+                earlier version multiplied every subscriber by the price and
+                called the result "N renewals", so the money and the count
+                described different things; on an 8-week cycle that error would
+                book two months of future charges as this month's. The count is
+                subscriptions whose period genuinely ends inside the window, and
+                everything past that renewal is a forecast, not a calendar
+                entry — she can cancel in two taps before any of it. */}
+            {/* No "booked revenue" line, because with one-time pricing there is
+                none: nothing is scheduled and every future dollar depends on a
+                decision nobody has made yet. Printing a forecast here would be
+                inventing money. What is knowable is who holds access and who is
+                about to lose it — the whole repeat-purchase opportunity, and
+                invisible anywhere else on this screen. */}
             <Footnote dot="var(--ahead)">
-              Scheduled to renew, next 7 days{" "}
+              Inside their {prices.planWeeks} weeks{" "}
               <b className="font-semibold tabular-nums text-[var(--ahead-deep)]">
-                {money(forward.booked7)}
+                {forward.activeNow}
               </b>{" "}
               <span className="text-[var(--ink-3)]">
-                ({plural(forward.renewingCount, "subscription")} at{" "}
-                {money(prices.weekly, 2)}
-                {forward.cancelsPending > 0 &&
-                  `; ${forward.cancelsPending} cancelled, ${money(forward.cancelsAtRisk, 2)} that won't arrive`}
-                )
+                ({forward.expiringSoon} end within {forward.expirySoonDays} days
+                {forward.lapsed > 0 && `; ${forward.lapsed} already lapsed`})
               </span>
             </Footnote>
             <Footnote dot="var(--stop)">
@@ -994,8 +999,8 @@ export default function AdminPage() {
                       ? "No new customers to divide by yet"
                       : "Log a day of ad spend to see it"
                     : acq.cac <= acq.keptPerSale
-                      ? `Under the ${money(acq.keptPerSale)} you keep on the ${money(prices.firstWeek)} first week`
-                      : `Over the ${money(acq.keptPerSale)} you keep on the ${money(prices.firstWeek)} first week — the weeks after have to earn it back`
+                      ? `Under the ${money(acq.keptPerSale)} you keep on her one ${money(prices.plan)} charge`
+                      : `Over the ${money(acq.keptPerSale)} you keep on her one ${money(prices.plan)} charge — and nothing renews to earn it back`
                 }
                 value={acq.cac === null ? "—" : money(acq.cac)}
                 tone={acq.cac === null ? "mute" : acq.cac <= acq.keptPerSale ? "good" : "bad"}
@@ -1016,40 +1021,36 @@ export default function AdminPage() {
             {/* Value — green for collected, violet for what renewal brings. */}
             <div className="border-t border-[var(--line)] px-6 py-4 lg:border-l lg:border-t-0">
               <ColumnHead color="var(--cash)">What she returns</ColumnHead>
+              {/* One price, one charge, one kept figure — and with nothing
+                  recurring this is also the floor of lifetime value. */}
               <Row
-                label="Kept on the first week"
-                hint={`${money(prices.firstWeek)} less Stripe's fee. Measured fee rate across all charges: ${(acq.feeRate * 100).toFixed(2)}%`}
+                label="Kept on the sale"
+                hint={`${money(prices.plan)} less Stripe's fee. Measured fee rate across all charges: ${(acq.feeRate * 100).toFixed(2)}%`}
                 value={money(acq.keptPerSale)}
                 tone="cash"
               />
               <Row
-                label="Kept on every week after"
-                hint={`${money(prices.weekly)} less Stripe's fee`}
-                value={money(acq.keptPerWeek)}
-                tone="cash"
-              />
-              <Row
-                label="Week 1 → week 2"
+                label={`Bought again after ${prices.planWeeks} weeks`}
                 hint={
-                  retention.weeklyRetention === null
+                  retention.periodRetention === null
                     ? retention.maturesAt
-                      ? `No second week has come due yet — the earliest does ${shortDate(retention.maturesAt)}`
+                      ? `Nobody's access has run out yet — the first does ${shortDate(retention.maturesAt)}`
                       : "Nobody has bought yet"
-                    : "Share of sign-ups who paid a second week. See the cohort table below."
+                    : "Share of customers who came back for a second block. See the cohort table below."
                 }
                 value={
-                  retention.weeklyRetention === null
+                  retention.periodRetention === null
                     ? "Not yet known"
-                    : `${retention.weeklyRetention}%`
+                    : `${retention.periodRetention}%`
                 }
-                tone={retention.weeklyRetention === null ? "mute" : "ahead"}
+                tone={retention.periodRetention === null ? "mute" : "ahead"}
               />
               <Row
                 label="Lifetime value, kept"
                 hint={
                   retention.ltv === null
-                    ? "Locked until a second week has come due"
-                    : "The first week plus every week she is expected to stay, after fees"
+                    ? "Locked until a cohort's access has run out"
+                    : "The one charge plus any repeat purchase she is expected to make, after fees. Nothing recurs, so the floor is a single sale."
                 }
                 value={retention.ltv === null ? "—" : money(retention.ltv)}
                 tone={retention.ltv === null ? "mute" : "cash"}
@@ -1057,13 +1058,16 @@ export default function AdminPage() {
               />
               <Row
                 label="Payback"
-                hint="How many paid weeks to earn back what she cost"
+                hint={`How many purchases to earn back what she cost. Anything above one needs her to come back voluntarily.`}
                 value={
                   acq.cac === null
                     ? "—"
                     : acq.cac <= acq.keptPerSale
                       ? "Immediate"
-                      : `${1 + Math.ceil((acq.cac - acq.keptPerSale) / Math.max(acq.keptPerWeek, 0.01))} weeks`
+                      : plural(
+                          1 + Math.ceil((acq.cac - acq.keptPerSale) / Math.max(acq.keptPerSale, 0.01)),
+                          "period"
+                        )
                 }
                 tone={acq.cac === null ? "mute" : acq.cac <= acq.keptPerSale ? "good" : "ahead"}
               />
@@ -1295,19 +1299,19 @@ export default function AdminPage() {
           )}
         </Panel>
 
-        {/* ── 4b. Subscriptions by cohort week ────────────────────────────── */}
+        {/* ── 4b. Customers by cohort week, and whether they came back ───── */}
         <SectionHead
-          title="Subscriptions, by sign-up week"
+          title="Customers, by week of first purchase"
           dot="var(--ahead)"
           source="Stripe"
           note={
             stats.subscriptions.totals.size > 0
-              ? `${plural(stats.subscriptions.totals.size, "subscription")} · retention is share who paid week 1, 2, 3`
-              : "Retention is the share who paid week 1, 2, 3"
+              ? `${plural(stats.subscriptions.totals.size, "customer")} · columns are repeat purchases, not renewals`
+              : "Columns are repeat purchases, not renewals"
           }
         />
         <Panel accent="var(--ahead)">
-          <Cohorts data={stats.subscriptions} />
+          <Cohorts data={stats.subscriptions} planWeeks={stats.prices.planWeeks} />
         </Panel>
 
         {/* ── 5. Needs a human ────────────────────────────────────────────── */}
@@ -1839,7 +1843,7 @@ function Tag({ kind }: { kind: "new" | "renewal" | "refunded" }) {
 /**
  * Cash collected against ad spend, both as running totals over 30 days.
  *
- * Running totals rather than daily bars because daily revenue on a $4.99-a-week product
+ * Running totals rather than daily bars because daily revenue at this volume
  * is lumpy — two sales one day and none the next says nothing. The crossing
  * point is the whole picture: the day the month's ads paid for themselves. The
  * band between the lines is the gap, green while collected is ahead of spend
@@ -2628,7 +2632,8 @@ function WholeFunnel({
             <b className="font-semibold tabular-nums text-[var(--cash-deep)]">
               {money((paid / quizDone) * 100 * keptPerSale, 2)}
             </b>{" "}
-            kept on the first week alone — the weeks after are what a click is really allowed to cost.
+            kept &mdash; and with nothing recurring, that is very close to all of it. A click has
+            to cost less than this or the ads lose money.
           </>
         )}
       </p>
@@ -2778,11 +2783,19 @@ function FunnelByDay({
   );
 }
 
-// ─── Subscriptions by cohort week ───────────────────────────────────────────
+// ─── Customers by cohort week, and whether they came back ───────────────────
 
 const pctText = (v: number | null) => (v === null ? "—" : `${v}%`);
 
-function Cohorts({ data }: { data: Stats["subscriptions"] }) {
+function Cohorts({
+  data,
+  planWeeks,
+}: {
+  data: Stats["subscriptions"];
+  /** How long one payment buys, from the route. It is what decides when a
+   *  repeat purchase even becomes possible, so the table must not hardcode it. */
+  planWeeks: number;
+}) {
   if (data.error) {
     return <p className="px-6 py-5 text-[13px] text-[var(--ink-2)]">{data.error}</p>;
   }
@@ -2791,8 +2804,8 @@ function Cohorts({ data }: { data: Stats["subscriptions"] }) {
       <div className="px-6 py-8 text-center">
         <h3 className="text-base font-semibold">No subscriptions in the window</h3>
         <p className="mx-auto mt-1.5 max-w-[48ch] text-sm text-[var(--ink-2)]">
-          A row lands here for the week of the first sign-up. Retention fills in as each cohort
-          reaches its second and third week.
+          A row lands here the week of the first purchase. The repeat columns fill in as each
+          cohort&apos;s {planWeeks} weeks run out and they decide whether to come back.
         </p>
       </div>
     );
@@ -2818,13 +2831,6 @@ function Cohorts({ data }: { data: Stats["subscriptions"] }) {
         )}
       </td>
       <td className="px-3 py-2.5 text-right tabular-nums text-[var(--ink)]">{c.size}</td>
-      <td className="px-3 py-2.5 text-right tabular-nums text-[var(--cash-deep)]">{c.active}</td>
-      <td className={`px-3 py-2.5 text-right tabular-nums ${c.canceled > 0 ? "text-[var(--spend-deep)]" : "text-[var(--ink-3)]"}`}>
-        {c.canceled}
-      </td>
-      <td className={`px-3 py-2.5 text-right tabular-nums ${c.failed > 0 ? "text-[var(--stop)]" : "text-[var(--ink-3)]"}`}>
-        {c.failed}
-      </td>
       {c.retention.map((r, i) => (
         <td
           key={i}
@@ -2845,14 +2851,11 @@ function Cohorts({ data }: { data: Stats["subscriptions"] }) {
       <table className="w-full min-w-[680px] text-left text-[13px]">
         <thead>
           <tr className="border-b border-[var(--line)] text-[10.5px] uppercase tracking-[0.11em] text-[var(--ink-3)]">
-            <th className="px-5 py-3 font-semibold">Signed up</th>
-            <th className="px-3 py-3 text-right font-semibold">Total</th>
-            <th className="px-3 py-3 text-right font-semibold">Active</th>
-            <th className="px-3 py-3 text-right font-semibold">Cancelled</th>
-            <th className="px-3 py-3 text-right font-semibold">Card failed</th>
-            <th className="px-3 py-3 text-right font-semibold">Week 1</th>
-            <th className="px-3 py-3 text-right font-semibold">Week 2</th>
-            <th className="px-3 py-3 text-right font-semibold">Week 3</th>
+            <th className="px-5 py-3 font-semibold">First bought</th>
+            <th className="px-3 py-3 text-right font-semibold">Customers</th>
+            <th className="px-3 py-3 text-right font-semibold">Bought once</th>
+            <th className="px-3 py-3 text-right font-semibold">Bought twice</th>
+            <th className="px-3 py-3 text-right font-semibold">Three times</th>
           </tr>
         </thead>
         <tbody>
@@ -2861,11 +2864,13 @@ function Cohorts({ data }: { data: Stats["subscriptions"] }) {
         </tbody>
       </table>
       <p className="px-5 py-3 text-[11.5px] leading-relaxed text-[var(--ink-3)]">
-        Each row is the Monday-to-Sunday week she subscribed in, your timezone. Active, cancelled
-        (including a cancel scheduled for the end of the week) and card failed are the subscription
-        as it stands now. Week 1/2/3 is the share of the cohort that has paid one, two, three
-        weekly invoices — &ldquo;—&rdquo; means that week has not come due for the cohort yet, never
-        that nobody paid. QA sign-ups are excluded.
+        Each row is the Monday-to-Sunday week of her <strong>first</strong> purchase, your
+        timezone. The columns are the share of that cohort who have bought once, twice, three
+        times &mdash; <strong>purchases, not renewals</strong>: nothing recurs, so buying again is
+        a decision each woman made on purpose, which is what makes this the clearest read on
+        whether the product is worth remaking. A second purchase only becomes possible once her{" "}
+        {planWeeks} weeks have run out, so &ldquo;—&rdquo; means that cohort has not had the
+        chance yet, never that nobody came back. QA purchases are excluded.
         {data.truncated && " Capped at the most recent thousand."}
       </p>
     </div>

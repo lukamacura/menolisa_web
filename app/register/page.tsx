@@ -27,7 +27,7 @@ import {
 import { detectBrowser, hasBrowserMismatchIssue } from "@/lib/browserUtils";
 import { cn } from "@/lib/utils";
 import { identifyMetaUser } from "@/lib/metaPixelClient";
-import { APP_STORE_URL, PLAY_STORE_URL } from "@/lib/constants";
+import { APP_STORE_URL, PLAY_STORE_URL, SHOT_W, SHOT_H } from "@/lib/constants";
 import {
   ArrowRight,
   ArrowLeft,
@@ -60,15 +60,11 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { HighlightSweep } from "@/components/HighlightSweep";
-import {
-  FirstSessionBoard,
-  StartingPointBoard,
-  TrainingWeekBoard,
-  type PlannerDay,
-  type SessionRow,
+import type {
+  PlannerDay,
+  SessionRow,
 } from "@/components/funnel/RewardBoards";
 import { QuizNudge } from "@/components/funnel/QuizNudge";
-import { SHOT_W, SHOT_H } from "@/components/PhoneShots";
 
 /*
  * Everything past the quiz is code-split.
@@ -97,12 +93,31 @@ const loadHowLisaRuns = () =>
   import("@/components/HowLisaRuns").then((m) => ({ default: m.HowLisaRuns }));
 const loadSocialProofPolaroid = () =>
   import("@/components/SocialProof").then((m) => ({ default: m.SocialProofPolaroid }));
+/*
+ * The three reward boards, split out of the landing bundle (2026-09-11).
+ *
+ * They are ~900 lines of markup plus their own framer-motion and lucide
+ * surface, and the first of them is step 7 — so statically imported they were
+ * parse cost on the ad landing page for a screen six taps away. Warmed from
+ * step 1 below, exactly like the post-quiz chunks: by the time a board renders
+ * its code has been in the module cache for several screens.
+ */
+const loadRewardBoards = () => import("@/components/funnel/RewardBoards");
 
 const PaywallView = dynamic(loadPaywallView);
 const PlanFinishBoard = dynamic(loadPlanFinishBoard);
 const PlanStage = dynamic(loadPlanStage);
 const HowLisaRuns = dynamic(loadHowLisaRuns);
 const SocialProofPolaroid = dynamic(loadSocialProofPolaroid);
+const StartingPointBoard = dynamic(() =>
+  loadRewardBoards().then((m) => ({ default: m.StartingPointBoard }))
+);
+const TrainingWeekBoard = dynamic(() =>
+  loadRewardBoards().then((m) => ({ default: m.TrainingWeekBoard }))
+);
+const FirstSessionBoard = dynamic(() =>
+  loadRewardBoards().then((m) => ({ default: m.FirstSessionBoard }))
+);
 
 /**
  * Pull the chunks for the screens that come after `phase`.
@@ -127,6 +142,7 @@ const SocialProofPolaroid = dynamic(loadSocialProofPolaroid);
  */
 function warmPhaseChunks(phase: Phase, stepIndex: number) {
   if ((phase === "quiz" && stepIndex >= 1) || phase === "calculating") {
+    void loadRewardBoards();
     void loadSocialProofPolaroid();
     void loadPlanStage();
     void loadHowLisaRuns();
@@ -144,10 +160,10 @@ import {
   type WeekOneRow,
 } from "@/lib/planPillars";
 import {
-  FIRST_WEEK_PRICE,
+  PLAN_ACCESS_DAYS,
   PLAN_ID,
+  PLAN_PRICE,
   PLAN_WEEKS,
-  WEEKLY_PRICE,
   formatChargeDate,
   formatPrice,
 } from "@/lib/pricing";
@@ -904,9 +920,10 @@ const PLAN_SHOTS = {
 //   she is unlikely to finish as it is.
 
 // SHOT_W / SHOT_H (the intrinsic size of the /screenshots masters) live in
-// components/PhoneShots.tsx alongside <PhoneShot /> and <ShotStage />, which the
-// paywall still uses - this screen shows every shot at hero size now, so it no
-// longer renders either.
+// lib/constants.ts. They used to sit in components/PhoneShots.tsx beside
+// <PhoneShot /> and <ShotStage />; this screen shows every shot at hero size
+// and the paywall dropped its copy of that card, so both lost their last
+// caller and the file went with them.
 
 // The hero's `sizes`, hoisted out of <PlanHeroCarousel /> because the preloader
 // below has to pass the *identical* string. A preload that declares a different
@@ -1545,9 +1562,7 @@ const DIAGNOSIS_CTA_LABEL = "I'm ready to feel better";
 // offer, so it says so plainly and hands over.
 function getDiagnosisForwardCopy(): { sub: React.ReactNode } {
   return {
-    sub: `${formatPrice(FIRST_WEEK_PRICE)} for your first week \u00b7 ${formatPrice(
-      WEEKLY_PRICE
-    )} after first week \u00b7 cancel anytime`,
+    sub: `${formatPrice(PLAN_PRICE)} once for all ${PLAN_WEEKS} weeks \u00b7 no subscription \u00b7 nothing to cancel`,
   };
 }
 
@@ -4381,19 +4396,19 @@ function RegisterPageContent() {
    *
    * The address only exists on `auth.users` once fulfillment has bound it, which
    * is a race with the webhook - so if it isn't there yet and we have a
-   * `session_id`, run the same `sync-session` fallback the "Manage my
-   * subscription" button used to run and read again. `claimFulfillment()` makes
+   * `session_id`, run the same `sync-session` fallback the account link at the
+   * bottom of this screen also runs, and read again. `claimFulfillment()` makes
    * that idempotent against the webhook, so at worst this is a wasted call, and
    * at best it repairs a purchase whose webhook never arrived while she is still
    * on the page.
    */
   const [checkoutEmail, setCheckoutEmail] = useState<string | null>(null);
   /**
-   * When the first $4.99 lands — Stripe's period end, read back through
-   * `/api/account/status` once fulfillment has written it. Null until then;
-   * the copy falls back to "in a week".
+   * When her access ends — written by fulfillment as purchase + PLAN_ACCESS_DAYS
+   * and read back through `/api/account/status`. Null until fulfillment lands;
+   * the copy falls back to a relative phrase.
    */
-  const [nextChargeDate, setNextChargeDate] = useState<string | null>(null);
+  const [accessEndsDate, setAccessEndsDate] = useState<string | null>(null);
 
   useEffect(() => {
     if (phase !== "download") return;
@@ -4433,17 +4448,22 @@ function RegisterPageContent() {
         });
         const json = res.ok ? ((await res.json()) as { ends_at?: string | null }) : null;
         const ends = json?.ends_at ? new Date(json.ends_at) : null;
-        // Trust the server date only if it looks like *this* period: in the
-        // future and no further out than a week plus a day. A stale period
-        // end on a merged account would otherwise print last year.
+        // Trust the server date only if it looks like *this* purchase: in the
+        // future and no further out than the access window plus a day. A stale
+        // end date on a merged account would otherwise print last year.
+        //
+        // The bound tracks PLAN_ACCESS_DAYS and must: it was a hardcoded 8 days
+        // under weekly billing, and left there it silently rejects every valid
+        // date on a 56-day purchase — the copy falls back to "8 weeks from
+        // today" forever and nothing anywhere reports a failure.
         if (
           ends &&
           !Number.isNaN(ends.getTime()) &&
           ends.getTime() > Date.now() &&
-          ends.getTime() <= Date.now() + 8 * 86_400_000 &&
+          ends.getTime() <= Date.now() + (PLAN_ACCESS_DAYS + 1) * 86_400_000 &&
           !cancelled
         ) {
-          setNextChargeDate(formatChargeDate(ends));
+          setAccessEndsDate(formatChargeDate(ends));
         }
       } catch {
         // The copy reads fine without a date.
@@ -5394,9 +5414,9 @@ function RegisterPageContent() {
         </div>
       )}
 
-      {/* Paywall Phase. $1 today at Stripe, $4.99/week from week 2 —
-          `create-checkout` applies the coupon and is the side that decides
-          what Stripe is told. */}
+      {/* Paywall Phase. A single $29 charge at Stripe for the whole 8-week
+          block — `create-checkout` runs `mode: "payment"`, applies no coupon
+          and no trial, and creates no subscription. */}
       {phase === "paywall" && (
         <PaywallView
           onCheckout={handleStartCheckout}
@@ -5425,10 +5445,10 @@ function RegisterPageContent() {
               {firstName.trim() ? `${firstName.trim()}, you're all set!` : "You're all set!"}
             </h2>
             <p className="text-sm sm:text-base text-[#5A5A5A] mb-5 leading-relaxed">
-              Your first week is paid ({formatPrice(FIRST_WEEK_PRICE)}). From{" "}
-              {nextChargeDate ?? "next week"} it&apos;s {formatPrice(WEEKLY_PRICE)}/week &mdash; cancel
-              anytime from the app. Your {PLAN_WEEKS}-week plan is being built right now; download the
-              app to start it.
+              All {PLAN_WEEKS} weeks are paid ({formatPrice(PLAN_PRICE)}, once). Your access runs
+              until {accessEndsDate ?? `${PLAN_WEEKS} weeks from today`} &mdash; there&apos;s no
+              subscription and nothing to cancel. Your {PLAN_WEEKS}-week plan is being built right
+              now; download the app to start it.
             </p>
 
             {/* How she gets in, stated before the store badges rather than left
@@ -5522,7 +5542,7 @@ function RegisterPageContent() {
               }}
               className="text-sm text-[#9A9A9A] hover:text-[#5A5A5A] underline transition-colors disabled:opacity-50"
             >
-              {syncingPayment ? "Loading…" : "Manage my subscription"}
+              {syncingPayment ? "Loading…" : "Go to my account"}
             </button>
           </motion.div>
         </div>

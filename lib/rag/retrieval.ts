@@ -11,10 +11,28 @@
 
 import { OpenAIEmbeddings } from "@langchain/openai";
 import type { Document } from "@langchain/core/documents";
-import type { KBEntry, Persona, RetrievalResult, ContentSections } from "./types";
+import type { KBEntry, Persona, RetrievalResult, ContentSections, FollowUpLink } from "./types";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { generateHypotheticalAnswer } from "./hyde";
 import { decomposeQuery, looksMultiTopic } from "./multi-query";
+
+/**
+ * The `documents.metadata` JSONB column as it comes back from Supabase, which
+ * types it as `Json` and cannot know the shape `npm run ingest` writes. Every
+ * field is optional because a row predating a frontmatter key simply omits it —
+ * the readers below already fall back, and this type is what makes them have to.
+ */
+interface DocumentMetadata {
+  persona?: string;
+  topic?: string;
+  subtopic?: string;
+  keywords?: string[];
+  intent_patterns?: unknown;
+  content_sections?: ContentSections;
+  follow_up_links?: FollowUpLink[];
+  source?: string;
+  section_index?: number;
+}
 
 // Type for match results from Supabase RPC
 interface MatchResult {
@@ -769,7 +787,7 @@ export async function checkExactIntentMatchAcrossAllPersonas(
     const exactMatchEntries: KBEntry[] = [];
     
     for (const doc of allDocs) {
-      const metadata = doc.metadata as any;
+      const metadata = doc.metadata as DocumentMetadata;
       
       if (!metadata) {
         continue;
@@ -782,7 +800,7 @@ export async function checkExactIntentMatchAcrossAllPersonas(
       if (rawIntentPatterns) {
         if (Array.isArray(rawIntentPatterns)) {
           intentPatterns = rawIntentPatterns
-            .map((p: any) => typeof p === 'string' ? p : String(p))
+            .map((p: unknown) => typeof p === 'string' ? p : String(p))
             .filter((p: string) => p && p.trim().length > 0);
         } else if (typeof rawIntentPatterns === 'string') {
           intentPatterns = [rawIntentPatterns];
@@ -821,7 +839,7 @@ export async function checkExactIntentMatchAcrossAllPersonas(
               keywords: metadata.keywords || [],
               intent_patterns: intentPatterns,
               content_sections: contentSections,
-              follow_up_links: metadata.follow_up_links as any,
+              follow_up_links: metadata.follow_up_links,
               source: metadata.source,
               section_index: metadata.section_index,
             },
@@ -885,7 +903,7 @@ export async function retrieveFromKBByIntentOnly(
       
       for (const doc of personaDocs) {
         // Supabase returns JSONB fields as parsed objects, so doc.metadata is already an object
-        const metadata = doc.metadata as any;
+        const metadata = doc.metadata as DocumentMetadata;
         
         if (!metadata) {
           console.warn(`[Intent-Only Retrieval] Document ${doc.id} has no metadata, skipping`);
@@ -899,7 +917,7 @@ export async function retrieveFromKBByIntentOnly(
         if (rawIntentPatterns) {
           if (Array.isArray(rawIntentPatterns)) {
             intentPatterns = rawIntentPatterns
-              .map((p: any) => typeof p === 'string' ? p : String(p))
+              .map((p: unknown) => typeof p === 'string' ? p : String(p))
               .filter((p: string) => p && p.trim().length > 0);
           } else if (typeof rawIntentPatterns === 'string') {
             intentPatterns = [rawIntentPatterns];
@@ -938,7 +956,7 @@ export async function retrieveFromKBByIntentOnly(
                 keywords: metadata.keywords || [],
                 intent_patterns: intentPatterns,
                 content_sections: contentSections,
-                follow_up_links: metadata.follow_up_links as any,
+                follow_up_links: metadata.follow_up_links,
                 source: metadata.source,
                 section_index: metadata.section_index,
               },

@@ -26,14 +26,16 @@ import {
   viewContentEventId,
 } from "@/lib/metaPixel";
 import {
-  FIRST_WEEK_PRICE,
+  GUARANTEE_BODY,
   GUARANTEE_HEADLINE,
+  GUARANTEE_INLINE_BODY,
+  GUARANTEE_INLINE_CLAIM,
   PLAN_BLOCKS_COPY,
   PLAN_ID,
+  PLAN_PRICE,
   PLAN_WEEKS,
   PRICE_LINE,
   PRICE_SUBLINE,
-  WEEKLY_PRICE,
   formatPrice,
 } from "@/lib/pricing";
 import { trackFb } from "@/lib/metaPixelClient";
@@ -106,8 +108,16 @@ export interface PaywallViewProps {
   week?: PlannerDay[];
 }
 
-const FIRST_WEEK = formatPrice(FIRST_WEEK_PRICE);
-const WEEKLY = formatPrice(WEEKLY_PRICE);
+/** The only figure on this page. One charge — see lib/pricing.ts. */
+const PRICE = formatPrice(PLAN_PRICE);
+
+/**
+ * The green card bolds its opening clause and runs the rest plain, so it needs
+ * GUARANTEE_BODY in two pieces. Split on the first sentence rather than
+ * retyping the second - a retyped half is the drift lib/pricing.ts exists to
+ * prevent, and this card and the landing page's must not be able to disagree.
+ */
+const GUARANTEE_BODY_TAIL = GUARANTEE_BODY.slice(GUARANTEE_BODY.indexOf(". ") + 2);
 
 /**
  * "Start tonight" is a promise about her evening, so it has to be true when she
@@ -136,14 +146,14 @@ function useStartWord(): "tonight" | "today" {
 // Scannable 2x2 grid, one promise per box. At the payment moment she scans
 // rather than reads, so every box is a 2-3 word headline with one support line.
 //
-// **No box states the price.** One did (`$1 today / then $4.99 a week`) until
-// 2026-09-08, when the price card was still the eighth block on the page and
-// this grid was one of the few places the figure appeared at all. The price is
-// now the second block, above the fold, and it is also on the sticky bar - so
-// that box was the third printing of one number, spending a quarter of the grid
-// on nothing new. The slot went to the objection this screen actually leaves
-// unanswered: she is paying on a web page for a product that lives in an app
-// she has not downloaded.
+// **No box states the price.** One did until 2026-09-08, when the price card
+// was still the eighth block on the page and this grid was one of the few
+// places the figure appeared at all. The price is now the second block, above
+// the fold, and it is also on the sticky bar - so that box was the third
+// printing of one number, spending a quarter of the grid on nothing new. The
+// slot went to the objection this screen actually leaves unanswered: she is
+// paying on a web page for a product that lives in an app she has not
+// downloaded.
 const TRUST_LABELS = [
   {
     icon: Zap,
@@ -160,11 +170,14 @@ const TRUST_LABELS = [
     sub: "Download right after checkout",
   },
   {
+    // "Cancel in 2 taps" until 2026-09-11, which is now not just off-message
+    // but false: a one-time payment leaves nothing to cancel. The honest
+    // version of the same reassurance is stronger anyway.
     icon: Check,
     bg: "bg-sky-100",
     fg: "text-sky-600",
-    title: "Cancel in 2 taps",
-    sub: "From the app. No calls, no hoops",
+    title: "No subscription",
+    sub: "One payment. Nothing recurring",
   },
   {
     icon: ShieldCheck,
@@ -513,12 +526,13 @@ function useExitQuestion(opts: {
  * history for the contrast maths), and green because it echoes the guarantee:
  * "safe to press".
  *
- * **The label is the commitment, not the deliverable.** It read "Start my
- * {PLAN_WEEKS}-week plan" until 2026-09-08, which asks for eight weeks on a
- * screen that is charging for one - and every 8-week cue on the page had her
- * pricing the block (8 x {WEEKLY}) before she had read the first dollar. The
- * {PLAN_WEEKS}-week plan is what she gets; one week for {FIRST_WEEK} is what
- * she agrees to.
+ * **The label is the commitment, and since 2026-09-11 the commitment and the
+ * deliverable are the same thing.** It said "Start my first week · $1" under
+ * the weekly offer, because eight weeks was what she got while one week was
+ * what she agreed to, and every 8-week cue had her pricing 8 x $4.99 before
+ * reading the first dollar. One charge of {PRICE} buys the whole
+ * {PLAN_WEEKS}-week block, so the honest label is the block - and the figure
+ * beside it is the entire ask, not an instalment.
  */
 function CheckoutButton({
   loading,
@@ -558,7 +572,7 @@ function CheckoutButton({
       ) : (
         <>
           <Lock className="w-4 h-4" />
-          Start my first week &middot; {FIRST_WEEK}
+          Start my {PLAN_WEEKS}-week plan &middot; {PRICE}
         </>
       )}
     </motion.button>
@@ -723,6 +737,67 @@ export function PaywallView({
 
         {banner && <div className="mb-3">{banner}</div>}
 
+        {/* ── The product, as a cropped peek ────────────────────────────────
+            The page had no picture of the thing being sold: the only two
+            images on it were the card marks and the Stripe badge. She is
+            paying on a web page for something that lives in an app she has
+            not downloaded, and nothing here showed her that app.
+
+            It is cropped, and the crop is the whole design. The master is
+            640x1440 — at the width that makes the screen legible it stands
+            ~370px tall, and there are only ~73px of room above the fold
+            (measured at 390x700: the numeral sits at 183 and the sticky bar
+            at 568). So a fixed-height window shows the top of the phone and
+            a mask fades the rest out, which reads as a screen continuing
+            past the edge rather than as a shrunken thumbnail. A mask rather
+            than a gradient overlay because the page background is itself a
+            gradient — an opaque fade would band against it.
+
+            The negative top offset is not a nudge: the master carries 156px
+            of transparent padding above the phone (measured off its alpha
+            channel — opaque bbox is 72,156 to 593,1319). At this render
+            width that is 48 CSS px, i.e. a third of the window spent on
+            nothing, and without the offset the crop stops at the progress
+            ring. Re-measure it if the asset is ever re-exported.
+
+            It is deliberately NOT the diagnosis screen's carousel shots.
+            Those are PLAN_HERO_SLIDES, which she scrolled through seconds
+            earlier at a readable size, and re-running them here is the
+            second pitch this screen had removed. This is a different screen
+            of the app (the daily checklist) doing a different job: evidence
+            that the product exists and is finished. */}
+        <div
+          className="relative mx-auto mb-2 h-[144px] w-[196px] shrink-0 overflow-hidden sm:h-[165px] sm:w-[224px]"
+          style={{
+            // no-repeat is load-bearing: mask-repeat defaults to `repeat`, so
+            // without it the gradient tiles down the box and the faded-out
+            // half of the phone reappears underneath itself.
+            WebkitMaskImage: "linear-gradient(to bottom, #000 70%, transparent 100%)",
+            WebkitMaskRepeat: "no-repeat",
+            WebkitMaskSize: "100% 100%",
+            maskImage: "linear-gradient(to bottom, #000 70%, transparent 100%)",
+            maskRepeat: "no-repeat",
+            maskSize: "100% 100%",
+          }}
+          aria-hidden
+        >
+          <Image
+            src="/screenshots/mockup.webp"
+            alt=""
+            width={224}
+            height={504}
+            // 192px lands the srcset pick on the 384 candidate at DPR2 (the
+            // next one up is 640, which is 53KB for a 196px box). Quality 60
+            // rather than the 75 default: this is a masked, faded peek, not a
+            // detail shot — together they take the topmost image on the
+            // buying screen from 53KB to 19KB.
+            sizes="192px"
+            quality={60}
+            priority
+            className="absolute left-1/2 top-[-48px] w-[196px] max-w-none -translate-x-1/2 sm:top-[-55px] sm:w-[224px]"
+          />
+        </div>
+
         {/* ══ The offer, above the fold ═══════════════════════════════════════
             The order of this screen is the whole change of 2026-09-08. It used
             to run: stars → her goal as the headline → the finish chart → the
@@ -730,13 +805,13 @@ export function PaywallView({
             is the right architecture for a $59 charge, where the number is the
             objection and every block above it exists to earn it.
 
-            It is the wrong architecture for {FIRST_WEEK}. At a dollar the price
-            is not the objection, it is the strongest asset on the page - it
-            collapses "is this worth $59?" into "is this worth a coffee?" - and
-            it was the eighth block, roughly two screens down. Above the fold
-            the figure appeared exactly once: at 16px, inside the sticky button,
-            at the very bottom edge of the screen. 169 women reached this page
-            over 30 days and essentially none of them bought.
+            It is the wrong architecture for {PRICE}. At this size the price is
+            not the objection, it is the strongest asset on the page - eight
+            weeks of a plan for less than one session with a trainer - and it
+            was the eighth block, roughly two screens down. Above the fold the
+            figure appeared exactly once: at 16px, inside the sticky button, at
+            the very bottom edge of the screen. 169 women reached this page over
+            30 days and essentially none of them bought.
 
             Two more things were being spent badly:
 
@@ -767,7 +842,7 @@ export function PaywallView({
             Your audit is done &amp; free. This is the plan it built.
           </p>
           {/* The headline is her outcome and when she has it (2026-09-09). It
-              was the price - "Start tonight for {FIRST_WEEK}." - from the
+              was the price - "Start tonight for {PRICE}." - from the
               2026-09-08 re-order, which put the page's only new information
               in its largest type and was right to. The price kept the size; it
               moved one block down into the card that already carries the
@@ -800,8 +875,8 @@ export function PaywallView({
             screen is scanned before it is read. The figure gets the size; the
             sentence keeps the small type under it (and the screen reader).
 
-            The guarantee row is inside this card on purpose. "then {WEEKLY}/
-            week" raises its objection - *they will keep charging me* - the
+            The guarantee row is inside this card on purpose. The renewal row
+            above it raises its objection - *they will keep charging me* - the
             instant she reads it, and the answer was four blocks and ~1,600px
             below. Objection and answer have to fit in one eyeful. The full
             green card is still down the page for the reader who wants terms.
@@ -826,20 +901,21 @@ export function PaywallView({
             style={{ background: "linear-gradient(135deg, #ff74b1 0%, #ff9d6c 100%)" }}
           >
             <Sparkles className="w-3 h-3" />
-            YOUR FIRST WEEK
+            YOUR {PLAN_WEEKS}-WEEK PLAN
           </span>
 
           {/* The old headline, in the block that owns the number. It reads as
-              one sentence with the numeral inside it - "Start tonight for $1" -
-              rather than as a figure with a caption beside it, so the price is
-              still the largest thing above the fold and still says what the
-              dollar buys: an evening, not a subscription. */}
+              one sentence with the numeral inside it - "Start tonight for $29"
+              - rather than as a figure with a caption beside it, so the price
+              is still the largest thing above the fold and still says what the
+              money buys: an evening she can begin, not a subscription she has
+              to work out. */}
           <p className="flex flex-wrap items-baseline justify-center gap-x-2 gap-y-0.5 text-center">
             <span className="text-[22px] sm:text-[24px] font-bold leading-tight tracking-[-0.01em] text-[#2B2627]">
               Start {startWord} for
             </span>
             <span className="text-[56px] sm:text-[64px] font-extrabold leading-none tracking-[-0.03em] text-[#15803D] tabular-nums">
-              {FIRST_WEEK}
+              {PRICE}
             </span>
           </p>
           {/* The offer as one sentence, for a screen reader and for the rule
@@ -848,25 +924,34 @@ export function PaywallView({
             {PRICE_LINE} {PRICE_SUBLINE}
           </p>
 
+          {/* What {PRICE} covers, and - the part that matters at this price -
+              what comes after it, which is nothing. The row opposite the figure
+              used to be the renewal ("every {PLAN_WEEKS} weeks, until you
+              cancel"); a one-time payment has no renewal, so the slot goes to
+              the strongest true sentence on the page. She arrived from an ad
+              assuming any card entry is a subscription trap, and this is where
+              that assumption gets answered - beside the number, not 1,600px
+              below it. */}
           <div className="mt-3.5 flex items-baseline justify-between gap-3 rounded-xl border border-[#EFE2E8] bg-white/70 px-3 py-2 text-left">
             <span className="text-sm text-[#5A5A5A]">
-              From week 2
-              <span className="block text-xs text-[#8A8A8A]">every week, until you cancel</span>
+              All {PLAN_WEEKS} weeks included
+              <span className="block text-xs text-[#8A8A8A]">one payment, then nothing</span>
             </span>
-            <span className="shrink-0 whitespace-nowrap text-base font-extrabold tabular-nums text-[#3D3D3D]">
-              {WEEKLY}
+            <span className="shrink-0 whitespace-nowrap text-sm font-extrabold text-[#15803D]">
+              No subscription
             </span>
           </div>
 
           {/* The answer to the objection the row above just raised - and the
-              answer is the dollar and cancelling. There is no refund clause to
+              answer is that there is no second charge at all - not a refund
+              and not a cancellation flow. There is no refund clause to
               fall back on since 2026-09-09; see the block on GUARANTEE_HEADLINE
               in lib/pricing.ts. */}
           <div className="mt-2 flex items-start gap-2 rounded-xl border border-green-200 bg-green-50/80 px-3 py-2.5">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-green-600" strokeWidth={2.4} />
             <p className="text-left text-xs leading-snug text-[#3D3D3D]">
-              <b className="text-green-800">Try it for {FIRST_WEEK}.</b>{" "}
-              Don&apos;t like it? Just cancel &mdash; you&apos;re never charged again.
+              <b className="text-green-800">{GUARANTEE_INLINE_CLAIM}</b>{" "}
+              {GUARANTEE_INLINE_BODY}
             </p>
           </div>
 
@@ -991,11 +1076,12 @@ export function PaywallView({
           })}
         </div>
 
-        {/* The guarantee. It is the dollar and cancelling, and as of 2026-09-09
-            that is all it is - the money-back footnote that sat under it is
-            gone from here and from Terms §11 in the same commit, which is the
-            coupling that has to hold in both directions. Why the reframe:
-            lib/pricing.ts, the block above GUARANTEE_HEADLINE. */}
+        {/* The guarantee. It is the structure of the offer - one charge, no
+            subscription - rather than a promise about our behaviour, which is
+            why it needs no process and no trust. The money-back footnote went
+            from here and from Terms §11 in the same commit (2026-09-09), and
+            that coupling holds in both directions. Why: lib/pricing.ts, the
+            block above GUARANTEE_HEADLINE. */}
         <div
           className="rounded-2xl border-2 border-green-300 bg-green-50 p-4 mb-4"
           style={{ boxShadow: "0 0 0 2px rgba(22,163,74,0.12), 0 8px 28px rgba(22,163,74,0.12)" }}
@@ -1004,9 +1090,10 @@ export function PaywallView({
             <ShieldCheck className="w-12 h-12 text-green-600 shrink-0 mb-2" />
             <h2 className="text-xl font-bold text-green-800 mb-2">{GUARANTEE_HEADLINE}</h2>
             <p className="text-sm text-[#3D3D3D] leading-relaxed">
-              <b className="text-green-700">{FIRST_WEEK} is all you risk.</b>{" "}
-              If it isn&apos;t for you, cancel in two taps from the app before week 2 and you are
-              never charged again. No email, no phone call, no questions.
+              <b className="text-green-700">
+                {PRICE} is all you pay, and it buys the full {PLAN_WEEKS} weeks.
+              </b>{" "}
+              {GUARANTEE_BODY_TAIL}
             </p>
           </div>
         </div>
@@ -1049,7 +1136,7 @@ export function PaywallView({
               {
                 Icon: Lock,
                 bold: "Secure checkout",
-                sub: `Stripe takes ${FIRST_WEEK} today — we never see your card.`,
+                sub: `Stripe takes ${PRICE} once — we never see your card.`,
               },
               {
                 Icon: Smartphone,
@@ -1095,7 +1182,7 @@ export function PaywallView({
           <p className="text-[11px] sm:text-xs text-[#5A5A5A] text-center mt-2 leading-relaxed">
             {PRICE_LINE}{" "}
             <a href="/terms#subscription" className="underline">
-              Cancel anytime
+              Terms
             </a>
           </p>
           <p className="text-[11px] sm:text-xs text-[#7A7A7A] text-center mt-1 sm:mt-1.5 leading-relaxed">
@@ -1219,7 +1306,10 @@ export function DisputedAccountBanner() {
  *    "regular price" to run a clock against and no display state that can
  *    differ from the charge.
  *  - **The free-trial branch.** No `trial_period_days`, no "$0 today", no
- *    first-charge date. The card is charged $1 at checkout.
+ *    first-charge date. The card is charged the full {PRICE} at checkout.
+ *  - **The first-week discount and its coupon.** Gone 2026-09-11 with the
+ *    weekly plan. An introductory price that steps up is a second number on a
+ *    screen whose whole problem was that it carried three.
  *  - **The browser `Purchase`.** Meta's Purchase fires from the Stripe webhook
  *    only, at the amount collected. See lib/metaPixel.ts.
  *  - **The duplicate phone shots and the duplicate before/after cards.** Both
@@ -1230,7 +1320,8 @@ export function DisputedAccountBanner() {
  *  - **A price figure in the trust grid.** The price is above the fold and on
  *    the sticky bar; a third printing spent a quarter of the grid on nothing
  *    new.
- *  - **"Start my {PLAN_WEEKS}-week plan" as the button.** The label states the
- *    commitment now - one week - because the deliverable's length is not what
- *    she is agreeing to pay for.
+ *  - **"Start my first week · $1" as the button.** That label was right for
+ *    the weekly offer, where the deliverable was eight weeks and the
+ *    commitment was one. Commitment and deliverable are the same block now, so
+ *    the button names the block.
  */

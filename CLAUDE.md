@@ -33,7 +33,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Key Design Decisions
 - **Passwordless auth only** — 6-digit email OTP via Supabase (`signInWithOtp` + `verifyOtp`). No passwords, no magic links. Shared `<OtpForm />` (`components/auth/OtpForm.tsx`) is the only auth UI, and `/login` is now its only caller.
-- **The paywall sells a weekly subscription: $1 for the first week, then $4.99/week** (2026-09-08). Stripe price `$4.99` weekly plus the `OuChKp3c` coupon ($3.99 off, once) applied on every Checkout Session; no trial, no promo-code box. The *plan* still runs in 8-week blocks and is rebuilt at the end of each; the *bill* is weekly, and nothing may conflate the two. **The guarantee is the dollar and cancelling, and there is no refund promise anywhere** (2026-09-09): *Try MenoLisa for $1 — that's all you risk; cancel in two taps before week 2 and you are never charged again.* The money-back guarantee was demoted to a footnote on 2026-09-08 and **removed on 2026-09-09** — from the paywall card, the landing page, the FAQ, the welcome email, Stripe's submit text and Terms §11, in one commit. `MONEY_BACK_DAYS` and `REFUND_FOOTNOTE` are deleted; `/admin`'s `refundExposure` figure and its "Owed" alert went with them. Why: at 5 days the window closed **before week 2 was billed** (day 7), so the only charge it could ever refund was the $1, and a refund process for a dollar introduces the possibility of failure at the moment belief is highest. Copy lives in `lib/pricing.ts` (`GUARANTEE_HEADLINE` / `GUARANTEE_BODY` / `GUARANTEE_INLINE` / `CANCEL_BEFORE_RENEWAL_COPY`); the block above them carries the full argument. **A refund promise on a marketing surface and Terms §11 move in the same commit, in both directions.** See "The weekly plan" in §4.
+- **The paywall sells one thing: $29, charged ONCE, for 8 weeks of access (2026-09-11). It is not a subscription.** Checkout runs `mode: "payment"`, one Stripe price with no `recurring` block (env `STRIPE_PRICE_PLAN`), no coupon, no trial, no promo-code box. **Nothing renews**, so there is nothing to cancel — "cancel anytime" was removed from every surface because it became false, not merely off-message. Stripe supplies no period end for a one-time payment, so `fulfillCheckout` computes the access cutoff itself (`now + PLAN_ACCESS_DAYS`, 56 days) and nothing overwrites it. The risk reversal is structural — one charge, no card kept, no second charge — and there is still **no refund promise anywhere**; Terms §11 and the paywall move in the same commit, in both directions. Terms §10 now reads "there is no automatic renewal" and must never promise renewal while checkout is in payment mode. Copy lives in `lib/pricing.ts`. See "The plan and its price" in §4.
 - **The `/register` funnel never asks for an email** — it signs her in anonymously and lets Stripe collect the address at checkout. See "Anonymous accounts" below.
 - **Dual auth paths** — cookie (web) and Bearer token (mobile) coexist in every API route via `getAuthenticatedUser()`
 - **Verbatim KB-first RAG** — AI chat tries to return exact knowledge base content before falling back to LLM generation; this ensures medically accurate, consistent answers
@@ -572,21 +572,25 @@ top to bottom, latest sales, needs a human.
   age out. Bars clamp; the rates print the true figure.
 - **The verdict sentence is computed server-side**, so the panel and any future
   alert can never disagree about what the numbers mean.
-- **Nothing forward-looking may report further than the next charge.** The Cash
-  block's calendar line was `subscribers x $4.99 x 30/7` printed as "N renewals
-  scheduled" — the money was ~4.3 renewals each and the count was subscribers,
-  so the two halves of one sentence described different things. Weekly billing
-  makes the honest version trivial: every renewing subscription renews exactly
-  once in the next 7 days, so `booked7 = renewingCount x WEEKLY_PRICE`, and that
-  is checkable against Stripe. `past_due` is excluded — Stripe is retrying an
-  invoice that has *already* come due, and counting it forward books the same
-  money twice. Everything past week 1 is a forecast: she can cancel in two taps.
+- **Nothing forward-looking may report further than the next charge, and only
+  the charges that actually fall in the window.** The Cash block's calendar line
+  once multiplied every subscriber by the price and called the result "N
+  renewals scheduled", so the money and the count described different things.
+  Under weekly billing the honest version was trivial (everything renews inside
+  7 days); on an 8-week period most subscriptions renew nowhere near the
+  window, so `booked30` counts only those whose `subscription_ends_at` falls
+  inside the next 30 days — each once, since nothing renews twice on an 8-week
+  cycle — and `renewingCount` is printed beside it as the live total. That is
+  checkable against Stripe, which is the bar every figure here has to clear.
+  `past_due` is excluded: Stripe is retrying an invoice that has *already* come
+  due, and counting it forward books the same money twice. Everything past that
+  one renewal is a forecast — she can cancel in two taps.
 - **The funnel block has a day picker, and it moves only the funnel.** `range:
   { from, to }` on `POST /api/admin/stats` is two operator-local calendar days,
   both inclusive; it drives the curve, the by-day table and the exit question,
   and it overrides both server-side floors (that is what picking a window
   means). It must never touch a money bucket, CAC, LTV or the cohort table —
-  `week2Rate` feeds the verdict at the top of the page, and a filter inside the
+  `renewalRate` feeds the verdict at the top of the page, and a filter inside the
   funnel that can rewrite "should I spend more tomorrow?" is the fastest way to
   make this screen lie. That is why `loadSubscriptions` runs on `funnelSince`
   rather than `curveSince`. Both RPCs take `until` as an **exclusive** end,
@@ -702,55 +706,84 @@ you use"). Verified before shipping; no policy edit was needed. Retention is the
 operator's call and `created_at` is indexed so a periodic delete is cheap.
 Migration: `scripts/sql/2026-09-02-funnel-events.sql`.
 
-### The weekly plan (2026-09-08)
+### The plan and its price (2026-09-11) — ONE-TIME, not a subscription
 
-The trial (2026-09-04) produced 74 quiz finishers and two saved cards, both
-cancelled. The paywall now sells **$1 for the first week, then $4.99/week**:
+**$29, charged once, buys 8 weeks of access. Nothing renews.** Checkout runs in
+`mode: "payment"`; no Subscription object exists for a new customer. This is the
+fourth pricing shape in a month ($59 + free trial → $1-then-$4.99/week → $29
+every 8 weeks → $29 once), and the last three lasted days, so treat the
+*reasoning* below as the durable part.
 
-- **Stripe:** one price, `$4.99` recurring weekly (`STRIPE_PRICE_WEEKLY` — renamed
-  from `STRIPE_PRICE_8WEEK` so the archived $59 id cannot be picked up), plus
-  coupon **`OuChKp3c`** ($3.99 off, `once`) passed as `discounts` on every
-  Checkout Session. Same coupon id in test and live; `scripts/stripe-weekly-price.ts`
-  creates all of it idempotently and archives the old price (never deletes it).
-  `allow_promotion_codes` must **not** be set alongside `discounts` — Stripe
-  rejects the session; the box is off by default. `custom_text.submit` prints
-  `CHECKOUT_SUBMIT_TEXT`.
-- **`lib/pricing.ts` is the only place a figure lives:** `WEEKLY_PRICE`,
-  `FIRST_WEEK_DISCOUNT`, `FIRST_WEEK_PRICE`, `FIRST_WEEK_COUPON_ID`,
-  `PLAN_WEEKS`, `CANCEL_BEFORE_RENEWAL_COPY`, and the copy strings `PRICE_LINE`,
-  `PRICE_SUBLINE`, `PLAN_BLOCKS_COPY`. **The paywall's price line and Stripe's
-  submit text are built from the same constants and must match word for
-  word.** `/terms`, the landing page and the FAQ import them.
-- **It is not a state.** A weekly subscriber is `paid` with
-  `subscription_ends_at` = the current week's period end; `getAccountState()`
-  needed no change and the app sees `days_left` count down from 7 and reset.
-  `planFromSubscription()` maps `week × 1` → `plan_type = "weekly"`.
-- **No renewal email, no renewal alert.** A heads-up before every $4.99 week is
-  spam; the paywall promises "cancel anytime from the app", not a reminder, and
-  Terms §10.2 says so. The welcome email states the amount paid, the weekly
-  price and the first renewal date once. `sendChargeConfirmedEmail`,
-  `sendRenewalNoticeEmail`, `sendTrialConvertedEmail`, `renewalCopy` and
-  `trialEndingCopy` are gone; the cron sends only `access_ending`.
-- **Meta `Purchase` is server-only**, from `checkout.session.completed`, at
-  `session.amount_total` ($1.00). No browser copy (`MetaPurchaseTracker` is
-  deleted), no `Subscribe`, no `?offer=` on the success URL. `PLAN_VALUE`
-  (`ViewContent` / `InitiateCheckout`) is `FIRST_WEEK_PRICE`.
-- **The name step is required**, and the Continue button is always on screen
-  for it — lifted above the keyboard, disabled until she has typed. It was
-  optional for one day (2026-09-08) and the results headline greeted the
-  skippers as "You". `save-quiz` still writes only the keys it is sent on an
-  update, so a partial re-save from the app never nulls her answers.
-- **No email capture in the funnel.** An optional "Save your results and
-  plan." box sat on the results screen for one day (2026-09-08) and was removed
-  the same day: an optional field is a half-measure — it neither captures the
-  list a sequence would need nor stays out of the way. If capture comes back it
-  is a required standalone screen between results and the plan, and it lands in
-  `user_profiles.email`, never `auth.users` (see "Decided against").
-- **The paywall asks an exit question** (`PaywallView`): on cursor-leaves-top or
-  30s without a tap, once per tab — too expensive / not sure it'll help me / want
-  to see the plan first / I don't pay for apps / skipped → `funnel_events`
-  `paywall_exit` with `detail`. The route allowlists the token; never widen it.
-- Migration: `scripts/sql/2026-09-08-weekly-plan.sql` (applied 2026-09-08).
+Why one-time: the weekly offer put **three different durations on one screen**
+(a $1 week, a $4.99 week, an 8-week block). The paywall spent its largest type
+reconciling them, Terms §10.1 had to state outright that the billing period and
+the plan block were different lengths, and `/admin` grew a cohort table whose
+rows were weeks and whose columns were also weeks but meant something else. One
+charge for one window removes the whole class of problem.
+
+- **Stripe:** one price, `$29`, **no `recurring` block** → `STRIPE_PRICE_PLAN`.
+  `scripts/stripe-plan-price.ts` creates it and archives every older price. A
+  recurring price is rejected outright in payment mode — a 500 on the card
+  form, not a wrong charge.
+- **Third env var name, and neither old one is reused.** `STRIPE_PRICE_8WEEK`
+  held the archived $59 price and `STRIPE_PRICE_WEEKLY` the archived $4.99
+  weekly one. A stale value under a reused name charges a figure no surface
+  prints.
+- **`customer_creation: "always"` is required.** Payment mode creates no
+  Customer by default; without one a purchase leaves no record to look up in
+  support and nothing for `/admin` to attribute a charge to.
+- **We compute the access cutoff, because Stripe supplies none.**
+  `fulfillCheckout` writes `subscription_ends_at = now + PLAN_ACCESS_DAYS` (56)
+  and **nothing ever overwrites it** — no renewal webhook is coming.
+  `getAccountState()` fails closed on a `paid` row with no cutoff, so that one
+  write is all that stands between a paying customer and a lockout. The same
+  computed value is passed to the welcome email, so the date she is told and
+  the date enforced cannot drift.
+- **`lib/pricing.ts` is the only place a figure lives:** `PLAN_PRICE`,
+  `PLAN_WEEKS`, `PLAN_ACCESS_DAYS`, `NO_RENEWAL_COPY`, and the copy strings
+  `PRICE_LINE`, `PRICE_SUBLINE`, `PLAN_BLOCKS_COPY`, `GUARANTEE_HEADLINE` /
+  `GUARANTEE_BODY` / `GUARANTEE_INLINE_CLAIM` / `GUARANTEE_INLINE_BODY`.
+- **The product boundary on `/admin` is metadata now, not the subscription.**
+  The Stripe account is shared with other products. It used to filter charges
+  to customers holding a subscription to our price; with no subscriptions that
+  matched nothing and would have reported **$0 revenue on a working product** —
+  the worst failure this panel has, because it looks like a business problem
+  rather than a bug. `create-checkout` stamps
+  `payment_intent_data.metadata.product`, and `lib/stripe/productBoundary.ts`
+  holds the key. Legacy subscription charges are still matched by customer.
+- **Three things silently assumed a renewal and had to be found by reading,
+  not by the compiler.** Each would have failed in production with no error:
+  the download screen only trusted an `ends_at` within **8 days** (a 56-day
+  date fails it and the copy falls back forever); the access-ending cron
+  filtered `.eq("subscription_canceled", true)` (false for every one-time
+  customer, so **every** access window would have expired in silence); and
+  `sync-session` required `session.subscription` (null now, so the
+  missed-webhook rescue path would have rejected every real purchase). Assume
+  more of these exist wherever a number is a duration.
+- **Terms §10 is now "there is no automatic renewal"** and says so in the same
+  box shape the auto-renewal disclosure used. **§10 must never promise
+  auto-renewal while checkout runs in payment mode** — that is the same
+  misrepresentation as a wrong price pointing the other way, and it is what a
+  customer quotes when she disputes a charge.
+- **The risk reversal is structural, not a promise.** There is nothing to
+  cancel, so "cancel anytime" is gone from every surface (it was false, not
+  merely off-message) and the trust-grid tile that said it now says "No
+  subscription". Still no money-back guarantee; §11 and the paywall move
+  together in both directions.
+- **The access-ending alert is the only warning she gets.** Under a
+  subscription an ending meant she had cancelled and was rare; now every
+  customer's access ends, on a date she was told once in the welcome email
+  eight weeks earlier. It must never be made conditional on cancellation again.
+- **`/admin` reports no booked revenue, because none exists.** Nothing is
+  scheduled; a forecast here would be invented money. The block shows who is
+  inside their window and who is about to fall out of it — the entire
+  repeat-purchase opportunity. The cohort table counts **purchases, not
+  renewals**, is built from the charge walk `loadRevenue` already does, and a
+  second purchase only becomes possible once her 56 days run out.
+- **LTV's floor is one charge, and that is the point.** There is no renewal
+  tail to bail out an expensive click: CAC must come in under `keptPerSale`
+  (~$27.86 after Stripe's fee) or the ads lose money on every customer. Say so
+  plainly when anyone asks whether to raise budget.
 
 ### The paywall's reading order (2026-09-08, second pass)
 
@@ -801,14 +834,21 @@ Rules that came out of the re-order, all of them about *sequence*, not styling:
   one-line count of what is behind it, so nothing claims more than it holds;
   and the plain row is the one carrying the claim — day 1, movement 1, not a
   bookend or a header. What is under the blur is never invented rows.
-- **The ask is one week, everywhere it is stated.** The button says "Start my
-  first week", not "Start my 8-week plan", and `PRICE_LINE` no longer opens on
-  the plan length. Eight weeks is what she *gets*; a week for $1 is what she
-  *commits to*, and every 8-week cue had her pricing 8 × $4.99 before reading
-  the first dollar.
-- **The guarantee sits inside the price card.** "then $4.99/week" raises its
-  objection the instant it is read and the answer was ~1,600px below. The full
-  green card stays down the page for the reader who wants terms.
+- **The ask and the deliverable are the same block (2026-09-11), so every cue
+  names it.** The button says "Start my 8-week plan · $29", the badge says
+  "YOUR 8-WEEK PLAN", and the row beside the price says "All 8 weeks included /
+  one payment, then nothing". This
+  *reverses* the 2026-09-08 rule ("the ask is one week, everywhere it is
+  stated"), and the reversal is the point rather than a drift: under $1-then-
+  $4.99 eight weeks was what she got while one week was what she committed to,
+  so every 8-week cue had her pricing 8 × $4.99 before reading the first
+  dollar. One charge buys the whole block now, so naming the week would
+  understate what she gets and invent a duration the invoice does not have.
+- **The subscription-trap objection is answered beside the number, not
+  1,600px below it.** She arrives from an Instagram ad assuming any card entry
+  is a trap, so the slot opposite the price — once the renewal row — now reads
+  "No subscription", and the row under it is "$29 today, and nothing after
+  it." The full green card stays down the page for the reader who wants terms.
 - **Disclosure never goes in front of the decision.** `PLAN_BLOCKS_COPY` is the
   densest sentence on the screen and was the last thing read before the number;
   it is now below the price.
@@ -818,8 +858,9 @@ Rules that came out of the re-order, all of them about *sequence*, not styling:
   sources, one screen earlier. They are gone. `diagnosis → paywall` was already
   losing 20% (211 → 169), and re-running the previous screen buys no belief
   while adding scroll between her and the button.
-- **The risk reversal is the dollar, not the refund clause.** "Try it for $1 —
-  don't like it? Just cancel" replaced "5-day money-back guarantee" as the
+- **The risk reversal is the structure of the offer, not a refund clause and
+  no longer a cancellation either.** One charge, no card kept, no second
+  charge. This replaced "5-day money-back guarantee" as the
   headline on both the inline row and the green card, and on 2026-09-09 the
   refund footnote under it went too. A refund promise asks her to imagine
   emailing us and to picture the product failing; "cancel" is two taps, and at
@@ -844,7 +885,7 @@ in-app webview or it measures nobody.
 — `checkTrialExpired()`, `proxy.ts`, `/api/account/status`, the dashboard
 layout — is a caller. Add a rule here, not at a call site.
 
-The plan is $4.99 a week ($1 the first week) with **no trial**, so the shape is simple:
+The plan is a single $29 charge buying 56 days of access, with **no trial** and **no renewal**, so the shape is simple:
 
 | Row state | `state` | Access |
 |---|---|---|
@@ -856,15 +897,17 @@ The plan is $4.99 a week ($1 the first week) with **no trial**, so the shape is 
 | `expired` / `pending_payment` / unknown / no row | `ended` | no |
 | `dispute_flagged_at` set | `disputed` | no |
 
-Cancelling stops the **next** renewal; it never revokes the weeks already paid
-for. That is what Stripe and the app stores expect, and revoking early invites
-chargebacks.
+There is no renewal to stop, so `canceling` is reachable only by a legacy
+subscription or an Apple/Google one. Access always runs to
+`subscription_ends_at` and is never revoked early — that is what Stripe and the
+app stores expect, and revoking early invites chargebacks.
 
 Two rules worth keeping:
 - **Never write `account_status: "paid"` without an expiry.** The read side
-  fails closed on it, so a null cutoff locks out a paying customer. The Stripe
-  webhook falls back to `now + 7 days` (`now + PLAN_WEEKS` for a legacy `plan8w`
-  row) if Stripe hands back no period end.
+  fails closed on it, so a null cutoff locks out a paying customer. For a
+  one-time purchase Stripe supplies **no** period end, so `fulfillCheckout`
+  always computes `now + PLAN_ACCESS_DAYS` (56); a legacy `weekly` row gets
+  `now + 7 days`. This is no longer a rare fallback — it is the normal path.
 - **Select every column in `TRIAL_SELECT_COLS`.** Missing columns come back
   `undefined`, which reads as "no dispute, not canceled, no failed payment".
 
@@ -1102,9 +1145,9 @@ have made it worse, so the counting was fixed in the same pass.
 site, not an optimization target, not in AEM, and a server copy buys nothing in
 the auction.
 
-There is one plan — $1 for the first week, then $4.99 a week, no free trial —
-so the reported `Purchase` value is money actually collected at checkout and
-Events Manager should reconcile against Stripe's first-week charges. The single
+There is one plan — $29 per 8 weeks, no trial and no introductory discount — so
+the reported `Purchase` value is money actually collected at checkout and
+Events Manager should reconcile against Stripe's new-customer charges. The single
 source of truth for the price, the plan id sent as `plan`, and every displayed
 figure is `lib/pricing.ts`; never hardcode a dollar figure in a component.
 
@@ -1157,15 +1200,15 @@ privacy inventory entirely, had **no disclaimer of warranties at all**, and
 omitted the Meta pixel while promising in bold that health data is never used
 for advertising — which was false. Three rules came out of it:
 
-- **Every figure comes from `lib/pricing.ts`.** Terms imports `WEEKLY_PRICE`,
-  `FIRST_WEEK_PRICE` and `PLAN_WEEKS`. A Terms page stating a price Stripe does
-  not charge is not a stale doc, it is a misrepresentation about money.
+- **Every figure comes from `lib/pricing.ts`.** Terms imports `PLAN_PRICE` and
+  `PLAN_WEEKS`. A Terms page stating a price Stripe does not charge is not a
+  stale doc, it is a misrepresentation about money.
 - **The guarantee is a contract, and §11 moves with the paywall in both
   directions.** Terms §11 must stay true to the green card in
-  `components/PaywallView.tsx`. Since 2026-09-09 both say the same thing: the
-  $1 try, cancelling as the exit, and **no money-back guarantee** — §11 is now
+  `components/PaywallView.tsx`. Since 2026-09-09 both say the same thing:
+  cancelling is the exit, and **no money-back guarantee** — §11 is
   "Refunds" (charges are non-refundable except where the law or these Terms
-  provide one; cancelling before the day-7 renewal is the remedy) and §12 is
+  provide one; cancelling before the renewal is the remedy) and §12 is
   "What We Do Not Promise" (no guarantee, no outcome promise). If a refund
   promise is ever printed on a marketing surface again, §11 states its terms in
   the same commit — advertised and absent from the Terms is a
@@ -1537,11 +1580,18 @@ feature (checked 2026-09-08).
 | Bring back the paywall's "get my discount back" button | A timer that visibly resets teaches a 45-60 audience that the page is staged, and the doubt lands on the refund guarantee. The countdown is fine; the reset was the half that did the damage. |
 | Put `seconds` back into `DEFAULT_WARMUP` / `DEFAULT_COOLDOWN` | They take the catalog's dose via `bookendFrom()`. A second copy of a number already in `DOSE` drifted the first time `DOSE` changed. |
 | Bring back the 8-week adherence refund guarantee (or any outcome refund) | Removed 2026-09-04. The "100% guarantee" is the free trial: try it, cancel before the first charge, pay nothing. A refund promise needs a measurement, a claim process and a Terms section a regulator can check; the trial needs none of them. Terms §11's 7-day refund window is the only refund left. |
-| Bring back a free trial, `trial_period_days`, or any `trialing` state | Removed 2026-09-08 after two saved cards and zero conversions. The plan is $1 then $4.99/week, charged at checkout; `getAccountState()` never learned about a trial and must not. |
-| Fire Meta `Purchase` from the browser, or at any value but `session.amount_total` | Server-only since 2026-09-08, at what Stripe collected. A browser copy knows nothing the webhook does not, and a hardcoded value drifts from the coupon. |
-| Set `allow_promotion_codes` on the Checkout Session | Stripe rejects it alongside `discounts` and the whole checkout 500s. The box is off by default; the coupon is applied server-side. |
-| Send a renewal notice email or alert on the weekly plan | A heads-up before every $4.99 week is an email a week to every customer. The paywall and Terms promise "cancel anytime from the app", not a reminder. |
-| Read `STRIPE_PRICE_8WEEK` | Renamed to `STRIPE_PRICE_WEEKLY` on purpose: the old name held the archived $59 price. |
+| Bring back a free trial, `trial_period_days`, or any `trialing` state | Removed 2026-09-08 after two saved cards and zero conversions. The plan is $29 per 8 weeks, charged in full at checkout; `getAccountState()` never learned about a trial and must not. |
+| Re-add an introductory price, a first-period discount or a Stripe coupon | Gone 2026-09-11. An introductory price that steps up is a second number, and the weekly plan proved what a second number costs on this screen: the paywall had to reconcile three durations and Terms §10.1 had to state that the billing period and the plan block were different lengths. `create-checkout` passes no `discounts`. |
+| Turn the plan back into a subscription without rewriting Terms §10 in the same commit | §10 currently states, in its own bordered box, that nothing recurs and there is nothing to cancel. Shipping recurring billing under that text is the same misrepresentation as a wrong price, pointing the other way — and it is the paragraph a customer quotes when she disputes the charge. |
+| Print "cancel anytime" anywhere | There is no subscription and no scheduled charge, so it is false, not just off-message. The reassurance that replaced it ("one payment, nothing recurring") is stronger and true. |
+| Make the access-ending alert conditional on cancellation again | It was `.eq("subscription_canceled", true)`, which is false for every one-time customer — so every access window would have expired in silence. It is now the only warning she gets that the app is about to stop. |
+| Report booked or forecast revenue on `/admin` | Nothing is scheduled. Every future dollar needs her to decide to buy again, so a "booked" figure would be invented money. Show who is inside their window and who is about to leave it. |
+| Reuse `STRIPE_PRICE_8WEEK` or `STRIPE_PRICE_WEEKLY` as the env var | They hold the archived $59 and $4.99 prices. A stale value under a reused name charges a figure no surface prints. The live variable is `STRIPE_PRICE_PLAN`. |
+| Hardcode a duration anywhere instead of deriving it from `PLAN_ACCESS_DAYS` | Three separate places silently assumed a short period and none failed a build: the download screen's 8-day sanity window, `/admin`'s `PERIOD_DAYS`, and the LTV period cap. A duration in the wrong unit fails in production with no error. |
+| Fire Meta `Purchase` from the browser, or at any value but `session.amount_total` | Server-only since 2026-09-08, at what Stripe collected. A browser copy knows nothing the webhook does not, and a hardcoded value drifts from whatever Stripe actually charged. |
+| Set `allow_promotion_codes` on the Checkout Session | The box is off by default and there is nothing to redeem — no coupon is applied at all since 2026-09-11. (It also cannot coexist with `discounts`: Stripe rejects the session and the whole checkout 500s.) |
+| Send a renewal notice email | There are no renewals. The access-ending alert is the one message about the end of her window, and it must not use the word "renew" — that implies an automatic charge and contradicts the paywall, the welcome email and Terms §10.2. |
+
 | Put an *optional* email box back on the funnel | Tried on results for one day (2026-09-08). Optional is the worst of both: it does not build the list a sequence needs and it still adds a field to the payoff screen. Either no capture, or a required standalone screen between results and the plan — and that one only once there is a sequence to send. |
 | Bind a funnel-collected email to `auth.users` | Stripe's address is the login and the collision/merge in `resolveCheckoutAccount` depends on it. `user_profiles.email` is a contact detail. |
 | Widen `funnel_events.detail` past the five exit tokens | The table's safety argument is that it holds screen names. A free-text or quiz-answer column makes it health data about a re-identifiable visit. |
@@ -1553,15 +1603,16 @@ feature (checked 2026-09-08).
 | Send a server-side `PageView` | Highest volume on the site, not an optimization target, not in AEM. It buys nothing in the auction. |
 | Read revenue from `user_trials` instead of Stripe charges | The table is one row per person, overwritten on every renewal. It can say who is paying, never how many times or how much arrived last month — that history does not exist to read. |
 | Divide ad spend by every charge to get cost per customer | Ads do not buy renewals. It flatters CAC and gets worse every cycle as the renewal base grows. Divide by *new* customers only. |
-| Judge a campaign on CAC vs the first $59 alone | That is the strictest possible bar on an auto-renewing plan, and it will tell you to switch off campaigns that make money. Renewal rate and LTV are what make the verdict honest. |
+| Assume a renewal tail will rescue an expensive click | There isn't one. With one-time pricing LTV's floor is a single charge, so CAC must come in under `keptPerSale` (~$27.86 after Stripe's fee) or the ads lose money on every customer. Any value above that requires her to come back and deliberately buy again. |
 | Put ad spend back in `localStorage` | One browser, one number, no history — so no windowed cost per sale, and an empty box the moment you open `/admin` on your phone. |
 | Call `isoDay()` without the timezone offset | `toISOString()` renders the UTC date, so local midnight east of Greenwich files today's ad spend under yesterday. It shipped broken once already. |
 | Put AI cost, MRR or the full client table back on `/admin` | None of them changed a decision, and together they buried the two figures that do. The `llm_usage` ledger behind the cost figure was deleted on 2026-09-04, so re-adding the tile now means rebuilding the instrumentation first — and it must cover `/api/langchain-rag`, which it never did. |
 | Put `symptom_count` or `goal` back on the Meta `Lead` | Health data about an identified person, sent to an ad platform, against our own policy's bold promise. FTC brought GoodRx/BetterHelp/Cerebral on exactly this, and WA's MHMDA gives a private right of action. `custom_data` on a Lead is reporting metadata, not an optimization signal — it bought nothing. |
 | Bypass `lib/privacySignals.ts` on any Meta call site | Privacy §6.4 states we honor GPC. A policy that claims it while pixels fire is the Sephora fine ($1.2M, first CCPA action). |
 | Write a figure into `/terms` or `/privacy` by hand | Both import from `lib/pricing.ts`. A Terms page stating a price Stripe does not charge is a misrepresentation about money, not a stale doc. |
-| Hardcode `$59` in a component | `lib/pricing.ts` is the single source for the price, the plan id sent as `plan`, and every displayed figure. |
-| Re-add a money-back guarantee to any surface without changing Terms §11 in the same commit | Removed everywhere 2026-09-09. At $1 the window closed before the day-7 renewal, so the only charge it could reach was the dollar — it promised a process for recovering an amount nobody needs a process for, and asked her to picture the product failing at the close. A guarantee advertised and absent from the Terms is a misrepresentation, not a stale doc. |
+| Hardcode a dollar figure in a component | `lib/pricing.ts` is the single source for the price, the plan id sent as `plan`, and every displayed figure. |
+| Leave an unused export in `lib/pricing.ts` | `GUARANTEE_INLINE` sat there unimported for months because the markup needed its two halves separately and retyped them. A constant nothing imports is a figure the next edit changes with no surface moving. |
+| Re-add a money-back guarantee to any surface without changing Terms §11 in the same commit | Removed everywhere 2026-09-09. It asked her to picture the product failing at the moment belief is highest, over an amount she does not need a process to recover — cancelling is two taps and reaches the same money. A guarantee advertised and absent from the Terms is a misrepresentation, not a stale doc. |
 | Put the refund back in the paywall headline | It spends the largest type on the page introducing the possibility of failure, at the moment belief is highest. Risk reversal answers a question she only has after she wants the thing. The guarantee card 400px below states it in full. |
 | Shorten `PLAN_DISCOUNT_WINDOW_MINUTES` back to 10 | The paywall is ~2000px and is read by a woman in her fifties on a phone. Ten minutes expired mid-read, doubled the displayed price to `PLAN_ANCHOR_PRICE`, and did it to the careful reader — who is the buyer. It also fired on the return-from-Stripe path. An expired countdown converts at roughly nothing. |
 | Move her symptoms back behind age, stage and menopause type | Every live creative is a symptom or mechanism argument and Ad 1 ends on "tap your symptom". Three categorising screens before the funnel mentions what she came for is a form, not the audit she was promised. |
@@ -1575,8 +1626,81 @@ feature (checked 2026-09-08).
 
 ### Recent work
 
-**2026-09-08 (latest) — weekly billing, no trial, the funnel instrumented to
-the bank.** Full contract in §4 "The weekly plan". Touched: `lib/pricing.ts`
+**2026-09-11 (latest) — $29 ONE-TIME. The product is no longer a
+subscription.** Shipped hours after the $29-per-8-weeks version below, and it
+supersedes it entirely. One charge buys 56 days; nothing renews; Checkout runs
+`mode: "payment"`. Full contract in §4 "The plan and its price".
+
+Beyond the obvious price surfaces, four things had to change because they
+*assumed* a subscription, and **three of them would have failed silently in
+production with nothing in any log**:
+
+- `sync-session` required `session.subscription` — null now, so the
+  missed-webhook rescue path would have rejected every real purchase and cost
+  those customers their login email and their plan.
+- The access-ending cron filtered `.eq("subscription_canceled", true)`, which
+  is false for every one-time customer: **every** access window would have
+  expired in silence. It is now the only warning she gets.
+- The download screen trusted `ends_at` only within 8 days, so a valid 56-day
+  date failed the check and the copy fell back forever.
+- `/admin`'s product boundary was "customers holding a subscription to our
+  price". With no subscriptions that matches nothing and reports **$0 revenue
+  on a working product**. Replaced by PaymentIntent metadata
+  (`lib/stripe/productBoundary.ts`); legacy subscription charges still match by
+  customer. The cohort table was rebuilt off the charge walk and counts repeat
+  *purchases*; the booked-revenue line is gone because nothing is scheduled.
+
+Terms §10 was rewritten from "Automatic Renewal" to "there is no automatic
+renewal", keeping the bordered disclosure box. "Cancel anytime" is gone from
+every surface — it was false, not merely off-message.
+
+Verified: `tsc --noEmit` and `npm run build` clean, `npm run lint` at baseline
+(9 pre-existing errors), `npm run verify-plan-dose` passes, paywall
+server-rendered end to end, and `/terms` §10 and the landing page rendered and
+read back. **Not done, needs a human:** run `scripts/stripe-plan-price.ts`
+against the live key and set `STRIPE_PRICE_PLAN` in Vercel (checkout is down
+until it exists), then redeploy — Vercel does not apply env changes until you
+do.
+
+**2026-09-11 (superseded, same day) — one price: $29 per 8 weeks, recurring.** The weekly offer is gone
+three days after it shipped, and with it the coupon, the $1 first week and the
+last three-clock problem in the product. Full contract in §4 "The plan and its
+price"; the argument for the shape is that the billing period and the plan
+block are now the same 8 weeks, so no surface has to reconcile two durations.
+
+Touched: `lib/pricing.ts` (rewritten — `PLAN_PRICE` / `PLAN_PERIOD_DAYS`
+replace `WEEKLY_PRICE` / `FIRST_WEEK_PRICE` / `FIRST_WEEK_DISCOUNT` /
+`FIRST_WEEK_COUPON_ID`; `GUARANTEE_INLINE` split into the two halves the markup
+actually needed), `create-checkout` (no `discounts`, reads
+`STRIPE_PRICE_PLAN`), `scripts/stripe-plan-price.ts` (replaces
+`stripe-weekly-price.ts`; creates no coupon), `fulfillCheckout`
+(`plan8w` is the live type again, `weekly` kept for the 09-08 → 09-11 rows,
+fallback period 56 days), `lib/metaPixel.ts` (`PLAN_VALUE`), `lib/resend.ts`,
+`PaywallView` (price card, renewal row, CTA, guarantee), `/register`
+(diagnosis CTA and download copy), `TrialCard`, the landing pricing and FAQ,
+`/terms` §1/§10/§11, `.env.example`, `docs/stripe-product.md`.
+
+`/admin` needed the most care, because two constants were silently in the wrong
+unit: `PERIOD_DAYS` (7 → `PLAN_PERIOD_DAYS`), the maturity clock that decides
+when a customer counts as churned, and the LTV cap (52 → `52 / PLAN_WEEKS`).
+Left alone, the first prints a renewal rate of zero six days after each sale and
+the second an LTV eight times too generous — into the same verdict sentence. The
+cohort table's columns are "Period 1/2/3" now rather than "Week 1/2/3", and the
+forward figure is `booked30` (only subscriptions whose period actually ends
+inside 30 days) rather than `booked7`.
+
+Verified: `tsc --noEmit` and `npm run build` clean, `npm run lint` unchanged
+from baseline (9 pre-existing errors), `npm run verify-plan-dose` passes, and
+the paywall server-rendered to text end to end — one figure, `$29`, on every
+row. **Not done, and both need a human:** run
+`scripts/stripe-plan-price.ts` against the live key and set `STRIPE_PRICE_PLAN`
+in Vercel (nothing charges until that exists — `create-checkout` fails loudly
+rather than falling back), and decide whether the existing weekly subscribers
+are migrated or left to bill $4.99/week against the price stored on their
+subscription.
+
+**2026-09-08 — weekly billing, no trial, the funnel instrumented to
+the bank.** *(Superseded 2026-09-11 — see below.)* Touched: `lib/pricing.ts`
 (rewritten), `create-checkout` (coupon, `custom_text`, no trial,
 `funnel_session_id`/`is_test` metadata, `checkout_opened`), the webhook and
 `fulfillCheckout` (server-only `Purchase` at the amount charged,
@@ -1591,8 +1715,8 @@ welcome email), the cron (access-ending alert only), `/terms` §10–12,
 subscriptions by cohort week, exit distribution, `is_test` exclusion).
 Migration `2026-09-08-weekly-plan.sql` applied; ten test profiles and two test
 visits flagged. Stripe test mode: weekly price + coupon created, $59 price
-archived. **Live mode still needs the script run with the live key and
-`STRIPE_PRICE_WEEKLY` set in Vercel.** The name-step regression could not be
+archived. *(Both of those Stripe objects are superseded — see 2026-09-11.)*
+The name-step regression could not be
 reproduced without a device; the name stays required, with the button always
 visible on that step.
 

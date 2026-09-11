@@ -9,7 +9,6 @@ import {
   DashboardTrialProvider,
   useDashboardTrialStatus,
 } from "@/lib/dashboardTrialContext";
-import SessionVerification from "@/components/SessionVerification";
 import { NotificationProvider } from "@/components/notifications/NotificationProvider";
 import NotificationContainer from "@/components/notifications/NotificationContainer";
 
@@ -143,9 +142,6 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   return (
     <>
         <div className="min-h-screen flex flex-col bg-background">
-        {/* Session Verification - checks for browser mismatch issues */}
-        <SessionVerification />
-        
         {/* Background fill above navigation */}
         <div className="fixed top-0 left-0 right-0 z-10 h-20 bg-background/80 backdrop-blur-sm" />
         

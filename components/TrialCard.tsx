@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Clock, CreditCard } from "lucide-react";
 import type { AccountState } from "@/lib/getAccountState";
-import { WEEKLY_PRICE, formatPrice } from "@/lib/pricing";
+import { PLAN_PRICE, formatPrice } from "@/lib/pricing";
 
 export type { AccountState };
 
@@ -46,7 +46,7 @@ function visualsFor(state: AccountState): Visuals {
       badgeBg: "bg-green-500/30",
       badgeText: "text-green-300",
       badgeBorder: "border-green-500/50",
-      badgeLabel: "Subscriber",
+      badgeLabel: "Active",
       progressBar: "from-primary via-accent to-secondary",
       buttonStyle: "bg-white/10 hover:bg-white/20 !text-white border border-white/30 w-full",
       title: "Your plan",
@@ -101,7 +101,7 @@ function visualsFor(state: AccountState): Visuals {
     badgeLabel: "Ended",
     progressBar: "from-red-600 to-red-700",
     buttonStyle: "bg-red-600 hover:bg-red-700 !text-white border border-red-500/50 w-full",
-    title: "Subscription ended",
+    title: "Your access has ended",
   };
 }
 
@@ -162,7 +162,14 @@ export function TrialCard({
   const getCTAText = () => {
     switch (state) {
       case "active":
-        return isPortalLoading ? "Opening…" : isThirdPartyProvider ? "Manage in store" : "Manage subscription";
+        // A one-time purchase has no Stripe subscription, so there is no
+        // billing portal to open and nothing in it to manage. An Apple/Google
+        // customer still holds a real store subscription, so she keeps hers.
+        return isThirdPartyProvider
+          ? isPortalLoading
+            ? "Opening…"
+            : "Manage in store"
+          : "Get another 8 weeks";
       case "canceling":
         return isPortalLoading ? "Opening…" : "Resume subscription";
       case "past_due":
@@ -184,6 +191,13 @@ export function TrialCard({
     if (isThirdPartyProvider) {
       // Apple/Google: deep-link to their store; no Stripe portal.
       window.location.href = "https://apps.apple.com/account/subscriptions";
+      return;
+    }
+    if (state === "active") {
+      // Nothing to manage — one payment, no card on file. The useful action
+      // here is buying the next block, not administering a subscription that
+      // does not exist.
+      window.location.href = "/paywall";
       return;
     }
     setIsPortalLoading(true);
@@ -221,7 +235,7 @@ export function TrialCard({
             ? "Your subscription is active"
             : state === "canceling"
               ? `Access until ${when}`
-              : `Renews ${when} · ${formatPrice(WEEKLY_PRICE)}/week`}
+              : `Access until ${when} · ${formatPrice(PLAN_PRICE)} paid, nothing recurring`}
         </p>
       );
     }
@@ -267,11 +281,7 @@ export function TrialCard({
                   {trial.daysLeft}
                 </span>
                 <span className="text-lg text-white/80">
-                  {state === "canceling"
-                    ? "days of access left"
-                    : state === "past_due"
-                      ? "days to update card"
-                      : "days until renewal"}
+                  {state === "past_due" ? "days to update card" : "days of access left"}
                 </span>
               </div>
             </div>

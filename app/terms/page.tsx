@@ -1,21 +1,16 @@
 import type { Metadata } from "next";
-import {
-  FIRST_WEEK_PRICE,
-  PLAN_WEEKS,
-  WEEKLY_PRICE,
-  formatPrice,
-} from "@/lib/pricing";
+import { PLAN_ACCESS_DAYS, PLAN_PRICE, PLAN_WEEKS, formatPrice } from "@/lib/pricing";
 
 /**
  * Terms and Conditions.
  *
  * Three rules govern edits to this file.
  *
- * **1. Every figure comes from `lib/pricing.ts`.** The price, the billing
- * cadence, the trial length and the renewal-notice lead time are imported,
- * never typed. A Terms page that states a price Stripe does not charge is not a
- * stale document, it is a misrepresentation about money — and it is the exact
- * kind that a state consumer-protection office reads first.
+ * **1. Every figure comes from `lib/pricing.ts`.** The price and the billing
+ * period are imported, never typed. A Terms page that states a price Stripe
+ * does not charge is not a stale document, it is a misrepresentation about
+ * money — and it is the exact kind that a state consumer-protection office
+ * reads first.
  *
  * **2. Every factual claim must be true of the shipping product.** This document
  * previously described magic-link sign-in (it is a 6-digit code), collection of
@@ -28,10 +23,12 @@ import {
  * **3. §11 is a contract, not marketing, and it moves with the paywall.**
  * There is **no money-back guarantee**: it was removed on 2026-09-09 from the
  * green card in `components/PaywallView.tsx`, the landing page, the welcome
- * email and this section, all in one commit. The risk reversal is the dollar
- * and cancelling — `CANCEL_BEFORE_RENEWAL_COPY` — and cancelling is what stops
- * the weekly charge, which §10.5 and §11 both say in as many words. A customer
- * who learns that after the fact files a chargeback instead of a cancellation.
+ * email and this section, all in one commit. The risk reversal is the price and
+ * the shape of the offer itself: one charge, no subscription, no renewal, so
+ * there is no future charge to stop. §10.2 and §11 both say so in as many
+ * words. **§10 must never promise auto-renewal while checkout runs in payment
+ * mode** — that is the same misrepresentation as a wrong price, pointing the
+ * other way, and it is what a customer quotes when she disputes a charge.
  *
  * The coupling holds in both directions. If a refund promise is ever printed
  * on a marketing surface again, §11 states its terms in the same commit; a
@@ -43,7 +40,7 @@ import {
 export const metadata: Metadata = {
   title: "Terms and Conditions | MenoLisa",
   description:
-    "The terms governing your use of MenoLisa, including subscription, cancellation and refund terms.",
+    "The terms governing your use of MenoLisa, including payment, access and refund terms.",
 };
 
 const LAST_UPDATED = "September 9, 2026";
@@ -82,10 +79,11 @@ export default function TermsPage() {
               activity and confirm you are medically cleared to do it (Section 5).
             </li>
             <li>
-              <strong>Your subscription renews automatically</strong>: {formatPrice(FIRST_WEEK_PRICE)}{" "}
-              for the first week, then {formatPrice(WEEKLY_PRICE)} every week until you cancel
-              (Section 10). Cancel anytime from the app — cancel before week 2 and you are never
-              charged again. Charges already made are not refundable except as set out in Section 11.
+              <strong>You pay once — this is not a subscription</strong>:{" "}
+              {formatPrice(PLAN_PRICE)} for your full {PLAN_WEEKS}-week plan, and{" "}
+              <strong>nothing renews automatically</strong> (Section 10). Your access runs{" "}
+              {PLAN_ACCESS_DAYS} days and then ends. Charges already made are not refundable except
+              as set out in Section 11.
             </li>
             <li>
               <strong>Disputes go to individual arbitration</strong> and you waive class actions and
@@ -535,58 +533,54 @@ export default function TermsPage() {
         </section>
 
         <section className="mb-8">
-          <h2 className="text-2xl font-semibold mb-4">10. Subscriptions, Pricing, and Automatic Renewal</h2>
+          <h2 className="text-2xl font-semibold mb-4">10. Pricing, Payment, and Access</h2>
 
           <h3 id="subscription" className="text-xl font-semibold mb-3">10.1 What you are buying</h3>
           <p>
-            Access to the Service requires a paid subscription, billed <strong>weekly</strong>. The
-            price is <strong>{formatPrice(WEEKLY_PRICE)} per week</strong>, and a one-time discount
-            makes your <strong>first week {formatPrice(FIRST_WEEK_PRICE)}</strong>, unless a different
-            price is clearly displayed to you at checkout. Your payment method is charged{" "}
-            <strong>{formatPrice(FIRST_WEEK_PRICE)} at the time of purchase</strong> and then{" "}
-            {formatPrice(WEEKLY_PRICE)} every seven days. Your plan runs in {PLAN_WEEKS}-week blocks
-            and is rebuilt from your progress at the end of each block; the billing period and the
-            plan block are different lengths and this Section governs the billing. Prices are in
-            U.S. dollars and exclude any tax, which is added where applicable. There is no free
-            trial.
+            Access to the Service requires payment. The price is{" "}
+            <strong>
+              {formatPrice(PLAN_PRICE)}, charged once
+            </strong>
+            , unless a different price is clearly displayed to you at checkout. That single payment
+            gives you access to the Service for <strong>{PLAN_ACCESS_DAYS} days</strong> (
+            {PLAN_WEEKS} weeks) starting on the date of purchase. Prices are in U.S. dollars and
+            exclude any tax, which is added where applicable. There is no free trial and no
+            introductory discount.
           </p>
 
-          <h3 className="text-xl font-semibold mb-3 mt-6">10.2 Automatic renewal — please read</h3>
+          <h3 className="text-xl font-semibold mb-3 mt-6">10.2 There is no automatic renewal</h3>
           <div className="rounded-lg border-2 border-foreground/20 bg-muted p-5">
-            <p className="mb-2 font-semibold">Your subscription renews by itself.</p>
+            <p className="mb-2 font-semibold">Your payment is a one-time charge.</p>
             <ul className="mb-0">
               <li>
-                <strong>What recurs:</strong> your MenoLisa subscription.
+                <strong>What you are charged:</strong> {formatPrice(PLAN_PRICE)}, once, at the time
+                of purchase.
               </li>
               <li>
-                <strong>How often:</strong> automatically every week (7 days), at the end of each
-                weekly period.
+                <strong>What recurs:</strong> nothing. We do not enrol you in a subscription, we do
+                not schedule a future charge, and we do not retain your payment method in order to
+                charge it again.
               </li>
               <li>
-                <strong>How much:</strong> {formatPrice(WEEKLY_PRICE)} per week, charged to the
-                payment method on file, unless we have told you in advance that the price has changed.
-                The first week is {formatPrice(FIRST_WEEK_PRICE)}; the discount applies once.
+                <strong>How long your access lasts:</strong> {PLAN_ACCESS_DAYS} days ({PLAN_WEEKS}{" "}
+                weeks) from the date of purchase. At the end of that period your access to the
+                Service ends automatically.
               </li>
               <li>
-                <strong>For how long:</strong> until you cancel. There is no fixed end date.
+                <strong>What you need to do to stop being billed:</strong> nothing. There is no
+                subscription to cancel.
               </li>
               <li>
-                <strong>How to stop it:</strong> cancel at any time in your account settings, in a few
-                taps, with no phone call and no need to contact us (Section 10.5).
-              </li>
-              <li>
-                <strong>No reminder before each weekly charge.</strong> Your welcome email states
-                the weekly amount and your first renewal date. It is your responsibility to cancel
-                before a renewal date if you do not want to be charged for the next week.
+                <strong>If you want another {PLAN_WEEKS} weeks:</strong> you may purchase a further
+                period at the price then displayed. That is always your choice and never automatic.
               </li>
             </ul>
           </div>
           <p className="mt-4">
-            By purchasing, <strong>you expressly authorize us and our payment processor to charge
-            your payment method on a recurring basis</strong> for each renewal period, without further
-            authorization from you, until you cancel. You authorize us to store your payment method for
-            this purpose and to update its details automatically through card-network updater services
-            so that an expired or reissued card does not interrupt your subscription.
+            If we ever introduce automatic renewal, we will not apply it to a purchase you have
+            already made: it would apply only to a new purchase, and only where the recurring
+            nature, the amount, the frequency and the cancellation method are disclosed to you
+            before you pay and you affirmatively agree to them.
           </p>
 
           <h3 className="text-xl font-semibold mb-3 mt-6">10.3 Payment processing</h3>
@@ -598,32 +592,33 @@ export default function TermsPage() {
 
           <h3 className="text-xl font-semibold mb-3 mt-6">10.4 Price changes</h3>
           <p>
-            We may change our prices. Any change to the price of your renewals will be communicated to
-            you by email at least <strong>seven (7) days</strong> before it takes effect, and applies
-            only to periods beginning after that notice. If you do not accept the new price, cancel
-            before the next renewal date; continuing after that date is your acceptance. Promotional
-            or introductory pricing applies only as stated at the time of purchase and does not carry
-            over to renewals unless we say so.
+            We may change our prices at any time. A price change never affects a purchase you have
+            already made: the price you pay is the price displayed at checkout, and because nothing
+            renews there is no later charge for a new price to apply to. A new price applies only to
+            a further purchase you choose to make. Promotional pricing applies only as stated at the
+            time of purchase.
           </p>
 
-          <h3 className="text-xl font-semibold mb-3 mt-6">10.5 Cancellation</h3>
+          <h3 className="text-xl font-semibold mb-3 mt-6">10.5 Ending your access</h3>
           <p>
-            <strong>You may cancel at any time</strong>, for any reason, from{" "}
-            <strong>Account</strong> in the app or on the website — the same place you manage your
-            subscription — or by emailing <Mail /> from the address on your account. Cancellation is
-            self-service and takes effect at the <strong>end of your current paid week</strong>.
+            <strong>There is nothing to cancel.</strong> Because your payment is a one-time charge,
+            no further payment is scheduled and no action is required from you to prevent one. Your
+            access ends by itself {PLAN_ACCESS_DAYS} days after purchase.
           </p>
           <p>
-            You keep full access until that period ends, and you are not charged again. Cancelling does
-            not refund the period you are in — see Section 11 for refunds. Your account
-            settings and cancellation remain available to you even after your access has ended.
+            You may stop using the Service at any time, and you may delete your account at any time
+            from <strong>Account</strong> in the app or on the website, or by emailing <Mail /> from
+            the address on your account. Deleting your account does not entitle you to a refund of
+            the period you have paid for — see Section 11. Your account settings and account
+            deletion remain available to you even after your access has ended.
           </p>
 
           <h3 className="text-xl font-semibold mb-3 mt-6">10.6 Failed payments</h3>
           <p>
-            If a renewal charge fails, we and Stripe may retry it over a short period. We may suspend
-            or terminate your access if payment is not completed. You remain responsible for amounts
-            properly owed for periods already provided.
+            If your payment fails or is later reversed, we may suspend or terminate your access. If
+            you hold a legacy subscription from before {formatPrice(PLAN_PRICE)} one-time pricing
+            was introduced, we and Stripe may retry a failed renewal over a short period. You remain
+            responsible for amounts properly owed for access already provided.
           </p>
 
         </section>
@@ -632,8 +627,8 @@ export default function TermsPage() {
           <h2 id="money-back" className="text-2xl font-semibold mb-4">11. Refunds</h2>
           <p>
             <strong>
-              Your first week is {formatPrice(FIRST_WEEK_PRICE)}, and you can cancel at any time
-              before your next weekly charge. Cancelling is how you stop being billed.
+              {formatPrice(PLAN_PRICE)} is charged once and buys {PLAN_ACCESS_DAYS} days of access.
+              Nothing renews, so there is no future charge to stop.
             </strong>
           </p>
           <p>
@@ -643,17 +638,17 @@ export default function TermsPage() {
           <ul>
             <li>
               <strong>Charges already made are not refundable.</strong> We do not offer a
-              money-back guarantee. A charge pays for the week of access it buys, and that access
-              is provided in full whether or not you use it.
+              money-back guarantee. The charge pays for the {PLAN_WEEKS} weeks of access it buys,
+              and that access is provided in full whether or not you use it.
             </li>
             <li>
-              <strong>Cancelling is the remedy, and it is immediate and self-service.</strong>{" "}
-              Cancel from <strong>Account</strong> in the app or on the website (Section 10.5). You
-              keep access to the end of the week you have paid for and are not charged again.{" "}
+              <strong>There is no recurring charge to stop.</strong>{" "}
               <strong>
-                Your first weekly renewal is charged 7 days after your first charge. Cancel before
-                then and {formatPrice(FIRST_WEEK_PRICE)} is all you ever pay.
-              </strong>
+                {formatPrice(PLAN_PRICE)} is all you ever pay unless you choose to buy a further{" "}
+                {PLAN_WEEKS} weeks.
+              </strong>{" "}
+              You keep access for the {PLAN_ACCESS_DAYS} days you paid for, and nothing is charged
+              after it.
             </li>
             <li>
               <strong>Where these Terms do provide a refund</strong> — for example a pro-rated
@@ -672,8 +667,7 @@ export default function TermsPage() {
               is outside our control.
             </li>
             <li>
-              <strong>Effect.</strong> On refund, your subscription is cancelled and your access
-              ends.
+              <strong>Effect.</strong> On refund, your access to the Service ends.
             </li>
             <li>
               <strong>Your statutory rights are unaffected.</strong> Nothing in this Section limits
@@ -908,7 +902,7 @@ export default function TermsPage() {
           <h2 className="text-2xl font-semibold mb-4">21. Term, Suspension, and Termination</h2>
           <p>
             These Terms apply from your first use of the Service until terminated.{" "}
-            <strong>You may terminate at any time</strong> by cancelling your subscription and
+            <strong>You may terminate at any time</strong> by ceasing to use the Service and
             deleting your account.
           </p>
           <p>
@@ -1098,8 +1092,8 @@ export default function TermsPage() {
             We may update these Terms. We will change the “Last Updated” date above, and for material
             changes we will give you reasonable advance notice by email or in the Service before they
             take effect. Continued use after the effective date is your acceptance. If you do not agree
-            to a change, stop using the Service and cancel your subscription before it takes effect;
-            changes do not apply retroactively to a dispute that has already arisen.
+            to a change, stop using the Service before it takes effect; changes do not apply
+            retroactively to a dispute that has already arisen.
           </p>
         </section>
 
@@ -1187,8 +1181,9 @@ export default function TermsPage() {
             BY CREATING AN ACCOUNT, PURCHASING A SUBSCRIPTION, OR USING MENOLISA, YOU ACKNOWLEDGE THAT
             YOU HAVE READ AND UNDERSTOOD THESE TERMS AND OUR PRIVACY POLICY, THAT YOU AGREE TO BE BOUND
             BY THEM, AND THAT YOU SPECIFICALLY UNDERSTAND AND ACCEPT THE MEDICAL DISCLAIMER (SECTION
-            4), THE ASSUMPTION OF RISK AND RELEASE FOR PHYSICAL ACTIVITY (SECTION 5), THE AUTOMATIC
-            RENEWAL OF YOUR SUBSCRIPTION (SECTION 10), AND THE ARBITRATION AGREEMENT AND CLASS ACTION
+            4), THE ASSUMPTION OF RISK AND RELEASE FOR PHYSICAL ACTIVITY (SECTION 5), THE PAYMENT AND
+            ACCESS TERMS INCLUDING THAT ACCESS ENDS AFTER {PLAN_ACCESS_DAYS} DAYS (SECTION 10), AND
+            THE ARBITRATION AGREEMENT AND CLASS ACTION
             WAIVER (SECTION 22), FROM WHICH YOU MAY OPT OUT WITHIN 30 DAYS.
           </p>
         </section>

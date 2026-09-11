@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { FIRST_WEEK_PRICE, WEEKLY_PRICE } from "@/lib/pricing";
+import { PLAN_ACCESS_DAYS, PLAN_PRICE, PLAN_WEEKS } from "@/lib/pricing";
+import { PRODUCT_METADATA_KEY, PRODUCT_METADATA_VALUE } from "@/lib/stripe/productBoundary";
 import { getAccountState, type AccountState, TRIAL_SELECT_COLS } from "@/lib/getAccountState";
 import { PAYWALL_EXIT_REASONS, type PaywallExitReason } from "@/lib/funnelSteps";
 
@@ -123,8 +124,15 @@ const MAX_SALES_SHOWN = 40;
 
 const DAY_MS = 86_400_000;
 
-/** The billing period, in days. Weekly since 2026-09-08. */
-const PERIOD_DAYS = 7;
+/**
+ * How long one payment buys, in days — straight off `lib/pricing.ts` so this
+ * can never be the one place that still thinks the plan bills weekly.
+ *
+ * With one-time pricing there is no renewal to measure, so this is now the
+ * clock for **repeat purchase**: a customer counts as having had the
+ * opportunity to buy again only once her access has actually run out.
+ */
+const PERIOD_DAYS = PLAN_ACCESS_DAYS;
 /**
  * There is no refund window to track. The money-back guarantee was removed on
  * 2026-09-09 (paywall, landing page, welcome email and Terms §11 together), so
@@ -133,10 +141,10 @@ const PERIOD_DAYS = 7;
  * by hand still show up in `refunds30`.
  */
 /**
- * Grace added to a period before a customer counts as "should have renewed by
- * now". Stripe dunning retries a failed renewal for several days; without the
- * grace those customers would be scored as churned on the day they went
- * past_due, which understates the renewal rate exactly when it matters.
+ * Grace added after access ends before a customer counts as "has decided not to
+ * come back". Nobody re-buys the instant their access lapses, and scoring her
+ * as gone on day 57 understates repeat purchase exactly when the number starts
+ * to matter.
  */
 const RENEWAL_GRACE_DAYS = 3;
 
@@ -147,10 +155,10 @@ const STRIPE_PCT = 0.029;
 const STRIPE_FIXED = 0.3;
 
 /**
- * What one charge of `amount` nets after Stripe's published fee. Per amount,
- * not a blended rate: on a $1 first week the 30¢ fixed part is a third of the
- * charge, on a $4.99 week it is six percent, and one measured rate across both
- * flatters the small one.
+ * What one charge of `amount` nets after Stripe's published fee. Per amount
+ * rather than a blended rate — there is only one price today, but the fixed
+ * 30¢ is a very different share of a small charge than of a large one, and a
+ * single rate across two prices always flatters the small one.
  */
 const keptOf = (amount: number) => round2(amount - (amount * STRIPE_PCT + STRIPE_FIXED));
 
@@ -207,10 +215,14 @@ type Revenue = {
   firstChargeTimes: number[];
   /** Customers who have ever paid a first charge. */
   newCustomersAll: number;
-  /** Renewal cohort: first charge is old enough that a second week was due. */
+  /** Every customer's successful charge times, ascending, one array per
+   *  customer. The cohort table is built from this rather than from a second
+   *  Stripe walk. */
+  customerCharges: number[][];
+  /** Renewal cohort: first charge is old enough that a second period was due. */
   cohortSize: number;
   cohortRenewed: number;
-  /** When the earliest unmatured customer's first week closes. */
+  /** When the earliest unmatured customer's first period closes. */
   cohortMaturesAt: string | null;
   /** Hit MAX_CHARGES — the figures above are a recent slice, not all time. */
   truncated: boolean;
@@ -233,10 +245,11 @@ function emptyRevenue(error: string | null): Revenue {
     daily: new Array(30).fill(0),
     refunds30: { count: 0, amount: 0 },
     failedLast30: 0,
-    feeRate: STRIPE_PCT + STRIPE_FIXED / WEEKLY_PRICE,
+    feeRate: STRIPE_PCT + STRIPE_FIXED / PLAN_PRICE,
     newCustomers30: 0,
     firstChargeTimes: [],
     newCustomersAll: 0,
+    customerCharges: [],
     cohortSize: 0,
     cohortRenewed: 0,
     cohortMaturesAt: null,
@@ -250,17 +263,26 @@ function emptyRevenue(error: string | null): Revenue {
  *
  * **The Stripe account is shared with other products**, so `charges.list()`
  * returns every business's money and nothing on this screen may read it raw.
- * The MenoLisa price id is the product boundary: every MenoLisa payment is a
- * subscription to `STRIPE_PRICE_WEEKLY`, so the customers holding such a
- * subscription — any status, canceled included — are exactly the customers
- * whose charges belong here. One subscriptions walk builds that set; every
- * other product's charges are dropped before they touch a bucket.
  *
- * Renewals are identified without a further API call: the oldest successful
- * charge per customer is her first purchase and everything after it is a
- * renewal. That same map gives the renewal rate (customers past their first
- * period who have a second charge), the new-customer count that cost-per-sale
- * divides by, and the refund exposure.
+ * **The product boundary changed with one-time pricing (2026-09-11).** It used
+ * to be the subscription: every MenoLisa payment was a subscription to our
+ * price, so the customers holding one were exactly the customers whose charges
+ * counted. A one-time payment creates no subscription, so that key is gone —
+ * and left in place it would have matched nothing and reported **$0 revenue**
+ * on a working product, which is the worst failure mode this panel has because
+ * it looks like a business problem rather than a bug.
+ *
+ * The boundary is now `PRODUCT_METADATA_KEY` on the PaymentIntent, stamped by
+ * `create-checkout`. A Charge carries its PaymentIntent id, so one
+ * PaymentIntent walk builds the set and every other product's charges are
+ * dropped before they touch a bucket. Legacy subscription charges are kept via
+ * the same walk — their PaymentIntents carry no metadata, so the subscription
+ * customer set is still consulted for them.
+ *
+ * Repeat purchases are identified without a further API call: the oldest
+ * successful charge per customer is her first and everything after it is a
+ * repeat. That same map gives the repeat rate, the new-customer count that
+ * cost-per-sale divides by, and the refund exposure.
  */
 /**
  * `newCustomerSince` is the acquisition floor — 30 days, or the campaign start
@@ -274,28 +296,35 @@ async function loadRevenue(
   startOfToday: number,
   newCustomerSince: number
 ): Promise<Revenue> {
-  const priceId = process.env.STRIPE_PRICE_WEEKLY;
+  const priceId = process.env.STRIPE_PRICE_PLAN;
   if (!priceId) {
     // Fail closed: without the price id there is no way to tell MenoLisa's
     // charges from the other products' on this account, and account-wide
     // figures presented as MenoLisa revenue are worse than no figures.
-    return emptyRevenue("STRIPE_PRICE_WEEKLY is not set, so MenoLisa's charges can't be told apart");
+    return emptyRevenue("STRIPE_PRICE_PLAN is not set, so MenoLisa's charges can't be told apart");
   }
 
   let charges: Stripe.Charge[];
   let subs: Stripe.Subscription[];
+  let intents: Stripe.PaymentIntent[];
   try {
-    [charges, subs] = await Promise.all([
+    [charges, subs, intents] = await Promise.all([
       stripe.charges
         .list({ limit: 100, expand: ["data.balance_transaction"] })
         .autoPagingToArray({ limit: MAX_CHARGES }),
+      // Legacy only: the $59 block and $4.99 weekly subscriptions still
+      // renewing. Nothing new lands here.
       stripe.subscriptions
         .list({ price: priceId, status: "all", limit: 100 })
-        .autoPagingToArray({ limit: MAX_SUBS }),
+        .autoPagingToArray({ limit: MAX_SUBS })
+        .catch(() => [] as Stripe.Subscription[]),
+      stripe.paymentIntents
+        .list({ limit: 100 })
+        .autoPagingToArray({ limit: MAX_CHARGES }),
     ]);
   } catch (err) {
-    console.error("Admin stats: Stripe charge/subscription list failed:", err);
-    // A bad STRIPE_PRICE_WEEKLY ("No such price") is a config problem, not an
+    console.error("Admin stats: Stripe charge/payment list failed:", err);
+    // A bad STRIPE_PRICE_PLAN ("No such price") is a config problem, not an
     // outage — say which it was, or the fix is a wild goose chase.
     const msg =
       err instanceof Stripe.errors.StripeInvalidRequestError
@@ -305,16 +334,36 @@ async function loadRevenue(
   }
 
   /**
-   * Customers who have ever held a MenoLisa subscription. A subscription
-   * opened by a QA run (`is_test` metadata, stamped by create-checkout) is
-   * left out, so a $1 test purchase never reads as a sale.
+   * MenoLisa's own PaymentIntents, by id — the one-time purchases. A checkout
+   * opened by a QA run (`is_test`, stamped by create-checkout alongside the
+   * product key) is left out, so a test purchase never reads as a sale.
+   */
+  const ownIntents = new Set<string>();
+  for (const pi of intents) {
+    if (pi.metadata?.[PRODUCT_METADATA_KEY] !== PRODUCT_METADATA_VALUE) continue;
+    if (pi.metadata?.is_test === "1") continue;
+    ownIntents.add(pi.id);
+  }
+
+  /**
+   * Customers who hold a legacy MenoLisa subscription. Still consulted, because
+   * those renewals are real income and their charges carry no PaymentIntent
+   * metadata — they predate the stamp.
    */
   const ownCustomers = new Set<string>();
-  for (const s of subs) {
-    if (s.metadata?.is_test === "1") continue;
-    const cid = typeof s.customer === "string" ? s.customer : s.customer?.id;
+  for (const sub of subs) {
+    if (sub.metadata?.is_test === "1") continue;
+    const cid = typeof sub.customer === "string" ? sub.customer : sub.customer?.id;
     if (cid) ownCustomers.add(cid);
   }
+
+  /** Is this charge ours? One-time via its PaymentIntent, legacy via its customer. */
+  const isOwnCharge = (c: Stripe.Charge): boolean => {
+    const pi = typeof c.payment_intent === "string" ? c.payment_intent : c.payment_intent?.id;
+    if (pi && ownIntents.has(pi)) return true;
+    const cid = typeof c.customer === "string" ? c.customer : c.customer?.id ?? null;
+    return !!cid && ownCustomers.has(cid);
+  };
 
   const rev = emptyRevenue(null);
   rev.truncated = charges.length >= MAX_CHARGES || subs.length >= MAX_SUBS;
@@ -329,10 +378,12 @@ async function loadRevenue(
 
   const succeeded = charges.filter((c) => {
     const customerId = typeof c.customer === "string" ? c.customer : c.customer?.id ?? null;
-    // Another product's charge, or a customerless one-off we can't attribute.
-    // A card declined *inside* Checkout leaves a customer with no subscription,
-    // so those declines are invisible here — declined30 is a floor.
-    if (!customerId || !ownCustomers.has(customerId)) return false;
+    // Another product's charge. A card declined *inside* Checkout may leave no
+    // PaymentIntent we can see, so declined30 is a floor rather than a count.
+    if (!isOwnCharge(c)) return false;
+    // Everything below keys off the customer. `customer_creation: "always"` in
+    // create-checkout is what guarantees there is one on a one-time purchase.
+    if (!customerId) return false;
     if (c.status === "failed") {
       if (c.created * 1000 >= now - 30 * DAY_MS) rev.failedLast30 += 1;
       return false;
@@ -418,6 +469,7 @@ async function loadRevenue(
   for (const times of byCustomer.values()) {
     const first = times[0];
     rev.newCustomersAll += 1;
+    rev.customerCharges.push(times);
     if (first >= newCustomerSince) rev.newCustomers30 += 1;
     rev.firstChargeTimes.push(first);
 
@@ -504,35 +556,35 @@ async function loadCheckoutStarts(
   }
 }
 
-// ─── Stripe: subscriptions by cohort week ───────────────────────────────────
+// ─── Cohorts by sign-up week, built from charges ────────────────────────────
 
 /**
- * One row per week of sign-ups, and how each week is doing now.
+ * One row per week of first purchase, and whether that cohort came back.
  *
- * Weekly billing turns "did she renew" into a weekly question, so the shape is
- * a cohort table: who signed up in a given week (Monday-labelled, in the
- * operator's timezone), how many are still active / cancelled / failing, and
- * what share paid a first, second and third weekly invoice. The paid-invoice
- * count is the retention measure — a `$1` first invoice is week 1, the first
- * `$4.99` is week 2 — because it is what actually moved, not what Stripe
- * scheduled.
+ * **Rebuilt off charges (2026-09-11), because there are no subscriptions to
+ * walk any more.** It used to list Stripe Subscriptions on our price and count
+ * paid invoices per subscription; a one-time price has no subscriptions, so
+ * that walk would return an empty list forever and the panel would show "no
+ * subscriptions in the window" on a product taking money every day.
  *
- * Two walks, both windowed on `created >= since` and capped: the subscriptions
- * on the MenoLisa price, and the paid invoices, joined on subscription id in
- * memory. A subscription (and every invoice of it) opened by a QA run
- * (`is_test` metadata) is dropped.
+ * The cohort is now customers whose **first** charge landed in a given
+ * Monday-to-Sunday week (operator-local), and the columns count how many of
+ * them have bought once, twice, three times. With nothing recurring, purchase 2
+ * is not a renewal she failed to cancel — it is a deliberate decision to buy
+ * another block, which makes this the single most important table on the page
+ * for judging whether the product is worth making again.
+ *
+ * It needs no Stripe call of its own: `loadRevenue` already walked the charges
+ * and hands over the per-customer timestamps.
  */
 type CohortRow = {
   /** ISO date of the cohort's Monday, operator-local. */
   week: string;
   size: number;
-  active: number;
-  canceled: number;
-  failed: number;
-  /** How many of the cohort have paid ≥1, ≥2, ≥3 invoices. */
+  /** How many of the cohort have bought ≥1, ≥2, ≥3 times. */
   paid: [number, number, number];
-  /** Share of the cohort at each week, one decimal; null when the cohort is
-   *  too young for that week to have come due. */
+  /** Share of the cohort at each purchase count, one decimal; null when the
+   *  cohort is too young for that purchase to have been possible. */
   retention: [number | null, number | null, number | null];
 };
 
@@ -542,18 +594,16 @@ type Subscriptions = {
   cohorts: CohortRow[];
   totals: CohortRow;
   /**
-   * Week 1 → week 2 retention across every cohort old enough to have reached
-   * week 2. The one number the LTV needs; null until a cohort has matured.
+   * Share of matured customers who bought a second block. Null until a cohort
+   * has actually had the chance — which, with PERIOD_DAYS of access, is two
+   * months after the first sale.
    */
-  week2Rate: number | null;
+  renewalRate: number | null;
 };
 
 const emptyCohort = (week: string): CohortRow => ({
   week,
   size: 0,
-  active: 0,
-  canceled: 0,
-  failed: 0,
   paid: [0, 0, 0],
   retention: [null, null, null],
 });
@@ -563,7 +613,7 @@ const emptySubscriptions = (error: string | null): Subscriptions => ({
   truncated: false,
   cohorts: [],
   totals: emptyCohort("all"),
-  week2Rate: null,
+  renewalRate: null,
 });
 
 /** The Monday (operator-local, as ms at local midnight) of the week containing `ms`. */
@@ -575,119 +625,66 @@ function mondayOf(ms: number, tzOffsetMinutes: number): number {
   return monday + tzOffsetMinutes * 60_000;
 }
 
-/** Which subscription an invoice belongs to, across the two API shapes. */
-function invoiceSubscriptionId(inv: Stripe.Invoice): string | null {
-  const legacy = (inv as Stripe.Invoice & { subscription?: string | { id: string } | null })
-    .subscription;
-  if (typeof legacy === "string") return legacy;
-  if (legacy && typeof legacy === "object") return legacy.id;
-  const parent = (inv as Stripe.Invoice & {
-    parent?: { subscription_details?: { subscription?: string | { id: string } | null } | null } | null;
-  }).parent;
-  const sub = parent?.subscription_details?.subscription;
-  if (typeof sub === "string") return sub;
-  if (sub && typeof sub === "object") return sub.id;
-  return null;
-}
-
-async function loadSubscriptions(
-  stripe: Stripe,
+/**
+ * `customerCharges` is every customer's successful charge times, ascending,
+ * straight from the revenue walk. `since` windows the cohort on first purchase.
+ */
+function buildCohorts(
+  customerCharges: number[][],
   since: number,
   now: number,
-  tzOffsetMinutes: number
-): Promise<Subscriptions> {
-  const priceId = process.env.STRIPE_PRICE_WEEKLY;
-  if (!priceId) return emptySubscriptions("STRIPE_PRICE_WEEKLY is not set");
-  let subs: Stripe.Subscription[];
-  let invoices: Stripe.Invoice[];
-  try {
-    [subs, invoices] = await Promise.all([
-      stripe.subscriptions
-        .list({
-          price: priceId,
-          status: "all",
-          created: { gte: Math.floor(since / 1000) },
-          limit: 100,
-        })
-        .autoPagingToArray({ limit: MAX_SUBS }),
-      stripe.invoices
-        .list({ status: "paid", created: { gte: Math.floor(since / 1000) }, limit: 100 })
-        .autoPagingToArray({ limit: MAX_SUBS }),
-    ]);
-  } catch (err) {
-    console.error("Admin stats: Stripe subscription/invoice list failed:", err);
-    return emptySubscriptions("Could not read subscriptions");
-  }
-
+  tzOffsetMinutes: number,
+  truncated: boolean
+): Subscriptions {
   const out = emptySubscriptions(null);
-  out.truncated = subs.length >= MAX_SUBS || invoices.length >= MAX_SUBS;
-
-  const own = new Map<string, Stripe.Subscription>();
-  for (const sub of subs) {
-    if (sub.metadata?.is_test === "1") continue;
-    own.set(sub.id, sub);
-  }
-
-  /** subscription id → paid invoices with money on them. */
-  const paidCount = new Map<string, number>();
-  for (const inv of invoices) {
-    const subId = invoiceSubscriptionId(inv);
-    if (!subId || !own.has(subId)) continue;
-    if ((inv.amount_paid ?? 0) <= 0) continue;
-    paidCount.set(subId, (paidCount.get(subId) ?? 0) + 1);
-  }
+  out.truncated = truncated;
 
   const byWeek = new Map<number, CohortRow>();
-  for (const sub of own.values()) {
-    const monday = mondayOf(sub.created * 1000, tzOffsetMinutes);
+  for (const times of customerCharges) {
+    const first = times[0];
+    if (first === undefined || first < since) continue;
+    const monday = mondayOf(first, tzOffsetMinutes);
     let row = byWeek.get(monday);
     if (!row) {
       row = emptyCohort(isoDay(monday + 12 * 3_600_000, tzOffsetMinutes));
       byWeek.set(monday, row);
     }
     row.size += 1;
-    const cancelScheduled = sub.cancel_at_period_end || sub.cancel_at !== null;
-    if (sub.status === "canceled" || cancelScheduled) row.canceled += 1;
-    else if (sub.status === "past_due" || sub.status === "unpaid") row.failed += 1;
-    else if (sub.status === "active" || sub.status === "trialing") row.active += 1;
-    const n = paidCount.get(sub.id) ?? 0;
-    for (let k = 0; k < 3; k++) if (n >= k + 1) row.paid[k] += 1;
+    for (let k = 0; k < 3; k++) if (times.length >= k + 1) row.paid[k] += 1;
   }
 
-  // Week 1 is the first invoice, paid at sign-up, so it is observable at once.
-  // Week N > 1 has come due only once the cohort's Monday is N weeks behind us;
-  // before that the column is "—", never a false zero.
-  const matured = (monday: number, k: number) => k === 0 || monday + (k + 1) * 7 * DAY_MS <= now;
+  // Purchase 1 is observable the moment it happens. Purchase N > 1 only becomes
+  // possible once the cohort's access has actually run out, which is
+  // PERIOD_DAYS after they joined — before that the column is "—", never a
+  // false zero. Nobody buys a second block while the first is still running.
+  const matured = (monday: number, k: number) =>
+    k === 0 || monday + k * PERIOD_DAYS * DAY_MS <= now;
   const pct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 1000) / 10 : null);
 
-  let week2Num = 0;
-  let week2Den = 0;
-  const cohorts = [...byWeek.entries()]
+  let repeatNum = 0;
+  let repeatDen = 0;
+  out.cohorts = [...byWeek.entries()]
     .sort(([a], [b]) => b - a)
     .map(([monday, row]) => {
       row.retention = [0, 1, 2].map((k) =>
         matured(monday, k) ? pct(row.paid[k], row.size) : null
       ) as CohortRow["retention"];
       if (matured(monday, 1)) {
-        week2Num += row.paid[1];
-        week2Den += row.size;
+        repeatNum += row.paid[1];
+        repeatDen += row.size;
       }
       out.totals.size += row.size;
-      out.totals.active += row.active;
-      out.totals.canceled += row.canceled;
-      out.totals.failed += row.failed;
       for (let k = 0; k < 3; k++) out.totals.paid[k] += row.paid[k];
       return row;
     });
-  out.cohorts = cohorts;
-  // Totals: each week's share is taken over the cohorts old enough for it.
+
   const maturedSize = (k: number) =>
     [...byWeek.entries()].reduce((acc, [monday, row]) => acc + (matured(monday, k) ? row.size : 0), 0);
   out.totals.retention = [0, 1, 2].map((k) => {
     const den = maturedSize(k);
     return den > 0 ? pct(out.totals.paid[k], den) : null;
   }) as CohortRow["retention"];
-  out.week2Rate = week2Den > 0 ? week2Num / week2Den : null;
+  out.renewalRate = repeatDen > 0 ? repeatNum / repeatDen : null;
   return out;
 }
 
@@ -918,7 +915,6 @@ export async function POST(req: NextRequest) {
     dropoffResult,
     dailyResult,
     exitResult,
-    subscriptions,
   ] = await Promise.all([
     supabaseAdmin
       .from("user_trials")
@@ -977,14 +973,25 @@ export async function POST(req: NextRequest) {
     }),
     // The exit question. Small table, so the grouping happens here.
     exitQuery,
-    // Cohorts run on the acquisition window, deliberately **not** the funnel
-    // window: `week2Rate` feeds LTV, LTV feeds the verdict at the top of the
-    // page, and a filter that sits inside the funnel block must not be able to
-    // rewrite the sentence telling you whether to spend more tomorrow.
-    stripe
-      ? loadSubscriptions(stripe, funnelSince, now, tzOffsetMinutes)
-      : Promise.resolve(emptySubscriptions(null)),
   ]);
+
+  // Cohorts run on the acquisition window, deliberately **not** the funnel
+  // window: the repeat rate feeds LTV, LTV feeds the verdict at the top of the
+  // page, and a filter that sits inside the funnel block must not be able to
+  // rewrite the sentence telling you whether to spend more tomorrow.
+  //
+  // Built here rather than in the Promise.all because it needs the charge walk
+  // that `loadRevenue` already did — one fewer Stripe round trip than the
+  // subscription-based table it replaced.
+  const subscriptions: Subscriptions = revenue.error
+    ? emptySubscriptions(revenue.error)
+    : buildCohorts(
+        revenue.customerCharges,
+        funnelSince,
+        now,
+        tzOffsetMinutes,
+        revenue.truncated
+      );
 
   if (trialsResult.error) {
     console.error("Admin stats query failed:", trialsResult.error);
@@ -1076,71 +1083,79 @@ export async function POST(req: NextRequest) {
 
   // ─── Unit economics ───────────────────────────────────────────────────────
 
-  /** What the $1 first week nets after Stripe's fee. The break-even unit for CAC. */
-  const keptPerSale = keptOf(FIRST_WEEK_PRICE);
-  /** What every later week nets. */
-  const keptPerWeek = keptOf(WEEKLY_PRICE);
+  /**
+   * What one sale nets after Stripe's fee — and, since 2026-09-11, what every
+   * renewal nets too, because there is one price and no introductory rate.
+   * This is the break-even unit for CAC: a click may cost this much before the
+   * first charge stops covering it.
+   *
+   * It was two figures under the weekly plan (a $1 first week, a $4.99 renewal)
+   * and collapsing them is most of why this block got simpler.
+   */
+  const keptPerSale = keptOf(PLAN_PRICE);
 
   const cac =
     revenue.newCustomers30 > 0 && adSpend30 > 0
       ? round2(adSpend30 / revenue.newCustomers30)
       : null;
 
-  const renewalRate =
+  const chargeRenewalRate =
     revenue.cohortSize > 0 ? revenue.cohortRenewed / revenue.cohortSize : null;
   /**
-   * Expected lifetime value, kept: the $1 week plus the weeks she goes on to
-   * pay. Weekly retention r from the cohort table (week 1 → week 2, matured
-   * cohorts only; the charge-based rate is the fallback) means r/(1-r) further
-   * weeks on average. Capped at a year so a tiny all-retained cohort cannot
-   * print an infinite customer.
+   * Expected lifetime value, kept.
+   *
+   * **This is now almost entirely the first charge, and that is the point of
+   * one-time pricing rather than a flaw in the measurement.** Nothing renews,
+   * so any value past the first {@link PLAN_PRICE} requires her to come back
+   * and deliberately buy another block. `r` is the measured repeat rate, which
+   * will be small and may be zero for a long time; r/(1-r) further purchases is
+   * the same geometric expectation as before, capped at six further blocks so
+   * a tiny all-repeated cohort cannot print an infinite customer.
+   *
+   * The practical consequence, and the one to hold on to when reading CAC: the
+   * floor of LTV is one charge. There is no renewal tail to bail out an
+   * expensive click.
    */
-  const weeklyRetention = subscriptions.week2Rate ?? renewalRate;
+  const periodRetention = chargeRenewalRate;
+  const MAX_EXTRA_PERIODS = Math.floor(52 / PLAN_WEEKS);
   const ltv =
-    weeklyRetention === null
+    periodRetention === null
       ? null
       : round2(
           keptPerSale +
-            keptPerWeek * Math.min(weeklyRetention / Math.max(1 - weeklyRetention, 0.02), 52)
+            keptPerSale *
+              Math.min(periodRetention / Math.max(1 - periodRetention, 0.02), MAX_EXTRA_PERIODS)
         );
 
   const contribution30 = round2(revenue.last30.kept - adSpend30 - FIXED_MONTHLY_USD);
 
-  // ─── Forward view: the renewals Stripe has actually scheduled ─────────────
+  // ─── Forward view: what is actually scheduled, which is nothing ───────────
   //
-  // **One week, because one week is all that is scheduled.** This used to
-  // report a 30-day figure — `subscribers x $4.99 x 30/7` — and label it
-  // "N renewals scheduled", which was wrong twice over: the count was
-  // subscribers while the money was ~4.3 renewals each, so the two halves of
-  // the same sentence described different things; and nothing beyond the next
-  // charge is on any calendar. A weekly subscriber can cancel in two taps
-  // before every one of those later weeks, and at a week-2 retention that is
-  // not yet known, projecting four of them forward is a forecast wearing a
-  // ledger's clothes.
+  // **One-time pricing deletes this block's subject.** There is no renewal on
+  // any calendar: every customer has paid once, nothing is scheduled, and the
+  // only future revenue is a purchase she has not decided to make. Reporting a
+  // "booked" figure here would be inventing one.
   //
-  // Weekly billing makes the honest version simple: every subscription that is
-  // going to renew renews exactly once in the next seven days, at
-  // `WEEKLY_PRICE`, including the woman who paid $1 for her first week. That
-  // figure is checkable against Stripe, which is the bar every number on this
-  // screen has to clear.
-  //
-  // `past_due` is excluded on purpose. Stripe is retrying an invoice that has
-  // *already* come due; counting it as future revenue books the same money
-  // twice and hides a failure inside a forward-looking figure. It has its own
-  // alert.
-  let renewingCount = 0;
-  let cancelsPending = 0;
+  // What replaces it is the thing that *is* knowable and does matter now —
+  // **how many people are inside their access window, and how many are about to
+  // fall out of it.** An expiring customer is not lost revenue on a ledger, but
+  // she is the entire repeat-purchase opportunity, and she is invisible
+  // anywhere else on this screen.
+  const EXPIRY_SOON_DAYS = 14;
+  const expirySoonUntil = now + EXPIRY_SOON_DAYS * DAY_MS;
+  let activeNow = 0;
+  let expiringSoon = 0;
+  let lapsed = 0;
   for (const r of rows) {
-    const s = state.get(r.user_id);
+    const st = state.get(r.user_id);
     const ends = endsAt.get(r.user_id);
+    if (st === "ended" && r.account_status === "paid") lapsed += 1;
     if (!ends) continue;
-    if (s === "canceling") cancelsPending += 1;
-    else if (s === "active") renewingCount += 1;
+    if (st === "active" || st === "canceling") {
+      activeNow += 1;
+      if (ends.getTime() <= expirySoonUntil) expiringSoon += 1;
+    }
   }
-  /** What Stripe will attempt to charge in the next seven days. */
-  const booked7 = round2(renewingCount * WEEKLY_PRICE);
-  /** One week each — what cancelling costs at the next renewal, and no more. */
-  const cancelsAtRisk = round2(cancelsPending * WEEKLY_PRICE);
 
   // ─── Funnel, last 30 days ─────────────────────────────────────────────────
 
@@ -1540,11 +1555,14 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  if (cancelsPending > 0) {
+  // No cancellation alert: with one-time pricing nobody can cancel, because
+  // nothing is scheduled. The equivalent signal is access running out, which is
+  // the repeat-purchase window rather than an emergency.
+  if (expiringSoon > 0) {
     alerts.push({
       tone: "warn",
-      label: "Churn",
-      text: `${cancelsPending} ${cancelsPending === 1 ? "woman has" : "women have"} cancelled before the next renewal — $${cancelsAtRisk.toFixed(2)} that will not arrive. They keep access until their period ends.`,
+      label: "Expiring",
+      text: `${expiringSoon} ${expiringSoon === 1 ? "woman's access ends" : "women's access ends"} within ${EXPIRY_SOON_DAYS} days. Nothing renews, so another ${PLAN_WEEKS} weeks is a decision each of them has to make — this is the only window to ask.`,
     });
   }
 
@@ -1626,7 +1644,7 @@ export async function POST(req: NextRequest) {
         text:
           `You pay $${cac.toFixed(2)} for a woman who returns $${keptPerSale.toFixed(2)} on her first payment — ` +
           `${gap > 0 ? `$${gap.toFixed(2)} short` : `$${Math.abs(gap).toFixed(2)} ahead`}. ` +
-          `Whether that is a loss or a bargain depends entirely on how many weeks she stays, and no week-2 renewal has come due yet. Keep the budget flat until it does.`,
+          `Nothing renews, so that first charge is most of what she will ever be worth — only a repeat purchase adds to it, and nobody's ${PLAN_WEEKS} weeks have run out yet. Keep the budget flat until they have.`,
       };
     }
     const ratio = ltv / cac;
@@ -1634,7 +1652,7 @@ export async function POST(req: NextRequest) {
       return {
         tone: "good" as const,
         word: "Scale",
-        text: `$${cac.toFixed(2)} to acquire her, $${ltv.toFixed(2)} back over the weeks she stays — ${ratio.toFixed(2)}×. ${gap <= 0 ? "She pays for herself on the $1 week, so raising the daily budget costs you nothing but patience." : `You are $${gap.toFixed(2)} down on the first week and earn it back over the weeks that follow, so raising the budget needs cash to bridge the gap.`}`,
+        text: `$${cac.toFixed(2)} to acquire her, $${ltv.toFixed(2)} back — ${ratio.toFixed(2)}×. ${gap <= 0 ? "She pays for herself on the one charge, so raising the daily budget costs you nothing but patience." : `You are $${gap.toFixed(2)} down on the one charge she is certain to make, and the rest depends on her choosing to buy again. Raise the budget only with cash to bridge that.`}`,
       };
     }
     if (ratio >= 1) {
@@ -1682,27 +1700,30 @@ export async function POST(req: NextRequest) {
       newCustomers30: revenue.newCustomers30,
       cac,
       keptPerSale,
-      keptPerWeek,
       feeRate: Math.round(revenue.feeRate * 10000) / 10000,
     },
-    /** The offer, so the page prints figures the route vouches for. */
-    prices: { firstWeek: FIRST_WEEK_PRICE, weekly: WEEKLY_PRICE },
+    /** The offer, so the page prints figures the route vouches for. One price,
+     *  one period — the page must never assemble an offer of its own. */
+    prices: { plan: PLAN_PRICE, planWeeks: PLAN_WEEKS },
     retention: {
-      renewalRate: renewalRate === null ? null : Math.round(renewalRate * 1000) / 10,
+      renewalRate:
+        chargeRenewalRate === null ? null : Math.round(chargeRenewalRate * 1000) / 10,
       cohortSize: revenue.cohortSize,
       cohortRenewed: revenue.cohortRenewed,
       maturesAt: revenue.cohortMaturesAt,
-      /** Week 1 → week 2 from the cohort table, or the charge-based rate. */
-      weeklyRetention:
-        weeklyRetention === null ? null : Math.round(weeklyRetention * 1000) / 10,
+      /** Period 1 → period 2 from the cohort table, or the charge-based rate. */
+      periodRetention:
+        periodRetention === null ? null : Math.round(periodRetention * 1000) / 10,
       ltv,
       roas: ltv !== null && cac ? Math.round((ltv / cac) * 100) / 100 : null,
     },
+    /** Nothing is scheduled — see the forward-view block. These describe who
+     *  currently holds access and who is about to lose it. */
     forward: {
-      booked7,
-      renewingCount,
-      cancelsPending,
-      cancelsAtRisk,
+      activeNow,
+      expiringSoon,
+      expirySoonDays: EXPIRY_SOON_DAYS,
+      lapsed,
       refunds30: revenue.refunds30,
       declined30: revenue.failedLast30,
     },

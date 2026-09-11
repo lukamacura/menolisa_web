@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     if (row.stripe_subscription_id) {
       try {
         subscription = await stripe.subscriptions.retrieve(row.stripe_subscription_id);
-      } catch (e) {
+      } catch {
         // Subscription may have been deleted
         return NextResponse.json({ ok: true, synced: false });
       }

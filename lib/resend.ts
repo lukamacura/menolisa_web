@@ -1,5 +1,5 @@
 import { Resend } from "resend";
-import { PLAN_WEEKS, WEEKLY_PRICE, formatPrice } from "@/lib/pricing";
+import { PLAN_WEEKS, formatPrice } from "@/lib/pricing";
 
 let resendClient: Resend | null = null;
 
@@ -114,24 +114,28 @@ function longDate(d: Date): string {
 /**
  * Sent when Stripe checkout completes — the one email a purchase produces.
  *
- * It states the deal in writing: what was charged today, what is charged
- * every week from when, and how to stop it before the next charge. That
- * paragraph is the disclosure the auto-renewal rules want in writing and the
- * one thing she will search her inbox for when the first $4.99 lands.
+ * It states the deal in writing: what she paid, that nothing else will be
+ * charged, and the date her access ends.
+ *
+ * **The end date is the important line now.** There is no renewal to warn her
+ * about, but there is an ending — access stops after PLAN_ACCESS_DAYS — and
+ * this email is the only place she is told the date in writing. A woman who
+ * finds out on day 57, having never been told, is a chargeback and a one-star
+ * review.
  */
 export async function sendWelcomeEmail(
   to: string,
   name: string | null,
-  opts: { amountPaid: number; nextChargeAt?: Date | null }
+  opts: { amountPaid: number; accessEndsAt?: Date | null }
 ): Promise<void> {
   const greeting = name?.trim() || "there";
   const subject = "Welcome to MenoLisa";
-  const nextCharge = opts.nextChargeAt
-    ? ` Your next charge is <strong>${formatPrice(WEEKLY_PRICE)}</strong> on <strong>${longDate(opts.nextChargeAt)}</strong>, and then ${formatPrice(WEEKLY_PRICE)} every week until you cancel.`
-    : ` From next week it is ${formatPrice(WEEKLY_PRICE)} a week until you cancel.`;
+  const accessLine = opts.accessEndsAt
+    ? ` Your access runs until <strong>${longDate(opts.accessEndsAt)}</strong>.`
+    : ` Your access runs for the full ${PLAN_WEEKS} weeks.`;
   const body = `
 <p style="margin:0 0 16px;font-size:17px;font-weight:600;color:#2d1b3d">Hi ${greeting},</p>
-<p style="margin:0 0 16px">Your ${PLAN_WEEKS}-week plan is ready. Today you paid <strong>${formatPrice(opts.amountPaid)}</strong> for your first week.${nextCharge} Cancel anytime from the app - cancel before week 2 and you are never charged again.</p>
+<p style="margin:0 0 16px">Your ${PLAN_WEEKS}-week plan is ready. You paid <strong>${formatPrice(opts.amountPaid)}</strong>, once, and that covers all ${PLAN_WEEKS} weeks of it.${accessLine} This is not a subscription - there is no auto-renewal, we have not kept your card for a future charge, and you will not be charged again.</p>
 <p style="margin:0 0 28px">Lisa is ready. Open the app, say hi, and log how you feel today. Even one symptom helps her start spotting patterns for you.</p>
 <table cellpadding="0" cellspacing="0" border="0">
   <tr>

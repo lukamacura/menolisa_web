@@ -580,7 +580,7 @@ function extractMarkdownContent(section: string): { content: string; contentSect
   ];
   
   // Extract each content section (INCLUDING headers so formatter can parse them)
-  for (const { pattern, key, header } of contentSectionPatterns) {
+  for (const { pattern, key } of contentSectionPatterns) {
     const match = section.match(pattern);
     if (match) {
       let extractedContent = match[1].trim(); // Includes header
@@ -1135,7 +1135,7 @@ function parseSection(section: string, format: FileFormat, source: string, secti
   }
   
   // Return one document per section (chunking only as last resort for extremely large sections)
-  return contentChunks.map((chunk, chunkIndex) => {
+  return contentChunks.map((chunk) => {
     // ALL chunks must have intent patterns in metadata for proper retrieval
     // Intent patterns are critical for verbatim mode and exact intent matching
     const chunkIntentPatterns = intent_patterns; // Include intents in ALL chunks

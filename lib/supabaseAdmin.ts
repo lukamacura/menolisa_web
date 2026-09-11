@@ -1,12 +1,12 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-let supabaseAdminClient: SupabaseClient<any> | null = null;
+let supabaseAdminClient: SupabaseClient | null = null;
 
 /**
  * Get or create Supabase admin client (lazy initialization)
  * This prevents build-time errors when environment variables aren't available
  */
-export function getSupabaseAdmin(): SupabaseClient<any> {
+export function getSupabaseAdmin(): SupabaseClient {
   if (supabaseAdminClient) {
     return supabaseAdminClient;
   }

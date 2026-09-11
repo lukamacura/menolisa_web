@@ -11,15 +11,15 @@
  * | `Lead`            | -       | yes  | `user_profiles` insert                    |
  * | `ViewContent`     | yes     | yes  | paywall mount, once per woman             |
  * | `InitiateCheckout`| yes     | yes  | the Checkout redirect                     |
- * | `Purchase`        | -       | yes  | the first successful payment, from the Stripe webhook, at the amount charged ($1.00) |
+ * | `Purchase`        | -       | yes  | the first successful payment, from the Stripe webhook, at the amount charged |
  *
  * `Purchase` is **server-only** since 2026-09-08. It fires from
- * `checkout.session.completed` at `session.amount_total` — the $1 first week —
- * and never from the browser: the success landing used to fire a pixel copy
- * deduped on the same id, and with the value now decided by what Stripe
- * actually collected there is nothing the browser knows that the webhook does
- * not. Renewals are never reported, so Meta optimises for new customers rather
- * than being handed a conversion every week for a subscriber it already won.
+ * `checkout.session.completed` at `session.amount_total` — what Stripe
+ * actually collected — and never from the browser: the success landing used to
+ * fire a pixel copy deduped on the same id, and with the value decided by the
+ * charge there is nothing the browser knows that the webhook does not.
+ * Renewals are never reported, so Meta optimises for new customers rather than
+ * being handed a conversion every period for a subscriber it already won.
  * (`Subscribe`, the trial-era money event, went with the trial.)
  *
  * Seven custom funnel events - `QuizStart`, `QuizStep`, `QuizComplete`,
@@ -67,7 +67,7 @@
  * double-submitted save-quiz collapses to one event.
  */
 
-import { FIRST_WEEK_PRICE } from "@/lib/pricing";
+import { PLAN_PRICE } from "@/lib/pricing";
 
 /**
  * The dataset every event in the app lands in - `fbq('init')` in the browser and
@@ -88,14 +88,14 @@ export const META_CURRENCY = "USD";
 /**
  * Reported conversion value, in USD, on `ViewContent` and `InitiateCheckout`:
  * what the checkout she is being shown will charge today. `Purchase` does not
- * use it — the webhook reports `session.amount_total`, which is the same $1
+ * use it — the webhook reports `session.amount_total`, which is the same $29
  * unless Stripe says otherwise, and Stripe is the side that knows.
  *
  * Renewals are deliberately *not* reported: Purchase fires from
  * checkout.session.completed only, so Meta optimizes for new customers rather
- * than being fed a conversion every week for someone it already won.
+ * than being fed a conversion every renewal for someone it already won.
  */
-export const PLAN_VALUE = FIRST_WEEK_PRICE;
+export const PLAN_VALUE = PLAN_PRICE;
 
 /** Dedup key for the Conversions API Purchase — one per Checkout Session, so a retried webhook collapses. */
 export function purchaseEventId(stripeSessionId: string): string {

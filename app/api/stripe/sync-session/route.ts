@@ -64,11 +64,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // Money must have moved: the first week is $1 and there is no $0 session
-  // any more (2026-09-08). A session that completed without a payment is not
-  // fulfilled here — it would be a coupon or a trial nobody configured.
+  // Money must have moved, and that is the whole test now.
+  //
+  // This used to also require `session.subscription`. One-time payments create
+  // no Subscription (2026-09-11), so that guard would reject **every** real
+  // purchase — and this route is the fallback that rescues a customer whose
+  // webhook never arrived, so failing here costs her the login email and her
+  // plan with no way back. `payment_status === "paid"` is the honest check:
+  // there is no trial and no coupon, so a completed session that paid nothing
+  // is something nobody configured.
   const completed = session.status === "complete" && session.payment_status === "paid";
-  if (!completed || !session.subscription) {
+  if (!completed) {
     return NextResponse.json({ paid: false });
   }
 

@@ -2,12 +2,8 @@ import { NextRequest, NextResponse, after } from "next/server";
 import Stripe from "stripe";
 import { getAuthenticatedUser } from "@/lib/getAuthenticatedUser";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import {
-  CHECKOUT_SUBMIT_TEXT,
-  FIRST_WEEK_COUPON_ID,
-  PLAN_ID,
-  isPlanId,
-} from "@/lib/pricing";
+import { CHECKOUT_SUBMIT_TEXT, PLAN_ID, isPlanId } from "@/lib/pricing";
+import { PRODUCT_METADATA_VALUE } from "@/lib/stripe/productBoundary";
 import { sendMetaInitiateCheckout } from "@/lib/metaCapi";
 import { GPC_METADATA_KEY, hasGpcOptOut } from "@/lib/privacySignals";
 import { META_CURRENCY, PLAN_VALUE, isValidMetaEventId } from "@/lib/metaPixel";
@@ -87,13 +83,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Renamed from STRIPE_PRICE_8WEEK on 2026-09-08 on purpose: the old
-    // variable held the $59 price, and a deploy that still read it would have
-    // charged $59 under a paywall promising $1. A missing variable fails the
-    // checkout loudly instead.
-    const priceId = process.env.STRIPE_PRICE_WEEKLY;
+    // A third variable name on purpose. STRIPE_PRICE_8WEEK held the archived
+    // $59 price and STRIPE_PRICE_WEEKLY the archived $4.99 weekly one; either
+    // still sitting in an env somewhere would charge a figure no surface
+    // prints. A missing variable fails the checkout loudly instead.
+    const priceId = process.env.STRIPE_PRICE_PLAN;
     if (!priceId) {
-      console.error("Missing STRIPE_PRICE_WEEKLY env var");
+      console.error("Missing STRIPE_PRICE_PLAN env var");
       return NextResponse.json(
         { error: "Checkout is not configured for this plan." },
         { status: 500 }
@@ -248,21 +244,41 @@ export async function POST(req: NextRequest) {
     const checkoutSurface = useMobileReturns ? "mobile" : "web";
 
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
-      mode: "subscription",
+      // **Payment, not subscription (2026-09-11).** One charge buys
+      // PLAN_ACCESS_DAYS of access and nothing recurs, so no Subscription
+      // object is created and `customer.subscription.*` never fires for a new
+      // customer. Three consequences that are easy to miss:
+      //   - The access cutoff is ours to compute. Stripe supplies no period
+      //     end, so `fulfillCheckout` writes now + PLAN_ACCESS_DAYS. A `paid`
+      //     row with no cutoff fails closed and locks out someone who paid.
+      //   - `customer_creation: "always"` is required. In payment mode Stripe
+      //     does not create a Customer by default, and without one a purchase
+      //     leaves no customer record to look up in support, and the /admin
+      //     charge walk has nothing to attribute.
+      //   - The price must have no `recurring` block or Stripe rejects the
+      //     session outright.
+      mode: "payment",
+      customer_creation: "always",
       payment_method_types: ["card"],
       line_items: [{ price: priceId, quantity: 1 }],
-      // The first week is $1: the $4.99 weekly price less the $3.99-once
-      // coupon, applied here on every session. There is no promo-code box —
-      // Stripe refuses `allow_promotion_codes` alongside `discounts`, and the
-      // box is off by default; the discount is the offer, not something she
-      // has to know a code for. No trial of any kind (2026-09-08): the card is
-      // charged $1 at checkout.
-      discounts: [{ coupon: FIRST_WEEK_COUPON_ID }],
+      // The product boundary, stamped where a Charge can be traced back to it.
+      // This Stripe account is shared with other products, so /admin must be
+      // able to tell MenoLisa's money apart from everything else's; with no
+      // subscription to key off any more, the Checkout Session's own
+      // payment_intent is what does it.
+      payment_intent_data: {
+        metadata: { product: PRODUCT_METADATA_VALUE, user_id: user.id },
+      },
+      // No `discounts`, no coupon and no trial (2026-09-11): the card is
+      // charged the full plan price at checkout, which is the only figure any
+      // surface prints. The promo-code box stays off — it is off by default,
+      // and it was never a thing she had to know a code for.
+      //
       // USD, always. Stripe's Adaptive Pricing otherwise converts the sheet to
       // the visitor's local currency off her IP ("Then RSD 523.87 per week"
       // was the first thing this build showed from a non-US address), which
       // would put a number on the card form the paywall never printed. The
-      // campaign is US-only and the paywall says $4.99; the sheet must too.
+      // campaign is US-only and the paywall says $29 once; the sheet must too.
       adaptive_pricing: { enabled: false },
       // The same sentence the paywall shows, under Stripe's pay button.
       custom_text: { submit: { message: CHECKOUT_SUBMIT_TEXT } },

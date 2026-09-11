@@ -13,13 +13,17 @@ const ACCESS_ENDING_NOTICE_DAYS = 2;
  * Cron: tell every subscriber who has cancelled that her access is about to
  * end. Runs once daily (vercel.json).
  *
- * This route used to send the pre-renewal email and in-app alert too. Both
- * went on 2026-09-08 with weekly billing: the plan charges $4.99 every seven
- * days, and a warning before each one is an email a week to every customer,
- * which is spam rather than chargeback insurance. The paywall and Terms no
- * longer promise a reminder; the welcome email states the weekly charge and
- * the first renewal date once, and Stripe's own receipts can cover the rest.
- * The route keeps its name so vercel.json and the runbook need no change.
+ * This route used to send a pre-renewal email and alert. **There are no
+ * renewals any more** (2026-09-11): the plan is a single charge that buys
+ * PLAN_ACCESS_DAYS of access, so nothing is ever billed again and there is
+ * nothing to warn anyone about. The route keeps its name so vercel.json and
+ * the runbook need no change.
+ *
+ * What it still does matters more than it used to. Under a subscription an
+ * ending was rare — it meant she had cancelled. Now **every** customer's access
+ * ends, on a date she was told once in the welcome email and has almost
+ * certainly forgotten, so this alert is the only warning she gets that the app
+ * is about to stop working. Do not make it conditional on cancellation.
  *
  * What is left matters to her rather than to us: a cancelled subscription's
  * end date is the day the app stops working, and this alert is the only place
@@ -39,11 +43,20 @@ export async function GET(req: NextRequest) {
     const from = new Date(now + ACCESS_ENDING_NOTICE_DAYS * 86_400_000);
     const to = new Date(now + (ACCESS_ENDING_NOTICE_DAYS + 1) * 86_400_000);
 
+    // **No `subscription_canceled` filter.** It was `.eq(..., true)` while the
+    // product was a subscription, because an ending only happened when she had
+    // cancelled. With one-time pricing that flag is false for every customer
+    // alive, so the filter matched nobody and every access window would have
+    // expired in silence — she opens the app one morning and it has stopped,
+    // with no warning since the welcome email eight weeks earlier.
+    //
+    // The window itself is what scopes this now: a row is due an alert when its
+    // access ends in ACCESS_ENDING_NOTICE_DAYS. Legacy cancelled subscriptions
+    // still match on exactly the same condition, so nothing was lost.
     const { data: due, error } = await supabase
       .from("user_trials")
       .select("user_id, subscription_ends_at")
       .eq("account_status", "paid")
-      .eq("subscription_canceled", true)
       .gte("subscription_ends_at", from.toISOString())
       .lt("subscription_ends_at", to.toISOString());
 
