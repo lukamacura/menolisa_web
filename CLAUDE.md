@@ -742,7 +742,23 @@ charge for one window removes the whole class of problem.
 - **`lib/pricing.ts` is the only place a figure lives:** `PLAN_PRICE`,
   `PLAN_WEEKS`, `PLAN_ACCESS_DAYS`, `NO_RENEWAL_COPY`, and the copy strings
   `PRICE_LINE`, `PRICE_SUBLINE`, `PLAN_BLOCKS_COPY`, `GUARANTEE_HEADLINE` /
-  `GUARANTEE_BODY` / `GUARANTEE_INLINE_CLAIM` / `GUARANTEE_INLINE_BODY`.
+  `GUARANTEE_BODY` (+ `_HEAD` / `_TAIL`, split there and never retyped in JSX)
+  / `UNLOCK_INLINE_CLAIM` / `UNLOCK_INLINE_BODY`.
+- **"Not a subscription" is stated once per screen, at the point of commitment
+  (2026-09-11).** The paywall carried it seven times — price-card row, the
+  green row under it, `PRICE_SUBLINE`, `PLAN_BLOCKS_COPY`, a trust-grid tile,
+  the full green card, the sticky bar — plus twice on the diagnosis screen
+  before it and twice on the download screen *after she had paid*. Two costs,
+  and they compound: every line spent on what will not happen is a line not
+  spent on the plan, Lisa or the tracker; and a negation repeated six times
+  stops reading as a fact and starts reading as a page protesting, which puts
+  doubt on every claim near it. It now lives in exactly two places — beside
+  the number on the price card (where the objection fires) and in `PRICE_LINE`
+  on the sticky bar and the Stripe sheet (where she commits, and where it
+  doubles as disclosure). The freed slots name the deliverable or kill a
+  different friction. **This applies to the replacement too:** the first cut of
+  it printed "plan, Lisa and symptom tracking" four times, which is the same
+  mistake in better clothes.
 - **The product boundary on `/admin` is metadata now, not the subscription.**
   The Stripe account is shared with other products. It used to filter charges
   to customers holding a subscription to our price; with no subscriptions that
@@ -780,6 +796,20 @@ charge for one window removes the whole class of problem.
   repeat-purchase opportunity. The cohort table counts **purchases, not
   renewals**, is built from the charge walk `loadRevenue` already does, and a
   second purchase only becomes possible once her 56 days run out.
+- **The `$50` anchor and the 30-minute hold are display only (2026-09-11).**
+  `PLAN_ANCHOR_PRICE` (50), `PLAN_DISCOUNT_PCT` (42) and
+  `PLAN_DISCOUNT_WINDOW_MINUTES` (30) live in `lib/pricing.ts`; Stripe still
+  holds exactly one price and charges `PLAN_PRICE` on every checkout, expired
+  clock or not. The invariant: **every figure the page shows is >= what Stripe
+  charges.** Expiry hides the countdown band and changes nothing else — not
+  the price, not the button label, not `PRICE_LINE` (which is the same string
+  Stripe prints as `CHECKOUT_SUBMIT_TEXT`, so a card that re-priced itself
+  would contradict the sticky bar and the Stripe sheet). The deadline is in
+  `sessionStorage`, per tab, and never visibly resets. The three rows in
+  "Decided against" that govern this — no second Stripe Price on expiry, no
+  "get my discount back" button, no shortening the window to 10 minutes — are
+  live again, not historical.
+
 - **LTV's floor is one charge, and that is the point.** There is no renewal
   tail to bail out an expensive click: CAC must come in under `keptPerSale`
   (~$27.86 after Stripe's fee) or the ads lose money on every customer. Say so

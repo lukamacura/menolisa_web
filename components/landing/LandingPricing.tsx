@@ -197,16 +197,21 @@ export default function LandingPricing() {
                   once, for all {PLAN_WEEKS} weeks
                 </span>
               </div>
+              {/* Was "No subscription. No auto-renewal." - two negations in
+                  the largest type under the price, on a block that went on to
+                  say the same thing three more times below. The fact survives
+                  once, in the strip under the button; this line names what the
+                  money buys. */}
               <div className="mb-1">
                 <span className="text-lg sm:text-xl font-medium" style={{ color: "var(--foreground)" }}>
-                  No subscription. No auto-renewal.
+                  The plan, Lisa and your symptom tracking.
                 </span>
               </div>
               <p className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>
                 {PLAN_BLOCKS_COPY}
               </p>
               <p className="text-xs mt-1" style={{ color: "var(--muted-foreground)" }}>
-                Everything included. No add-ons, no upsells.
+                No add-ons, no upsells.
               </p>
             </div>
 
@@ -309,11 +314,11 @@ export default function LandingPricing() {
             >
               <Lock className="h-4 w-4" />
               <span className="text-xs sm:text-sm font-bold">
-                {formatPrice(PLAN_PRICE)} once &middot; {PLAN_WEEKS} weeks &middot; no subscription
+                {formatPrice(PLAN_PRICE)} once &middot; all {PLAN_WEEKS} weeks
               </span>
             </div>
             <p className="text-sm text-center max-w-md" style={{ color: "var(--muted-foreground)" }}>
-              One payment. We don&apos;t keep your card, and there is no subscription to cancel.
+              One payment, and we don&apos;t keep your card on file.
             </p>
           </div>
         </div>

@@ -43,6 +43,10 @@
  * Stripe Checkout's submit text are built from the same constant** — see
  * {@link PRICE_LINE} and {@link CHECKOUT_SUBMIT_TEXT}.
  *
+ * {@link PLAN_ANCHOR_PRICE} is the one figure in this file that is never
+ * charged: it is the paywall's strikethrough, and it exists only to make
+ * {@link PLAN_PRICE} legible as a discount. See the block on it.
+ *
  * Stripe side (`scripts/stripe-plan-price.ts` creates it):
  *   - Price: $29 USD, **one-time** (no `recurring`) → `STRIPE_PRICE_PLAN`.
  *   - No coupon, no trial, no promo-code box.
@@ -60,6 +64,54 @@ export const PLAN_WEEKS = 8;
  * `STRIPE_PRICE_PLAN`; `scripts/stripe-plan-price.ts` throws if they disagree.
  */
 export const PLAN_PRICE = 29;
+
+/**
+ * The struck-through "regular price", in USD.
+ *
+ * **Display only. Nothing is ever billed at this figure.** Stripe holds
+ * exactly one price (`STRIPE_PRICE_PLAN`, {@link PLAN_PRICE}) and charges it on
+ * every checkout, whether the countdown on the paywall is still running or ran
+ * out an hour ago.
+ *
+ * The one rule that keeps an anchor and a clock safe: **every figure the page
+ * shows is >= what Stripe will charge.** The worst case is then a woman who
+ * braced for {@link PLAN_ANCHOR_PRICE} and is charged {@link PLAN_PRICE}.
+ * Invert it — a second Stripe Price selected because a client-side timer says
+ * "expired" — and her own system clock decides whether she pays double. That is
+ * in the "decided against" table in CLAUDE.md and it stays there.
+ *
+ * Deliberately not a round multiple of {@link PLAN_PRICE}: an anchor at exactly
+ * 2x reads as a sticker rather than as a price anything was sold at.
+ */
+export const PLAN_ANCHOR_PRICE = 50;
+
+/** `29` against `50` → `42`, i.e. "42% OFF". Derived, never typed into copy. */
+export const PLAN_DISCOUNT_PCT = Math.round(
+  (1 - PLAN_PRICE / PLAN_ANCHOR_PRICE) * 100
+);
+
+/**
+ * How long the paywall holds {@link PLAN_PRICE} before the countdown reaches
+ * zero.
+ *
+ * **Thirty minutes, and do not shorten it without measuring how long the page
+ * takes to read.** It was ten in an earlier life of this screen. The paywall is
+ * ~2000px — headline, price card, finish board, week one, the included list,
+ * the trust grid, the guarantee, social proof, the what-happens-next strip —
+ * read on a phone, in an in-app browser, by a woman in her fifties. She
+ * routinely spent longer on it than the window lasted, so the clock was
+ * punishing the careful reader, who is the buyer. The return-from-Stripe path
+ * made it worse: the deadline is per-tab (see `DEADLINE_KEY` in
+ * `components/PaywallView.tsx`), so a woman who opened the card form, hesitated
+ * and came back was the likeliest person to find it expired.
+ *
+ * What expiry does is therefore deliberately small: the band fades out and the
+ * price stays {@link PLAN_PRICE}. It never resets (a timer caught resetting
+ * takes the rest of the screen's credibility with it) and it never raises a
+ * figure she is looking at.
+ */
+export const PLAN_DISCOUNT_WINDOW_MINUTES = 30;
+export const PLAN_DISCOUNT_WINDOW_MS = PLAN_DISCOUNT_WINDOW_MINUTES * 60 * 1000;
 
 /**
  * How long one payment buys, in days.
@@ -83,11 +135,15 @@ export function formatPrice(amount: number): string {
  * the last thing she reads on our page and the last thing she reads on Stripe's
  * are the same. Change it here or it is no longer true that they match.
  *
- * **"once" is doing legal work, not sales work.** A woman of 45-60 arriving
- * from an Instagram ad assumes any card entry is a subscription trap, and the
- * single most valuable true thing this page can say is that it is not one.
+ * **This is the one place on the paywall the "not a subscription" fact is sold
+ * rather than merely disclosed**, because the sticky bar is the only element on
+ * screen when she taps — the price card has scrolled away by then. It said
+ * "No subscription, no auto-renewal." until 2026-09-11, i.e. two negations out
+ * of two sentences, on a page that went on to repeat them five more times.
+ * One negation, and the space it freed goes to what the money buys. See the
+ * note on repetition above {@link PRICE_SUBLINE}.
  */
-export const PRICE_LINE = `${formatPrice(PLAN_PRICE)} once for your full ${PLAN_WEEKS}-week plan. No subscription, no auto-renewal.`;
+export const PRICE_LINE = `${formatPrice(PLAN_PRICE)} once for your full ${PLAN_WEEKS}-week plan — everything included, no subscription.`;
 
 /**
  * The whole risk reversal. It used to be cancelling; there is nothing to
@@ -97,8 +153,37 @@ export const PRICE_LINE = `${formatPrice(PLAN_PRICE)} once for your full ${PLAN_
  */
 export const NO_RENEWAL_COPY = `You are never charged again.`;
 
-/** The line under the price, on the paywall. */
-export const PRICE_SUBLINE = `One payment — nothing to cancel, and no card kept on file.`;
+/**
+ * ── The rule these strings are written to (2026-09-11) ────────────────────
+ *
+ * **"Not a subscription" is stated once per screen, at the point of
+ * commitment. Every other slot names what she gets.**
+ *
+ * The funnel had drifted the other way. One paywall carried the fact seven
+ * times — the price-card row, the green row under it, this subline,
+ * {@link PLAN_BLOCKS_COPY}, a trust-grid tile, the full green card, and the
+ * sticky bar — plus twice more on the screen before it and twice more after
+ * she had already paid. Two things go wrong when a negation is repeated that
+ * often, and they compound:
+ *
+ * - **It is paid for in the only currency this page has.** Every line spent
+ *   saying what will not happen is a line not spent on the plan, Lisa, or the
+ *   tracker. She is deciding whether to buy something, and the page kept
+ *   describing what it isn't.
+ * - **Repetition plants the doubt it answers.** Nobody says "no subscription"
+ *   six times about a product with no subscription. Said once beside the
+ *   price it is a fact; said six times it reads as a page protesting, and the
+ *   doubt lands on every other claim near it.
+ *
+ * So the fact lives in exactly two places: beside the number on the price card
+ * (where the objection actually fires) and in {@link PRICE_LINE} on the sticky
+ * bar and the Stripe sheet (where she commits, and where it doubles as
+ * disclosure). Everything else here sells the deliverable.
+ *
+ * The line under the price, on the paywall — and now the deliverable rather
+ * than a third phrasing of the same negation.
+ */
+export const PRICE_SUBLINE = `Your plan, Lisa and your symptom tracking unlock the moment you pay.`;
 
 /**
  * ── The guarantee, as she experiences it ──────────────────────────────────
@@ -118,23 +203,54 @@ export const PRICE_SUBLINE = `One payment — nothing to cancel, and no card kep
  * misrepresentation, and that coupling is why they have moved together every
  * time.
  */
-export const GUARANTEE_HEADLINE = `One payment. No subscription.`;
+export const GUARANTEE_HEADLINE = `Everything, for one payment of ${formatPrice(PLAN_PRICE)}.`;
 
 /**
- * The row inside the price card, as two halves — the claim and the mechanism —
+ * The row inside the price card, as two halves — the claim and the support —
  * because the card bolds the first and not the second.
+ *
+ * **It is about speed now, not billing (2026-09-11).** It read "{PRICE} today,
+ * and nothing after it. / No auto-renewal, no subscription, no second charge in
+ * {PLAN_WEEKS} weeks." — sitting directly beneath a row that already said "No
+ * subscription", so the two loudest objects on the price card made the same
+ * point twice and the second one used three negations to do it. The row above
+ * keeps the objection; this row answers the question she has immediately after
+ * it, which is *what do I actually get, and when*. The answer — all of it, now
+ * — is the best thing this screen can say and it was not being said anywhere.
  *
  * Two constants rather than one string the component splits on a full stop:
  * there was a single `GUARANTEE_INLINE` here and **nothing imported it**,
  * because the markup needed the halves separately and retyped them instead. An
  * unused export in the file whose whole job is to be the single source is
  * worse than no export — the next edit changes it and no surface moves.
+ *
+ * Named `UNLOCK_` and not `GUARANTEE_` on purpose: a constant called
+ * GUARANTEE that says "everything unlocks now" is the drift this file exists
+ * to stop.
  */
-export const GUARANTEE_INLINE_CLAIM = `${formatPrice(PLAN_PRICE)} today, and nothing after it.`;
-export const GUARANTEE_INLINE_BODY = `No auto-renewal, no subscription, no second charge in ${PLAN_WEEKS} weeks.`;
+export const UNLOCK_INLINE_CLAIM = `Everything unlocks the moment you pay.`;
+export const UNLOCK_INLINE_BODY = `Your plan starts building the second the payment lands — day 1 is ready by the time you open the app.`;
 
-/** The body of the full guarantee card. */
-export const GUARANTEE_BODY = `${formatPrice(PLAN_PRICE)} is all you pay, and it buys the full ${PLAN_WEEKS} weeks. We don't keep your card for a future charge, there's no subscription to cancel, and nothing happens in ${PLAN_WEEKS} weeks unless you decide it does.`;
+/**
+ * The body of the full green card, low on the paywall and on the landing page.
+ *
+ * **The first sentence is bolded by both callers**, so it has to stand alone —
+ * and both used to retype it in JSX instead of splitting this string, which is
+ * the exact drift this file exists to prevent. {@link GUARANTEE_BODY_HEAD} and
+ * {@link GUARANTEE_BODY_TAIL} do the split here, once.
+ *
+ * This is the designated place for the terms, so it is the one block allowed
+ * to close on the billing fact. It carried three negations in one sentence
+ * until 2026-09-11 ("we don't keep your card… no subscription to cancel…
+ * nothing happens…"); it now spends its length on what {@link PLAN_PRICE} buys
+ * and closes on one.
+ */
+export const GUARANTEE_BODY = `${formatPrice(PLAN_PRICE)} buys the whole ${PLAN_WEEKS} weeks. Every session, every week, Lisa whenever you need her and your symptom tracking — we don't keep your card, and there is no second charge.`;
+
+/** The bolded opening clause of {@link GUARANTEE_BODY}. Split here, not in JSX. */
+export const GUARANTEE_BODY_HEAD = GUARANTEE_BODY.slice(0, GUARANTEE_BODY.indexOf(". ") + 1);
+/** Everything after it, run plain. */
+export const GUARANTEE_BODY_TAIL = GUARANTEE_BODY.slice(GUARANTEE_BODY.indexOf(". ") + 2);
 
 /**
  * What happens at the end — the answer to the one question the paywall's
@@ -152,8 +268,22 @@ export const GUARANTEE_BODY = `${formatPrice(PLAN_PRICE)} is all you pay, and it
  * price and below Week 1. A comprehension task never goes in front of a
  * decision — it sat directly above the price until 2026-09-08 and was the last
  * thing she read before the number.
+ *
+ * The two negations it used to open on ("There's no subscription and no
+ * auto-renewal, so…") are gone: by the time she reaches this paragraph the
+ * price card has already made that point twice, and the sentence works without
+ * them — the ending is disclosed either way.
+ *
+ * **The freed clause was not refilled, and that is the point.** Two rewrites
+ * tried: naming the plan/Lisa/tracker triplet (already said by the price-card
+ * row, by {@link PRICE_SUBLINE} and by the "Everything included" block — a
+ * deliverable repeated four times is the negation problem in better clothes),
+ * and "each week built on what you actually did" (which is the sentence
+ * <WeekOneCard /> prints directly above this paragraph). This block is
+ * disclosure. Disclosure that is also trying to sell reads as a disclaimer
+ * being softened, so it stays two short sentences and nothing else.
  */
-export const PLAN_BLOCKS_COPY = `Your ${PLAN_WEEKS} weeks start the day you join and run for ${PLAN_ACCESS_DAYS} days. There's no subscription and no auto-renewal, so when the ${PLAN_WEEKS} weeks are up your access simply ends — unless you choose to come back for another block.`;
+export const PLAN_BLOCKS_COPY = `Your ${PLAN_WEEKS} weeks start the day you join and run for ${PLAN_ACCESS_DAYS} days. When they are up your access ends, and you come back for another block only if you want one.`;
 
 /**
  * Stripe Checkout `custom_text.submit`. Opens on {@link PRICE_LINE} verbatim so

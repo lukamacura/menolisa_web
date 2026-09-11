@@ -1560,9 +1560,14 @@ const DIAGNOSIS_CTA_LABEL = "I'm ready to feel better";
 // it" - the paywall states the price in full one tap later, in its own
 // headline - but "what does this cost me". This is the last screen before the
 // offer, so it says so plainly and hands over.
+//
+// Three clauses became two on 2026-09-11: "no subscription" and "nothing to
+// cancel" are one fact said twice, and the paywall one tap later says it twice
+// more. One negation is enough to defuse the tap; the freed clause names what
+// the money buys, which is the thing she is actually deciding about.
 function getDiagnosisForwardCopy(): { sub: React.ReactNode } {
   return {
-    sub: `${formatPrice(PLAN_PRICE)} once for all ${PLAN_WEEKS} weeks \u00b7 no subscription \u00b7 nothing to cancel`,
+    sub: `${formatPrice(PLAN_PRICE)} once \u00b7 all ${PLAN_WEEKS} weeks included \u00b7 no subscription`,
   };
 }
 
@@ -5445,10 +5450,18 @@ function RegisterPageContent() {
               {firstName.trim() ? `${firstName.trim()}, you're all set!` : "You're all set!"}
             </h2>
             <p className="text-sm sm:text-base text-[#5A5A5A] mb-5 leading-relaxed">
-              All {PLAN_WEEKS} weeks are paid ({formatPrice(PLAN_PRICE)}, once). Your access runs
-              until {accessEndsDate ?? `${PLAN_WEEKS} weeks from today`} &mdash; there&apos;s no
-              subscription and nothing to cancel. Your {PLAN_WEEKS}-week plan is being built right
-              now; download the app to start it.
+              {/* She has paid. "No subscription and nothing to cancel" was
+                  answering an objection that stopped existing at the moment
+                  the charge went through - and it was the third and fourth
+                  time she had read it in two minutes. What is live now is
+                  what she has and how long she has it, so the sentence spends
+                  itself on that. The access-end date stays: it is the one
+                  warning she gets before the welcome email, and a woman who
+                  finds out on day 57 is a chargeback. */}
+              All {PLAN_WEEKS} weeks are paid ({formatPrice(PLAN_PRICE)}, once) &mdash; the plan,
+              Lisa and your symptom tracking, yours until{" "}
+              {accessEndsDate ?? `${PLAN_WEEKS} weeks from today`}. Your {PLAN_WEEKS}-week plan is
+              being built right now; download the app to start it.
             </p>
 
             {/* How she gets in, stated before the store badges rather than left

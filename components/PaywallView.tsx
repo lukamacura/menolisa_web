@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
   Check,
+  Clock,
   Loader2,
   Lock,
   ShieldAlert,
@@ -26,16 +27,20 @@ import {
   viewContentEventId,
 } from "@/lib/metaPixel";
 import {
-  GUARANTEE_BODY,
+  GUARANTEE_BODY_HEAD,
+  GUARANTEE_BODY_TAIL,
   GUARANTEE_HEADLINE,
-  GUARANTEE_INLINE_BODY,
-  GUARANTEE_INLINE_CLAIM,
+  PLAN_ANCHOR_PRICE,
   PLAN_BLOCKS_COPY,
+  PLAN_DISCOUNT_PCT,
+  PLAN_DISCOUNT_WINDOW_MS,
   PLAN_ID,
   PLAN_PRICE,
   PLAN_WEEKS,
   PRICE_LINE,
   PRICE_SUBLINE,
+  UNLOCK_INLINE_BODY,
+  UNLOCK_INLINE_CLAIM,
   formatPrice,
 } from "@/lib/pricing";
 import { trackFb } from "@/lib/metaPixelClient";
@@ -108,16 +113,18 @@ export interface PaywallViewProps {
   week?: PlannerDay[];
 }
 
-/** The only figure on this page. One charge — see lib/pricing.ts. */
+/** The only figure on this page she is ever charged — see lib/pricing.ts. */
 const PRICE = formatPrice(PLAN_PRICE);
 
 /**
- * The green card bolds its opening clause and runs the rest plain, so it needs
- * GUARANTEE_BODY in two pieces. Split on the first sentence rather than
- * retyping the second - a retyped half is the drift lib/pricing.ts exists to
- * prevent, and this card and the landing page's must not be able to disagree.
+ * The strikethrough. Never charged, never lower than {@link PRICE}, and the
+ * reason it is safe to run a clock beside it is in the block on
+ * `PLAN_ANCHOR_PRICE` in lib/pricing.ts.
  */
-const GUARANTEE_BODY_TAIL = GUARANTEE_BODY.slice(GUARANTEE_BODY.indexOf(". ") + 2);
+const ANCHOR_PRICE = formatPrice(PLAN_ANCHOR_PRICE);
+
+/** Derived, so the pill can never disagree with the two figures beside it. */
+const SAVED = formatPrice(PLAN_ANCHOR_PRICE - PLAN_PRICE);
 
 /**
  * "Start tonight" is a promise about her evening, so it has to be true when she
@@ -141,6 +148,147 @@ const startWordNow = (): "tonight" | "today" =>
 
 function useStartWord(): "tonight" | "today" {
   return useSyncExternalStore(subscribeToNothing, startWordNow, () => "tonight");
+}
+
+/* ── The 30-minute hold on the discounted price ──────────────────────────────
+
+   Three rules, and each of them is the scar of a version that shipped without
+   it:
+
+   1. **It never resets.** The deadline lives in sessionStorage, not in state,
+      so a reload, a remount under <AnimatePresence> or a return from a
+      cancelled Stripe checkout all land on the same clock. The first version of
+      this countdown had a one-tap "get my discount back" button, i.e. a visible
+      reset, and it taught a 45-60 audience that the page is staged — the doubt
+      from which lands on every other claim on the screen.
+   2. **Per tab, not per browser.** localStorage would have a woman who comes
+      back tomorrow land on a paywall that expired last night, which is the one
+      state that converts at nothing. A new visit gets a new window; the same
+      visit never gets a second one.
+   3. **Expiry costs her nothing.** At zero the band fades out and every figure
+      on the page stays exactly where it was. It does NOT flip the price to
+      ANCHOR_PRICE: PRICE_LINE and Stripe's own submit text are one constant
+      (CHECKOUT_SUBMIT_TEXT), so a card that re-priced itself would contradict
+      the sticky bar 500px below it and the Stripe sheet one tap later. See the
+      block at the bottom of this file for what must never be "fixed" here. */
+
+/** Where the deadline lives. Per tab — see rule 2 above. */
+const DEADLINE_KEY = "menolisa:paywall-discount-deadline";
+
+function readDeadline(): number {
+  try {
+    const stored = Number(window.sessionStorage.getItem(DEADLINE_KEY));
+    // A stored deadline further out than a full window is stale or tampered
+    // with; treat it as absent rather than honoring it.
+    if (Number.isFinite(stored) && stored > 0 && stored <= Date.now() + PLAN_DISCOUNT_WINDOW_MS) {
+      return stored;
+    }
+  } catch {
+    // sessionStorage throws in private/blocked contexts. Non-fatal.
+  }
+  return 0;
+}
+
+function writeDeadline(deadline: number) {
+  try {
+    window.sessionStorage.setItem(DEADLINE_KEY, String(deadline));
+  } catch {
+    // Non-fatal: the countdown just restarts on the next load.
+  }
+}
+
+/** `585000` → `"09:45"`. */
+function formatRemaining(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const mm = Math.floor(total / 60);
+  const ss = total % 60;
+  return `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
+}
+
+/**
+ * `false` on the server and through hydration, `true` after. This screen is
+ * server-rendered on /paywall, and by then sessionStorage may hold a
+ * half-spent deadline the server knew nothing about — so the digits sit out
+ * hydration and paint the real remaining time immediately after, rather than
+ * flashing a full window first. `useSyncExternalStore` is the one hook that
+ * flips after hydration without a mismatch warning.
+ */
+function useHydrated(): boolean {
+  return useSyncExternalStore(
+    subscribeToNothing,
+    () => true,
+    () => false
+  );
+}
+
+function useDiscountWindow(): { remainingMs: number; expired: boolean } {
+  const hydrated = useHydrated();
+  // Resolved during the first client render rather than in an effect, so the
+  // stored countdown paints on the first frame after hydration.
+  const [deadline] = useState(() =>
+    typeof window === "undefined" ? 0 : readDeadline() || Date.now() + PLAN_DISCOUNT_WINDOW_MS
+  );
+  const [now, setNow] = useState(() => (typeof window === "undefined" ? 0 : Date.now()));
+
+  // Persisting is a write to an external system, which is what effects are for.
+  useEffect(() => {
+    if (deadline) writeDeadline(deadline);
+  }, [deadline]);
+
+  useEffect(() => {
+    if (!deadline) return;
+    const id = setInterval(() => {
+      const t = Date.now();
+      setNow(t);
+      if (t >= deadline) clearInterval(id);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [deadline]);
+
+  const remainingMs =
+    hydrated && deadline ? Math.max(0, deadline - now) : PLAN_DISCOUNT_WINDOW_MS;
+
+  return { remainingMs, expired: remainingMs === 0 };
+}
+
+/**
+ * The hold, as one compact line above the price card.
+ *
+ * It carries the same pink border as the card under it so the number and the
+ * time left on it read as one object rather than as a banner sitting on top of
+ * a price. Height is the constraint: there are only ~73px of slack above the
+ * fold at 390x700, so this is a single row at 13px, not a box.
+ *
+ * The digits are `aria-hidden` and replaced with a minutes figure read once.
+ * A per-second live region announces the band sixty times a minute, which is a
+ * screen-reader jackhammer rather than urgency.
+ */
+function DiscountHold({ remainingMs }: { remainingMs: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -4, height: 0, marginBottom: 0 }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+      className="mb-2 flex items-center justify-center gap-1.5 overflow-hidden rounded-xl border px-3 py-1.5"
+      style={{
+        borderColor: "#ff74b1",
+        background:
+          "linear-gradient(135deg, rgba(255,116,177,0.10) 0%, rgba(255,157,108,0.10) 100%)",
+      }}
+    >
+      <Clock className="h-3.5 w-3.5 shrink-0 text-[#ff74b1]" strokeWidth={2.4} />
+      <p className="text-[13px] font-semibold leading-none text-[#3D3D3D]">
+        Your <span className="font-extrabold text-[#ff74b1]">{PRICE}</span> price is held for{" "}
+        <span aria-hidden className="font-extrabold tabular-nums text-[#ff74b1]">
+          {formatRemaining(remainingMs)}
+        </span>
+        <span className="sr-only">
+          {Math.max(1, Math.ceil(remainingMs / 60000))} more minutes
+        </span>
+      </p>
+    </motion.div>
+  );
 }
 
 // Scannable 2x2 grid, one promise per box. At the payment moment she scans
@@ -170,14 +318,23 @@ const TRUST_LABELS = [
     sub: "Download right after checkout",
   },
   {
-    // "Cancel in 2 taps" until 2026-09-11, which is now not just off-message
-    // but false: a one-time payment leaves nothing to cancel. The honest
-    // version of the same reassurance is stronger anyway.
-    icon: Check,
+    // This slot has now lost two billing reassurances in a row. It was "Cancel
+    // in 2 taps" until 2026-09-11, which a one-time payment made false, and
+    // then "No subscription / One payment. Nothing recurring" - true, but the
+    // *fourth* printing of that fact on a screen that had already stated it
+    // beside the price, under the price and in the paragraph above this grid.
+    // A negation repeated four times stops reading as a fact and starts
+    // reading as a page protesting.
+    //
+    // What the slot is worth instead is the one claim this grid can make that
+    // no other block does: the plan behind the button is hers, built from the
+    // thirteen answers she just gave. That is the whole argument for buying
+    // this rather than a PDF, and it was nowhere in the scannable row.
+    icon: Sparkles,
     bg: "bg-sky-100",
     fg: "text-sky-600",
-    title: "No subscription",
-    sub: "One payment. Nothing recurring",
+    title: "Built from your answers",
+    sub: "Your quiz shaped every week",
   },
   {
     icon: ShieldCheck,
@@ -596,6 +753,9 @@ export function PaywallView({
   // headline and the chart have to name the same thing.
   const outcome = getOutcomeHeadline(goal ?? []);
   const startWord = useStartWord();
+  // Display only. `expired` hides the band and changes nothing else - not the
+  // price, not the button, not the invoice. See useDiscountWindow().
+  const { remainingMs, expired: holdExpired } = useDiscountWindow();
   const primarySymptom = topProblems?.[0] ?? null;
 
   // ViewContent: she has seen the offer. Reported twice, browser and server, and
@@ -885,6 +1045,14 @@ export function PaywallView({
             Checkout prints the same sentence under its pay button
             (CHECKOUT_SUBMIT_TEXT opens on PRICE_LINE verbatim). Never retype a
             figure here. ─────────────────────────────────────────────────────── */}
+        {/* The hold, directly above the card it holds. AnimatePresence so the
+            band leaves by collapsing rather than by disappearing between two
+            frames - at zero the page must not jump under her thumb, and the
+            fade is the whole of what expiry does. */}
+        <AnimatePresence initial={false}>
+          {!holdExpired && <DiscountHold key="hold" remainingMs={remainingMs} />}
+        </AnimatePresence>
+
         <motion.div
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
@@ -914,14 +1082,34 @@ export function PaywallView({
             <span className="text-[22px] sm:text-[24px] font-bold leading-tight tracking-[-0.01em] text-[#2B2627]">
               Start {startWord} for
             </span>
+            {/* The anchor, at the size of the words rather than the size of the
+                number: it is context for {PRICE}, and a strikethrough that
+                competes with the live figure makes the reader do arithmetic on
+                the most important line of the page. aria-hidden because a
+                line-through is not announced - the sr-only sentence below
+                carries it in words instead. */}
+            <span
+              aria-hidden
+              className="text-[24px] sm:text-[26px] font-bold leading-none tracking-[-0.01em] text-[#A89DA3] line-through decoration-[#ff74b1] decoration-2 tabular-nums"
+            >
+              {ANCHOR_PRICE}
+            </span>
             <span className="text-[56px] sm:text-[64px] font-extrabold leading-none tracking-[-0.03em] text-[#15803D] tabular-nums">
               {PRICE}
             </span>
           </p>
+          {/* One pill, not two claims. "{PCT}% off" and "save {SAVED}" are the
+              same fact twice if they are given two elements, so they share one. */}
+          <p className="mt-1.5 flex justify-center">
+            <span className="inline-flex items-center rounded-full bg-[#FFEAF3] px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-[0.06em] text-[#C8367A]">
+              {PLAN_DISCOUNT_PCT}% off &middot; you save {SAVED}
+            </span>
+          </p>
           {/* The offer as one sentence, for a screen reader and for the rule
-              that this page and Stripe say the same words. */}
+              that this page and Stripe say the same words. The anchor is stated
+              here in words - it is the only place assistive tech hears it. */}
           <p className="sr-only">
-            {PRICE_LINE} {PRICE_SUBLINE}
+            Regular price {ANCHOR_PRICE}. {PRICE_LINE} {PRICE_SUBLINE}
           </p>
 
           {/* What {PRICE} covers, and - the part that matters at this price -
@@ -935,23 +1123,30 @@ export function PaywallView({
           <div className="mt-3.5 flex items-baseline justify-between gap-3 rounded-xl border border-[#EFE2E8] bg-white/70 px-3 py-2 text-left">
             <span className="text-sm text-[#5A5A5A]">
               All {PLAN_WEEKS} weeks included
-              <span className="block text-xs text-[#8A8A8A]">one payment, then nothing</span>
+              {/* The sub-line said "one payment, then nothing", i.e. the same
+                  thing as the words six pixels to its right. It names the
+                  three things she gets instead. */}
+              <span className="block text-xs text-[#8A8A8A]">
+                Plan, Lisa and symptom tracking
+              </span>
             </span>
             <span className="shrink-0 whitespace-nowrap text-sm font-extrabold text-[#15803D]">
               No subscription
             </span>
           </div>
 
-          {/* The answer to the objection the row above just raised - and the
-              answer is that there is no second charge at all - not a refund
-              and not a cancellation flow. There is no refund clause to
-              fall back on since 2026-09-09; see the block on GUARANTEE_HEADLINE
-              in lib/pricing.ts. */}
+          {/* The row above answers "will this keep charging me". This one
+              answers what she asks the instant after that - *what do I get,
+              and when* - because until 2026-09-11 it answered the same
+              question as the row above it, in three negations, six pixels
+              below two words that had already settled it. The strongest true
+              sentence available in this slot is that all of it is hers now.
+              See the block above UNLOCK_INLINE_CLAIM in lib/pricing.ts. */}
           <div className="mt-2 flex items-start gap-2 rounded-xl border border-green-200 bg-green-50/80 px-3 py-2.5">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-green-600" strokeWidth={2.4} />
             <p className="text-left text-xs leading-snug text-[#3D3D3D]">
-              <b className="text-green-800">{GUARANTEE_INLINE_CLAIM}</b>{" "}
-              {GUARANTEE_INLINE_BODY}
+              <b className="text-green-800">{UNLOCK_INLINE_CLAIM}</b>{" "}
+              {UNLOCK_INLINE_BODY}
             </p>
           </div>
 
@@ -1090,9 +1285,10 @@ export function PaywallView({
             <ShieldCheck className="w-12 h-12 text-green-600 shrink-0 mb-2" />
             <h2 className="text-xl font-bold text-green-800 mb-2">{GUARANTEE_HEADLINE}</h2>
             <p className="text-sm text-[#3D3D3D] leading-relaxed">
-              <b className="text-green-700">
-                {PRICE} is all you pay, and it buys the full {PLAN_WEEKS} weeks.
-              </b>{" "}
+              {/* Both halves come from GUARANTEE_BODY (split in lib/pricing.ts).
+                  The head was retyped here in JSX, so an edit to the constant
+                  moved the tail and left the bolded sentence behind. */}
+              <b className="text-green-700">{GUARANTEE_BODY_HEAD}</b>{" "}
               {GUARANTEE_BODY_TAIL}
             </p>
           </div>
@@ -1301,10 +1497,24 @@ export function DisputedAccountBanner() {
  * What is deliberately gone from this screen (2026-09-08), so nobody brings it
  * back by reflex:
  *
- *  - **The countdown and the struck-through anchor price.** There is one price
- *    and the paywall states it in the same words Stripe prints, so there is no
- *    "regular price" to run a clock against and no display state that can
- *    differ from the charge.
+ *  - **A countdown that changes a figure, and a reset button.** The clock and
+ *    the struck-through anchor are back (2026-09-11) and the rules they came
+ *    back under are the whole point of them:
+ *
+ *      1. Expiry hides the band. It does not raise the price, re-label the
+ *         button, or touch the invoice. PRICE_LINE is the same constant Stripe
+ *         prints under its own pay button (CHECKOUT_SUBMIT_TEXT), so a card
+ *         that re-priced itself on a client-side timer would contradict the
+ *         sticky bar 500px below it and the Stripe sheet one tap later.
+ *      2. Nothing about the money is client-controlled. The deadline is in
+ *         sessionStorage and the clock is hers, so `expired` is trivially
+ *         forgeable - which is harmless exactly because it buys nothing. Do not
+ *         "fix" the mismatch by selecting a second Stripe Price when it flips:
+ *         that inverts the one rule (every displayed figure >= the charge) and
+ *         lets a user's system clock decide whether she pays double.
+ *      3. It never visibly resets. There is no "get my discount back" button -
+ *         that one shipped once, and a 45-60 audience that catches a timer
+ *         resetting stops believing the rest of the screen too.
  *  - **The free-trial branch.** No `trial_period_days`, no "$0 today", no
  *    first-charge date. The card is charged the full {PRICE} at checkout.
  *  - **The first-week discount and its coupon.** Gone 2026-09-11 with the
