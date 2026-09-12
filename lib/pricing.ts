@@ -29,23 +29,24 @@
  *   (§10 currently promises the opposite), not a price change.
  * - **The first-week discount and its coupon.** No `discounts` array.
  * - **The free trial.** `getAccountState()` has never known what a trial is.
- * - **The money-back guarantee.** Removed 2026-09-09 across the paywall, the
- *   landing page, the FAQ, the welcome email and Terms §11 in one commit.
- *   **A refund promise on a marketing surface and Terms §11 move together, in
- *   both directions.**
+ * - **The struck-through anchor and the countdown** (removed 2026-09-12). A
+ *   "$50 → $29, 42% off, held for 30:00" block on an app she has never heard
+ *   of reads as every scam page on the internet, to a cold 45-60 audience,
+ *   and $50 was never a price anything was sold at — a former-price claim
+ *   with no former price behind it. Do not bring back a strikethrough unless
+ *   the product was genuinely sold at that figure.
  *
- * The risk reversal is no longer "you can cancel" — there is nothing to
- * cancel, which is itself the reassurance. See {@link GUARANTEE_HEADLINE}.
+ * The risk reversal is the {@link GUARANTEE_DAYS}-day money-back guarantee
+ * (back 2026-09-12), stated beside the price, on the sticky bar, on Stripe's
+ * own submit text and in full in Terms §11. **A refund promise on a marketing
+ * surface and Terms §11 move together, in both directions.** See
+ * {@link GUARANTEE_HEADLINE}.
  *
  * Every price shown to a user, and every value reported to Meta, derives from
  * the constants here. Hardcoding a dollar figure in a component is how the
  * paywall and the Stripe receipt drift apart. **The paywall's price line and
  * Stripe Checkout's submit text are built from the same constant** — see
  * {@link PRICE_LINE} and {@link CHECKOUT_SUBMIT_TEXT}.
- *
- * {@link PLAN_ANCHOR_PRICE} is the one figure in this file that is never
- * charged: it is the paywall's strikethrough, and it exists only to make
- * {@link PLAN_PRICE} legible as a discount. See the block on it.
  *
  * Stripe side (`scripts/stripe-plan-price.ts` creates it):
  *   - Price: $29 USD, **one-time** (no `recurring`) → `STRIPE_PRICE_PLAN`.
@@ -66,52 +67,39 @@ export const PLAN_WEEKS = 8;
 export const PLAN_PRICE = 29;
 
 /**
- * The struck-through "regular price", in USD.
+ * The money-back window, in days from the day she paid (2026-09-12).
  *
- * **Display only. Nothing is ever billed at this figure.** Stripe holds
- * exactly one price (`STRIPE_PRICE_PLAN`, {@link PLAN_PRICE}) and charges it on
- * every checkout, whether the countdown on the paywall is still running or ran
- * out an hour ago.
+ * Unconditional inside the window: no reason, no proof of use, one email.
+ * Terms §11 states it in full and imports this constant, so the paywall, the
+ * landing page, the FAQ, the welcome email, Stripe's submit text and the
+ * contract cannot disagree about the number.
  *
- * The one rule that keeps an anchor and a clock safe: **every figure the page
- * shows is >= what Stripe will charge.** The worst case is then a woman who
- * braced for {@link PLAN_ANCHOR_PRICE} and is charged {@link PLAN_PRICE}.
- * Invert it — a second Stripe Price selected because a client-side timer says
- * "expired" — and her own system clock decides whether she pays double. That is
- * in the "decided against" table in CLAUDE.md and it stays there.
- *
- * Deliberately not a round multiple of {@link PLAN_PRICE}: an anchor at exactly
- * 2x reads as a sticker rather than as a price anything was sold at.
+ * Seven days (owner's call, 2026-09-12; it shipped at 30 for a few hours).
+ * Long enough to open the app, see the plan her answers built and try week 1;
+ * short enough that a refund cannot be claimed after most of the 56 days have
+ * been used. Note the trade-off: weeks 1-2 are the plan's lightest (75-92% of
+ * the sold session length), so she judges it on its gentlest week.
  */
-export const PLAN_ANCHOR_PRICE = 50;
-
-/** `29` against `50` → `42`, i.e. "42% OFF". Derived, never typed into copy. */
-export const PLAN_DISCOUNT_PCT = Math.round(
-  (1 - PLAN_PRICE / PLAN_ANCHOR_PRICE) * 100
-);
+export const GUARANTEE_DAYS = 7;
 
 /**
- * How long the paywall holds {@link PLAN_PRICE} before the countdown reaches
- * zero.
+ * Where a refund is requested, and **the** support address - not just the one
+ * every buying surface names.
  *
- * **Thirty minutes, and do not shorten it without measuring how long the page
- * takes to read.** It was ten in an earlier life of this screen. The paywall is
- * ~2000px — headline, price card, finish board, week one, the included list,
- * the trust grid, the guarantee, social proof, the what-happens-next strip —
- * read on a phone, in an in-app browser, by a woman in her fifties. She
- * routinely spent longer on it than the window lasted, so the clock was
- * punishing the careful reader, who is the buyer. The return-from-Stripe path
- * made it worse: the deadline is per-tab (see `DEADLINE_KEY` in
- * `components/PaywallView.tsx`), so a woman who opened the card form, hesitated
- * and came back was the likeliest person to find it expired.
+ * Terms §11 makes this email the whole of the claim process, so it has to be
+ * the same address everywhere a promise about money is made. Until 2026-09-12
+ * it was one of three: `support@macurasolutions.us` here and in Terms,
+ * `menolisahelp@gmail.com` on the download screen, `support@menolisa.com` in
+ * the dispute banner and the billing-portal error. Two of those three were
+ * printed *next to a contractual promise* - a refund claim sent to an address
+ * nobody reads is a guarantee that does not exist, and she has no way to tell
+ * which of the three is the real one.
  *
- * What expiry does is therefore deliberately small: the band fades out and the
- * price stays {@link PLAN_PRICE}. It never resets (a timer caught resetting
- * takes the rest of the screen's credibility with it) and it never raises a
- * figure she is looking at.
+ * So every surface imports this, including /privacy and /contact, which used
+ * to hold their own copies. Same rule as the price: one constant, no second
+ * spelling for the next edit to miss.
  */
-export const PLAN_DISCOUNT_WINDOW_MINUTES = 30;
-export const PLAN_DISCOUNT_WINDOW_MS = PLAN_DISCOUNT_WINDOW_MINUTES * 60 * 1000;
+export const SUPPORT_EMAIL = "menolisahelp@gmail.com";
 
 /**
  * How long one payment buys, in days.
@@ -146,14 +134,6 @@ export function formatPrice(amount: number): string {
 export const PRICE_LINE = `${formatPrice(PLAN_PRICE)} once for your full ${PLAN_WEEKS}-week plan — everything included, no subscription.`;
 
 /**
- * The whole risk reversal. It used to be cancelling; there is nothing to
- * cancel now, and that is strictly better — "you will never be charged again"
- * is a fact about the charge rather than a promise about our behaviour, and it
- * needs no process, no email and no trust.
- */
-export const NO_RENEWAL_COPY = `You are never charged again.`;
-
-/**
  * ── The rule these strings are written to (2026-09-11) ────────────────────
  *
  * **"Not a subscription" is stated once per screen, at the point of
@@ -186,66 +166,39 @@ export const NO_RENEWAL_COPY = `You are never charged again.`;
 export const PRICE_SUBLINE = `Your plan, Lisa and your symptom tracking unlock the moment you pay.`;
 
 /**
- * ── The guarantee, as she experiences it ──────────────────────────────────
+ * ── The guarantee, as she experiences it (back 2026-09-12) ────────────────
  *
- * There is no money-back guarantee and there has not been one since
- * 2026-09-09. At {@link PLAN_PRICE} a refund clause asks her to imagine
- * emailing us and to picture the product failing, at the moment belief is
- * highest, over an amount she does not need a process to recover.
+ * It was removed on 2026-09-09 on the argument that a refund clause makes her
+ * picture the product failing. That argument holds for a warm buyer. It does
+ * not hold for this traffic: a cold Instagram click, paying an unknown brand
+ * on a web page for an app she has not seen, in women's health, where trust
+ * is the whole sale. For her the question is not "will it work?" but "is this
+ * a scam, and am I stuck if it is?" — and "no subscription" answers only the
+ * second half. A money-back guarantee answers both, and it is the only
+ * reassurance on the page she can check against a contract (Terms §11).
  *
- * What replaces it is the structure of the offer itself: one charge, no
- * subscription, no renewal. The objection this screen actually has to answer
- * is *"will this quietly keep taking my money?"* — and the honest answer is
- * that it cannot, because there is no second charge to stop.
+ * Where it is stated, and why each place:
+ *  - beside the price, in the price card — where the objection fires;
+ *  - on the sticky bar and in Stripe's submit text ({@link CHECKOUT_SUBMIT_TEXT})
+ *    — where she commits;
+ *  - in the full green card low on the page — the terms, with a link to §11.
  *
- * If a refund promise ever comes back here, Terms §11 changes in the same
- * commit. A guarantee printed on the paywall and absent from the Terms is a
- * misrepresentation, and that coupling is why they have moved together every
- * time.
+ * **Terms §11 changes in the same commit as any change here.** A guarantee
+ * printed on the paywall and absent from the Terms is a misrepresentation.
  */
-export const GUARANTEE_HEADLINE = `Everything, for one payment of ${formatPrice(PLAN_PRICE)}.`;
+export const GUARANTEE_HEADLINE = `${GUARANTEE_DAYS}-day money-back guarantee`;
 
-/**
- * The row inside the price card, as two halves — the claim and the support —
- * because the card bolds the first and not the second.
- *
- * **It is about speed now, not billing (2026-09-11).** It read "{PRICE} today,
- * and nothing after it. / No auto-renewal, no subscription, no second charge in
- * {PLAN_WEEKS} weeks." — sitting directly beneath a row that already said "No
- * subscription", so the two loudest objects on the price card made the same
- * point twice and the second one used three negations to do it. The row above
- * keeps the objection; this row answers the question she has immediately after
- * it, which is *what do I actually get, and when*. The answer — all of it, now
- * — is the best thing this screen can say and it was not being said anywhere.
- *
- * Two constants rather than one string the component splits on a full stop:
- * there was a single `GUARANTEE_INLINE` here and **nothing imported it**,
- * because the markup needed the halves separately and retyped them instead. An
- * unused export in the file whose whole job is to be the single source is
- * worse than no export — the next edit changes it and no surface moves.
- *
- * Named `UNLOCK_` and not `GUARANTEE_` on purpose: a constant called
- * GUARANTEE that says "everything unlocks now" is the drift this file exists
- * to stop.
- */
-export const UNLOCK_INLINE_CLAIM = `Everything unlocks the moment you pay.`;
-export const UNLOCK_INLINE_BODY = `Your plan starts building the second the payment lands — day 1 is ready by the time you open the app.`;
+/** The support line under the guarantee row in the price card. */
+export const GUARANTEE_INLINE_BODY = `Not right for you? Email us within ${GUARANTEE_DAYS} days of paying and get all ${formatPrice(PLAN_PRICE)} back. No questions asked.`;
 
 /**
  * The body of the full green card, low on the paywall and on the landing page.
  *
- * **The first sentence is bolded by both callers**, so it has to stand alone —
- * and both used to retype it in JSX instead of splitting this string, which is
- * the exact drift this file exists to prevent. {@link GUARANTEE_BODY_HEAD} and
- * {@link GUARANTEE_BODY_TAIL} do the split here, once.
- *
- * This is the designated place for the terms, so it is the one block allowed
- * to close on the billing fact. It carried three negations in one sentence
- * until 2026-09-11 ("we don't keep your card… no subscription to cancel…
- * nothing happens…"); it now spends its length on what {@link PLAN_PRICE} buys
- * and closes on one.
+ * **The first sentence is bolded by both callers**, so it has to stand alone.
+ * {@link GUARANTEE_BODY_HEAD} and {@link GUARANTEE_BODY_TAIL} do the split
+ * here, once, so no caller retypes half of it in JSX.
  */
-export const GUARANTEE_BODY = `${formatPrice(PLAN_PRICE)} buys the whole ${PLAN_WEEKS} weeks. Every session, every week, Lisa whenever you need her and your symptom tracking — we don't keep your card, and there is no second charge.`;
+export const GUARANTEE_BODY = `If it isn't right for you, you get all ${formatPrice(PLAN_PRICE)} back. Email ${SUPPORT_EMAIL} within ${GUARANTEE_DAYS} days of paying — no reason needed, no forms — and the refund goes back to the way you paid.`;
 
 /** The bolded opening clause of {@link GUARANTEE_BODY}. Split here, not in JSX. */
 export const GUARANTEE_BODY_HEAD = GUARANTEE_BODY.slice(0, GUARANTEE_BODY.indexOf(". ") + 1);
@@ -288,9 +241,53 @@ export const PLAN_BLOCKS_COPY = `Your ${PLAN_WEEKS} weeks start the day you join
 /**
  * Stripe Checkout `custom_text.submit`. Opens on {@link PRICE_LINE} verbatim so
  * the last thing she reads on our page and the last thing she reads on Stripe's
- * are the same sentence.
+ * are the same sentence, and closes on the guarantee, because the Stripe sheet
+ * is where the card goes in and the fear peaks.
  */
-export const CHECKOUT_SUBMIT_TEXT = `${PRICE_LINE} ${NO_RENEWAL_COPY}`;
+export const CHECKOUT_SUBMIT_TEXT = `${PRICE_LINE} ${GUARANTEE_HEADLINE}.`;
+
+/**
+ * What {@link PLAN_PRICE} buys, one row per thing she will open in the app.
+ * Shared by the paywall ("What you get for $29") and the landing page. Each
+ * line is checkable against the code, and must stay that way:
+ *  - the plan: four pillars (lib/planPillars.ts) over PLAN_WEEKS weeks, built
+ *    from her quiz answers, each week built on what she logged (history.ts);
+ *  - the workouts: MOVEMENT_VOLUME sessions by level, daily walks from
+ *    CARDIO_VOLUME, and an `exercise-clips` video on every move that has one
+ *    (the walks, K01/K02, deliberately have none - hence "form", not "every");
+ *  - breathing: the RELAXATION rows in lib/plan/catalog.ts, whose `use` lines
+ *    are exactly these moments;
+ *  - Lisa: /api/langchain-rag, disclosed as AI, safety-validated;
+ *  - tracker + weekly recap: /api/symptom-logs and /api/cron/weekly-recap;
+ *  - the doctor report: /api/doctor-report.
+ * Do not add a row for a feature that does not ship.
+ */
+export const WHAT_YOU_GET: ReadonlyArray<{ bold: string; sub: string }> = [
+  {
+    bold: `Your ${PLAN_WEEKS}-week plan, built from your answers`,
+    sub: "A short daily checklist for movement, food, calm and sleep - and each week builds on what you actually did.",
+  },
+  {
+    bold: "Guided workouts at your level",
+    sub: "Strength sessions and daily walks, with a short video for each move so you're never guessing at form.",
+  },
+  {
+    bold: "Breathing for the hard moments",
+    sub: "Timed exercises for a hot flash coming on, a 3am wake-up or a racing heart - plus a wind-down for bed.",
+  },
+  {
+    bold: "Lisa, your AI menopause coach, 24/7",
+    sub: "Ask anything and get a plain-English answer - and she'll tell you when it's one for your doctor.",
+  },
+  {
+    bold: "Symptom tracker and a weekly recap",
+    sub: "Log how you feel in seconds, and see your week's patterns every Sunday.",
+  },
+  {
+    bold: "A report for your doctor",
+    sub: "Your symptoms, summarised and ready to share at your next appointment.",
+  },
+];
 
 export function isPlanId(value: unknown): value is PlanId {
   return value === PLAN_ID;

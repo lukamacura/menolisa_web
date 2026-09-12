@@ -722,7 +722,7 @@ export type PlannerDay = { label: string; chips: DayChip[] };
 const CHIP_TONE: Record<DayChip["tone"], { cls: string; Icon: LucideIcon }> = {
   strength: { cls: "border-primary/25 bg-primary/10 text-primary", Icon: Dumbbell },
   cardio: { cls: "border-[#16A34A]/25 bg-[#16A34A]/10 text-[#15803D]", Icon: Footprints },
-  power: { cls: "border-[#F59E0B]/30 bg-[#F59E0B]/12 text-[#B45309]", Icon: Zap },
+  power: { cls: "border-[#E8A33D]/30 bg-[#E8A33D]/12 text-[#A9741A]", Icon: Zap },
 };
 
 export function TrainingWeekBoard({
@@ -881,7 +881,7 @@ export function FirstSessionBoard({
             <span
               className={cn(
                 "flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[10px] font-extrabold tabular-nums",
-                row.power ? "bg-[#F59E0B] text-white" : "bg-[#3D3D3D] text-white"
+                row.power ? "bg-[#E8A33D] text-white" : "bg-[#3D3D3D] text-white"
               )}
             >
               {row.power ? <Zap className="h-3 w-3" strokeWidth={2.6} aria-hidden /> : n + 1}

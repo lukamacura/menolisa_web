@@ -1,5 +1,12 @@
 import type { Metadata } from "next";
-import { PLAN_ACCESS_DAYS, PLAN_PRICE, PLAN_WEEKS, formatPrice } from "@/lib/pricing";
+import {
+  GUARANTEE_DAYS,
+  PLAN_ACCESS_DAYS,
+  PLAN_PRICE,
+  PLAN_WEEKS,
+  SUPPORT_EMAIL,
+  formatPrice,
+} from "@/lib/pricing";
 
 /**
  * Terms and Conditions.
@@ -21,20 +28,18 @@ import { PLAN_ACCESS_DAYS, PLAN_PRICE, PLAN_WEEKS, formatPrice } from "@/lib/pri
  * route it describes.
  *
  * **3. §11 is a contract, not marketing, and it moves with the paywall.**
- * There is **no money-back guarantee**: it was removed on 2026-09-09 from the
- * green card in `components/PaywallView.tsx`, the landing page, the welcome
- * email and this section, all in one commit. The risk reversal is the price and
- * the shape of the offer itself: one charge, no subscription, no renewal, so
- * there is no future charge to stop. §10.2 and §11 both say so in as many
- * words. **§10 must never promise auto-renewal while checkout runs in payment
- * mode** — that is the same misrepresentation as a wrong price, pointing the
- * other way, and it is what a customer quotes when she disputes a charge.
+ * The {GUARANTEE_DAYS}-day money-back guarantee came back on 2026-09-12 on the
+ * paywall, Stripe's submit text, the landing page, the FAQ, the welcome email
+ * and this section, in one commit. It is unconditional inside the window, once
+ * per person, and claimed by one email to {SUPPORT_EMAIL}. **§10 must never
+ * promise auto-renewal while checkout runs in payment mode** — that is the
+ * same misrepresentation as a wrong price, pointing the other way, and it is
+ * what a customer quotes when she disputes a charge.
  *
- * The coupling holds in both directions. If a refund promise is ever printed
- * on a marketing surface again, §11 states its terms in the same commit; a
- * guarantee advertised and absent from the Terms is a misrepresentation, not a
- * stale doc. There is no free trial, no adherence threshold and no outcome
- * promise; §12 says so.
+ * The coupling holds in both directions. If the guarantee changes on a
+ * marketing surface, §11 changes in the same commit; a guarantee advertised
+ * and absent from the Terms is a misrepresentation, not a stale doc. There is
+ * no free trial, no adherence threshold and no outcome promise; §12 says so.
  */
 
 export const metadata: Metadata = {
@@ -43,8 +48,7 @@ export const metadata: Metadata = {
     "The terms governing your use of MenoLisa, including payment, access and refund terms.",
 };
 
-const LAST_UPDATED = "September 9, 2026";
-const SUPPORT_EMAIL = "support@macurasolutions.us";
+const LAST_UPDATED = "September 12, 2026";
 
 function Mail() {
   return (
@@ -82,8 +86,8 @@ export default function TermsPage() {
               <strong>You pay once — this is not a subscription</strong>:{" "}
               {formatPrice(PLAN_PRICE)} for your full {PLAN_WEEKS}-week plan, and{" "}
               <strong>nothing renews automatically</strong> (Section 10). Your access runs{" "}
-              {PLAN_ACCESS_DAYS} days and then ends. Charges already made are not refundable except
-              as set out in Section 11.
+              {PLAN_ACCESS_DAYS} days and then ends. <strong>If it is not right for you, you can get a
+              full refund within {GUARANTEE_DAYS} days of paying</strong>, for any reason (Section 11).
             </li>
             <li>
               <strong>Disputes go to individual arbitration</strong> and you waive class actions and
@@ -608,8 +612,8 @@ export default function TermsPage() {
           <p>
             You may stop using the Service at any time, and you may delete your account at any time
             from <strong>Account</strong> in the app or on the website, or by emailing <Mail /> from
-            the address on your account. Deleting your account does not entitle you to a refund of
-            the period you have paid for — see Section 11. Your account settings and account
+            the address on your account. Deleting your account does not by itself request a refund;
+            to claim one under the money-back guarantee, email us as Section 11 describes. Your account settings and account
             deletion remain available to you even after your access has ended.
           </p>
 
@@ -624,22 +628,48 @@ export default function TermsPage() {
         </section>
 
         <section className="mb-8">
-          <h2 id="money-back" className="text-2xl font-semibold mb-4">11. Refunds</h2>
+          <h2 id="money-back" className="text-2xl font-semibold mb-4">
+            11. Money-Back Guarantee and Refunds
+          </h2>
+          <p>
+            <strong>
+              {GUARANTEE_DAYS}-day money-back guarantee. If you are not satisfied with MenoLisa for
+              any reason, you may request a full refund of your payment within {GUARANTEE_DAYS} days
+              of the date you paid.
+            </strong>{" "}
+            You do not need to give a reason, show that you used the plan, or return anything.
+          </p>
+          <ul>
+            <li>
+              <strong>How to request it.</strong> Email <Mail /> within {GUARANTEE_DAYS} days of
+              your payment, from the email address on your account or quoting it. That email is the
+              whole process; there is no form.
+            </li>
+            <li>
+              <strong>What you get back.</strong> The full amount you paid for that purchase.
+            </li>
+            <li>
+              <strong>Once per person.</strong> The guarantee applies once per person, regardless
+              of how many accounts you hold (see Section 3).
+            </li>
+            <li>
+              <strong>Purchases made through an app store</strong> are refunded by that store under
+              its own policy (Section 13).
+            </li>
+          </ul>
           <p>
             <strong>
               {formatPrice(PLAN_PRICE)} is charged once and buys {PLAN_ACCESS_DAYS} days of access.
               Nothing renews, so there is no future charge to stop.
-            </strong>
-          </p>
-          <p>
-            Except where a refund is required by the law that applies to you, or is expressly
-            provided elsewhere in these Terms, these are the terms:
+            </strong>{" "}
+            After the {GUARANTEE_DAYS}-day window, and except where a refund is required by the law
+            that applies to you or is expressly provided elsewhere in these Terms:
           </p>
           <ul>
             <li>
-              <strong>Charges already made are not refundable.</strong> We do not offer a
-              money-back guarantee. The charge pays for the {PLAN_WEEKS} weeks of access it buys,
-              and that access is provided in full whether or not you use it.
+              <strong>Charges are not refundable after the guarantee window.</strong> The charge
+              pays for the {PLAN_WEEKS} weeks of access it buys, and that access is provided in full
+              whether or not you use it.
             </li>
             <li>
               <strong>There is no recurring charge to stop.</strong>{" "}
@@ -680,9 +710,10 @@ export default function TermsPage() {
         <section className="mb-8">
           <h2 className="text-2xl font-semibold mb-4">12. What We Do Not Promise</h2>
           <p>
-            <strong>We do not offer a money-back guarantee</strong>, and no advertisement, page, or
-            message should be read as creating one. Section 11 states the whole of our refund
-            position, and where it and any other statement differ, Section 11 governs.
+            <strong>Section 11 states the whole of our refund position</strong>, including the{" "}
+            {GUARANTEE_DAYS}-day money-back guarantee, and where it and any other advertisement,
+            page, or message differ, Section 11 governs. The guarantee is a promise to refund, not a
+            promise about results.
           </p>
           <p>
             We also make <strong>no promise about outcomes</strong>. MenoLisa is a wellness product,

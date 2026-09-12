@@ -109,16 +109,16 @@ function buildStages(topProblems?: string[], goal?: string[]): Stage[] {
       week: null,
       icon: Flame,
       text: transform?.before ?? "Where you are today",
-      color: "#F43F5E",
-      soft: "#FFE4E9",
+      color: "#DB4F45",
+      soft: "#FDF1F0",
     },
     {
       at: 0.25,
       week: 2,
       icon: Moon,
       text: "Habits stick. Nights start to settle.",
-      color: "#F59E0B",
-      soft: "#FEF3C7",
+      color: "#E8A33D",
+      soft: "#FBEEDA",
     },
     {
       at: 0.55,
@@ -341,7 +341,7 @@ export function PlanFinishBoard({
               className="absolute inset-0"
               style={{
                 background:
-                  "linear-gradient(90deg, #F43F5E 0%, #FB923C 26%, #F59E0B 46%, #84CC16 72%, #16A34A 100%)",
+                  "linear-gradient(90deg, #DB4F45 0%, #E07A45 26%, #E8A33D 46%, #84CC16 72%, #16A34A 100%)",
               }}
             />
             {/* Everything ahead of the needle is unpainted paper. */}

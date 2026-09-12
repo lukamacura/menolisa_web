@@ -33,7 +33,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Key Design Decisions
 - **Passwordless auth only** — 6-digit email OTP via Supabase (`signInWithOtp` + `verifyOtp`). No passwords, no magic links. Shared `<OtpForm />` (`components/auth/OtpForm.tsx`) is the only auth UI, and `/login` is now its only caller.
-- **The paywall sells one thing: $29, charged ONCE, for 8 weeks of access (2026-09-11). It is not a subscription.** Checkout runs `mode: "payment"`, one Stripe price with no `recurring` block (env `STRIPE_PRICE_PLAN`), no coupon, no trial, no promo-code box. **Nothing renews**, so there is nothing to cancel — "cancel anytime" was removed from every surface because it became false, not merely off-message. Stripe supplies no period end for a one-time payment, so `fulfillCheckout` computes the access cutoff itself (`now + PLAN_ACCESS_DAYS`, 56 days) and nothing overwrites it. The risk reversal is structural — one charge, no card kept, no second charge — and there is still **no refund promise anywhere**; Terms §11 and the paywall move in the same commit, in both directions. Terms §10 now reads "there is no automatic renewal" and must never promise renewal while checkout is in payment mode. Copy lives in `lib/pricing.ts`. See "The plan and its price" in §4.
+- **The paywall sells one thing: $29, charged ONCE, for 8 weeks of access (2026-09-11). It is not a subscription.** Checkout runs `mode: "payment"`, one Stripe price with no `recurring` block (env `STRIPE_PRICE_PLAN`), no coupon, no trial, no promo-code box. **Nothing renews**, so there is nothing to cancel — "cancel anytime" was removed from every surface because it became false, not merely off-message. Stripe supplies no period end for a one-time payment, so `fulfillCheckout` computes the access cutoff itself (`now + PLAN_ACCESS_DAYS`, 56 days) and nothing overwrites it. The risk reversal is structural — one charge, no card kept, no second charge — and since 2026-09-12 a **7-day money-back guarantee** (`GUARANTEE_DAYS`, unconditional, once per person, claimed by one email to `SUPPORT_EMAIL`) sits beside the price, on the sticky bar, in Stripe's submit text, the welcome email and Terms §11; §11 and the paywall move in the same commit, in both directions. No strikethrough anchor and no countdown. Terms §10 now reads "there is no automatic renewal" and must never promise renewal while checkout is in payment mode. Copy lives in `lib/pricing.ts`. See "The plan and its price" in §4.
 - **The `/register` funnel never asks for an email** — it signs her in anonymously and lets Stripe collect the address at checkout. See "Anonymous accounts" below.
 - **Dual auth paths** — cookie (web) and Bearer token (mobile) coexist in every API route via `getAuthenticatedUser()`
 - **Verbatim KB-first RAG** — AI chat tries to return exact knowledge base content before falling back to LLM generation; this ensures medically accurate, consistent answers
@@ -781,11 +781,15 @@ charge for one window removes the whole class of problem.
   auto-renewal while checkout runs in payment mode** — that is the same
   misrepresentation as a wrong price pointing the other way, and it is what a
   customer quotes when she disputes a charge.
-- **The risk reversal is structural, not a promise.** There is nothing to
-  cancel, so "cancel anytime" is gone from every surface (it was false, not
-  merely off-message) and the trust-grid tile that said it now says "No
-  subscription". Still no money-back guarantee; §11 and the paywall move
-  together in both directions.
+- **The risk reversal is a 7-day money-back guarantee (2026-09-12), on top
+  of the structure.** There is nothing to cancel, so "cancel anytime" stays
+  gone (it is false). "No subscription" answers only "will they keep charging
+  me?"; a cold click paying an unknown brand for an app she has not seen also
+  asks "am I stuck if this is a scam or not for me?", and only a refund
+  promise answers that. `GUARANTEE_DAYS`, `GUARANTEE_HEADLINE`,
+  `GUARANTEE_INLINE_BODY`, `GUARANTEE_BODY` and `SUPPORT_EMAIL` live in
+  `lib/pricing.ts`; Terms §11 imports them. §11 and the paywall move together
+  in both directions.
 - **The access-ending alert is the only warning she gets.** Under a
   subscription an ending meant she had cancelled and was rare; now every
   customer's access ends, on a date she was told once in the welcome email
@@ -796,19 +800,23 @@ charge for one window removes the whole class of problem.
   repeat-purchase opportunity. The cohort table counts **purchases, not
   renewals**, is built from the charge walk `loadRevenue` already does, and a
   second purchase only becomes possible once her 56 days run out.
-- **The `$50` anchor and the 30-minute hold are display only (2026-09-11).**
-  `PLAN_ANCHOR_PRICE` (50), `PLAN_DISCOUNT_PCT` (42) and
-  `PLAN_DISCOUNT_WINDOW_MINUTES` (30) live in `lib/pricing.ts`; Stripe still
-  holds exactly one price and charges `PLAN_PRICE` on every checkout, expired
-  clock or not. The invariant: **every figure the page shows is >= what Stripe
-  charges.** Expiry hides the countdown band and changes nothing else — not
-  the price, not the button label, not `PRICE_LINE` (which is the same string
-  Stripe prints as `CHECKOUT_SUBMIT_TEXT`, so a card that re-priced itself
-  would contradict the sticky bar and the Stripe sheet). The deadline is in
-  `sessionStorage`, per tab, and never visibly resets. The three rows in
-  "Decided against" that govern this — no second Stripe Price on expiry, no
-  "get my discount back" button, no shortening the window to 10 minutes — are
-  live again, not historical.
+- **No `$50` anchor and no countdown (removed 2026-09-12).** They lived one
+  day. A strikethrough, a "42% OFF" pill and a 30:00 clock on a brand she has
+  never heard of is the visual grammar of every scam page a cold 45-60
+  audience has learned to ignore, and $50 was never a price the plan was sold
+  at — a former-price claim with nothing behind it. The price stands alone;
+  the guarantee carries the risk.
+- **No App Store / Google Play listing before the paywall (2026-09-12).** The
+  diagnosis screen showed captured store listings, each printing "Free ·
+  In-App Purchases", one screen before a $29 web checkout — inviting her to
+  leave, search the store and lose the plan her quiz built (and the
+  attribution). Store badges live only on the post-checkout download screen.
+  The paywall instead says why buying here matters: her plan and answers are
+  already on the account she signs in with.
+- **"Who's behind MenoLisa" on the paywall (2026-09-12)** says Lisa is an AI
+  and not a doctor, what the plan is built on, and names the company and its
+  support address. **Never add an expert, a credential or an advisory board
+  there unless it is real and the person has agreed to be named.**
 
 - **LTV's floor is one charge, and that is the point.** There is no renewal
   tail to bail out an expensive click: CAC must come in under `keptPerSale`
@@ -908,6 +916,98 @@ against 169 paywall views. It now also fires on **read-to-the-bottom then went
 still** (past `EXIT_DEPTH`, then `EXIT_SETTLED_MS` with no scroll and no tap),
 which is exit *fact* rather than exit intent. Any new trigger has to work in an
 in-app webview or it measures nobody.
+
+### The funnel's entrance — screen 1 (`q_symptom_primary`, 2026-09-12)
+
+This screen takes **100% of paid traffic** and is the largest single loss in the
+business. Over 2026-09-06 → 09-12, `funnel_events` (non-test): **836 renders,
+531 reaching question 2 — 36.5% gone before one tap.** That is 44% of everything
+lost between the entrance and the paywall (305 of 700 women) and roughly $75 of
+a $205 week. The one-tap rewrite on 2026-09-05 moved it from 54%, so the shape
+is right; what follows is the pass that finished it.
+
+- **The screen sells before it asks, and `stepIndex === 0` gets its own
+  header.** Until 2026-09-12 the entrance rendered the same progress chrome as
+  every other step, so the largest type on it read **"Question 1 of 13" over
+  thirteen dots** — the whole cost of the funnel, in bold, above a screen that
+  made no promise of any kind. An endowed-progress meter reading 1-of-13 shows
+  the worst number it will ever show her: at the entrance there is no progress
+  to be proud of, only distance left. The counter and the dots now render from
+  step 1 onward and the entrance carries the offer instead — the benefit, "free
+  2-minute check", "no email needed". Every clause is checkable, which is the
+  rule the whole funnel is written under: thirteen one-tap questions, and
+  nothing charged and no address collected before Stripe (results, diagnosis and
+  the paywall all render first).
+- **Nothing unsourced goes in that header.** A rating or a member count is the
+  obvious thing to add and it is the one thing that must not be: "4.9 · 12,800+
+  women" came off the paywall on 2026-09-12 because neither figure has a source,
+  and an unsourced number is worth least in first position, where it becomes the
+  first claim she evaluates. No countdown either — see the "decided against"
+  table.
+- **`PROBLEM_OPTIONS` is ordered by measured demand, and the order is not
+  cosmetic.** It was authored order, which put `weight_changes` — the single
+  most chosen answer at **27.3%** of primaries — in slot 5, the middle of the
+  second row, while slots 1-3 held 43%. On a 3x3 grid the top row is scanned
+  first, so most of the traffic had to read past its own answer to find it. Now
+  sorted worst-first from `top_problems[1]` across the 165 non-test profiles
+  created since single-select shipped: weight 27.3, hot flashes 18.2, sleep
+  17.6, joint pain 9.1, fatigue 9.1, brain fog 7.3, anxiety 6.7, mood swings
+  2.4, bloating 2.4 — top row 63.1% of demand, each row lighter than the one
+  above. Two caveats before re-sorting: the measurement comes from women who
+  *finished* (a tap is only durable once `save-quiz` writes the profile), and it
+  is self-reinforcing, so read it against a window where the order has been
+  stable and never chase a couple of points. **Nothing comes off the list for a
+  low share** — for the 2.4% woman the alternative to her tile is no honest
+  answer, which is the loss being fixed; and nine fills the grid exactly, so a
+  tenth or an eighth is a layout change.
+- **The sub-line's job is to make the tap cheap, and dwell time is how you know
+  it isn't.** Median time on this screen is **9.0s against 4.6s on the
+  identically-shaped four-tile age grid** (p25 5.8, p75 14.0, p90 19.8). She is
+  not tapping, she is *ranking* — and a woman with five of these nine cannot
+  rank them. "Hitting you hardest" asks for a measurement she does not have, so
+  the h2 keeps it (naming the pain is its job) and the sub-line now gives the
+  permission: *"More than one? Tap the one you'd fix first."* A preference is
+  answered instantly and lands on the same tile. It replaced "Just tap it.",
+  which repeated the h2's instruction and answered nothing she was hesitating
+  over.
+- **No escape tile, deliberately.** A "not sure" or "all of them" option looks
+  like the fix for the ranking problem and would break everything downstream:
+  `top_problems[0]` is what `SYMPTOM_MECHANISM`, `SYMPTOM_FIRST_MOVE`, the
+  results pain line, the reward boards and the plan's first move are all built
+  from, and none of them has a branch for "no primary". The sub-line solves the
+  same problem with copy. (A `not_sure` *tone* entry exists near
+  `PROBLEM_OPTIONS` for other screens — it is not an option on this one.)
+- **Screen 1 has no `QuizNudge`, and re-keying one onto it is a regression.**
+  The banner is `fixed top-0`, spanning roughly y=20..140; the offer headline
+  sits at y=12. Measured at 390x700, a nudge here hid the headline from ~2.6s to
+  ~8.6s against the 9.0s median dwell — six of the first nine seconds, buying a
+  six-second overlay with the one permanent promise the page has. A delay does
+  not save it: any delay long enough to protect the headline is still inside the
+  dwell it then covers. If a note is ever wanted there, it needs a position that
+  is not the top of the viewport.
+- **A `QUIZ_NUDGES` key that matches no `Step` fails silently.** The entrance's
+  entry was keyed `q4_symptoms`, a step deleted on 2026-09-05, so
+  `QUIZ_NUDGES[step]` returned `undefined` and the component bailed at its
+  `!message` guard: **the one note written against this exact loss rendered
+  nothing for a week**, on the only screen that takes all of the traffic, with
+  nothing failing anywhere. Grep `components/funnel/QuizNudge.tsx` on every step
+  rename.
+- **The 36.5% is not all the screen's, and the day-by-day rate is how you know
+  how much of it is.** On essentially unchanged code: 35.0% (09-07), 39.2%
+  (09-08), 46.4% (09-09), 52.4% (09-10), 51.1% (09-11), 60.0% (09-12), and
+  81.0% on 09-06. A screen has a conversion rate; a 25-point swing is traffic.
+  It climbs as daily volume falls (237 → 196 → 124 → 50 entries) and cost per
+  render moved $0.15 → $0.73 — creative fatigue and delivery drifting to cheaper
+  placements. **Read this table before crediting or blaming any change to this
+  screen**, and expect roughly half the loss to move with the media rather than
+  with the copy.
+- **The nine tiles are the LCP and must keep `priority`.** Verified 2026-09-12:
+  the preload links are emitted in list order, so re-ordering `PROBLEM_OPTIONS`
+  re-orders the preloads too. All nine fit with no scroll and no horizontal
+  overflow at both 390x700 and 375x667 (tiles 112x171 and 107x160). The render
+  ping fires on *mount*, so a woman still waiting on images is already counted
+  in the 836 — some unknown part of the loss is women who never saw the screen
+  they are recorded as rejecting.
 
 ### Access control (who gets in)
 
@@ -1242,7 +1342,7 @@ for advertising — which was false. Three rules came out of it:
   "What We Do Not Promise" (no guarantee, no outcome promise). If a refund
   promise is ever printed on a marketing surface again, §11 states its terms in
   the same commit — advertised and absent from the Terms is a
-  misrepresentation. There is no free trial and no adherence threshold. The landing page (`LandingPricing`,
+  misrepresentation. There is no free trial and no adherence threshold. The landing page (`LandingOffer`,
   `LandingFAQ`) carries the same framing. `MAX_BACKFILL_DAYS` in
   `POST /api/plan/complete` stays at 7 on the plan's own account — the next
   cycle is built from those rows.
@@ -1330,7 +1430,6 @@ for on every page load. Before adding an image, shrink it (e.g. squoosh.app):
   | `badges/` | Third-party trust marks — app store, Google Play, Stripe, card logos |
   | `brand/` | MenoLisa's own marks (Lisa's avatar) |
   | `illustrations/` | Full-screen funnel art — start, results, offer, rewards, login |
-  | `landing/` | Landing-page art |
   | `proof/` | Social proof — `before`/`after` photos and `testimonials/` |
   | `quiz/` | Tap tiles, one folder per question (`age/`, `symptoms/`, `hrt/`, …) |
   | `screenshots/` | Real app screenshots (1320x2868 masters) |
@@ -1606,8 +1705,9 @@ feature (checked 2026-09-08).
 | Split the funnel back into two bands with two bases | The seam is what created the duplicate row (`Finished the quiz` *is* `calculating`, in women), made the curve appear to climb where the bands overlapped, and put paywall → card form — the number that splits a weak offer screen from a leaking checkout — on opposite sides of a line so it could not be computed. Over one window `calculating` is 54 visits and `user_profiles` 54 women: the units converge before the money rows begin. |
 | Put a `Finished the quiz` row back on the curve | It is the `calculating` row counted a second way. One event, one row. |
 | Add a `download` row beside `Paid` | Same event, and Stripe is the side that knows whether money moved. |
-| Select a second Stripe Price when the paywall countdown expires | It would let a user's system clock decide whether she pays double. The displayed price may understate what she is charged and must never overstate it. |
-| Bring back the paywall's "get my discount back" button | A timer that visibly resets teaches a 45-60 audience that the page is staged, and the doubt lands on the refund guarantee. The countdown is fine; the reset was the half that did the damage. |
+| Bring back the `$50` strikethrough, a "% off" pill or the paywall countdown | Removed 2026-09-12. On a cold click for an unknown brand they read as scam-page furniture, and $50 was never a price the plan was sold at. If a timer ever returns it must never change a figure, never select a second Stripe Price and never visibly reset. |
+| Show an App Store or Google Play listing before checkout | Each listing prints "Free · In-App Purchases". One screen before a $29 web checkout it tells her to leave and buy in the store — losing the sale, the attribution and the plan her quiz built. Badges belong on the post-checkout download screen only. |
+| Invent an expert, advisory board, credential or clinical citation | Trust is the currency in women's health, which is exactly why a fabricated one is the whole of an FTC complaint. Name a real person with their agreement, or name nobody. |
 | Put `seconds` back into `DEFAULT_WARMUP` / `DEFAULT_COOLDOWN` | They take the catalog's dose via `bookendFrom()`. A second copy of a number already in `DOSE` drifted the first time `DOSE` changed. |
 | Bring back the 8-week adherence refund guarantee (or any outcome refund) | Removed 2026-09-04. The "100% guarantee" is the free trial: try it, cancel before the first charge, pay nothing. A refund promise needs a measurement, a claim process and a Terms section a regulator can check; the trial needs none of them. Terms §11's 7-day refund window is the only refund left. |
 | Bring back a free trial, `trial_period_days`, or any `trialing` state | Removed 2026-09-08 after two saved cards and zero conversions. The plan is $29 per 8 weeks, charged in full at checkout; `getAccountState()` never learned about a trial and must not. |
@@ -1622,6 +1722,11 @@ feature (checked 2026-09-08).
 | Set `allow_promotion_codes` on the Checkout Session | The box is off by default and there is nothing to redeem — no coupon is applied at all since 2026-09-11. (It also cannot coexist with `discounts`: Stripe rejects the session and the whole checkout 500s.) |
 | Send a renewal notice email | There are no renewals. The access-ending alert is the one message about the end of her window, and it must not use the word "renew" — that implies an automatic charge and contradicts the paywall, the welcome email and Terms §10.2. |
 
+| Put "Question 1 of 13" (or the progress dots) back on screen 1 | It is the whole cost of the funnel in the largest type on the screen that takes 100% of paid traffic, above a screen that then made no promise at all. 1-of-13 is the worst number an endowed-progress meter will ever show her; there is no progress to endow at an entrance. The counter earns its place from step 2 onward. |
+| Put a star rating, a member count or a countdown in the screen-1 header | Nothing sources "4.9 · 12,800+ women" — it came off the paywall on 2026-09-12 for that reason, and first position is the worst place for an unsourced claim because it becomes the first thing she evaluates. The header's three clauses are all checkable against this codebase. |
+| Re-key a `QuizNudge` onto `q_symptom_primary` | The banner is `fixed top-0` and covers the offer headline at y=12. Measured at 390x700 it hid the headline from ~2.6s to ~8.6s against a 9.0s median dwell. A later delay does not help — every delay long enough to protect the headline lands inside the dwell it then covers. The card's own sub-line carries the same message permanently. |
+| Add a "not sure" / "all of them" tile to `PROBLEM_OPTIONS` | `top_problems[0]` is what `SYMPTOM_MECHANISM`, `SYMPTOM_FIRST_MOVE`, the results pain line, the reward boards and the plan's first move are built from, and none has a branch for "no primary". The ranking problem it appears to solve is solved by the sub-line instead. |
+| Re-order `PROBLEM_OPTIONS` to authored order, or drop a low-share tile | The order is measured demand, worst-first; authored order buried the most-chosen answer (weight changes, 27.3%) in slot 5 while the first-scanned row held 43%. And the 2.4% woman's alternative to her own tile is no honest answer — which is the loss the screen is being fixed for. Nine fills the 3x3 grid exactly. |
 | Put an *optional* email box back on the funnel | Tried on results for one day (2026-09-08). Optional is the worst of both: it does not build the list a sequence needs and it still adds a field to the payoff screen. Either no capture, or a required standalone screen between results and the plan — and that one only once there is a sequence to send. |
 | Bind a funnel-collected email to `auth.users` | Stripe's address is the login and the collision/merge in `resolveCheckoutAccount` depends on it. `user_profiles.email` is a contact detail. |
 | Widen `funnel_events.detail` past the five exit tokens | The table's safety argument is that it holds screen names. A free-text or quiz-answer column makes it health data about a re-identifiable visit. |
@@ -1642,9 +1747,8 @@ feature (checked 2026-09-08).
 | Write a figure into `/terms` or `/privacy` by hand | Both import from `lib/pricing.ts`. A Terms page stating a price Stripe does not charge is a misrepresentation about money, not a stale doc. |
 | Hardcode a dollar figure in a component | `lib/pricing.ts` is the single source for the price, the plan id sent as `plan`, and every displayed figure. |
 | Leave an unused export in `lib/pricing.ts` | `GUARANTEE_INLINE` sat there unimported for months because the markup needed its two halves separately and retyped them. A constant nothing imports is a figure the next edit changes with no surface moving. |
-| Re-add a money-back guarantee to any surface without changing Terms §11 in the same commit | Removed everywhere 2026-09-09. It asked her to picture the product failing at the moment belief is highest, over an amount she does not need a process to recover — cancelling is two taps and reaches the same money. A guarantee advertised and absent from the Terms is a misrepresentation, not a stale doc. |
+| Change the money-back guarantee on any surface without changing Terms §11 in the same commit | Back since 2026-09-12 (7 days, `GUARANTEE_DAYS`). A guarantee advertised and absent from the Terms — or a window that differs between them — is a misrepresentation, not a stale doc. |
 | Put the refund back in the paywall headline | It spends the largest type on the page introducing the possibility of failure, at the moment belief is highest. Risk reversal answers a question she only has after she wants the thing. The guarantee card 400px below states it in full. |
-| Shorten `PLAN_DISCOUNT_WINDOW_MINUTES` back to 10 | The paywall is ~2000px and is read by a woman in her fifties on a phone. Ten minutes expired mid-read, doubled the displayed price to `PLAN_ANCHOR_PRICE`, and did it to the careful reader — who is the buyer. It also fired on the return-from-Stripe path. An expired countdown converts at roughly nothing. |
 | Move her symptoms back behind age, stage and menopause type | Every live creative is a symptom or mechanism argument and Ad 1 ends on "tap your symptom". Three categorising screens before the funnel mentions what she came for is a form, not the audit she was promised. |
 | Put the breathing exercise back between the plan and the price | Deleted 2026-09-05 on measurement, not taste: `relief → paywall` lost 18.8% (12 of 64 over the clean window), the second-largest single loss in the funnel and the only one falling on women who had already answered thirteen questions and read their results. It was a product demo placed where a close belongs — reciprocity is real, but it is worth less than the 18.8%, and the same demo inside the trial is retention rather than a toll. If it comes back, it comes back after the card. |
 | Make the funnel's landing screen a multi-select again | It was one until 2026-09-05 and the telemetry priced it at 54% — 325 renders, 148 women reaching question 2, the largest single loss in the business. A multi-select cannot auto-advance (only she knows when the list is done), so it always needs a Continue button, and the button is the second action asked of a woman four seconds into the page. Of the 148 who made that first tap, 83 walked thirteen more screens: the first tap is the commitment. |
@@ -1656,7 +1760,91 @@ feature (checked 2026-09-08).
 
 ### Recent work
 
-**2026-09-11 (latest) — $29 ONE-TIME. The product is no longer a
+**2026-09-12 (latest) — landing page (`/`) rebuilt as a plain on-ramp to
+`/register`.** Fourteen animated sections (~4,100 lines) became seven server
+components in `components/landing/`: hero (screen 1's headline verbatim, Day 1
+in the funnel's phone bezel), how it works, real app screens, member stories
+(`<SocialProofPolaroid />`, same draft filter), the offer, FAQ, footer. The only
+CTA is the fixed `LandingCtaBar` → `/register`; it is now white on a deeper
+#E8487F→#E8663A (the funnel's grey-on-pink read washed out), so it no longer
+mirrors `CTA_GRADIENT_*` by design. Shared data moved out so the two surfaces
+cannot drift: `PLAN_SHOTS` / `PLAN_HERO_SLIDES` → `lib/planShots.ts`,
+`WHAT_YOU_GET` → `lib/pricing.ts`. Deleted with it: the unsourced "12,800
+women" counter, the invented testimonials, the "Reviewed by menopause
+specialists" badge, the glassy-bubble CSS, `hooks/useReplayableInView.ts` and
+`public/landing/hero.webp`.
+
+**2026-09-12 — the funnel's entrance rebuilt; it was asking before it
+sold.** Screen 1 loses 36.5% before one tap (836 renders → 531, 2026-09-06 →
+09-12) — 44% of all loss between the entrance and the paywall, and the largest
+single number in the business. Full contract in §4 "The funnel's entrance". Four
+changes, each from a measurement rather than a preference:
+
+- **`stepIndex === 0` gets its own header.** "Question 1 of 13" over thirteen
+  dots — the cost of the funnel in the largest type on the page — is replaced by
+  the offer: *Find out what's driving your symptoms / Free 2-minute check · No
+  email needed*. The counter and dots render from step 1 on.
+- **`PROBLEM_OPTIONS` re-ordered by measured demand.** `weight_changes` is 27.3%
+  of primaries and was sitting in slot 5; the top row now holds 63.1%.
+- **The sub-line gives permission to stop ranking** — "More than one? Tap the
+  one you'd fix first." Dwell here is 9.0s against 4.6s on the identically
+  shaped age grid, which is a ranking signature, not a tapping one.
+- **`QuizNudge` had been dead on this screen for a week** — keyed `q4_symptoms`,
+  a step deleted 2026-09-05, so it silently rendered nothing. Re-keying it was
+  tried and reverted: the banner is `fixed top-0` and covered the new headline
+  for six of the first nine seconds. Screen 1 now has no nudge by design and the
+  file says why.
+
+Verified: `tsc --noEmit` clean on source (two `.next/dev/types` errors are stale
+generated types for a deleted `dev-paywall` page), `npm run build` clean, lint at
+one pre-existing error in an untouched file, and the screen rendered and measured
+at 390x700 and 375x667 — all nine tiles reachable with no scroll and no
+horizontal overflow, preloads emitted in the new order.
+
+**Read before judging this pass:** the day-by-day Q1 loss rate swings 35% → 81%
+on unchanged code and has been climbing as volume falls, so roughly half of the
+36.5% is media, not screen. The §4 table has the numbers. **Also still true:**
+`paywall → checkout_opened` is 2 of 136 over the same window — screen 1 is the
+biggest leak, but the paywall is where the business is dying, and more traffic
+into a screen that is not closing does not pay.
+
+**2026-09-12 — trust pass on the close: guarantee back, anchor and
+store listings gone.** Three changes from a DR review of the paywall, all in
+§4 "The plan and its price":
+
+- **Store listings removed before checkout.** `HowLisaRuns` showed captured
+  App Store / Google Play listings ("Free · In-App Purchases") one screen
+  before a $29 web checkout; the files (`public/screenshots/app_store.webp`,
+  `play_store.webp`) are deleted. The paywall's "Download the app" step now
+  says her plan and answers are already on the account.
+- **"Who's behind MenoLisa" block on the paywall**: Lisa is an AI, not a
+  doctor; the plan's three training modalities; Macura Solutions LLC and
+  `SUPPORT_EMAIL`. No expert is named because none is on record.
+- **`$50` strikethrough, "42% OFF" pill and 30-minute countdown deleted**
+  (`PLAN_ANCHOR_PRICE`, `PLAN_DISCOUNT_*`, `useDiscountWindow`). **7-day
+  money-back guarantee added** (shipped at 30 days, cut to 7 the same day) in the price card, the sticky bar, Stripe's
+  `CHECKOUT_SUBMIT_TEXT`, the green card (linking `/terms#money-back`), the
+  landing card and FAQ, and the welcome email. Terms §11 rewritten as
+  "Money-Back Guarantee and Refunds", §12 and the top box updated. The
+  welcome email also stopped telling one-time buyers to "cancel your
+  subscription anytime".
+
+Second pass the same day, for clarity on what $29 buys: "Everything included"
+(three abstractions) became **"What you get for $29"** — six concrete rows,
+each sourced in the `WHAT_YOU_GET` comment in `PaywallView`; a **"The details"
+fact sheet** answers price / renews / access (her real end date, purchase day
++ `PLAN_ACCESS_DAYS`) / where / sign-in / refund / help, with
+`PLAN_BLOCKS_COPY` as its footnote; and **"4.9 · 12,800+ women" is removed**
+from the paywall — nothing sources either number. Verified by Playwright
+render at 390x700.
+
+**Not done, needs a decision:** ~~the landing page's "Reviewed by menopause
+specialists" badge~~ (gone with the landing rebuild, 2026-09-12). The support address is still
+split three ways (`support@macurasolutions.us` in Terms and the guarantee,
+`menolisahelp@gmail.com` on the download screen, `support@menolisa.com` in
+the dispute banner).
+
+**2026-09-11 — $29 ONE-TIME. The product is no longer a
 subscription.** Shipped hours after the $29-per-8-weeks version below, and it
 supersedes it entirely. One charge buys 56 days; nothing renews; Checkout runs
 `mode: "payment"`. Full contract in §4 "The plan and its price".

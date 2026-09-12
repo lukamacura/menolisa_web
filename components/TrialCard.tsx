@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Clock, CreditCard } from "lucide-react";
 import type { AccountState } from "@/lib/getAccountState";
-import { PLAN_PRICE, formatPrice } from "@/lib/pricing";
+import { PLAN_PRICE, SUPPORT_EMAIL, formatPrice } from "@/lib/pricing";
 
 export type { AccountState };
 
@@ -210,11 +210,11 @@ export function TrialCard({
       }
       setPortalError(
         data?.error ||
-          "Couldn't open the billing portal. Please try again or email support@menolisa.com."
+          `Couldn't open the billing portal. Please try again or email ${SUPPORT_EMAIL}.`
       );
     } catch {
       setPortalError(
-        "Couldn't open the billing portal. Please try again or email support@menolisa.com."
+        `Couldn't open the billing portal. Please try again or email ${SUPPORT_EMAIL}.`
       );
     } finally {
       setIsPortalLoading(false);

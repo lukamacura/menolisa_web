@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SUPPORT_EMAIL } from "@/lib/pricing";
 
 /**
  * Privacy Policy.
@@ -34,7 +35,10 @@ export const metadata: Metadata = {
 };
 
 const LAST_UPDATED = "August 30, 2026";
-const PRIVACY_EMAIL = "support@macurasolutions.us";
+// The same address as every other surface (see SUPPORT_EMAIL). Aliased rather
+// than used directly only because this page says "privacy requests" around it;
+// it must never become a second address.
+const PRIVACY_EMAIL = SUPPORT_EMAIL;
 
 function Mail() {
   return (

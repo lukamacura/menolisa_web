@@ -5,20 +5,20 @@ import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
+  Bot,
+  Building2,
   Check,
-  Clock,
+  Dumbbell,
   Loader2,
   Lock,
   ShieldAlert,
   ShieldCheck,
   Smartphone,
   Sparkles,
-  Star,
   Sunrise,
   X,
   Zap,
 } from "lucide-react";
-import AnimatedCounter from "@/components/landing/AnimatedCounter";
 import { SocialProofPolaroid } from "@/components/SocialProof";
 import {
   META_CURRENCY,
@@ -29,18 +29,19 @@ import {
 import {
   GUARANTEE_BODY_HEAD,
   GUARANTEE_BODY_TAIL,
+  GUARANTEE_DAYS,
   GUARANTEE_HEADLINE,
-  PLAN_ANCHOR_PRICE,
+  GUARANTEE_INLINE_BODY,
+  PLAN_ACCESS_DAYS,
   PLAN_BLOCKS_COPY,
-  PLAN_DISCOUNT_PCT,
-  PLAN_DISCOUNT_WINDOW_MS,
   PLAN_ID,
   PLAN_PRICE,
   PLAN_WEEKS,
   PRICE_LINE,
   PRICE_SUBLINE,
-  UNLOCK_INLINE_BODY,
-  UNLOCK_INLINE_CLAIM,
+  SUPPORT_EMAIL,
+  WHAT_YOU_GET,
+  formatChargeDate,
   formatPrice,
 } from "@/lib/pricing";
 import { trackFb } from "@/lib/metaPixelClient";
@@ -117,16 +118,6 @@ export interface PaywallViewProps {
 const PRICE = formatPrice(PLAN_PRICE);
 
 /**
- * The strikethrough. Never charged, never lower than {@link PRICE}, and the
- * reason it is safe to run a clock beside it is in the block on
- * `PLAN_ANCHOR_PRICE` in lib/pricing.ts.
- */
-const ANCHOR_PRICE = formatPrice(PLAN_ANCHOR_PRICE);
-
-/** Derived, so the pill can never disagree with the two figures beside it. */
-const SAVED = formatPrice(PLAN_ANCHOR_PRICE - PLAN_PRICE);
-
-/**
  * "Start tonight" is a promise about her evening, so it has to be true when she
  * reads it. Before {@link EVENING_HOUR} her local time it is "today"; after it,
  * "tonight" - the same offer, in the word that is not already wrong.
@@ -150,146 +141,20 @@ function useStartWord(): "tonight" | "today" {
   return useSyncExternalStore(subscribeToNothing, startWordNow, () => "tonight");
 }
 
-/* ── The 30-minute hold on the discounted price ──────────────────────────────
-
-   Three rules, and each of them is the scar of a version that shipped without
-   it:
-
-   1. **It never resets.** The deadline lives in sessionStorage, not in state,
-      so a reload, a remount under <AnimatePresence> or a return from a
-      cancelled Stripe checkout all land on the same clock. The first version of
-      this countdown had a one-tap "get my discount back" button, i.e. a visible
-      reset, and it taught a 45-60 audience that the page is staged — the doubt
-      from which lands on every other claim on the screen.
-   2. **Per tab, not per browser.** localStorage would have a woman who comes
-      back tomorrow land on a paywall that expired last night, which is the one
-      state that converts at nothing. A new visit gets a new window; the same
-      visit never gets a second one.
-   3. **Expiry costs her nothing.** At zero the band fades out and every figure
-      on the page stays exactly where it was. It does NOT flip the price to
-      ANCHOR_PRICE: PRICE_LINE and Stripe's own submit text are one constant
-      (CHECKOUT_SUBMIT_TEXT), so a card that re-priced itself would contradict
-      the sticky bar 500px below it and the Stripe sheet one tap later. See the
-      block at the bottom of this file for what must never be "fixed" here. */
-
-/** Where the deadline lives. Per tab — see rule 2 above. */
-const DEADLINE_KEY = "menolisa:paywall-discount-deadline";
-
-function readDeadline(): number {
-  try {
-    const stored = Number(window.sessionStorage.getItem(DEADLINE_KEY));
-    // A stored deadline further out than a full window is stale or tampered
-    // with; treat it as absent rather than honoring it.
-    if (Number.isFinite(stored) && stored > 0 && stored <= Date.now() + PLAN_DISCOUNT_WINDOW_MS) {
-      return stored;
-    }
-  } catch {
-    // sessionStorage throws in private/blocked contexts. Non-fatal.
-  }
-  return 0;
-}
-
-function writeDeadline(deadline: number) {
-  try {
-    window.sessionStorage.setItem(DEADLINE_KEY, String(deadline));
-  } catch {
-    // Non-fatal: the countdown just restarts on the next load.
-  }
-}
-
-/** `585000` → `"09:45"`. */
-function formatRemaining(ms: number): string {
-  const total = Math.max(0, Math.ceil(ms / 1000));
-  const mm = Math.floor(total / 60);
-  const ss = total % 60;
-  return `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
-}
-
 /**
- * `false` on the server and through hydration, `true` after. This screen is
- * server-rendered on /paywall, and by then sessionStorage may hold a
- * half-spent deadline the server knew nothing about — so the digits sit out
- * hydration and paint the real remaining time immediately after, rather than
- * flashing a full window first. `useSyncExternalStore` is the one hook that
- * flips after hydration without a mismatch warning.
+ * The day her access would end if she bought now - `Nov 7` - for the details
+ * sheet. Client-only for the same reason as {@link useStartWord}: the server
+ * renders in UTC, so the server snapshot is `null` and the sheet prints the
+ * duration instead until hydration swaps the real date in. Mirrors what
+ * `fulfillCheckout` writes (purchase time + PLAN_ACCESS_DAYS).
  */
-function useHydrated(): boolean {
-  return useSyncExternalStore(
-    subscribeToNothing,
-    () => true,
-    () => false
-  );
+const accessEndNow = () =>
+  formatChargeDate(new Date(Date.now() + PLAN_ACCESS_DAYS * 24 * 60 * 60 * 1000));
+
+function useAccessEnd(): string | null {
+  return useSyncExternalStore(subscribeToNothing, accessEndNow, () => null);
 }
 
-function useDiscountWindow(): { remainingMs: number; expired: boolean } {
-  const hydrated = useHydrated();
-  // Resolved during the first client render rather than in an effect, so the
-  // stored countdown paints on the first frame after hydration.
-  const [deadline] = useState(() =>
-    typeof window === "undefined" ? 0 : readDeadline() || Date.now() + PLAN_DISCOUNT_WINDOW_MS
-  );
-  const [now, setNow] = useState(() => (typeof window === "undefined" ? 0 : Date.now()));
-
-  // Persisting is a write to an external system, which is what effects are for.
-  useEffect(() => {
-    if (deadline) writeDeadline(deadline);
-  }, [deadline]);
-
-  useEffect(() => {
-    if (!deadline) return;
-    const id = setInterval(() => {
-      const t = Date.now();
-      setNow(t);
-      if (t >= deadline) clearInterval(id);
-    }, 1000);
-    return () => clearInterval(id);
-  }, [deadline]);
-
-  const remainingMs =
-    hydrated && deadline ? Math.max(0, deadline - now) : PLAN_DISCOUNT_WINDOW_MS;
-
-  return { remainingMs, expired: remainingMs === 0 };
-}
-
-/**
- * The hold, as one compact line above the price card.
- *
- * It carries the same pink border as the card under it so the number and the
- * time left on it read as one object rather than as a banner sitting on top of
- * a price. Height is the constraint: there are only ~73px of slack above the
- * fold at 390x700, so this is a single row at 13px, not a box.
- *
- * The digits are `aria-hidden` and replaced with a minutes figure read once.
- * A per-second live region announces the band sixty times a minute, which is a
- * screen-reader jackhammer rather than urgency.
- */
-function DiscountHold({ remainingMs }: { remainingMs: number }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -4, height: 0, marginBottom: 0 }}
-      transition={{ duration: 0.35, ease: "easeOut" }}
-      className="mb-2 flex items-center justify-center gap-1.5 overflow-hidden rounded-xl border px-3 py-1.5"
-      style={{
-        borderColor: "#ff74b1",
-        background:
-          "linear-gradient(135deg, rgba(255,116,177,0.10) 0%, rgba(255,157,108,0.10) 100%)",
-      }}
-    >
-      <Clock className="h-3.5 w-3.5 shrink-0 text-[#ff74b1]" strokeWidth={2.4} />
-      <p className="text-[13px] font-semibold leading-none text-[#3D3D3D]">
-        Your <span className="font-extrabold text-[#ff74b1]">{PRICE}</span> price is held for{" "}
-        <span aria-hidden className="font-extrabold tabular-nums text-[#ff74b1]">
-          {formatRemaining(remainingMs)}
-        </span>
-        <span className="sr-only">
-          {Math.max(1, Math.ceil(remainingMs / 60000))} more minutes
-        </span>
-      </p>
-    </motion.div>
-  );
-}
 
 // Scannable 2x2 grid, one promise per box. At the payment moment she scans
 // rather than reads, so every box is a 2-3 word headline with one support line.
@@ -379,7 +244,7 @@ const TRUST_LABELS = [
 const TONE_DOT: Record<PlannerDay["chips"][number]["tone"], { dot: string; label: string }> = {
   strength: { dot: "bg-primary", label: "Strength" },
   cardio: { dot: "bg-[#16A34A]", label: "Walk" },
-  power: { dot: "bg-[#F59E0B]", label: "Intervals" },
+  power: { dot: "bg-[#E8A33D]", label: "Intervals" },
 };
 
 function WeekOneCard({
@@ -753,9 +618,7 @@ export function PaywallView({
   // headline and the chart have to name the same thing.
   const outcome = getOutcomeHeadline(goal ?? []);
   const startWord = useStartWord();
-  // Display only. `expired` hides the band and changes nothing else - not the
-  // price, not the button, not the invoice. See useDiscountWindow().
-  const { remainingMs, expired: holdExpired } = useDiscountWindow();
+  const accessEnd = useAccessEnd();
   const primarySymptom = topProblems?.[0] ?? null;
 
   // ViewContent: she has seen the offer. Reported twice, browser and server, and
@@ -1035,24 +898,22 @@ export function PaywallView({
             screen is scanned before it is read. The figure gets the size; the
             sentence keeps the small type under it (and the screen reader).
 
-            The guarantee row is inside this card on purpose. The renewal row
-            above it raises its objection - *they will keep charging me* - the
-            instant she reads it, and the answer was four blocks and ~1,600px
-            below. Objection and answer have to fit in one eyeful. The full
-            green card is still down the page for the reader who wants terms.
+            The money-back guarantee is inside this card on purpose: the price
+            is where "what if this is a scam / what if it doesn't work for me"
+            fires, so the answer has to sit in the same eyeful. The full green
+            card is still down the page for the reader who wants terms.
 
-            Both figures and both sentences come from lib/pricing.ts, and Stripe
+            No strikethrough, no "% off" pill, no countdown (removed
+            2026-09-12). On a cold click for a brand she has never heard of, a
+            $50 anchor with a 30:00 clock is the visual grammar of every scam
+            page she has learned to ignore - and $50 was never a price anything
+            was sold at. The price stands on its own; the guarantee carries the
+            risk.
+
+            Every figure and sentence comes from lib/pricing.ts, and Stripe
             Checkout prints the same sentence under its pay button
             (CHECKOUT_SUBMIT_TEXT opens on PRICE_LINE verbatim). Never retype a
             figure here. ─────────────────────────────────────────────────────── */}
-        {/* The hold, directly above the card it holds. AnimatePresence so the
-            band leaves by collapsing rather than by disappearing between two
-            frames - at zero the page must not jump under her thumb, and the
-            fade is the whole of what expiry does. */}
-        <AnimatePresence initial={false}>
-          {!holdExpired && <DiscountHold key="hold" remainingMs={remainingMs} />}
-        </AnimatePresence>
-
         <motion.div
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1082,34 +943,17 @@ export function PaywallView({
             <span className="text-[22px] sm:text-[24px] font-bold leading-tight tracking-[-0.01em] text-[#2B2627]">
               Start {startWord} for
             </span>
-            {/* The anchor, at the size of the words rather than the size of the
-                number: it is context for {PRICE}, and a strikethrough that
-                competes with the live figure makes the reader do arithmetic on
-                the most important line of the page. aria-hidden because a
-                line-through is not announced - the sr-only sentence below
-                carries it in words instead. */}
-            <span
-              aria-hidden
-              className="text-[24px] sm:text-[26px] font-bold leading-none tracking-[-0.01em] text-[#A89DA3] line-through decoration-[#ff74b1] decoration-2 tabular-nums"
-            >
-              {ANCHOR_PRICE}
-            </span>
             <span className="text-[56px] sm:text-[64px] font-extrabold leading-none tracking-[-0.03em] text-[#15803D] tabular-nums">
               {PRICE}
             </span>
           </p>
-          {/* One pill, not two claims. "{PCT}% off" and "save {SAVED}" are the
-              same fact twice if they are given two elements, so they share one. */}
-          <p className="mt-1.5 flex justify-center">
-            <span className="inline-flex items-center rounded-full bg-[#FFEAF3] px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-[0.06em] text-[#C8367A]">
-              {PLAN_DISCOUNT_PCT}% off &middot; you save {SAVED}
-            </span>
+          <p className="mt-1 text-center text-xs font-semibold text-[#8A8A8A]">
+            One payment &middot; all {PLAN_WEEKS} weeks
           </p>
           {/* The offer as one sentence, for a screen reader and for the rule
-              that this page and Stripe say the same words. The anchor is stated
-              here in words - it is the only place assistive tech hears it. */}
+              that this page and Stripe say the same words. */}
           <p className="sr-only">
-            Regular price {ANCHOR_PRICE}. {PRICE_LINE} {PRICE_SUBLINE}
+            {PRICE_LINE} {PRICE_SUBLINE} {GUARANTEE_HEADLINE}.
           </p>
 
           {/* What {PRICE} covers, and - the part that matters at this price -
@@ -1123,11 +967,10 @@ export function PaywallView({
           <div className="mt-3.5 flex items-baseline justify-between gap-3 rounded-xl border border-[#EFE2E8] bg-white/70 px-3 py-2 text-left">
             <span className="text-sm text-[#5A5A5A]">
               All {PLAN_WEEKS} weeks included
-              {/* The sub-line said "one payment, then nothing", i.e. the same
-                  thing as the words six pixels to its right. It names the
-                  three things she gets instead. */}
+              {/* Concrete nouns, not product names: "Lisa" means nothing yet
+                  at this point of the page. The full list is further down. */}
               <span className="block text-xs text-[#8A8A8A]">
-                Plan, Lisa and symptom tracking
+                Plan, video workouts, AI coach &amp; tracker
               </span>
             </span>
             <span className="shrink-0 whitespace-nowrap text-sm font-extrabold text-[#15803D]">
@@ -1136,17 +979,15 @@ export function PaywallView({
           </div>
 
           {/* The row above answers "will this keep charging me". This one
-              answers what she asks the instant after that - *what do I get,
-              and when* - because until 2026-09-11 it answered the same
-              question as the row above it, in three negations, six pixels
-              below two words that had already settled it. The strongest true
-              sentence available in this slot is that all of it is hers now.
-              See the block above UNLOCK_INLINE_CLAIM in lib/pricing.ts. */}
+              answers the bigger fear on a cold click - "what if it's not for
+              me, or not real?" - with the one reassurance on the page she can
+              hold us to in a contract (Terms §11). See the block above
+              GUARANTEE_HEADLINE in lib/pricing.ts. */}
           <div className="mt-2 flex items-start gap-2 rounded-xl border border-green-200 bg-green-50/80 px-3 py-2.5">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-green-600" strokeWidth={2.4} />
             <p className="text-left text-xs leading-snug text-[#3D3D3D]">
-              <b className="text-green-800">{UNLOCK_INLINE_CLAIM}</b>{" "}
-              {UNLOCK_INLINE_BODY}
+              <b className="text-green-800">{GUARANTEE_HEADLINE}.</b>{" "}
+              {GUARANTEE_INLINE_BODY}
             </p>
           </div>
 
@@ -1188,19 +1029,11 @@ export function PaywallView({
           />
         </div>
 
-        {/* What the subscription is, in one paragraph - and the answer to
-            "what happens after week 8", which the headline above raises and
-            nothing else on the page answered. Deliberately here and not in the
-            headline's type: it sat directly above the price until 2026-09-08,
-            the densest sentence on the screen and the last thing she read
-            before the number, and a comprehension task never goes in front of a
-            decision. An answer to a question she has not asked yet is the same
-            mistake enlarged. See the block on PLAN_BLOCKS_COPY in
-            lib/pricing.ts. */}
-        <p className="mb-4 px-1 text-center text-sm leading-relaxed text-[#5A5A5A]">
-          {PLAN_BLOCKS_COPY}
-        </p>
-        {/* What's included - reminds her what she's paying for at the decision point */}
+        {/* What {PRICE} buys, as things she will actually open (2026-09-12).
+            It was three abstractions - "personalized plan", "Lisa", "symptom
+            tracking" - which tell a cold visitor the category and nothing
+            about the contents. Each row now names what it is and what it does
+            for her, and each is sourced: see WHAT_YOU_GET. */}
         <div
           className="rounded-2xl border p-4 mb-3"
           style={{
@@ -1210,24 +1043,17 @@ export function PaywallView({
           }}
         >
           <h2 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight mb-3">
-            Everything included <HighlightSweep variant="yellow">for you</HighlightSweep>
+            What you get for <HighlightSweep variant="yellow">{PRICE}</HighlightSweep>
           </h2>
-          <ul className="space-y-2.5">
-            {[
-              {
-                bold: `Personalized ${PLAN_WEEKS} week plan`,
-                sub: "daily movement, nutrition, relaxation & habits",
-              },
-              { bold: "Lisa", sub: "your 24/7 menopause AI companion" },
-              { bold: "Symptom tracking", sub: "with symptom history" },
-            ].map((item) => (
+          <ul className="space-y-3">
+            {WHAT_YOU_GET.map((item) => (
               <li key={item.bold} className="flex items-start gap-2.5">
                 <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-yellow-400/90 shrink-0 mt-0.5">
                   <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />
                 </span>
                 <span className="text-sm text-[#3D3D3D] leading-snug">
                   <strong>{item.bold}</strong>
-                  <span className="text-[#6B6B6B]"> &mdash; {item.sub}</span>
+                  <span className="mt-0.5 block text-xs text-[#6B6B6B]">{item.sub}</span>
                 </span>
               </li>
             ))}
@@ -1242,7 +1068,50 @@ export function PaywallView({
               stays because Lisa and the tracker are named nowhere else in the
               funnel; the pictures went. */}
           <p className="mt-3 text-center text-[11px] text-[#8A7F6B] leading-snug">
-            All of it in the app, yours the moment you join.
+            All of it in one app, yours the moment you join. No add-ons, no upsells.
+          </p>
+        </div>
+
+        {/* The details, as a fact sheet (2026-09-12). Every question a
+            careful buyer asks before typing a card number - how much, does it
+            renew, how long, where, how do I log in, can I get my money back,
+            who do I ask - answered in one place, in one line each, with no
+            adjectives. A buyer who is "sure what she gets" is one who has
+            nothing left to look up. The access date is her real one: purchase
+            day + PLAN_ACCESS_DAYS, which is exactly what fulfillCheckout
+            writes. PLAN_BLOCKS_COPY stays as the footnote: it is the one
+            sentence that says what happens when the weeks run out. */}
+        <div className="mb-4 rounded-2xl border border-[#E8DDD9] bg-white px-4 py-3.5">
+          <p className="mb-1 text-center text-[11px] font-extrabold uppercase tracking-[0.12em] text-[#B5ADA9]">
+            The details
+          </p>
+          <dl className="divide-y divide-[#F0E6E2]">
+            {[
+              { k: "Price", v: `${PRICE}, one payment` },
+              { k: "Renews", v: "Never. No subscription" },
+              {
+                k: "Access",
+                v: accessEnd
+                  ? `${PLAN_WEEKS} weeks, until ${accessEnd}`
+                  : `${PLAN_WEEKS} weeks (${PLAN_ACCESS_DAYS} days)`,
+              },
+              { k: "Where", v: "MenoLisa app, iPhone & Android" },
+              { k: "Sign in", v: "The email you pay with. No password" },
+              { k: "Refund", v: `Full refund within ${GUARANTEE_DAYS} days` },
+              { k: "Help", v: SUPPORT_EMAIL },
+            ].map((row) => (
+              <div key={row.k} className="flex items-baseline justify-between gap-3 py-2">
+                <dt className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-[#9A9A9A]">
+                  {row.k}
+                </dt>
+                <dd className="min-w-0 break-words text-right text-[13px] font-semibold text-[#3D3D3D]">
+                  {row.v}
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-2 text-center text-[11px] leading-snug text-[#8A8A8A]">
+            {PLAN_BLOCKS_COPY}
           </p>
         </div>
 
@@ -1271,12 +1140,60 @@ export function PaywallView({
           })}
         </div>
 
-        {/* The guarantee. It is the structure of the offer - one charge, no
-            subscription - rather than a promise about our behaviour, which is
-            why it needs no process and no trust. The money-back footnote went
-            from here and from Terms §11 in the same commit (2026-09-09), and
-            that coupling holds in both directions. Why: lib/pricing.ts, the
-            block above GUARANTEE_HEADLINE. */}
+        {/* Who is behind this (2026-09-12). A cold visitor handing card
+            details to an unnamed entity, in women's health, is gambling -
+            and nothing on the page said who Lisa is, what the plan is built
+            on, or who she is paying. Every line here is checkable: Lisa's AI
+            status is disclosed in the FAQ and enforced by the safety validator
+            (lib/rag/safety-validator.ts sends medication questions to a
+            doctor); the three training modalities are what lib/plan/catalog.ts
+            actually prescribes; the company and address are the ones in the
+            Terms.
+
+            **Do not add a name, a credential or an advisory board here unless
+            it is real and the person has agreed to be named.** An invented
+            OB-GYN converts for a week and is the whole of an FTC complaint. */}
+        <div className="mb-4 rounded-2xl border border-[#E8DDD9] bg-white px-4 py-3.5">
+          <p className="mb-2.5 text-center text-[11px] font-extrabold uppercase tracking-[0.12em] text-[#B5ADA9]">
+            Who&apos;s behind MenoLisa
+          </p>
+          <ul className="space-y-2.5">
+            {[
+              {
+                Icon: Bot,
+                bold: "Lisa is an AI, not a doctor",
+                sub: "She answers from a menopause library built on published research - and when a question belongs with your doctor, she tells you so.",
+              },
+              {
+                Icon: Dumbbell,
+                bold: "The plan is built on what the research supports",
+                sub: "Strength training, daily walking and short intervals, set to the fitness level you told us.",
+              },
+              {
+                Icon: Building2,
+                bold: "A real company you can reach",
+                sub: `Made by Macura Solutions LLC, registered in Wyoming, USA. Real people read ${SUPPORT_EMAIL}.`,
+              },
+            ].map((row) => (
+              <li key={row.bold} className="flex items-start gap-2.5">
+                <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                  <row.Icon className="h-3.5 w-3.5 text-primary" strokeWidth={2.4} />
+                </span>
+                <span className="min-w-0 text-sm leading-snug text-[#3D3D3D]">
+                  <strong>{row.bold}</strong>
+                  <span className="block text-xs text-[#6B6B6B] break-words">{row.sub}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-center text-[10.5px] leading-snug text-[#9A9A9A]">
+            MenoLisa is a wellness product, not medical care.
+          </p>
+        </div>
+
+        {/* The guarantee, in full - the terms, with the link to the contract
+            that binds us to them. It moves with Terms §11 in both directions.
+            Why it is back: lib/pricing.ts, the block above GUARANTEE_HEADLINE. */}
         <div
           className="rounded-2xl border-2 border-green-300 bg-green-50 p-4 mb-4"
           style={{ boxShadow: "0 0 0 2px rgba(22,163,74,0.12), 0 8px 28px rgba(22,163,74,0.12)" }}
@@ -1289,8 +1206,14 @@ export function PaywallView({
                   The head was retyped here in JSX, so an edit to the constant
                   moved the tail and left the bolded sentence behind. */}
               <b className="text-green-700">{GUARANTEE_BODY_HEAD}</b>{" "}
-              {GUARANTEE_BODY_TAIL}
+              <span className="break-words">{GUARANTEE_BODY_TAIL}</span>
             </p>
+            <a
+              href="/terms#money-back"
+              className="mt-2 text-xs font-semibold text-green-700 underline underline-offset-2"
+            >
+              Full guarantee terms
+            </a>
           </div>
         </div>
 
@@ -1302,21 +1225,16 @@ export function PaywallView({
             belief and adds scroll between her and the button. The polaroid
             stays - it rotates through different women, so a second viewing is
             new proof rather than the same proof. */}
-        <div className="mb-2 flex items-center justify-center gap-2">
-          <div className="flex">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-            ))}
-          </div>
-          <span className="text-xs sm:text-sm font-semibold text-[#3D3D3D]">
-            4.9 &middot;{" "}
-            <AnimatedCounter
-              target={12800}
-              formatter={(n) => `${n.toLocaleString("en-US")}+`}
-            />{" "}
-            women
-          </span>
-        </div>
+        {/* "4.9 · 12,800+ women" sat here until 2026-09-12. Nothing in the
+            codebase or the database sources either number, and on the screen
+            whose job is trust it is the one claim a sceptic can disprove -
+            next to a guarantee she can hold us to. The members below are real
+            and speak in their own words (lib/testimonials.ts drops anything
+            unconfirmed from production). Put a rating back only with a
+            source you can show. */}
+        <p className="mb-2 text-center text-[11px] font-extrabold uppercase tracking-[0.12em] text-[#B5ADA9]">
+          Members, in their own words
+        </p>
         <SocialProofPolaroid />
 
         {/* What actually happens when she taps the button. The last unanswered
@@ -1337,7 +1255,9 @@ export function PaywallView({
               {
                 Icon: Smartphone,
                 bold: "Download the app",
-                sub: "iPhone or Android. Sign in with the email you just used.",
+                // Why buy here rather than in the store: the plan her answers
+                // built is saved to this account, and nowhere else.
+                sub: "iPhone or Android. Sign in with the email you just used - your plan and your answers are already there, nothing to redo.",
               },
               {
                 Icon: Sunrise,
@@ -1372,18 +1292,27 @@ export function PaywallView({
       <div className="fixed bottom-0 inset-x-0 z-40 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/85 px-4 pt-3 pb-[calc(10px+env(safe-area-inset-bottom))]">
         <div className="max-w-md mx-auto w-full">
           <CheckoutButton loading={checkoutLoading} onClick={handleCheckoutClick} />
-          {/* The terms she is agreeing to, on the element she agrees with. The
-              price card scrolls away and this bar does not, so the renewal is
-              disclosed on the screen she is looking at when she taps. */}
+          {/* What she is agreeing to, on the element she agrees with. The price
+              card scrolls away and this bar does not, so the one-charge terms
+              are disclosed on the screen she is looking at when she taps.
+
+              PRICE_LINE stays; the "Terms" link beside it went on 2026-09-12.
+              It was there for the auto-renewal disclosure, and there is no
+              renewal to disclose - checkout is `mode: "payment"`, so the whole
+              of what she is agreeing to is the sentence already printed here.
+              A legal link is a way off the page 40px under the only button
+              that matters, and Terms is still one tap away in the guarantee
+              card above (/terms#money-back), which is the section a buyer at
+              this moment actually wants. */}
           <p className="text-[11px] sm:text-xs text-[#5A5A5A] text-center mt-2 leading-relaxed">
-            {PRICE_LINE}{" "}
-            <a href="/terms#subscription" className="underline">
-              Terms
-            </a>
+            {PRICE_LINE}
           </p>
           <p className="text-[11px] sm:text-xs text-[#7A7A7A] text-center mt-1 sm:mt-1.5 leading-relaxed">
             <span className="inline-flex items-center justify-center gap-1 flex-wrap">
-              <b>Safe & Secure</b> with
+              {/* The guarantee rides the element she taps - the price card has
+                  scrolled away by then. Stripe's submit text repeats it. */}
+              <b className="text-green-700">{GUARANTEE_HEADLINE}</b> &middot;
+              <b>Secure</b> with
               <Image
                 src="/badges/stripe.webp"
                 alt="Stripe"
@@ -1483,8 +1412,8 @@ export function DisputedAccountBanner() {
         <strong className="block">Your account is under review.</strong>
         <span>
           A payment dispute was filed. Email{" "}
-          <a className="underline" href="mailto:support@menolisa.com">
-            support@menolisa.com
+          <a className="underline" href={`mailto:${SUPPORT_EMAIL}`}>
+            {SUPPORT_EMAIL}
           </a>{" "}
           to resolve.
         </span>
@@ -1497,24 +1426,12 @@ export function DisputedAccountBanner() {
  * What is deliberately gone from this screen (2026-09-08), so nobody brings it
  * back by reflex:
  *
- *  - **A countdown that changes a figure, and a reset button.** The clock and
- *    the struck-through anchor are back (2026-09-11) and the rules they came
- *    back under are the whole point of them:
- *
- *      1. Expiry hides the band. It does not raise the price, re-label the
- *         button, or touch the invoice. PRICE_LINE is the same constant Stripe
- *         prints under its own pay button (CHECKOUT_SUBMIT_TEXT), so a card
- *         that re-priced itself on a client-side timer would contradict the
- *         sticky bar 500px below it and the Stripe sheet one tap later.
- *      2. Nothing about the money is client-controlled. The deadline is in
- *         sessionStorage and the clock is hers, so `expired` is trivially
- *         forgeable - which is harmless exactly because it buys nothing. Do not
- *         "fix" the mismatch by selecting a second Stripe Price when it flips:
- *         that inverts the one rule (every displayed figure >= the charge) and
- *         lets a user's system clock decide whether she pays double.
- *      3. It never visibly resets. There is no "get my discount back" button -
- *         that one shipped once, and a 45-60 audience that catches a timer
- *         resetting stops believing the rest of the screen too.
+ *  - **The countdown and the struck-through $50 anchor** (removed
+ *    2026-09-12). On a cold click for an unknown brand they read as scam-page
+ *    furniture, and $50 was never a price the plan was sold at, i.e. a
+ *    former-price claim with nothing behind it. The price stands alone and the
+ *    money-back guarantee carries the risk. If a timer ever comes back, it
+ *    must never change a figure and never visibly reset.
  *  - **The free-trial branch.** No `trial_period_days`, no "$0 today", no
  *    first-charge date. The card is charged the full {PRICE} at checkout.
  *  - **The first-week discount and its coupon.** Gone 2026-09-11 with the

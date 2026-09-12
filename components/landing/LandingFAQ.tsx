@@ -1,90 +1,62 @@
-"use client"
-
+import { ChevronDown } from "lucide-react";
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion"
-import { motion, useReducedMotion } from "framer-motion"
-import { useReplayableInView } from "@/hooks/useReplayableInView"
-import { HighlightedTextByRows } from "@/components/landing/HighlightedTextByRows"
-import { PLAN_PRICE, PLAN_WEEKS, formatPrice } from "@/lib/pricing"
+  GUARANTEE_DAYS,
+  PLAN_ACCESS_DAYS,
+  PLAN_PRICE,
+  PLAN_WEEKS,
+  SUPPORT_EMAIL,
+  formatPrice,
+} from "@/lib/pricing";
+
+// Each answer is a claim about this codebase - keep them checkable, the same
+// rule the Terms and Privacy pages are written under (CLAUDE.md §4).
+const FAQS = [
+  {
+    q: "Is the check really free?",
+    a: "Yes. The check and your results are free, and we don't ask for your email. You only pay if you decide to unlock your plan.",
+  },
+  {
+    q: "How much does the plan cost?",
+    a: `${formatPrice(PLAN_PRICE)}, paid once, for your full ${PLAN_WEEKS}-week plan. Nothing renews and there is nothing to cancel. Your access runs for ${PLAN_ACCESS_DAYS} days, and you can come back for another block if you want one.`,
+  },
+  {
+    q: "What if it's not for me?",
+    a: `Then you get your money back. Email ${SUPPORT_EMAIL} within ${GUARANTEE_DAYS} days of paying and we'll refund the full ${formatPrice(PLAN_PRICE)}. No reason needed, no forms.`,
+  },
+  {
+    q: "Where do I use my plan?",
+    a: "In the MenoLisa app for iPhone and Android. After you join, you sign in with the email you used at checkout.",
+  },
+  {
+    q: "Is Lisa a real person?",
+    a: "No. Lisa is an AI trained on menopause research. She gives clear, research-backed information, not medical advice, and she'll tell you when a question is one for your doctor.",
+  },
+  {
+    q: "Is my information private?",
+    a: "Your answers, symptoms and plan stay in your account. We never send your health information to advertisers. The Privacy Policy has the details.",
+  },
+];
 
 export default function LandingFAQ() {
-  const prefersReducedMotion = useReducedMotion()
-  const { ref: sectionRef, isInView } = useReplayableInView<HTMLElement>({ amount: 0.3 })
-  
-  const faqs = [
-    {
-      question: "What can I ask Lisa?",
-      answer:
-        "Anything about menopause. Hot flashes, night sweats, mood swings, brain fog, weight gain, sleep problems, HRT, supplements, vaginal dryness, libido changes - nothing is off limits. Lisa is trained on menopause research and gives you clear, calm answers without judgment.",
-    },
-    {
-      question: "Is Lisa a real person?",
-      answer:
-        "Lisa is an AI trained specifically on menopause research and education. She's available 24/7, never rushes you, and never judges. She gives research-backed information - not medical advice. Always consult your doctor for treatment decisions.",
-    },
-    {
-      question: "How is this different from Googling?",
-      answer:
-        "Google gives you 50 different answers, half of them terrifying. Lisa gives you one clear, research-backed explanation written for real women, not medical journals. No clickbait, no scare tactics, no trying to sell you supplements.",
-    },
-    {
-      question: "What makes MenoLisa different from other tracking apps?",
-      answer:
-        "Most apps just track. MenoLisa explains. Lisa answers your questions, helps you understand your patterns, and gives you the knowledge to advocate for yourself at doctor's appointments. It's a companion, not just a tracker.",
-    },
-    {
-      question: "Is my data private?",
-      answer: "Yes. Your conversations with Lisa and your symptom data are encrypted and never shared. Only you can see them.",
-    },
-    {
-      question: "How much does it cost, and will I be charged again?",
-      answer: `${formatPrice(PLAN_PRICE)}, paid once, covers your full ${PLAN_WEEKS}-week plan - the plan, Lisa, the tracker, all of it. It is not a subscription: there is no auto-renewal, we don't keep your card for a later charge, and there is nothing to cancel. Your access runs for the ${PLAN_WEEKS} weeks and then ends, and you can come back for another block whenever you want one.`,
-    },
-  ]
-
   return (
-    <section ref={sectionRef} id="faq" className="py-16 px-4">
-      <div className="max-w-4xl mx-auto">
-        <div 
-          className="bg-card rounded-lg p-8 sm:p-12 shadow-2xl backdrop-blur-lg"
-
-        >
-          <motion.div 
-            className="text-center mb-16"
-            initial={{ opacity: 0, y: 20 }}
-            animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-            transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-          >
-            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-6 text-foreground">
-              Common <HighlightedTextByRows text="questions" isInView={isInView} prefersReducedMotion={prefersReducedMotion} delayMs={500} />
-            </h2>
-            <p className="text-lg sm:text-xl text-muted-foreground">
-              Everything you need to know.
-            </p>
-          </motion.div>
-
-          <Accordion type="single" className="space-y-4">
-            {faqs.map((faq, index) => (
-              <AccordionItem 
-                key={index} 
-                value={`item-${index}`} 
-                className="rounded-lg px-6 py-2 bg-[rgba(255,255,255,0.5)] backdrop-blur"
-              >
-                <AccordionTrigger className="text-left font-semibold text-lg">
-                  {faq.question}
-                </AccordionTrigger>
-                <AccordionContent className="text-muted-foreground leading-relaxed pt-2">
-                  {faq.answer}
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
+    <section id="faq" className="scroll-mt-24 px-4 py-14">
+      <div className="mx-auto max-w-2xl">
+        <h2 className="text-center text-3xl font-bold text-[#2E2A2B] sm:text-4xl">Questions</h2>
+        <div className="mt-8 divide-y divide-[#E8DDD9] rounded-2xl border border-[#E8DDD9] bg-[#FFFCF8]">
+          {FAQS.map((item) => (
+            <details key={item.q} className="group px-5">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 font-semibold text-[#2E2A2B] [&::-webkit-details-marker]:hidden">
+                {item.q}
+                <ChevronDown
+                  className="h-5 w-5 shrink-0 text-[#C2437F] transition-transform group-open:rotate-180"
+                  aria-hidden
+                />
+              </summary>
+              <p className="pb-4 text-[15px] leading-relaxed text-[#5B5557]">{item.a}</p>
+            </details>
+          ))}
         </div>
       </div>
     </section>
-  )
+  );
 }

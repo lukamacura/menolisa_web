@@ -90,10 +90,41 @@ export const NUDGE_AUTHOR = {
  * banner that clamps at three lines exactly as the real one does.
  */
 export const QUIZ_NUDGES: Record<string, string> = {
-  // Screen 1 — the ad's landing page, and the 49% loss. She has just arrived
-  // from a creative that ended on "tap your symptom"; this says the tapping is
-  // the point rather than a form to get through.
-  q4_symptoms: "Tap anything that sounds like you, even what you've gotten used to.",
+  // ── Screen 1 (`q_symptom_primary`) deliberately has NO entry. ────────────
+  //
+  // It is the funnel's largest loss and the screen this whole component was
+  // written for, so the absence needs the longer explanation.
+  //
+  // First, the history, because it is the cheapest lesson in this file: the
+  // entry here was keyed `q4_symptoms` and therefore **rendered nothing at all
+  // between 2026-09-05 and 2026-09-12**. That step was deleted when the screen
+  // became single-select, `QUIZ_NUDGES[step]` returned `undefined` for its
+  // replacement, and the component bailed at the `!message` guard — so the one
+  // note written against the loss described at the top of this file was dead
+  // for a week on the only screen that takes 100% of paid traffic, and nothing
+  // failed. A key here that matches no `Step` is silent. Grep this file on any
+  // step rename.
+  //
+  // Second, why it is not simply re-keyed. Since 2026-09-12 that screen carries
+  // the funnel's only offer headline above the card — the benefit, "free
+  // 2-minute check", "no email needed". This banner is `fixed top-0` and spans
+  // roughly y=20..140, and the headline sits at y=12: **the banner covers the
+  // offer.** Measured at 390x700, re-keying it hid the headline from ~2.6s to
+  // ~8.6s against a 9.0s median dwell — six of the first nine seconds, on the
+  // screen where a third of paid traffic leaves before one tap. A six-second
+  // overlay cannot be bought with the one permanent promise the page has.
+  //
+  // And it is not needed there any more. Its job was a reason to start, which
+  // the headline now does better and does not stop doing; and its other
+  // candidate job — giving her permission to stop *ranking* nine symptoms she
+  // has five of (9.0s dwell here against 4.6s on the identically-shaped age
+  // grid) — is carried permanently by the screen's own sub-line, "More than
+  // one? Tap the one you'd fix first.", which sits in the card where she is
+  // already looking rather than over the top of it.
+  //
+  // If a note is ever wanted on that screen again, it needs a position that is
+  // not the top of the viewport. Do not solve it with a delay: every delay long
+  // enough to protect the headline is still inside the dwell it then covers.
 
   // Screen 2 — the first screen that asks for something about her rather than
   // about how she feels, and the first place "why do you need this" arrives.

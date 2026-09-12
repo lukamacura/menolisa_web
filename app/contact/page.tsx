@@ -2,8 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-
-const SUPPORT_EMAIL = "menolisahelp@gmail.com"
+import { SUPPORT_EMAIL } from "@/lib/pricing"
 
 export default function ContactPage() {
   const [copied, setCopied] = useState(false)

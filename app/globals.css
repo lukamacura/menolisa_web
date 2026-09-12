@@ -13,7 +13,26 @@
 :root {
   --background: oklch(0.9399 0.0203 345.6985);
   --foreground: oklch(0.4712 0 0);
-  --card: oklch(0.9498 0.0500 86.8891);
+  /* Warm paper, not butter yellow. This was oklch(0.9498 0.05 86.8891) =
+     #FDEDC9 - a saturated pale yellow at hue 87 sitting on a pink #F6E6EE
+     ground, i.e. a 260-degree hue jump with nothing bridging it. It was a
+     leftover theme value, never a decision, and it was the "random yellow
+     box" on the quiz card, the results cards and the download card.
+
+     #FFFCF8 is the paper <PlanStage />, <RewardBoards /> and <PaywallView />
+     already hand-roll for their own surfaces (#FFFDF8 / #FBF4EE / #F6EEE8 /
+     #F3EDE9), every one of them bordered #E8DDD9. Three components already
+     agreed on this ramp; the token was the only surface not following it.
+
+     It is deliberately *lighter* than --background rather than darker: the
+     card lifts off the ground and the #E8DDD9 border draws the edge. A card
+     that is merely a different hue at the same lightness reads as a stain.
+
+     It is also what buys the accent budget. The funnel wants many meaningful
+     colours (rose = the load now, green = the gap closing, blue = clinical
+     fact, violet = treatment, amber = mid-scale, pink = the tap) and none of
+     them is legible at /10 opacity on a container that is itself coloured. */
+  --card: oklch(0.9923 0.0062 75.4078);
   --card-foreground: oklch(0.4712 0 0);
   --popover: oklch(1.0000 0 0);
   --popover-foreground: oklch(0.4712 0 0);
@@ -275,16 +294,6 @@ input[type="reset"] {
   min-height: 48px;
 }
 
-/* Floating animation for Add Symptom button */
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(-8px);
-  }
-}
-
 /* Fade in down animation for header */
 @keyframes fadeInDown {
   from {
@@ -356,8 +365,14 @@ input[type="reset"] {
   overflow: hidden;
 }
 
+/* Same two stops as the funnel's CTA_GRADIENT_STYLE (app/register/page.tsx).
+   This was `#ff74b1 -> #ffeb76`, so the landing page's primary button and the
+   button one tap later inside /register were different gradients - pink into
+   yellow here, pink into coral there. Whichever is right, they cannot be
+   different: it is the same brand, one navigation apart. Change both or
+   neither. */
 .btn-primary {
-  background: linear-gradient(135deg, #ff74b1 0%, #ffeb76 100%);
+  background: linear-gradient(135deg, #FF74B1 0%, #FF9D6C 100%);
   color: black;
   border: none;
   border-bottom: 2px solid var(--color-primary-dark);
@@ -802,113 +817,5 @@ input[type="button"],
     background: var(--primary);
     -webkit-text-fill-color: var(--primary);
   }
-  
-  .glassy-bubble {
-    animation: none !important;
-  }
 }
 
-/* ========================================
-   GLASSY BUBBLES (Landing Page)
-   Moved from runtime JS injection for better LCP
-   ======================================== */
-.glassy-bubble {
-  position: absolute;
-  border-radius: 50%;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 182, 193, 0.5) 0%,
-    rgba(255, 218, 185, 0.45) 30%,
-    rgba(233, 213, 255, 0.5) 70%,
-    rgba(255, 255, 255, 0.3) 100%
-  );
-  border: 2px solid rgba(255, 255, 255, 0.5);
-  box-shadow:
-    0 8px 32px rgba(236, 72, 153, 0.15),
-    0 2px 12px rgba(219, 39, 119, 0.1);
-  pointer-events: none;
-  opacity: 0.8;
-  /* Promote to its own compositor layer so the infinite transform animation is
-     a GPU transform per frame instead of a main-thread repaint of the gradient,
-     border and two box-shadows. Without this the bubbles cost real INP. */
-  will-change: transform;
-  contain: layout paint style;
-}
-
-/* Phones are where the Speed Insights score hurts most and where the bubbles are
-   least visible anyway — keep a few for the effect, drop the rest of the layers. */
-@media (max-width: 767px) {
-  .glassy-bubble:nth-of-type(n + 5) {
-    display: none;
-  }
-}
-
-.animate-float-1 {
-  animation: float-bubble-1 20s ease-in-out infinite;
-}
-
-.animate-float-2 {
-  animation: float-bubble-2 18s ease-in-out infinite;
-}
-
-.animate-float-3 {
-  animation: float-bubble-3 15s ease-in-out infinite;
-}
-
-.animate-float-1-slow {
-  animation: float-bubble-1 25s ease-in-out infinite;
-}
-
-.animate-float-2-medium {
-  animation: float-bubble-2 14s ease-in-out infinite;
-}
-
-.animate-float-3-fast {
-  animation: float-bubble-3 12s ease-in-out infinite;
-}
-
-.animate-float-1-fast {
-  animation: float-bubble-1 10s ease-in-out infinite;
-}
-
-.animate-float-3-slow {
-  animation: float-bubble-3 22s ease-in-out infinite;
-}
-
-@keyframes float-bubble-1 {
-  0%, 100% {
-    transform: translate(0, 0) scale(1);
-  }
-  25% {
-    transform: translate(40px, -50px) scale(1.08);
-  }
-  50% {
-    transform: translate(-25px, -80px) scale(1);
-  }
-  75% {
-    transform: translate(50px, -35px) scale(0.95);
-  }
-}
-
-@keyframes float-bubble-2 {
-  0%, 100% {
-    transform: translate(0, 0);
-  }
-  33% {
-    transform: translate(-60px, -70px);
-  }
-  66% {
-    transform: translate(40px, -100px);
-  }
-}
-
-@keyframes float-bubble-3 {
-  0%, 100% {
-    transform: translateY(0) translateX(0);
-    opacity: 0.9;
-  }
-  50% {
-    transform: translateY(-70px) translateX(30px);
-    opacity: 1;
-  }
-}

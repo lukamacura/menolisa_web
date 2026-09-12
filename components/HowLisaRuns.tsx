@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { PLAN_WEEKS } from "@/lib/pricing";
@@ -22,11 +21,14 @@ import { PLAN_WEEKS } from "@/lib/pricing";
  * scroll into was the one she read. It is four static rows now. Nothing here
  * needs to be watched to be understood.
  *
- * Under the rows sit the two store listings, as captured. They are the only
- * proof on this page that the thing she is about to pay for is a real published
- * app rather than a web page - the plan shots in block 1 prove the product, not
- * the shipment. Screenshots of our own listings, not badges: a badge is a link
- * we drew, a listing is Apple's and Google's own chrome around our name.
+ * **No store listings, before the purchase (removed 2026-09-12).** Two
+ * captured App Store / Google Play listings sat under the rows, meant as proof
+ * the app is real. Each listing prints "Free · In-App Purchases" in Apple's and
+ * Google's own chrome, one screen before a $29 web checkout, so the page itself
+ * suggested the cheaper route: leave, search the store, and buy (or not) there
+ * — outside the funnel, outside attribution, and without the plan her quiz
+ * built. The store badges live on the post-checkout download screen, which is
+ * the one place they belong. Do not bring a listing back above the paywall.
  */
 
 type Step = { title: string; body: string };
@@ -51,14 +53,6 @@ function buildSteps(topLabel: string): Step[] {
     },
   ];
 }
-
-/** The listings, at their intrinsic size - `next/image` needs both to reserve
-    the box, and a wrong ratio here is a layout shift on the slowest screen in
-    the funnel. */
-const STORE_SHOTS = [
-  { src: "/screenshots/app_store.webp", alt: "MenoLisa on the App Store", w: 446, h: 916 },
-  { src: "/screenshots/play_store.webp", alt: "MenoLisa on Google Play", w: 439, h: 860 },
-];
 
 export function HowLisaRuns({
   topLabel,
@@ -91,29 +85,6 @@ export function HowLisaRuns({
           </li>
         ))}
       </ul>
-
-      <div className="mt-4 border-t border-[#EFE4DC] pt-3">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9A9A9A]">
-          Live on both stores
-        </p>
-        <div className="mt-2 grid grid-cols-2 gap-2.5">
-          {STORE_SHOTS.map((shot) => (
-            <div
-              key={shot.src}
-              className="overflow-hidden rounded-xl border border-[#E8DDD9] bg-[#F8F4F1]"
-            >
-              <Image
-                src={shot.src}
-                alt={shot.alt}
-                width={shot.w}
-                height={shot.h}
-                sizes="(max-width: 448px) 45vw, 200px"
-                className="h-auto w-full"
-              />
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }

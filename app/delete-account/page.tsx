@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { LogIn } from "lucide-react";
+import { SUPPORT_EMAIL } from "@/lib/pricing";
 
 export const metadata: Metadata = {
   title: "Delete Your Account | MenoLisa",
@@ -52,10 +53,10 @@ export default function DeleteAccountPage() {
             If you prefer, you may also request account deletion by contacting
             us at{" "}
             <a
-              href="mailto:support@macurasolutions.us"
+              href={`mailto:${SUPPORT_EMAIL}`}
               className="text-primary hover:underline"
             >
-              support@macurasolutions.us
+              {SUPPORT_EMAIL}
             </a>
             .
           </p>

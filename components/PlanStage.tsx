@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
 import {
   AnimatePresence,
   animate,
@@ -10,8 +9,6 @@ import {
   useMotionValue,
   useMotionValueEvent,
   useReducedMotion,
-  useTransform,
-  type AnimationPlaybackControls,
   type MotionValue,
 } from "framer-motion";
 import { Check, Sparkles } from "lucide-react";
@@ -21,93 +18,96 @@ import { PLAN_DAYS } from "@/lib/planTimeline";
 import { PLAN_WEEKS } from "@/lib/pricing";
 
 /**
- * The plan scroll, staged.
+ * The plan, playing on a phone.
  *
- * The scroll used to be a still: her name written on parchment, with two static
- * grids stacked underneath it (the 8-week arc, then "every day, four things").
- * Three separate things saying one thing. Now the parchment is the stage and
- * those grids play *inside* it, in the order she'd actually live them:
+ * Two acts, in the order she'd live them:
  *
- *   0. sealed - the scroll rolled shut. Not an act: it is what she scrolls
- *                *to*. It unrolls the first time it comes into view, and only
- *                then does act 1 begin. See "The entrance" below.
- *   1. `plan`  - the sealed scroll with her name on it. This is yours.
- *   2. `today` - a phone rises out of the scroll: today's four tasks, ticking
- *                themselves off one by one.
- *   3. `weeks` - the same phone, one screen over: 56 days filling in week by
+ *   1. `today` - today's four tasks, ticking themselves off one by one. The
+ *                screen opens on her name and the size of the ask: the plan is
+ *                already built and it costs about fifteen minutes.
+ *   2. `weeks` - the same phone, one screen over: 56 days filling in week by
  *                week through the three phases, ending on a finished plan.
  *
- * **It is a film, not a widget.** Nothing here is tappable, draggable or
- * focusable - she is mid-funnel reading a pitch, and a control she has to
- * discover is a control that mostly goes undiscovered while stealing the taps
- * meant for the CTA. The whole subtree is `pointer-events-none` and exposed to
- * assistive tech as a single labelled image.
+ * ── The scroll, and why it is gone (2026-09-12) ──────────────────────────────
  *
- * Cost, because this plays on a $59 sales page on a mid-range phone:
+ * All of this used to play inside a parchment scroll (`/illustrations/offer.webp`)
+ * that unrolled on arrival, with a first act that wrote her name onto the paper
+ * in script under a wax seal. Three things were wrong with it and only the
+ * first is aesthetic:
  *
- * - **One clock.** Every act is driven off one `progress` motion value. The
+ * - **The parchment was the wrong object.** What she buys runs on the phone in
+ *   her hand, every morning, for 56 days. A sealed scroll says "certificate";
+ *   the product says "open the app and do four things". The render was also 27KB
+ *   of illustration downloaded twice over (the bottom roll is the same file
+ *   painted back on top) and `priority`, i.e. competing with the hero for the
+ *   first bytes on the screen that has to land fastest.
+ * - **It cost the phone two thirds of its size.** The phone was pinned inside
+ *   the paper's bounds at 56% of the scroll's width - ~190px - so the one thing
+ *   on the screen worth reading was the smallest thing on it. Standalone it is
+ *   `PHONE_MAX_PX` wide, and the task rows are legible at 45-60 eyesight
+ *   without the reader leaning in.
+ * - **Act 1 spent 3.4 seconds on packaging.** Her name in script is a lovely
+ *   moment and it delivered nothing: the name is already on the screen twice
+ *   (the h1 above, and the tasks are hers). The act that replaced it is the
+ *   product doing its job, and act 2 - the whole 8-week arc - now arrives ~3.5s
+ *   sooner, which matters on a block she may scroll past.
+ *
+ * What survived deliberately: it is still a **film, not a widget**. Nothing
+ * here is tappable, draggable or focusable - she is mid-funnel reading a pitch,
+ * and a control she has to discover is a control that mostly goes undiscovered
+ * while stealing the taps meant for the CTA. The whole subtree is
+ * `pointer-events-none` and exposed to assistive tech as a single labelled
+ * image.
+ *
+ * Cost, because this plays on a sales page on a mid-range phone:
+ *
+ * - **One clock.** Both acts are driven off one `progress` motion value. The
  *   segment bar *is* that value (transform only, no renders), and the act flips
  *   when it reaches 1. One thing to pause, one thing to reset.
  * - **It only runs while she can see it.** `useInView` gates the clock and the
- *   CSS day-fill together, so a scrolled-past scroll costs nothing.
+ *   CSS day-fill together, so a scrolled-past stage costs nothing.
  * - **Renders are counted.** Both screens derive their state from `progress`
  *   and call `setState` only when the derived value actually changes: 4 renders
  *   for the tick-off, 8 for the week counter. The 56 day dots re-render never -
  *   they are CSS animations with a per-dot delay (see `.plan-day` in
  *   globals.css).
  * - **No blur, anywhere.** Animated `filter: blur()` is the one effect here
- *   that reliably drops frames on mobile; the letters and the act transitions
- *   use opacity and transform only.
+ *   that reliably drops frames on mobile; the act transitions use opacity and
+ *   transform only.
+ * - **No images at all.** The phone, its status bar and both screens are CSS
+ *   boxes and two lucide glyphs, so this block adds nothing to the page's
+ *   download weight.
  *
- * Geometry note: the paper inside offer.webp runs 10%-90% across and
- * 17.8%-83.3% down. The phone is pinned inside those bounds and the bottom roll
- * is painted back over the top of it (BOTTOM_ROLL_CLIP), so the phone rises out
- * from behind the roll instead of floating on the page.
- *
- * **The entrance.** Her name being written onto the paper is the made-for-you
- * moment of the whole funnel, and it used to play to an empty room: the stage
- * mounts with the plan block, which sits roughly a viewport above where the
- * scroll actually lands, so act 1 drew itself while it was still below the fold.
- * The act *clock* was gated on `useInView` but the act *contents* were not, so
- * by the time she scrolled down the ink was already dry and she got a still.
- *
- * So the scroll now starts shut and opens on arrival. One motion value
- * (`unroll`, 0 -> 1) drives two layers off the same number:
- *
- *   - the bottom roll travels down from just under the top roll to its resting
- *     place (`ROLL_TRAVEL_PCT` of the illustration's height), and
- *   - the paper is clipped to exactly the roll's top edge the whole way, so no
- *     paper is ever visible below the roll that has not been unrolled yet.
- *
- * Nothing is written on the paper until that finishes - only then does the act
- * clock start, which is what makes the name land on an open scroll. It happens
- * once per session: scrolling away and back never re-seals it, and scrolling
- * away *during* the unroll pauses it rather than letting it finish unseen.
+ * **The entrance.** The stage mounts with the plan block, which sits roughly a
+ * viewport above where it actually lands, so anything that animates on mount
+ * draws itself below the fold and she arrives on a still. The scroll used to
+ * solve this by staying shut until she got there; the phone does the same thing
+ * with one latched observer - it does not exist on the page until `ARM_AMOUNT`
+ * of the stage is in front of her, and only then does the act clock start. It
+ * happens once per session: scrolling away and back never replays the entrance,
+ * and scrolling away mid-act pauses the clock rather than playing to an empty
+ * room.
  */
 
-type ActId = "plan" | "today" | "weeks";
+type ActId = "today" | "weeks";
 
-/* Holds are ~20% shorter than they were (4200/5200/5400): the whole loop ran
-   just under 15s, which is a long time to hold a reader who is mid-scroll on a
-   sales page, and every act had settled well before its hold ran out. The beat
-   sheets below moved with them so nothing lands in a dead act - see
-   TICK_START_MS and FILL_SPAN_MS.
+/* Holds. The whole loop runs ~9s, down from ~15s when a sealed-scroll act sat
+   in front of these two - which is a long time to hold a reader who is
+   mid-scroll on a sales page.
+
+   Act 1 is 400ms longer than it was inside the scroll: its header now carries
+   her name and the size of the ask, and she needs a beat to read that before
+   the first row ticks (see TICK_START_MS).
 
    The captions are one short line each. They used to run to a full sentence of
    copy apiece, which is a second thing to read under a picture that is already
-   saying it, and the block under the scroll had to reserve two lines of height
+   saying it, and the block under the phone had to reserve two lines of height
    for them. The picture makes the point; the caption only has to name it. */
 const ACTS: { id: ActId; label: string; hold: number; caption: string }[] = [
   {
-    id: "plan",
-    label: "Your plan, sealed",
-    hold: 3400,
-    caption: "Your name on it, before you start.",
-  },
-  {
     id: "today",
     label: "A day on the plan",
-    hold: 4200,
+    hold: 4600,
     caption: "Four small things a day.",
   },
   {
@@ -118,63 +118,90 @@ const ACTS: { id: ActId; label: string; hold: number; caption: string }[] = [
   },
 ];
 
-/** Where the scroll's bottom roll starts, as a % of the illustration's height.
-    The paper above it is repainted over the phone, so the phone reads as rising
-    out of the scroll. */
-const BOTTOM_ROLL_TOP_PCT = 81;
-const BOTTOM_ROLL_CLIP = `inset(${BOTTOM_ROLL_TOP_PCT}% 0 0 0)`;
+/* ── The entrance ───────────────────────────────────────────────────────────── */
 
-/* ── The unroll ─────────────────────────────────────────────────────────── */
+/** How much of the stage has to be on screen before the phone arrives.
 
-/** How long the scroll takes to open, in ms. Long enough to read as paper
-    rather than a swipe, short enough that act 1 still has its full 3.4s hold to
-    write her name in afterwards.
-
-    Raised from 780 on 2026-08-31, with ARM_AMOUNT and UNROLL_DELAY_MS: at 780
-    against a 0.3 threshold the scroll had already flicked open by the time she
-    had finished scrolling to it, which is the same "arrived on a still" problem
-    the entrance was built to fix, one step earlier. */
-const UNROLL_MS = 1000;
-
-/** How much of the scroll has to be on screen before it opens.
-
-    0.3 fired on a sliver - roughly the moment the top roll cleared the fold,
-    with the paper still under her thumb - so the unroll played at the bottom
-    edge of the screen while she was still scrolling towards it. Half the
-    illustration is ~255px, which puts the paper properly in front of her before
-    it does anything. It has to stay reachable on the shortest viewport the
-    funnel supports (375x557, less the fixed CTA), which it is by ~200px. */
+    0.3 fired on a sliver - roughly the moment the frame cleared the fold, with
+    the phone still under her thumb - so the entrance played at the bottom edge
+    of the screen while she was still scrolling towards it. Half the stage puts
+    the phone properly in front of her before it does anything. It has to stay
+    reachable on the shortest viewport the funnel supports (375x557, less the
+    fixed CTA), which it is by ~200px. */
 const ARM_AMOUNT = 0.5;
 
-/** A held beat between arriving and opening. Nothing on screen moves during it,
-    which is the point: an animation that starts on the same frame the element
-    crosses the threshold reads as triggered, and this one has to read as
-    something she came upon. */
-const UNROLL_DELAY_MS = 220;
+/** A held beat between arriving and the phone rising in. Nothing on screen
+    moves during it, which is the point: an animation that starts on the same
+    frame the element crosses the threshold reads as triggered, and this one has
+    to read as something she came upon. */
+const ENTRY_DELAY_MS = 200;
 
-/** How far the bottom roll sits above its resting place while the scroll is
-    still shut, as a % of the illustration's height. It stops at 21% down, which
-    leaves a sliver of paper under the top roll - two rolls flush against each
-    other read as a stick, not a scroll. */
-const ROLL_TRAVEL_PCT = BOTTOM_ROLL_TOP_PCT - 21;
+/** The phone's width, standalone. At 244px the task labels land at ~10.7px and
+    their sub-lines at ~8.8px - the floor for a 45-60 reader holding a phone.
+    Anything wider and the frame starts pushing the block below the fold on the
+    shortest phone the funnel supports (375x557, less the fixed CTA). */
+const PHONE_MAX_PX = 244;
 
-/** Bottom inset that clips the paper to the roll's top edge once the scroll is
-    fully open. Everything below it is the roll, which is painted back on top. */
-const PAPER_REST_INSET_PCT = 100 - BOTTOM_ROLL_TOP_PCT;
+/** The frame's aspect ratio. 9 / 19.5 is a current iPhone - 393 x 852pt is
+    9 : 19.52 - and it is the ratio because a phone mock that is not the shape
+    of a phone stops being a phone and becomes a rounded rectangle with an app
+    drawn in it. She is being shown the device she will run this on; the shape
+    is the first thing that says so, before a single row is read.
 
-/** Ink color for everything written on the paper. */
-const INK = "#5c4327";
+    It was 9 / 15.5 (an iPhone-SE shape) until 2026-09-12, and that was a real
+    trade rather than an oversight: at 9 / 17.8 inside the old parchment scroll
+    both screens ran out of content about three quarters down, and standalone at
+    PHONE_MAX_PX the same slack read as ~110px of empty cream - the largest
+    element on the sales page arguing "the app is empty" on the screen that
+    exists to argue the opposite. Squashing the frame closed the gap.
 
-const SCROLL_SIZES = "(max-width: 400px) 92vw, 340px";
+    The gap is now closed the other way, which is the honest way: the content
+    grew into the phone instead of the phone shrinking onto the content. Both
+    acts put their body on `flex-1` so slack splits above and below rather than
+    pooling under the last row, the rows and the calendar dots carry the
+    vertical rhythm a 19.5-tall screen actually has, and the two pieces of real
+    iOS chrome this frame was missing - the Dynamic Island and the home
+    indicator - take ~14cqw of it and earn it, because they are what the eye
+    checks a phone mock against.
 
-/* Act 2's beat sheet, in ms from the act's start. The rows land by ~0.75s, so
-   the first tick waits until she has had a moment to read them. The four ticks
-   have to finish with room to spare inside the act's 4200ms hold, or "that's
-   day one, done" flashes up as the act is already leaving. */
-const TICK_START_MS = 1000;
+    Do not fix a future overflow by flattening this again. Inflating type to
+    fill a flagship frame gives 18px task labels inside a phone, which stops
+    reading as an app; squashing the frame gives a phone that is not a phone.
+    Spend or reclaim the difference in vertical rhythm. */
+const PHONE_ASPECT = "9 / 19.5";
+
+/** The Dynamic Island, in real proportions off a 393pt iPhone: the pill is
+    125 x 37pt (31.8% of the screen's width, and 9.4% of that width tall) and
+    sits 11pt below the top edge. Everything here is a percentage of the *frame*
+    (cqw), so the numbers below are those fractions taken against the screen's
+    96.8cqw width rather than the frame's 100.
+
+    It is not decoration. A phone drawn in 2026 with a clean top edge reads as
+    an Android render or a generic "device frame" asset, and the whole job of
+    this mock is to be recognisably the thing in her hand. */
+const ISLAND = {
+  width: "30.8cqw",
+  height: "9.1cqw",
+  top: "2.7cqw",
+} as const;
+
+/** The home indicator: 139 x 5pt, 8pt off the bottom edge, on the same 393pt
+    reference. It is the other half of what makes the frame read as current. */
+const HOME_BAR = {
+  width: "34cqw",
+  height: "1.15cqw",
+  bottom: "2.1cqw",
+} as const;
+
+/* Act 1's beat sheet, in ms from the act's start. The rows land by ~0.75s and
+   the header above them is two lines with her name in it, so the first tick
+   waits until she has had a moment to read both. The four ticks have to finish
+   with room to spare inside the act's hold, or "that's day one, done" flashes
+   up as the act is already leaving. */
+const TICK_START_MS = 1150;
 const TICK_EVERY_MS = 620;
 
-/* Act 3's beat sheet. Must stay in step with the per-dot delays below - the
+/* Act 2's beat sheet. Must stay in step with the per-dot delays below - the
    week counter reads off the same arithmetic the CSS delays are built from,
    and FILL_DOT_MS must match the `.plan-day` animation duration in
    globals.css. */
@@ -191,10 +218,10 @@ export function PlanStage({
   className,
 }: {
   firstName?: string;
-  /** Her #1 goal, lowercased, as it reads after "Designed to help you …". */
+  /** Her #1 goal, lowercased, as it reads after "Goal:". */
   goalLabel: string;
   /**
-   * Her real week-1 line per pillar key, from `buildWeekOneRows()`. Act 2 is a
+   * Her real week-1 line per pillar key, from `buildWeekOneRows()`. Act 1 is a
    * mock of the app's Today screen, and the mock sits one screen in front of
    * the paywall's week-1 card - so if this shows the generic fallbacks while
    * that shows her week, the two adjacent screens disagree about what she is
@@ -210,87 +237,21 @@ export function PlanStage({
   const progress = useMotionValue(0);
   const act = ACTS[index];
 
-  /* ── The entrance ─────────────────────────────────────────────────────
-     `opened` is the gate on everything written on the paper. Nothing mounts
-     inside the scroll until the scroll is actually open, which is the whole
-     point: the name has to be written while she is looking at it. */
-  const unroll = useMotionValue(0);
-
-  /** A second observer on the same element, latching on first sight. `inView`
-      above cannot do this job as well: it has to keep flipping, because it is
-      what pauses the act clock. And re-sealing the scroll every time she
-      scrolls off it would turn the one personal moment on the page into a loop.
-      Two IntersectionObservers on one element is what `once` is for. */
+  /** Latches on first sight. `inView` above cannot do this job as well: it has
+      to keep flipping, because it is what pauses the act clock. And re-playing
+      the entrance every time she scrolls back onto the block would turn the
+      arrival into a loop. Two IntersectionObservers on one element is what
+      `once` is for. */
   const armed = useInView(stageRef, { once: true, amount: ARM_AMOUNT });
 
-  /** True once the paper is flat. Under reduced motion there is no unroll to
-      wait on, so it derives straight off `armed` - which is also why the effect
-      below has no `setState` to make in that branch. */
-  const [unrolled, setUnrolled] = useState(false);
-  const opened = unrolled || (reduced && armed);
-
-  /** The unroll, once. `armed` only ever goes false -> true, so this effect
-      runs exactly once and its cleanup only fires on unmount. */
-  const unrollControls = useRef<AnimationPlaybackControls | null>(null);
-  useEffect(() => {
-    if (!armed) return;
-    if (reduced) {
-      unroll.set(1);
-      return;
-    }
-    const controls = animate(unroll, 1, {
-      duration: UNROLL_MS / 1000,
-      delay: UNROLL_DELAY_MS / 1000,
-      // Gentle in, steady through, soft settle. The ease used everywhere else
-      // in this file ([0.16, 1, 0.3, 1]) is deliberately front-loaded, which is
-      // right for UI that should feel instant and wrong for paper: it spent 80%
-      // of the travel in the first third and the scroll read as snapping open.
-      ease: [0.4, 0, 0.2, 1],
-      onComplete: () => {
-        unrollControls.current = null;
-        setUnrolled(true);
-      },
-    });
-    unrollControls.current = controls;
-    return () => {
-      unrollControls.current = null;
-      controls.stop();
-    };
-  }, [armed, reduced, unroll]);
-
-  /** Flicking past mid-unroll pauses the paper where it is rather than letting
-      it finish - and then start writing - somewhere she cannot see.
-
-      Both observers cross their threshold in the same commit, so on arrival
-      this runs right after the effect above and calls `play()` on an animation
-      that is already playing. That is a no-op by design and it is the only
-      ordering that works: the alternative, latching `armed` in state, costs a
-      render before the unroll can even start. */
-  useEffect(() => {
-    const controls = unrollControls.current;
-    if (!controls) return;
-    if (inView) controls.play();
-    else controls.pause();
-  }, [inView]);
-
-  /** Both layers off the one value. At `unroll` 0 the roll sits `ROLL_TRAVEL_PCT`
-      high and the paper is clipped to meet it; at 1 the roll is home and the
-      paper is clipped to its resting edge. The two expressions are the same
-      number read from opposite ends, so they cannot drift apart. */
-  const rollY = useTransform(unroll, [0, 1], [`${-ROLL_TRAVEL_PCT}%`, "0%"]);
-  const paperClip = useTransform(
-    unroll,
-    (u) => `inset(0 0 ${PAPER_REST_INSET_PCT + (1 - u) * ROLL_TRAVEL_PCT}% 0)`
-  );
-
-  const playing = inView && opened;
+  const playing = inView && armed;
 
   /** The one clock. Resumes from wherever it was paused rather than restarting,
-      so scrolling the scroll out of view and back doesn't replay an act.
+      so scrolling the stage out of view and back doesn't replay an act.
       It runs under reduced motion too - `reduced` decides *how* each act draws
       itself, not whether she gets to see it. With no controls left, stopping
-      the clock there would strand her on act 1 and hide two thirds of the
-      offer. Each act instead settles instantly and cross-fades. */
+      the clock there would strand her on act 1 and hide half the offer. Each
+      act instead settles instantly and cross-fades. */
   useEffect(() => {
     if (!playing) return;
     const remaining = ACTS[index].hold * (1 - progress.get());
@@ -303,11 +264,11 @@ export function PlanStage({
       },
     });
     return () => controls.stop();
-  }, [playing, index, progress, reduced]);
+  }, [playing, index, progress]);
 
   return (
     <div
-      className={cn("px-4 pt-3", className)}
+      className={cn("px-4 pt-4", className)}
       role="img"
       aria-label={
         `${firstName ? `${firstName}'s` : "Your"} personalized ${PLAN_WEEKS} week plan: ` +
@@ -315,82 +276,30 @@ export function PlanStage({
         `across ${PLAN_WEEKS} weeks in three phases, designed to help you ${goalLabel}.`
       }
     >
+      {/* The stage reserves the phone's height whether or not the phone has
+          arrived yet, so the entrance never shifts the layout under her thumb. */}
       <div
         ref={stageRef}
         aria-hidden
-        className="pointer-events-none relative mx-auto w-full max-w-[340px] select-none"
+        className="pointer-events-none relative mx-auto w-full select-none"
+        style={{ maxWidth: PHONE_MAX_PX }}
       >
-        {/* The paper, clipped to wherever the bottom roll has got to. This is
-            also the element that gives the stage its height, so it stays in
-            normal flow - clipping is what moves, never layout. */}
-        <motion.div style={{ clipPath: paperClip }}>
-          <Image
-            src="/illustrations/offer.webp"
-            alt=""
-            width={1024}
-            height={1536}
-            sizes={SCROLL_SIZES}
-            className="w-full h-auto"
-            draggable={false}
-            priority
-          />
-        </motion.div>
-
-        {/* Act 1 - written on the paper itself, and only once there is paper to
-            write on. */}
-        <AnimatePresence>
-          {opened && act.id === "plan" && (
-            <SealedScroll key="sealed" firstName={firstName} goalLabel={goalLabel} reduced={reduced} />
+        <div className="w-full" style={{ aspectRatio: PHONE_ASPECT }}>
+          {armed && (
+            <PhoneMock
+              screen={act.id}
+              reduced={reduced}
+              playing={playing}
+              firstName={firstName}
+              goalLabel={goalLabel}
+              progress={progress}
+              tasks={tasks}
+            />
           )}
-        </AnimatePresence>
-
-        {/* Acts 2 and 3 - one phone, two screens. It stays mounted between them
-            so only the screen slides; it re-enters from behind the roll each
-            time the loop comes back around. */}
-        <div className="absolute inset-x-0 top-[18%] z-10 flex justify-center">
-          <AnimatePresence>
-            {opened && act.id !== "plan" && (
-              <PhoneMock
-                key="phone"
-                screen={act.id}
-                reduced={reduced}
-                playing={playing}
-                goalLabel={goalLabel}
-                progress={progress}
-                tasks={tasks}
-              />
-            )}
-          </AnimatePresence>
         </div>
-
-        {/* The scroll's bottom roll, painted back on top. Same src and sizes as
-            the base image, so it's the same cached file, not a second download.
-            `loading="eager"` rather than `priority` - it must not lazy-load
-            (the phone would float over unpainted paper for a frame) but it
-            must not add a second preload link for a file already preloaded.
-
-            It is also the roll that travels during the unroll. `clipPath` is
-            applied in the element's own box and the transform on top of it, so
-            the clip keeps naming the same slice of the illustration however far
-            down the layer has moved. */}
-        <motion.div
-          className="absolute inset-0 z-20"
-          style={{ clipPath: BOTTOM_ROLL_CLIP, y: rollY }}
-        >
-          <Image
-            src="/illustrations/offer.webp"
-            alt=""
-            width={1024}
-            height={1536}
-            sizes={SCROLL_SIZES}
-            className="w-full h-auto"
-            draggable={false}
-            loading="eager"
-          />
-        </motion.div>
       </div>
 
-      {/* Progress. A read-out, not a control - it tells her the scroll is
+      {/* Progress. A read-out, not a control - it tells her the phone is
           playing and roughly how long the act has left. */}
       <div aria-hidden className="mt-4 flex items-center justify-center gap-2.5">
         {ACTS.map((a, i) => (
@@ -412,15 +321,25 @@ export function PlanStage({
         ))}
       </div>
 
-      {/* One line, so the reserved height is one line. */}
+      {/* One line, so the reserved height is one line.
+
+          `mode="wait"`, unlike the screens above it. The phone can push two
+          screens past each other because they are opaque and clipped; two lines
+          of 10px grey type cross-fading in the same 20px box just print on top
+          of each other, which is what this did - "Eight weeks, three phases."
+          legibly overlaid on "Four small things a day." for a third of a
+          second. Text swaps out, then in. The halves are quick enough (0.16s
+          each) that the gap reads as a beat rather than as a missing caption,
+          and they are deliberately shorter than the push above so the caption
+          has landed by the time the new screen has. */}
       <div aria-hidden className="relative min-h-[20px] px-2">
-        <AnimatePresence initial={false}>
+        <AnimatePresence initial={false} mode="wait">
           <motion.p
             key={act.id}
-            initial={reduced ? false : { opacity: 0, y: 6 }}
+            initial={reduced ? false : { opacity: 0, y: 5 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: reduced ? 0 : 0.26, ease: [0.16, 1, 0.3, 1] }}
+            exit={{ opacity: 0, y: -5 }}
+            transition={{ duration: reduced ? 0 : 0.16, ease: "easeOut" }}
             className="absolute inset-x-0 text-center text-[10px] leading-snug text-[#9A9A9A]"
           >
             {act.caption}
@@ -445,152 +364,86 @@ function useActBeat<T>(progress: MotionValue<number>, hold: number, derive: (ela
   return value;
 }
 
-/* ── Act 1: the sealed scroll ───────────────────────────────────────────── */
-
-/** Her name written onto the plan, letter by letter in script - the made-for-you
-    moment, and the reason this reads as her plan rather than a program she has
-    to fit into. */
-function SealedScroll({
-  firstName,
-  goalLabel,
-  reduced,
-}: {
-  firstName?: string;
-  goalLabel: string;
-  reduced: boolean;
-}) {
-  const fade = {
-    hidden: { opacity: 0, y: 8 },
-    show: { opacity: 1, y: 0, transition: { duration: 0.38, ease: [0.16, 1, 0.3, 1] as const } },
-  };
-
-  return (
-    <motion.div
-      initial={reduced ? "show" : "hidden"}
-      animate="show"
-      exit={reduced ? { opacity: 0 } : { opacity: 0, y: -10 }}
-      variants={{ hidden: {}, show: { transition: { staggerChildren: 0.13, delayChildren: 0.14 } } }}
-      transition={{ duration: 0.26 }}
-      className="absolute inset-0 z-10 flex flex-col items-center justify-center px-[15%] py-[19%] text-center"
-      style={{ color: INK }}
-    >
-      {/* A wax seal, not the reward illustration - this scroll carries her name,
-          so the crest has to read as her plan being sealed, and it has to
-          survive at 80px. */}
-      <motion.div variants={fade} className="mb-1.5">
-        <Image
-          src="/illustrations/plan-preview.webp"
-          alt=""
-          width={500}
-          height={500}
-          sizes="64px"
-          className="w-14 h-auto select-none drop-shadow-lg"
-          draggable={false}
-        />
-      </motion.div>
-
-      <motion.span
-        variants={fade}
-        className="mb-1.5 text-[8px] uppercase tracking-[0.24em] opacity-70 sm:text-[9px]"
-        style={{ fontFamily: "var(--font-lora)" }}
-      >
-        Your Personalized {PLAN_WEEKS} Week Plan
-      </motion.span>
-
-      {/* Letter by letter, on opacity/transform only. This used to animate a
-          per-letter blur, which is a filter repaint per glyph per frame. */}
-      <motion.div
-        variants={{ hidden: {}, show: { transition: { staggerChildren: 0.06 } } }}
-        className="flex"
-      >
-        {(firstName || "You").split("").map((ch, i) => (
-          <motion.span
-            key={`${ch}-${i}`}
-            variants={{
-              hidden: { opacity: 0, y: 12, rotate: -5 },
-              show: {
-                opacity: 1,
-                y: 0,
-                rotate: 0,
-                transition: { type: "spring", stiffness: 300, damping: 24 },
-              },
-            }}
-            className="font-script text-4xl leading-none sm:text-5xl"
-          >
-            {ch === " " ? " " : ch}
-          </motion.span>
-        ))}
-      </motion.div>
-
-      <motion.div variants={fade} className="my-2 h-px w-12" style={{ background: INK, opacity: 0.4 }} />
-
-      <motion.p
-        variants={fade}
-        className="max-w-[92%] text-[11px] italic leading-snug sm:text-xs"
-        style={{ fontFamily: "var(--font-lora)" }}
-      >
-        Designed to help you {goalLabel}.
-      </motion.p>
-
-      <motion.div variants={fade} className="mt-3 flex flex-col items-center">
-        <span className="font-script text-xl leading-none sm:text-2xl">Lisa</span>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-/* ── Acts 2 and 3: the phone ────────────────────────────────────────────── */
+/* ── The phone ──────────────────────────────────────────────────────────────── */
 
 /**
  * Everything inside the phone is sized in `cqw` against the frame's own width,
- * so the mock is one design that scales with the scroll instead of a px layout
+ * so the mock is one design that scales with the column instead of a px layout
  * that overflows on a 320px screen.
  *
  * The two screens always travel the same way (out left, in from right) because
- * the loop only ever runs forwards now.
+ * the loop only ever runs forwards.
+ *
+ * ── Why this is a push and not a cross-fade (2026-09-12) ────────────────────
+ *
+ * It was `opacity 0 -> 1` over `x: 24% -> 0`, i.e. a dissolve. For ~0.34s,
+ * twice every nine seconds, that put two fully-detailed app screens at roughly
+ * half opacity on top of each other - "Margaret, your tasks for today" reading
+ * straight through "8 WEEKS" and the calendar grid. Caught mid-frame it looks
+ * like a rendering bug, and it is the single least phone-like thing the mock
+ * did: no device has ever shown two screens ghosting through one another.
+ *
+ * So both screens stay fully opaque and the outgoing one is *pushed* out while
+ * the incoming one arrives, full width, clipped by the frame's own
+ * `overflow-hidden`. That is exactly what a navigation push looks like on the
+ * device this is imitating, it is impossible to catch in an unreadable state,
+ * and it costs nothing extra - same two elements, same transform, one fewer
+ * animated property.
+ *
+ * The easing is Apple's own navigation curve rather than a generic ease-out:
+ * it leaves quickly, travels flat and settles long, which is what makes a
+ * push read as weight rather than as a slide-in advert.
  */
+const SCREEN_PUSH_EASE = [0.32, 0.72, 0, 1] as const;
+const SCREEN_PUSH_MS = 0.52;
+
 const screenVariants = {
-  enter: { opacity: 0, x: "24%" },
-  center: { opacity: 1, x: "0%" },
-  exit: { opacity: 0, x: "-24%" },
+  enter: { x: "100%" },
+  center: { x: "0%" },
+  exit: { x: "-100%" },
 };
 
 function PhoneMock({
   screen,
   reduced,
   playing,
+  firstName,
   goalLabel,
   progress,
   tasks,
 }: {
-  screen: Exclude<ActId, "plan">;
+  screen: ActId;
   reduced: boolean;
   playing: boolean;
+  firstName?: string;
   goalLabel: string;
   progress: MotionValue<number>;
   tasks?: Record<string, string>;
 }) {
   return (
     <motion.div
-      initial={reduced ? { opacity: 0 } : { opacity: 0, y: 110, scale: 0.94 }}
+      // A short rise, not the 110px climb it made out from behind the scroll's
+      // bottom roll: there is nothing for it to emerge from any more, so a long
+      // travel reads as a slide-in advert rather than as a device being held up.
+      initial={reduced ? { opacity: 0 } : { opacity: 0, y: 22, scale: 0.965 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={reduced ? { opacity: 0 } : { opacity: 0, y: 110, scale: 0.94 }}
       transition={
         reduced
           ? { duration: 0.2 }
-          : { type: "spring", stiffness: 190, damping: 24, mass: 0.8, opacity: { duration: 0.22 } }
+          : {
+              type: "spring",
+              stiffness: 190,
+              damping: 24,
+              mass: 0.8,
+              delay: ENTRY_DELAY_MS / 1000,
+              opacity: { duration: 0.26, delay: ENTRY_DELAY_MS / 1000 },
+            }
       }
       style={{ containerType: "inline-size" }}
-      className="w-[56%]"
+      className="h-full w-full"
     >
-      {/* The frame runs from just under the top roll to just above the paper's
-          bottom edge: any taller and it pokes out below the scroll, any shorter
-          and its bottom edge shows instead of tucking behind the roll. */}
-      <div className="rounded-[13cqw] bg-[#2C2420] p-[1.6cqw] shadow-[0_16px_34px_-12px_rgba(61,43,26,0.6)]">
-        <div
-          className="relative overflow-hidden rounded-[11.4cqw] bg-[#FFFCF8] [-webkit-text-size-adjust:100%]"
-          style={{ aspectRatio: "9 / 17.8" }}
-        >
+      <div className="h-full rounded-[13.5cqw] bg-[#2C2420] p-[1.6cqw] shadow-[0_18px_38px_-14px_rgba(61,43,26,0.55)]">
+        <div className="relative h-full overflow-hidden rounded-[12cqw] bg-[#FFFCF8] [-webkit-text-size-adjust:100%]">
           <StatusBar />
           <AnimatePresence initial={false}>
             <motion.div
@@ -599,11 +452,11 @@ function PhoneMock({
               initial="enter"
               animate="center"
               exit="exit"
-              transition={{ duration: reduced ? 0 : 0.34, ease: [0.22, 1, 0.36, 1] }}
-              className="absolute inset-0 flex flex-col px-[5.5cqw] pt-[12cqw] pb-[4cqw]"
+              transition={{ duration: reduced ? 0 : SCREEN_PUSH_MS, ease: SCREEN_PUSH_EASE }}
+              className="absolute inset-0 flex flex-col px-[5.5cqw] pt-[15cqw] pb-[7cqw]"
             >
               {screen === "today" ? (
-                <TodayScreen reduced={reduced} progress={progress} tasks={tasks} />
+                <TodayScreen reduced={reduced} progress={progress} firstName={firstName} tasks={tasks} />
               ) : (
                 <WeeksScreen
                   reduced={reduced}
@@ -614,6 +467,45 @@ function PhoneMock({
               )}
             </motion.div>
           </AnimatePresence>
+
+          {/* The Dynamic Island and the home indicator sit above both screens
+              (z-20 over the status bar's z-10) so a screen pushing past
+              underneath never travels over the hardware. That is the detail
+              that sells it: on a real device the cutout is the display's
+              physical edge, and anything sliding *over* it would read as a
+              sticker on a picture of a phone. */}
+          <span
+            aria-hidden
+            className="absolute left-1/2 z-20 -translate-x-1/2 rounded-full bg-[#0A0A0B]"
+            style={{ width: ISLAND.width, height: ISLAND.height, top: ISLAND.top }}
+          >
+            {/* The front camera, which is the half of the Island people
+                actually recognise - on an iPhone it is a lens sitting at the
+                right end, just barely lighter than the cutout around it, with
+                one small specular highlight. Two nested spans rather than an
+                image, at the same cost as the rest of this mock: nothing. */}
+            <span
+              aria-hidden
+              className="absolute right-[2.2cqw] top-1/2 block -translate-y-1/2 rounded-full bg-[#17171C]"
+              style={{ width: "4.6cqw", height: "4.6cqw" }}
+            >
+              <span
+                aria-hidden
+                className="absolute left-[22%] top-[20%] block rounded-full bg-[#3A4560]/70"
+                style={{ width: "1.3cqw", height: "1.3cqw" }}
+              />
+            </span>
+          </span>
+
+          <span
+            aria-hidden
+            className="absolute left-1/2 z-20 -translate-x-1/2 rounded-full bg-[#3D3D3D]/30"
+            style={{
+              width: HOME_BAR.width,
+              height: HOME_BAR.height,
+              bottom: HOME_BAR.bottom,
+            }}
+          />
         </div>
       </div>
     </motion.div>
@@ -621,10 +513,22 @@ function PhoneMock({
 }
 
 /** Decorative iOS status bar. Sits above the screens and never changes, so the
-    two screens read as one device rather than two pictures. */
+    two screens read as one device rather than two pictures.
+
+    Its height is the Island's band (top inset + Island height) and its children
+    centre inside that, which is how iOS actually lays this out - the clock and
+    the indicators are optically centred on the cutout, not aligned to the top
+    edge of the glass. Shipping the Island without moving this would have left
+    9:41 sitting level with the pill's top corner, which is the sort of half-
+    right detail that makes a mock look wrong without the reader being able to
+    say why. The side insets widen to match: a 19.5-tall iPhone carries its
+    status bar further in than a 15.5-tall one ever did. */
 function StatusBar() {
   return (
-    <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-[6cqw] pt-[3.4cqw] text-[#3D3D3D]">
+    <div
+      className="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-[8cqw] text-[#3D3D3D]"
+      style={{ height: `calc(${ISLAND.top} + ${ISLAND.height})` }}
+    >
       <span className="text-[3.4cqw] font-bold tracking-tight">9:41</span>
       <span className="flex items-center gap-[1.4cqw] opacity-70">
         <span className="flex items-end gap-[0.5cqw]">
@@ -640,9 +544,29 @@ function StatusBar() {
   );
 }
 
-/* ── Act 2: today ───────────────────────────────────────────────────────── */
+/* ── Act 1: today ───────────────────────────────────────────────────────────── */
 
-const TODAY_HOLD = ACTS[1].hold;
+const TODAY_HOLD = ACTS[0].hold;
+
+/** The first line on the first screen, and the only personal thing left in the
+    stage now that the sealed scroll is gone.
+
+    It does three jobs in eight words: it uses her name (so the mock is *her*
+    app rather than a product shot), it says the work is already done ("ready" -
+    she is buying a finished plan, not a blank tracker she has to fill in), and
+    the line under it prices the ask in the only currency she actually spends.
+    That time figure is the objection this screen exists to answer: a woman of
+    45-60 reading a plan on her phone is not asking whether it works, she is
+    asking where the hour comes from.
+
+    `±` rather than a flat "15 min" on purpose. Early weeks run below the full
+    session length by design (the progression ladder), so an exact number here
+    would be a promise the plan's own first fortnight does not keep. */
+function todayGreeting(firstName?: string) {
+  return `${firstName ? `${firstName}, your` : "Your"} tasks for today are ready!`;
+}
+
+const TODAY_EFFORT_LINE = "±15 min needed";
 
 /** Today's four tasks, ticking themselves off one a beat. This is the product
     in one gesture - the same list, the same check, the same "day one, done" the
@@ -650,10 +574,12 @@ const TODAY_HOLD = ACTS[1].hold;
 function TodayScreen({
   reduced,
   progress,
+  firstName,
   tasks,
 }: {
   reduced: boolean;
   progress: MotionValue<number>;
+  firstName?: string;
   tasks?: Record<string, string>;
 }) {
   const total = PLAN_PILLARS.length;
@@ -665,33 +591,36 @@ function TodayScreen({
 
   return (
     <>
-      <div className="flex items-baseline justify-between">
-        <div>
-          <p className="text-[3.2cqw] font-bold uppercase tracking-[0.2em] text-primary">
-            Week 1 of {PLAN_WEEKS}
-          </p>
-          <h3 className="text-[8cqw] font-extrabold uppercase leading-none tracking-tight text-[#3D3D3D]">
-            Today
-          </h3>
-        </div>
-        <span className="text-[3.6cqw] font-bold tabular-nums text-[#B9AEA6]">
+      {/* The header. It replaced a "WEEK 1 OF 8" kicker over an 8cqw "TODAY" on
+          2026-09-12: that was app chrome, and app chrome is the one thing a
+          mock does not need in order to be convincing. Same two lines of
+          height, her name and the size of the ask instead. */}
+      <h3 className="text-[6.4cqw] font-extrabold leading-[1.15] tracking-tight text-[#3D3D3D]">
+        {todayGreeting(firstName)}
+      </h3>
+
+      <div className="mt-[2.4cqw] flex items-baseline justify-between gap-[2cqw]">
+        <p className="text-[3.6cqw] font-bold uppercase tracking-[0.14em] text-primary">
+          {TODAY_EFFORT_LINE}
+        </p>
+        <span className="shrink-0 text-[3.6cqw] font-bold tabular-nums text-[#B9AEA6]">
           {done}/{total}
         </span>
       </div>
 
-      <div className="mt-[2.6cqw] flex gap-[1.6cqw]">
+      <div className="mt-[3.4cqw] flex gap-[1.6cqw]">
         {PLAN_PILLARS.map((p, i) => (
           <span
             key={p.key}
             className={cn(
-              "h-[1.6cqw] flex-1 rounded-full transition-colors duration-300",
+              "h-[1.9cqw] flex-1 rounded-full transition-colors duration-300",
               i < done ? "bg-primary" : "bg-[#EFE4DC]"
             )}
           />
         ))}
       </div>
 
-      <ul className="mt-[3.4cqw] flex flex-col gap-[3.4cqw]">
+      <ul className="mt-[4cqw] flex flex-1 flex-col justify-center gap-[5.2cqw]">
         {PLAN_PILLARS.map((p, i) => {
           const isDone = i < done;
           return (
@@ -701,19 +630,19 @@ function TodayScreen({
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: reduced ? 0 : 0.22 + i * 0.07, duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
               className={cn(
-                "flex w-full items-center gap-[3.2cqw] rounded-[4.6cqw] border px-[3.6cqw] py-[4cqw] text-left transition-colors duration-200",
+                "flex w-full items-center gap-[3.4cqw] rounded-[5cqw] border px-[4cqw] py-[5.6cqw] text-left transition-colors duration-[260ms]",
                 isDone ? "border-primary/35 bg-primary/8" : "border-[#EFE4DC] bg-white"
               )}
             >
               <span
                 className={cn(
                   "inline-flex shrink-0 items-center justify-center rounded-[3.4cqw] transition-opacity duration-200",
-                  "h-[13.5cqw] w-[13.5cqw]",
+                  "h-[15.5cqw] w-[15.5cqw]",
                   p.chip,
                   isDone && "opacity-55"
                 )}
               >
-                <p.icon className={cn("h-[7.4cqw] w-[7.4cqw]", p.tint)} strokeWidth={2.2} />
+                <p.icon className={cn("h-[8.2cqw] w-[8.2cqw]", p.tint)} strokeWidth={2.2} />
               </span>
 
               <span className="min-w-0 flex-1">
@@ -732,7 +661,7 @@ function TodayScreen({
 
               <span
                 className={cn(
-                  "grid h-[8.4cqw] w-[8.4cqw] shrink-0 place-items-center rounded-full border-[0.9cqw] transition-colors duration-200",
+                  "grid h-[9.2cqw] w-[9.2cqw] shrink-0 place-items-center rounded-full border-[0.95cqw] transition-colors duration-[260ms]",
                   isDone ? "border-primary bg-primary" : "border-[#E3D8D0] bg-white"
                 )}
               >
@@ -744,7 +673,7 @@ function TodayScreen({
                       exit={{ scale: 0 }}
                       transition={{ type: "spring", stiffness: 620, damping: 26 }}
                     >
-                      <Check className="h-[4.4cqw] w-[4.4cqw] text-white" strokeWidth={4} />
+                      <Check className="h-[4.8cqw] w-[4.8cqw] text-white" strokeWidth={4} />
                     </motion.span>
                   )}
                 </AnimatePresence>
@@ -754,8 +683,12 @@ function TodayScreen({
         })}
       </ul>
 
-      {/* Fixed height so a row ticking off never moves the rows above it. */}
-      <div className="relative mt-[3.4cqw] h-[10cqw]">
+      {/* Fixed height so a row ticking off never moves the rows above it, and
+          `mt-auto` so it sits on the bottom edge of the screen rather than
+          directly under the list - whatever slack the frame has left over then
+          ends up in one place, above a footer, instead of as a void below
+          everything. */}
+      <div className="relative mt-auto pt-[4.5cqw] h-[11cqw]">
         <AnimatePresence initial={false} mode="wait">
           {allDone && (
             <motion.p
@@ -775,9 +708,9 @@ function TodayScreen({
   );
 }
 
-/* ── Act 3: the eight weeks ─────────────────────────────────────────────── */
+/* ── Act 2: the eight weeks ─────────────────────────────────────────────────── */
 
-const WEEKS_HOLD = ACTS[2].hold;
+const WEEKS_HOLD = ACTS[1].hold;
 
 /** The 56 dots, precomputed once at module scope: which week they belong to,
     what color they land on, and when. Nothing in here depends on props. */
@@ -789,7 +722,7 @@ const PLAN_DAY_DOTS = Array.from({ length: PLAN_WEEKS }, (_, w) =>
 );
 
 /** 56 days filling in, week by week, through the three phases. The payoff for
-    act 2: this is what those four taps a day add up to. The dots are CSS (see
+    act 1: this is what those four taps a day add up to. The dots are CSS (see
     `.plan-day`); only the week badge and the phase line come off the clock, and
     they re-render 8 times in the act rather than 56. */
 function WeeksScreen({
@@ -824,77 +757,83 @@ function WeeksScreen({
     <>
       <div className="flex items-baseline justify-between">
         <div>
-          <p className="text-[3.2cqw] font-bold uppercase tracking-[0.2em] text-primary">Your plan</p>
-          <h3 className="text-[8cqw] font-extrabold uppercase leading-none tracking-tight text-[#3D3D3D]">
+          <p className="text-[3.4cqw] font-bold uppercase tracking-[0.2em] text-primary">Your plan</p>
+          <h3 className="text-[9.4cqw] font-extrabold uppercase leading-none tracking-tight text-[#3D3D3D]">
             {PLAN_WEEKS} weeks
           </h3>
         </div>
-        <span className="rounded-full bg-[#F6EEE8] px-[2.6cqw] py-[1.2cqw] text-[3.4cqw] font-bold tabular-nums text-[#7A6C62]">
+        <span className="rounded-full bg-[#F6EEE8] px-[3cqw] py-[1.6cqw] text-[3.5cqw] font-bold tabular-nums text-[#7A6C62]">
           Week {week}
         </span>
       </div>
 
-      <div className="mt-[4.5cqw] flex flex-col gap-[3cqw]" style={gridStyle}>
-        {PLAN_DAY_DOTS.map((days, w) => (
-          <div key={w} className="flex items-center gap-[2.8cqw]">
-            <span className="w-[6.5cqw] shrink-0 text-[3cqw] font-bold tabular-nums text-[#C6BAB1]">
-              W{w + 1}
-            </span>
-            <div className="flex gap-[3cqw]">
-              {days.map((dot, d) => (
-                <span
-                  key={d}
-                  className={cn("plan-day h-[7.4cqw] w-[7.4cqw]", reduced && "plan-day--static")}
-                  style={
-                    {
-                      "--plan-day-color": dot.color,
-                      "--plan-day-delay": `${dot.delay}ms`,
-                    } as React.CSSProperties
-                  }
-                />
-              ))}
+      {/* The calendar and the line under it centre in whatever the header and
+          the goal strip leave them, so the frame's slack splits above and below
+          the grid instead of pooling in one gap underneath it. */}
+      <div className="flex flex-1 flex-col justify-center">
+        <div className="mt-[5cqw] flex flex-col gap-[5.6cqw]" style={gridStyle}>
+          {PLAN_DAY_DOTS.map((days, w) => (
+            <div key={w} className="flex items-center gap-[2.4cqw]">
+              <span className="w-[5.6cqw] shrink-0 text-[3.1cqw] font-bold tabular-nums text-[#C6BAB1]">
+                W{w + 1}
+              </span>
+              <div className="flex gap-[2.4cqw]">
+                {days.map((dot, d) => (
+                  <span
+                    key={d}
+                    className={cn("plan-day h-[9cqw] w-[9cqw]", reduced && "plan-day--static")}
+                    style={
+                      {
+                        "--plan-day-color": dot.color,
+                        "--plan-day-delay": `${dot.delay}ms`,
+                      } as React.CSSProperties
+                    }
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
+
+        {/* Fixed height so the phase line and the finish badge trade places
+            without the grid above them moving. */}
+        <div className="relative mt-[5.5cqw] h-[10.5cqw]">
+          <AnimatePresence initial={false} mode="wait">
+            {finished ? (
+              <motion.p
+                key="done"
+                initial={reduced ? false : { opacity: 0, y: 8, scale: 0.9 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ type: "spring", stiffness: 360, damping: 26 }}
+                className="absolute inset-x-0 flex items-center justify-center gap-[1.6cqw] rounded-[3.6cqw] bg-green-50 py-[2.2cqw] text-[3.9cqw] font-bold text-green-700 ring-1 ring-green-200"
+              >
+                <Check className="h-[4.2cqw] w-[4.2cqw]" strokeWidth={3.4} />
+                {PLAN_WEEKS} weeks. Done.
+              </motion.p>
+            ) : (
+              <motion.p
+                key={phase.label}
+                initial={reduced ? false : { opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+                className="absolute inset-x-0 flex items-center justify-center gap-[2cqw] text-[3.9cqw] font-semibold text-[#5A5A5A]"
+              >
+                <span
+                  className="block h-[2.6cqw] w-[2.6cqw] rounded-full"
+                  style={{ background: phase.dot }}
+                />
+                {phase.label}
+              </motion.p>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
 
-      {/* Fixed height so the phase line and the finish badge trade places
-          without the grid above them moving. */}
-      <div className="relative mt-[4cqw] h-[9cqw]">
-        <AnimatePresence initial={false} mode="wait">
-          {finished ? (
-            <motion.p
-              key="done"
-              initial={reduced ? false : { opacity: 0, y: 8, scale: 0.9 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ type: "spring", stiffness: 360, damping: 26 }}
-              className="absolute inset-x-0 flex items-center justify-center gap-[1.6cqw] rounded-[3.6cqw] bg-green-50 py-[2.2cqw] text-[3.9cqw] font-bold text-green-700 ring-1 ring-green-200"
-            >
-              <Check className="h-[4.2cqw] w-[4.2cqw]" strokeWidth={3.4} />
-              {PLAN_WEEKS} weeks. Done.
-            </motion.p>
-          ) : (
-            <motion.p
-              key={phase.label}
-              initial={reduced ? false : { opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
-              className="absolute inset-x-0 flex items-center justify-center gap-[2cqw] text-[3.9cqw] font-semibold text-[#5A5A5A]"
-            >
-              <span
-                className="block h-[2.6cqw] w-[2.6cqw] rounded-full"
-                style={{ background: phase.dot }}
-              />
-              {phase.label}
-            </motion.p>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* Her own finish line, under the arc. The eight weeks are only worth
-          anything as the thing she said she wanted back. */}
-      <p className="mt-[3cqw] rounded-[3.4cqw] bg-[#FBF4EE] px-[3cqw] py-[2.4cqw] text-center text-[3.5cqw] font-semibold leading-snug text-[#8A7A6E]">
+      {/* Her own finish line, under the arc, on the bottom edge of the screen.
+          The eight weeks are only worth anything as the thing she said she
+          wanted back. */}
+      <p className="mt-auto rounded-[3.6cqw] bg-[#FBF4EE] px-[3cqw] py-[3.2cqw] text-center text-[3.6cqw] font-semibold leading-snug text-[#8A7A6E]">
         <span className="uppercase tracking-[0.16em] text-[#C0B0A2]">Goal </span>
         {goalLabel}
       </p>

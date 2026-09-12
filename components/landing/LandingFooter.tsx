@@ -5,7 +5,8 @@ import Image from "next/image"
 
 export default function LandingFooter() {
   return (
-    <footer className="py-12 pb-42 px-4 border-t border-border">
+    // pb clears the fixed <LandingCtaBar /> (~100px plus the safe area).
+    <footer className="pt-12 pb-40 px-4 border-t border-[#E8DDD9]">
       <div className="max-w-6xl mx-auto">
         <div className="grid md:grid-cols-4 gap-8 mb-8">
           {/* Logo */}

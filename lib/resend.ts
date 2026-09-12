@@ -1,5 +1,5 @@
 import { Resend } from "resend";
-import { PLAN_WEEKS, formatPrice } from "@/lib/pricing";
+import { GUARANTEE_DAYS, PLAN_WEEKS, SUPPORT_EMAIL, formatPrice } from "@/lib/pricing";
 
 let resendClient: Resend | null = null;
 
@@ -135,7 +135,8 @@ export async function sendWelcomeEmail(
     : ` Your access runs for the full ${PLAN_WEEKS} weeks.`;
   const body = `
 <p style="margin:0 0 16px;font-size:17px;font-weight:600;color:#2d1b3d">Hi ${greeting},</p>
-<p style="margin:0 0 16px">Your ${PLAN_WEEKS}-week plan is ready. You paid <strong>${formatPrice(opts.amountPaid)}</strong>, once, and that covers all ${PLAN_WEEKS} weeks of it.${accessLine} This is not a subscription - there is no auto-renewal, we have not kept your card for a future charge, and you will not be charged again.</p>
+<p style="margin:0 0 16px">Your ${PLAN_WEEKS}-week plan is ready. You paid <strong>${formatPrice(opts.amountPaid)}</strong>, once, and that covers all ${PLAN_WEEKS} weeks of it.${accessLine} This is not a subscription - you will not be charged again.</p>
+<p style="margin:0 0 16px">And if it isn't right for you, email <a href="mailto:${SUPPORT_EMAIL}" style="color:#7c3aed">${SUPPORT_EMAIL}</a> within ${GUARANTEE_DAYS} days of paying and we'll refund the full ${formatPrice(opts.amountPaid)}. No reason needed.</p>
 <p style="margin:0 0 28px">Lisa is ready. Open the app, say hi, and log how you feel today. Even one symptom helps her start spotting patterns for you.</p>
 <table cellpadding="0" cellspacing="0" border="0">
   <tr>
@@ -147,7 +148,7 @@ export async function sendWelcomeEmail(
     </td>
   </tr>
 </table>
-<p style="margin:24px 0 0;color:#9d7ec9;font-size:13px">You can manage or cancel your subscription anytime from Account. Questions? Just reply to this email.</p>`;
+<p style="margin:24px 0 0;color:#9d7ec9;font-size:13px">Your access ends on its own when your ${PLAN_WEEKS} weeks are up - there is nothing to cancel. Questions? Just reply to this email.</p>`;
 
   await sendTransactionalEmail(to, subject, buildEmailHtml(body));
 }

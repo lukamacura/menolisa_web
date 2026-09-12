@@ -28,6 +28,7 @@ import { detectBrowser, hasBrowserMismatchIssue } from "@/lib/browserUtils";
 import { cn } from "@/lib/utils";
 import { identifyMetaUser } from "@/lib/metaPixelClient";
 import { APP_STORE_URL, PLAY_STORE_URL, SHOT_W, SHOT_H } from "@/lib/constants";
+import { PLAN_HERO_SLIDES } from "@/lib/planShots";
 import {
   ArrowRight,
   ArrowLeft,
@@ -85,8 +86,11 @@ const loadPaywallView = () =>
   import("@/components/PaywallView").then((m) => ({ default: m.PaywallView }));
 // The identical component used to be defined a second time in this file, with a
 // narrower `variant` union that had already drifted from the shared one.
-const loadPlanFinishBoard = () =>
-  import("@/components/PlanFinishBoard").then((m) => ({ default: m.PlanFinishBoard }));
+//
+// `loadPlanFinishBoard` sat beside it until 2026-09-12, when the finish board
+// came off the results screen. It needs no warm of its own now: the paywall is
+// its only caller and imports it statically, so it travels in the chunk
+// `loadPaywallView` already pulls.
 const loadPlanStage = () =>
   import("@/components/PlanStage").then((m) => ({ default: m.PlanStage }));
 const loadHowLisaRuns = () =>
@@ -105,7 +109,6 @@ const loadSocialProofPolaroid = () =>
 const loadRewardBoards = () => import("@/components/funnel/RewardBoards");
 
 const PaywallView = dynamic(loadPaywallView);
-const PlanFinishBoard = dynamic(loadPlanFinishBoard);
 const PlanStage = dynamic(loadPlanStage);
 const HowLisaRuns = dynamic(loadHowLisaRuns);
 const SocialProofPolaroid = dynamic(loadSocialProofPolaroid);
@@ -149,7 +152,6 @@ function warmPhaseChunks(phase: Phase, stepIndex: number) {
   }
   if (phase === "calculating" || phase === "results" || phase === "diagnosis") {
     void loadPaywallView();
-    void loadPlanFinishBoard();
   }
 }
 import {
@@ -164,6 +166,7 @@ import {
   PLAN_ID,
   PLAN_PRICE,
   PLAN_WEEKS,
+  SUPPORT_EMAIL,
   formatChargeDate,
   formatPrice,
 } from "@/lib/pricing";
@@ -416,6 +419,50 @@ const MENOPAUSE_TYPE_OPTIONS = [
 // Full class strings, never interpolated - Tailwind only ships classes it can
 // find as literal text in the source. `chip` is the idle icon well; the
 // selected state reuses `dot` so a row only ever carries one accent value.
+// ─── The funnel's colour system ─────────────────────────────────────────────
+// Written down on 2026-09-12. It was not invented then - every value below was
+// already in the file and had been for weeks - but it was never declared, so
+// each meaning had drifted into two or three values and new code had nothing to
+// follow. The whole rule is one sentence:
+//
+//   **The ground says where she is in the story, an accent says what a thing
+//   means, and pink is only ever the tap.**
+//
+// | Meaning                        | Fill      | Ink       |
+// |--------------------------------|-----------|-----------|
+// | The load she carries now       | #DB4F45   | #B23A31   |  (tint #FDF1F0 / edge #F5CFCB, deep ink #8F2A22)
+// | The gap closing / paid / after | #16A34A   | #15803D   |  (= Tailwind green-600/700, so those classes are in-system)
+// | Clinical fact, no verdict      | #3E8FD0   | #2A6DA9   |
+// | Treatment                      | #7B5FC7   | #5C449F   |
+// | Effort, the middle of a scale  | #E8A33D   | #A9741A   |
+// | The tap, and only the tap      | --primary / #FF74B1   |
+// | Unknown / declined to say      | #8A8A8A               |
+//
+// What was consolidated into it, so nobody re-splits them by accident:
+//  - Three ambers. #E0A32E (moderate), #E8A33D (morning) and #F59E0B (power
+//    intervals, in <RewardBoards />, <PaywallView /> and <PlanFinishBoard />)
+//    were one meaning - effort - in three values.
+//  - Two greens. #2E9E6B / #1F7A50 in the tone maps below were a different
+//    *hue* from the green-600/700 the results, boards and paywall already used
+//    for the same claim. Green-600 is exactly #16A34A, so the Tailwind classes
+//    stay and the hand-written pair moved onto them.
+//  - Four reds. red-500 (#EF4444), rose-500 (#F43F5E), #DB4F45 and #B23A31.
+//    Green needs no hand-written values and red has none left in Tailwind, so
+//    the asymmetry in the JSX below - `text-green-600` beside `text-[#B23A31]`
+//    - is deliberate rather than half-finished work.
+//
+// Two constraints on adding to it:
+//  - A hue gets one meaning. The reason the amber in IMPACT_TONE stopped
+//    reading as a scale was not the amber; it was that the card behind it was
+//    #FDEDC9 until the same commit. An accent is only legible against a quiet
+//    surface, which is what --card being warm paper now buys.
+//  - Full literal class strings, never interpolated. Tailwind only ships a
+//    class it can find as literal text in the source, so `bg-[#DB4F45]` has to
+//    appear spelled out - a template built from a hex variable compiles and
+//    then renders with no colour at all.
+//
+// The ground half of the rule lives at PHASE_GROUND.
+
 type ChoiceTone = {
   idle: string;
   selected: string;
@@ -430,11 +477,11 @@ type ChoiceTone = {
 // icons stay at that distance too. Nothing here shows a scalpel.
 const MENOPAUSE_TYPE_TONE: Record<string, ChoiceTone> = {
   natural: {
-    idle: "border-[#2E9E6B]/30 hover:border-[#2E9E6B]/70 hover:bg-[#2E9E6B]/5",
-    selected: "border-[#2E9E6B] bg-[#2E9E6B]/10 shadow-md shadow-[#2E9E6B]/20",
-    dot: "bg-[#2E9E6B]",
-    label: "text-[#1F7A50]",
-    chip: "bg-[#2E9E6B]/10 text-[#2E9E6B]",
+    idle: "border-[#16A34A]/30 hover:border-[#16A34A]/70 hover:bg-[#16A34A]/5",
+    selected: "border-[#16A34A] bg-[#16A34A]/10 shadow-md shadow-[#16A34A]/20",
+    dot: "bg-[#16A34A]",
+    label: "text-[#15803D]",
+    chip: "bg-[#16A34A]/10 text-[#16A34A]",
     Icon: Hourglass,
   },
   surgical: {
@@ -465,15 +512,43 @@ const MENOPAUSE_TYPE_TONE: Record<string, ChoiceTone> = {
 
 // Image-based symptom tiles (same style as Q1 age / Q2 status). 9 options, one tap.
 // IDs reuse the existing downstream keys (SYMPTOM_LABELS, pillars, comparison) so results keep working.
+//
+// **The order is measured demand, worst-first, and it is not cosmetic.** It was
+// authored order until 2026-09-12, which put `weight_changes` — the single most
+// chosen answer, 27.3% of primaries — in slot 5, the middle of the second row,
+// while slots 1-3 held 43%. On a 3x3 grid the top row is what gets scanned
+// first, so more than half the traffic had to read past its own answer to find
+// it, and the screen's dwell says that cost real time: 9.0s median here against
+// 4.6s on the identically-shaped four-tile age grid.
+//
+// Re-sorted by `top_problems[1]` across the 165 non-test profiles created since
+// the single-select shipped (2026-09-06): weight 27.3, hot flashes 18.2, sleep
+// 17.6, joint pain 9.1, fatigue 9.1, brain fog 7.3, anxiety 6.7, mood swings
+// 2.4, bloating 2.4. The top row is now 63.1% of demand and each row is
+// strictly lighter than the one above it.
+//
+// Two caveats for whoever re-sorts this next. The measurement is drawn from
+// women who *finished* the quiz, because a tile tap is only durable once
+// `save-quiz` writes the profile — so it is a proxy for what is tapped here,
+// biased by whatever the rest of the funnel selects for. And it is self
+// reinforcing: promoting a tile raises its share, which would promote it again.
+// Re-read it against a window where the order has been stable, and do not chase
+// a difference inside a couple of points.
+//
+// Nothing may be deleted from this list on the strength of a low share. Mood
+// swings and bloating are 2.4% each, and for that woman the alternative to her
+// own tile is no honest answer at all - which is the whole loss this screen is
+// being fixed for. Nine tiles also fill the 3x3 grid exactly; a tenth or an
+// eighth is a layout change, not a copy change.
 const PROBLEM_OPTIONS = [
+  { id: "weight_changes", label: "Weight changes", image: "/quiz/symptoms/weight_gain.webp" },
   { id: "hot_flashes", label: "Hot flashes", image: "/quiz/symptoms/hot_flashes.webp" },
   { id: "sleep_issues", label: "Can't sleep", image: "/quiz/symptoms/insomnia.webp" },
-  { id: "brain_fog", label: "Brain fog", image: "/quiz/symptoms/brain_fog.webp" },
-  { id: "mood_swings", label: "Mood swings", image: "/quiz/symptoms/mood_swings.webp" },
-  { id: "weight_changes", label: "Weight changes", image: "/quiz/symptoms/weight_gain.webp" },
-  { id: "low_energy", label: "Fatigue", image: "/quiz/symptoms/fatigue.webp" },
-  { id: "anxiety", label: "Anxiety", image: "/quiz/symptoms/anxiety.webp" },
   { id: "joint_pain", label: "Joint pain", image: "/quiz/symptoms/joint_pain.webp" },
+  { id: "low_energy", label: "Fatigue", image: "/quiz/symptoms/fatigue.webp" },
+  { id: "brain_fog", label: "Brain fog", image: "/quiz/symptoms/brain_fog.webp" },
+  { id: "anxiety", label: "Anxiety", image: "/quiz/symptoms/anxiety.webp" },
+  { id: "mood_swings", label: "Mood swings", image: "/quiz/symptoms/mood_swings.webp" },
   { id: "bloating", label: "Bloating", image: "/quiz/symptoms/bloating.webp" },
 ];
 
@@ -527,19 +602,19 @@ const SYMPTOM_IMPACT_OPTIONS = [
 // graded her instead, on the screen where she has just admitted how bad it is.
 const IMPACT_TONE: Record<string, ChoiceTone> = {
   mild: {
-    idle: "border-[#2E9E6B]/30 hover:border-[#2E9E6B]/70 hover:bg-[#2E9E6B]/5",
-    selected: "border-[#2E9E6B] bg-[#2E9E6B]/10 shadow-md shadow-[#2E9E6B]/20",
-    dot: "bg-[#2E9E6B]",
-    label: "text-[#1F7A50]",
-    chip: "bg-[#2E9E6B]/10 text-[#2E9E6B]",
+    idle: "border-[#16A34A]/30 hover:border-[#16A34A]/70 hover:bg-[#16A34A]/5",
+    selected: "border-[#16A34A] bg-[#16A34A]/10 shadow-md shadow-[#16A34A]/20",
+    dot: "bg-[#16A34A]",
+    label: "text-[#15803D]",
+    chip: "bg-[#16A34A]/10 text-[#16A34A]",
     Icon: CloudSun,
   },
   moderate: {
-    idle: "border-[#E0A32E]/30 hover:border-[#E0A32E]/70 hover:bg-[#E0A32E]/5",
-    selected: "border-[#E0A32E] bg-[#E0A32E]/10 shadow-md shadow-[#E0A32E]/20",
-    dot: "bg-[#E0A32E]",
+    idle: "border-[#E8A33D]/30 hover:border-[#E8A33D]/70 hover:bg-[#E8A33D]/5",
+    selected: "border-[#E8A33D] bg-[#E8A33D]/10 shadow-md shadow-[#E8A33D]/20",
+    dot: "bg-[#E8A33D]",
     label: "text-[#A9741A]",
-    chip: "bg-[#E0A32E]/10 text-[#E0A32E]",
+    chip: "bg-[#E8A33D]/10 text-[#E8A33D]",
     Icon: CloudRain,
   },
   severe: {
@@ -897,27 +972,9 @@ const STEP_IMAGES: Partial<Record<Step, string[]>> = {
 // is decoration. `day` still leads: it carries "Day 1 · Week 1", the phase name,
 // and all four pillars with real progress on them, which is the entire offer in
 // one frame. The rest each answer one question that frame raises.
-const PLAN_SHOTS = {
-  day: "/screenshots/screen1.webp",
-  movement: "/screenshots/movement.webp",
-  nutrition: "/screenshots/screen2.webp",
-  habits: "/screenshots/screen3.webp",
-  progress: "/screenshots/progress.webp",
-  rewards: "/screenshots/screen4.webp",
-};
-
-// Every master in /screenshots is used, here or by the paywall. Two rules worth
-// keeping when the next batch of captures lands, both learned from the three
-// that were deleted rather than wired in:
 //
-// - **Capture a day with work done on it.** Two of them were `day` and
-//   `nutrition` caught with the tasks untouched (0/4, 0/10, 0/1). This carousel
-//   is proof that the plan runs, and an empty checklist argues the opposite.
-// - **A screen that restates a slide is not a slide.** The third was the
-//   "Achievement unlocked" modal - the best-looking frame of the set, and the
-//   same point `rewards` already makes with confetti over it. Each slide here
-//   answers a different objection; a seventh costs three more seconds of a loop
-//   she is unlikely to finish as it is.
+// PLAN_SHOTS and PLAN_HERO_SLIDES live in lib/planShots.ts - the landing page
+// shows the same frames with the same captions, so there is one copy.
 
 // SHOT_W / SHOT_H (the intrinsic size of the /screenshots masters) live in
 // lib/constants.ts. They used to sit in components/PhoneShots.tsx beside
@@ -931,56 +988,6 @@ const PLAN_SHOTS = {
 // which is a second full download of the same shot - and a cold one, at the
 // moment she's looking at it.
 const PLAN_HERO_SIZES = "(max-width: 480px) 56vw, 208px";
-
-// The screens <PlanHeroCarousel /> walks through, in the order she needs them:
-// the day she gets, then the surfaces that run it. All are shown at hero size
-// inside one static bezel - see the component for why they are no longer a hero
-// plus a tilted trio.
-//
-// Order is the argument, so it is worth stating. It runs outward from one day to
-// eight weeks, and each slide answers the objection the one before it raises:
-//
-//   day       the whole offer in one frame - four pillars, real progress
-//   movement  "what is a session, actually?" - three moves, about five minutes,
-//             which is the answer to the fear that this needs a gym and an hour
-//   nutrition "so what do I eat?" - a list, with a reason on every row
-//   habits    "and the rest of my life?" - one small thing, her pick
-//   progress  "where does this go?" - the eight weeks the headline promises,
-//             drawn, with the three pillars tracked separately
-//   rewards   "but will I keep doing it?" - the objection she only arrives at
-//             once she has believed all of the above, which is why it is last
-const PLAN_HERO_SLIDES: ReadonlyArray<{ src: string; caption: string; alt: string }> = [
-  {
-    src: PLAN_SHOTS.day,
-    caption: "Day 1, already built",
-    alt: `Day 1 of your personalized ${PLAN_WEEKS}-week plan in the MenoLisa app, showing movement, nutrition, relaxation and habit tasks`,
-  },
-  {
-    src: PLAN_SHOTS.movement,
-    caption: "Five minutes, not an hour",
-    alt: "A movement session in the MenoLisa app: three exercises, about five minutes, with a start button",
-  },
-  {
-    src: PLAN_SHOTS.nutrition,
-    caption: "What to eat today, as a list",
-    alt: "The nutrition list for today in the MenoLisa app, with each row explained",
-  },
-  {
-    src: PLAN_SHOTS.habits,
-    caption: "One small habit at a time",
-    alt: "Your habits in the MenoLisa app, with suggestions you can add",
-  },
-  {
-    src: PLAN_SHOTS.progress,
-    caption: `All ${PLAN_WEEKS} weeks, tracked`,
-    alt: `Progress across all ${PLAN_WEEKS} weeks in the MenoLisa app, with movement, nutrition and relaxation tracked separately`,
-  },
-  {
-    src: PLAN_SHOTS.rewards,
-    caption: "Streaks that keep you going",
-    alt: "Streaks, levels and badges in the MenoLisa app",
-  },
-];
 
 // Real app screenshots used on the plan step. Preloaded while she reads her
 // results so the phone shots are already cached and don't pop in one by one.
@@ -1517,8 +1524,24 @@ const RESULTS_CTA_SUB = "Look what Lisa prepared for you.";
 // the quiz's Next bar, and the deleted start screen) and drifting apart by a
 // hex digit was only a matter of time. Every button that moves her one screen closer to the plan wears this;
 // nothing else does.
+//
+// Two stops, pink into coral, since 2026-09-12. It was
+// `#ff74b1 -> #ffeb76 -> #65dbff` - pink through yellow into cyan - and it had
+// three problems on the one element in the funnel that has to be tapped:
+//
+//  - The midpoint was the lightest and least saturated stop on the button, so
+//    the middle third went pale underneath a `text-foreground` label. The
+//    gradient was actively working against the only words on it.
+//  - The cyan end matched nothing else in the funnel. Nothing is cyan.
+//  - It was the fourth unexplained yellow on a page that had three already,
+//    and the loudest, because it was on the CTA.
+//
+// #FF9D6C is not a new colour - <PaywallView /> already runs the countdown band
+// on `rgba(255,157,108,...)`, so the forward tap and the price screen's clock
+// now come out of the same two hues. Pink stays the first stop because pink is
+// the tap, everywhere, and that has to be true at a glance.
 const CTA_GRADIENT_STYLE = {
-  background: "linear-gradient(135deg, #ff74b1 0%, #ffeb76 50%, #65dbff 100%)",
+  background: "linear-gradient(135deg, #FF74B1 0%, #FF9D6C 100%)",
   boxShadow: "0 4px 15px rgba(255, 116, 177, 0.4)",
 } as const;
 
@@ -1528,27 +1551,123 @@ const CTA_GRADIENT_STYLE = {
 const CTA_GRADIENT_CLASS =
   "w-full min-h-12 py-3.5 font-bold text-foreground rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-lg";
 
-// First-person CTA label driven by her #1 goal (multi-select; first = primary).
-// Used on the results screen, where the next tap is still about what she wants.
-// The diagnosis screen's sticky button stays progress-phrased instead
-// ("I'm ready to feel better"), so the two read as one ladder rather than as
-// two different voices.
-const GOAL_CTA_LABEL: Record<string, string> = {
-  sleep_through_night: "I want to sleep again",
-  think_clearly: "I want to think clearly again",
-  feel_like_myself: "I want to feel steady again",
-  understand_patterns: "I want to understand my body", // legacy: retired option
-  data_for_doctor: "I want answers for my doctor",
-  get_body_back: "I want to lose the weight",
-};
-function getGoalCtaLabel(goals: string[]): string {
-  return GOAL_CTA_LABEL[goals[0]] ?? "I want to start";
+// ─── The ground ─────────────────────────────────────────────────────────────
+// The funnel's colour rule, in one sentence: **the ground says where she is in
+// the story, an accent says what a thing means, and pink is only ever the tap.**
+//
+// Before this the page was one flat `--background` pink from question 1 to the
+// App Store badge - the same ground under "which symptom is hitting you
+// hardest", under the estrogen decline, and under the price. Every screen in a
+// 20-screen funnel looked like the same screen, which is the cheapest way to
+// make a long funnel feel longer than it is.
+//
+// Each ground darkens toward the bottom, and that is not decoration either:
+// three of the phases carry a fixed CTA bar (`bg-background/95`) welded to the
+// bottom edge, and a translucent bar over a flat ground reads as floating. A
+// ground that deepens under it reads as attached to it.
+//
+// Rules for editing these:
+//  - They stay pale. The card surface is #FFFCF8 and has to lift off every one
+//    of them; a ground that creeps past ~#E8 stops being a ground and starts
+//    competing with the content it is behind.
+//  - Pink → green (the paywall) passes through a warm neutral on purpose.
+//    Interpolated directly, those two hues cross through mud at exactly the
+//    midpoint of the screen she is deciding on.
+//  - The ground never uses an accent at accent strength. Rose here is not the
+//    #DB4F45 that means "the load you carry now", and the green is not the
+//    #16A34A that means "paid". If the ground could be mistaken for a signal,
+//    the signal stops being one.
+const PHASE_GROUND = {
+  // Thirteen questions. The quietest ground in the funnel, and the warmest -
+  // it sits under the tile art, which supplies all the colour this phase needs.
+  quiz: "linear-gradient(180deg, #FCF4F3 0%, #F9EDF1 52%, #F3DFE8 100%)",
+  // The finding, and the loader that leads into it. Deeper rose: this is the
+  // stretch that names what is wrong, and it is the only place the ground is
+  // allowed to weigh anything.
+  finding: "linear-gradient(180deg, #FBF1F4 0%, #F6E2EA 50%, #EFD2DF 100%)",
+  // The price. Rose at the top where she arrives from the finding, green at the
+  // bottom where the button is - the gap closing, under the tap that closes it.
+  offer: "linear-gradient(180deg, #FAF0F3 0%, #F4EEEA 46%, #DFEFE1 100%)",
+  // She paid. Green throughout, and flatter than the rest: nothing on this
+  // screen is being sold, so the ground stops arguing.
+  paid: "linear-gradient(180deg, #F5F9F4 0%, #EAF4EA 55%, #DCEFDF 100%)",
+} as const;
+
+// ─── The paper ──────────────────────────────────────────────────────────────
+// One texture, on one phase: the plan screen (`diagnosis`).
+//
+// Every other phase is a short screen with a single object on it - a tile, a
+// score, a price card - and a flat ground is the right thing behind an object.
+// The plan screen is the one long read in the funnel: four blocks, ~2000px of
+// scroll, and the largest run of `bg-card` (#FFFCF8) anywhere in the product.
+// Near-white cards on a near-white wash is a lot of screen with nothing under
+// it, and it reads as an unstyled page rather than as the deliverable.
+//
+// So the ground under it is paper: ruled, with the light falling across it.
+// It is the same idiom as <PlanFinishBoard />, which is the object she is
+// about to scroll past on the price screen - the two now come out of the same
+// material, so the plan and its finish line look like pages of one thing.
+//
+// Rules for editing it, all inherited from PHASE_GROUND above:
+//  - The rules stay under ~0.06 alpha. They are texture, not lines she reads;
+//    at 0.10 they start showing *through* the backdrop-blurred CTA bar as
+//    stripes, which is the one place on this screen that must stay quiet.
+//  - The blooms are white, never a hue. The ground below already carries the
+//    colour and the story; this layer only says "there is light on this".
+//  - Layer order is painted first-on-top, so the rules are listed first: the
+//    blooms lighten the paper, they do not erase what is ruled on it.
+const DIAGNOSIS_PAPER = [
+  // Ruled paper. 28px is the funnel's own body leading rather than
+  // PlanFinishBoard's 24px - the board is a 300px-wide instrument, this is a
+  // full viewport, and lines that tight at this size read as a moiré.
+  "repeating-linear-gradient(180deg, rgba(61,61,61,0) 0 27px, rgba(61,61,61,0.045) 27px 28px)",
+  // The light: one bloom off the top-left corner where the headline sits, one
+  // weaker off the bottom-right behind the CTA. Together they keep the ruled
+  // field from reading as flat graph paper.
+  "radial-gradient(120% 58% at 4% -8%, rgba(255,255,255,0.82), rgba(255,255,255,0) 62%)",
+  "radial-gradient(96% 50% at 106% 106%, rgba(255,255,255,0.55), rgba(255,255,255,0) 60%)",
+].join(", ");
+
+// `calculating` shares the finding's ground because it *is* the finding's first
+// beat - it is the 6.5s during which the answers become the score. A ground of
+// its own would make the funnel's one honest wait read as a fifth destination.
+function groundFor(phase: Phase): keyof typeof PHASE_GROUND {
+  switch (phase) {
+    case "quiz":
+      return "quiz";
+    case "calculating":
+    case "results":
+    case "diagnosis":
+      return "finding";
+    case "paywall":
+      return "offer";
+    case "download":
+      return "paid";
+  }
 }
 
-// Diagnosis-step CTA (the doorstep to the paywall). She's already convinced she
-// wants the outcome - the only thing left is fear of committing/being charged.
-// So this label is resolve + safety, never a "buy now".
-const DIAGNOSIS_CTA_LABEL = "I'm ready to feel better";
+// Results-step CTA label. One label, fixed, naming the object on the other
+// side of the tap.
+//
+// It was first-person and goal-driven until 2026-09-12, off a GOAL_CTA_LABEL
+// map: "I want to sleep again", "I want to lose the weight", six variants. That
+// voice is right on a screen about what she wants, and this screen is not one -
+// results states the finding, rails her symptoms into their cause and prints
+// the benchmark. It is the problem, at length. A wish is the wrong next word
+// after it; what she has not been shown yet is the plan the ad promised, so the
+// button names it and the tap opens an object rather than restating a feeling.
+//
+// Fixed also means measurable: `paywall` arrivals are read against `diagnosis`
+// renders on /admin, and a button that reads six different ways is six
+// untracked variants inside one funnel row.
+const RESULTS_CTA_LABEL = `See My ${PLAN_WEEKS}-Week Plan`;
+
+// Diagnosis-step CTA (the doorstep to the paywall). She has just read the plan
+// screen, so the only thing between her and the price is the gate itself - this
+// label names it and the sub-line under it prices it. It was resolve-phrased
+// until 2026-09-12 ("I'm ready to feel better"), which is a feeling she already
+// had one screen earlier and which named nothing she was about to receive.
+const DIAGNOSIS_CTA_LABEL = `Unlock My ${PLAN_WEEKS}-Week Plan`;
 
 // The doorstep to the paywall - and since 2026-09-05 it really is the doorstep,
 // with nothing between this tap and the price. The breathing exercise used to
@@ -1585,7 +1704,7 @@ function getDiagnosisForwardCopy(): { sub: React.ReactNode } {
 // The four daily task areas and the 8-week arc live in lib/planPillars.ts.
 // They're the offer's mechanism - "track your symptoms" never explained how
 // anyone gets better - so on the diagnosis screen they aren't a list any more:
-// <PlanStage /> plays them inside the plan scroll.
+// <PlanStage /> plays them on a phone, as the app screen she would open.
 
 const TRAJ_PLAN_SPLIT = 1 / 3;
 
@@ -2275,24 +2394,48 @@ function ScoreCauseCard({
           - the known-open item in §7 of CLAUDE.md. Cut on 2026-08-17: the number
           is the useful half and it can be handed over without being ranked
           against her. The cohort is named on the number instead, which is where
-          it belongs now that no verdict names it. */}
-      <p
+          it belongs now that no verdict names it.
+
+          It was legible-but-quiet until 2026-09-12, when it was rendered at
+          12px in `text-[#5A5A5A]/30` - 30% of an already-mid-grey, i.e. below
+          the contrast a 45-60 reader can pick up on a phone in daylight. That
+          is not "quiet", it is missing, and what was missing is the only
+          reference point on the screen: without it the number on the letter is
+          a score out of nothing, so the whole finding above rests on a line she
+          cannot read. It is now one row, 13px, on its own band - visible
+          enough to be read at a glance and still subordinate to the rail above
+          it.
+
+          What it must not become: a comparison. Her own score is *not*
+          reprinted beside it (the letter one screen-height above delivers it,
+          and this card's rule is that anything it repeats is pure length), and
+          nothing here ranks her against the cohort - see the note where
+          getScoreVerdict used to live. One number, named, on a neutral
+          ground. */}
+      <div
         className={cn(
-          "px-4 pb-4 text-xs leading-relaxed text-[#5A5A5A]/30",
+          "px-4 pb-4",
           rows.length > 0 ? "mt-3.5 border-t border-[#EFE6E2] pt-3.5" : "pt-4"
         )}
       >
-        Typical for {cohortLabel}:{" "}
-        <span className="font-bold text-[#3D3D3D]">{benchmark}</span> out of 100.
-      </p>
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-[#FAF4F2] px-3 py-2.5">
+          <span className="text-[13px] leading-snug text-[#5A5A5A]">
+            Typical for {cohortLabel}
+          </span>
+          <span className="shrink-0 text-base font-bold tabular-nums text-[#3D3D3D]">
+            {benchmark}
+            <span className="text-[11px] font-semibold text-[#9A9A9A]">/100</span>
+          </span>
+        </div>
+      </div>
 
       {/* Band 4 - the handover to the plan - was here until 2026-08-17:
           "Closing that gap is what your {PLAN_WEEKS}-week plan is built to do.",
           on green ground under a Goal icon. It was a duplicate at ~20px range.
           The green card immediately below this one (see the results phase) says
-          "your {PLAN_WEEKS}-week plan is ready", names what it was built from,
-          and then *draws* the eight weeks with <PlanFinishBoard />. Two handovers
-          to the same object back to back, and the second one carries evidence.
+          "your {PLAN_WEEKS}-week plan is ready" and names what it was built
+          from. Two handovers to the same object back to back, and the second
+          one is the one that names it.
           Removing it also stops this card from ending in the same green the card
           below opens in, which read as one long green block on a small screen. */}
 
@@ -2727,6 +2870,29 @@ function PlanHeroCarousel({ slides }: { slides: ReadonlyArray<{ src: string; cap
               />
             </motion.div>
           </AnimatePresence>
+
+          {/* The Dynamic Island, in the same real proportions <PlanStage />
+              uses one block below (125 x 37pt, 11pt down, on a 393pt-wide
+              reference). Two phones sit on this screen and they have to be the
+              same phone: the carousel has always been 9 : 19.55 because the
+              masters are real device captures, and the animated mock was
+              9 : 15.5 until 2026-09-12, so the pair read as two different
+              handsets stacked on one page.
+
+              It overlays the screenshot rather than being baked into it, which
+              is correct: the Island is hardware and a screen capture cannot
+              contain it. It lands on the empty middle of iOS's own status bar,
+              between the clock and the indicators, so it covers nothing the
+              capture was carrying. */}
+          <span
+            aria-hidden
+            className="pointer-events-none absolute left-1/2 top-[1.35%] z-10 h-[4.1%] w-[31.8%] -translate-x-1/2 rounded-full bg-[#0A0A0B]"
+          >
+            <span
+              aria-hidden
+              className="absolute right-[7%] top-1/2 block h-[52%] w-[15.5%] -translate-y-1/2 rounded-full bg-[#17171C]"
+            />
+          </span>
         </div>
       </div>
 
@@ -4758,6 +4924,69 @@ function RegisterPageContent() {
   // stops lining up with the card above it.
   return (
     <main className="overflow-hidden relative mx-auto px-2 pb-2 sm:px-4 sm:pb-4 h-dvh flex flex-col pt-2 max-w-4xl min-h-0">
+      {/* The ground (see PHASE_GROUND). Three things about it are load-bearing:
+
+          `fixed`, not a background on <main>, because <main> is max-w-4xl - a
+          background here would paint an 896px column of gradient with the body's
+          flat pink either side of it on anything wider than a phone. Fixed also
+          means the ground holds still while the phase scrolls over it, which is
+          what makes it read as ground rather than as a very tall panel.
+
+          It is safe to anchor to the viewport only because nothing between here
+          and the root has a transform, filter or perspective - the same
+          constraint the phase cross-fade below is written to respect, and for
+          the same reason (a transformed ancestor becomes the containing block
+          for every `position: fixed`, which would take all five CTA bars with
+          it). <main>'s `overflow-hidden` does not clip a fixed child unless that
+          ancestor is its containing block, so it does not clip this.
+
+          The outgoing layer exits at `opacity: 1` rather than fading. Two
+          grounds cross-fading at 0.5 each would let the body's pink through the
+          middle of the dissolve - a pale flash on every phase change. Holding
+          the old one opaque underneath while the new one fades in on top of it
+          is the same dissolve with nothing behind it. */}
+      <AnimatePresence initial={false}>
+        <motion.div
+          key={groundFor(phase)}
+          aria-hidden
+          className="fixed inset-0 z-0 pointer-events-none"
+          style={{ background: PHASE_GROUND[groundFor(phase)] }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 1 }}
+          transition={{
+            duration: prefersReducedMotion || skipPhaseTransition.current ? 0 : 0.5,
+            ease: "easeOut",
+          }}
+        />
+      </AnimatePresence>
+      {/* Paper, over the ground and only on the plan screen (see
+          DIAGNOSIS_PAPER). Its own layer rather than a fourth entry in
+          PHASE_GROUND, for two reasons:
+
+          `groundFor()` maps calculating, results *and* diagnosis onto the same
+          `finding` ground, deliberately - they are one stretch of the story. So
+          the ground layer's key does not change on results → plan and no new
+          layer mounts; folding the texture in there would make it appear two
+          screens early, on the loader.
+
+          And it is `fixed` for the same reason the ground is: it must hold
+          still while ~2000px of plan scrolls over it. Paper that scrolled with
+          the content would be a very tall card, which is the thing the ground
+          exists not to be. Opacity is animated rather than the layer being
+          mounted and unmounted, so leaving the screen fades the texture out
+          under the phase cross-fade instead of cutting it. */}
+      <motion.div
+        aria-hidden
+        className="fixed inset-0 z-0 pointer-events-none"
+        style={{ backgroundImage: DIAGNOSIS_PAPER }}
+        initial={false}
+        animate={{ opacity: phase === "diagnosis" ? 1 : 0 }}
+        transition={{
+          duration: prefersReducedMotion || skipPhaseTransition.current ? 0 : 0.5,
+          ease: "easeOut",
+        }}
+      />
       {/* One cross-fade across every phase change.
           Each step *inside* the quiz already animated, but the phase changes
           themselves - results → plan → paywall, the biggest
@@ -4781,7 +5010,7 @@ function RegisterPageContent() {
             duration: prefersReducedMotion || skipPhaseTransition.current ? 0 : 0.22,
             ease: "easeOut",
           }}
-          className="flex-1 flex flex-col min-h-0"
+          className="relative z-10 flex-1 flex flex-col min-h-0"
         >
 
       {/* Calculating Phase - loader between quiz and results; also where the
@@ -4897,8 +5126,9 @@ function RegisterPageContent() {
                 Earlier occupants of this slot, for the record: a two-line SVG
                 estrogen chart, an illustration of the hormonal swings
                 (<HormoneShift />), <PlanFinishBoard /> (moved to the plan-ready
-                card below, where "what happens next" belongs) and a 3-col grid
-                of her own symptom tiles. */}
+                card below, then off this screen entirely on 2026-09-12 - see
+                the note where it used to render) and a 3-col grid of her own
+                symptom tiles. */}
 
             {/* The plan, existing.
                 The ad promised "your personalized 8-week plan, built around
@@ -4958,23 +5188,27 @@ function RegisterPageContent() {
                 ))}
               </div>
 
-              {/* What the plan actually does with those eight weeks, as an
-                  instrument rather than a claim. It sat inside the "why this is
-                  happening" card until 2026-08-17, where it was answering a
-                  question that card does not ask: the card explains the cause,
-                  and a finish line is about the cure.
+              {/* <PlanFinishBoard /> sat here until 2026-09-12: a taped-down
+                  paper chart with a needle travelling her eight weeks, rose at
+                  her worst symptom today through to green at the goal she
+                  picked.
 
-                  Here it is the evidence for the sentence directly above it -
-                  "your {PLAN_WEEKS}-week plan is ready" is an assertion until
-                  something shows what the eight weeks contain. Both ends are
-                  her own words (her #1 symptom today, the goal she picked at
-                  week 8), so the card reads as her plan rather than a product
-                  description. See <PlanFinishBoard />. */}
-              <PlanFinishBoard
-                topProblems={topProblems}
-                goal={goal}
-                className="mt-3.5"
-              />
+                  It was removed because of what this screen is *for*. Results
+                  states the finding and agitates it - the rail of symptoms,
+                  the mechanism under them, the benchmark - and every pixel of
+                  it should leave her wanting the thing she cannot see yet. The
+                  finish board is the relief, drawn in full, 100px above the
+                  button whose only job is to make her tap to go and see it: it
+                  answered the question the next screen exists to answer, and it
+                  did it with an 8.2s loop she had to sit through. The board
+                  itself is unchanged and still renders on the paywall
+                  (components/PaywallView.tsx), where the outcome belongs
+                  because a price is only ever compared against something you
+                  can see.
+
+                  What is left here is the handover and nothing more: the plan
+                  exists, it was built from her answers, here are its four
+                  pillars. The plan screen one tap later shows what is in it. */}
             </motion.div>
           </motion.div>
 
@@ -4992,7 +5226,7 @@ function RegisterPageContent() {
                 className={CTA_GRADIENT_CLASS}
                 style={CTA_GRADIENT_STYLE}
               >
-                {getGoalCtaLabel(goal)}
+                {RESULTS_CTA_LABEL}
                 <ArrowRight className="w-4 h-4" />
               </button>
               <p className="text-xs text-[#9A9A9A] text-center mt-1.5">{RESULTS_CTA_SUB}</p>
@@ -5088,12 +5322,73 @@ function RegisterPageContent() {
                     You get all of this automatically in your mobile app.
                   </p>
 
-                  <div className="mt-4 rounded-2xl overflow-hidden border-2 border-[#E8DDD9] bg-card shadow-md shadow-primary/5">
-                    {/* The scroll, staged. Her name is written on it, then it
-                        plays a day on the plan and the eight weeks those days
+                  {/* The tray the phone lies on. Glass, not a card, since
+                      2026-09-12, and the reason is a colour collision rather
+                      than a taste: <PhoneMock />'s screen is #FFFCF8 and
+                      `bg-card` is #FFFCF8, so the box under the phone and the
+                      app inside it were the same white. The only thing
+                      separating the product from the surface it sat on was the
+                      bezel, and the block read as one flat slab about 500px
+                      tall.
+
+                      So the surface is translucent instead: DIAGNOSIS_PAPER
+                      shows through it at roughly a third strength, the phone's
+                      opaque screen lifts off it, and the screen ends up with
+                      one texture rather than a sheet of paper laid on a sheet
+                      of paper at a different rule pitch.
+
+                      No `backdrop-filter`. The backdrop here is a fixed
+                      gradient plus 28px rules, so a blur buys nothing a lower
+                      alpha does not - and this is a ~500px pane inside a
+                      scroller, on an audience arriving in the Instagram
+                      webview. The CTA bar is the one place on this screen worth
+                      spending a blur on.
+
+                      The glass is three cheap cues, all in the shadow stack: a
+                      1px white inner edge along the top (the lit rim), a
+                      hairline #E8DDD9 ring (so it still has the funnel's card
+                      edge), and the sheen below. */}
+                  <div
+                    className="relative mt-4 rounded-2xl overflow-hidden"
+                    style={{
+                      background:
+                        "linear-gradient(158deg, rgba(255,255,255,0.74) 0%, rgba(255,252,248,0.46) 48%, rgba(255,255,255,0.62) 100%)",
+                      boxShadow: [
+                        "inset 0 1px 0 rgba(255,255,255,0.95)",
+                        "inset 0 -1px 0 rgba(255,255,255,0.55)",
+                        "0 0 0 1px rgba(232,221,217,0.85)",
+                        "0 18px 40px -24px rgba(61,43,26,0.45)",
+                      ].join(", "),
+                    }}
+                  >
+                    {/* The specular: one soft diagonal wipe across the top-left
+                        corner. It is what makes the panel read as glass rather
+                        than as a card someone forgot to fill in - a flat
+                        translucent rectangle has no light in it, and light is
+                        the whole tell. Under the phone by DOM order, so it
+                        never washes the screenshot. */}
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute inset-0"
+                      style={{
+                        background:
+                          "linear-gradient(118deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.28) 26%, rgba(255,255,255,0) 46%)",
+                      }}
+                    />
+                    {/* The plan, playing on a phone: her four tasks for today
+                        ticking themselves off, then the eight weeks those days
                         add up to. It loops on its own while it's on screen -
                         nothing in it is tappable, so it never competes with the
                         CTA for a thumb.
+
+                        Until 2026-09-12 both acts played inside a parchment
+                        scroll that unrolled on arrival and wrote her name onto
+                        the paper first. The scroll is gone and the phone is now
+                        the whole stage - see the header of <PlanStage /> for
+                        the three reasons, of which the load-bearing one is that
+                        the phone was 190px wide inside the paper and the task
+                        rows were the smallest legible thing on the screen they
+                        are the point of.
 
                         A <ShotStage /> of nutrition/habits/rewards used to
                         close this card. Those three are now slides 2-4 of the
@@ -5107,7 +5402,9 @@ function RegisterPageContent() {
                       firstName={firstName.trim() || undefined}
                       goalLabel={goalLabel}
                       tasks={pillarTasks}
-                      className="pb-2"
+                      // `relative` only so the phone stacks over the sheen
+                      // above it - both are positioned, so DOM order decides.
+                      className="relative pb-2"
                     />
                   </div>
                 </motion.div>
@@ -5192,13 +5489,13 @@ function RegisterPageContent() {
                             className="w-full object-cover"
                           />
                           {/* Red tint over left half */}
-                          <div className="absolute inset-y-0 left-0 w-1/2 bg-red-500/20 pointer-events-none" />
+                          <div className="absolute inset-y-0 left-0 w-1/2 bg-[#DB4F45]/20 pointer-events-none" />
                           {/* Green tint over right half */}
                           <div className="absolute inset-y-0 right-0 w-1/2 bg-green-500/20 pointer-events-none" />
                           {/* Center divider */}
                           <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-white/70" />
                           {/* Red label */}
-                          <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-red-500 text-[10px] font-bold text-white tracking-wide shadow-sm">
+                          <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-[#DB4F45] text-[10px] font-bold text-white tracking-wide shadow-sm">
                             Right now
                           </span>
                           {/* Green label */}
@@ -5222,9 +5519,9 @@ function RegisterPageContent() {
                         <div className="p-3">
                           <p className="text-xs font-bold text-[#3D3D3D] mb-2 text-center">{t.label}</p>
                           <div className="grid grid-cols-2 gap-2">
-                            <div className="rounded-xl bg-red-50 border border-red-200 px-2.5 py-2">
-                              <p className="text-[10px] font-semibold text-red-500 mb-0.5 uppercase tracking-wide">Right now</p>
-                              <p className="text-[11px] text-red-800 leading-snug">{t.before}</p>
+                            <div className="rounded-xl bg-[#FDF1F0] border border-[#F5CFCB] px-2.5 py-2">
+                              <p className="text-[10px] font-semibold text-[#B23A31] mb-0.5 uppercase tracking-wide">Right now</p>
+                              <p className="text-[11px] text-[#8F2A22] leading-snug">{t.before}</p>
                             </div>
                             <div className="rounded-xl bg-green-50 border border-green-200 px-2.5 py-2">
                               <p className="text-[10px] font-semibold text-green-600 mb-0.5 uppercase tracking-wide">With Lisa</p>
@@ -5298,7 +5595,7 @@ function RegisterPageContent() {
                   className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-5 shadow-md shadow-primary/5"
                 >
                   <motion.div variants={rise} className="flex items-center gap-2 mb-1">
-                    <TrendingDown className="w-5 h-5 text-red-500" />
+                    <TrendingDown className="w-5 h-5 text-[#DB4F45]" />
                     <h2 className="text-base font-bold text-[#3D3D3D]">And if you do nothing</h2>
                   </motion.div>
                   <motion.p variants={rise} className="text-xs text-[#5A5A5A] mb-3">
@@ -5340,9 +5637,11 @@ function RegisterPageContent() {
                 answering "what do you get" on a screen that has already shown
                 her the product. What it has to answer is *how the days work*,
                 and where the app she runs them in actually lives - so
-                `<HowLisaRuns />` states the loop and shows both store listings
-                under it. It was an animated numbered sequence until 2026-09-09;
-                the numbers made a daily loop read as a one-off checklist. ───── */}
+                `<HowLisaRuns />` states the loop. It was an animated numbered
+                sequence until 2026-09-09; the numbers made a daily loop read as
+                a one-off checklist. The two store listings under it went on
+                2026-09-12: "Free · In-App Purchases" one screen before a $29 web
+                checkout sent her to the store instead - see HowLisaRuns.tsx. ── */}
             {(() => {
               const topSymptom = [...topProblems]
                 .sort((a, b) => (scoredSeverity[b] ?? 0) - (scoredSeverity[a] ?? 0))[0];
@@ -5493,8 +5792,8 @@ function RegisterPageContent() {
               <p className="mt-2 text-xs text-[#7A7A7A] leading-snug">
                 Your plan is on its way to that inbox too. Wrong address, or the code never
                 arrives?{" "}
-                <a className="font-semibold text-primary underline" href="mailto:menolisahelp@gmail.com">
-                  menolisahelp@gmail.com
+                <a className="font-semibold text-primary underline" href={`mailto:${SUPPORT_EMAIL}`}>
+                  {SUPPORT_EMAIL}
                 </a>{" "}
                 will fix it.
               </p>
@@ -5588,56 +5887,103 @@ function RegisterPageContent() {
               the component. Steps with no line render nothing. */}
           <QuizNudge step={currentStep} seen={nudgeSeen.current} />
 
-          {/* Progress: the counter is the top line of the screen and Back sits on
-              the same row, absolutely placed so the label stays optically
-              centred whatever its length. They used to be two stacked rows; the
-              chrome above the card is kept as tight as it will go, because every
-              pixel it takes is a pixel off the card, which is the only part of
-              this screen doing work. Back is absent on question 1: it is the
-              funnel's entrance, so there is nothing behind it (see goBack). */}
+          {/* ── The strip above the card. Two jobs, so two headers. ──────────
+              Whatever goes here is taken off the card, which is the only part
+              of this screen doing work, so both versions are kept as tight as
+              they will go and they cost the same height.
+
+              **Step 0 sells; it does not measure.** It carried the same
+              progress header as every other screen until 2026-09-12 — which
+              meant the largest type on the funnel's entrance read "Question 1
+              of 13" over thirteen dots, on a screen that made no promise of any
+              kind. That is the whole cost of the funnel disclosed in bold
+              before a single word of value, and 1-of-13 is the worst number an
+              endowed-progress meter will ever show her: there is no progress to
+              be proud of at the entrance, only distance left. Measured at a
+              36.5% loss before one tap (836 renders, 531 reaching question 2,
+              2026-09-06 onward) — 44% of everything lost between here and the
+              paywall, and ~$75 of a $205 week. The counter and the dots earn
+              their place from step 1, where progress exists; here they now do
+              not render at all.
+
+              What replaces them is the offer, which the screen had nowhere:
+              what this is, what it costs, and what she gets. Every clause is
+              checkable against this codebase, which is the rule the whole
+              funnel is written under — thirteen questions of one tap each, no
+              charge and no address collected before Stripe (results, diagnosis
+              and the paywall all render first), and `diagnosis` is where what
+              is driving her symptoms is handed to her.
+
+              What must NOT go here, in the two words it would take: a rating or
+              a member count. "4.9 · 12,800+ women" came off the paywall on
+              2026-09-12 because nothing sources either figure, and an unsourced
+              number is worth least in first position, where it becomes the
+              first claim she evaluates. Nor a countdown, for the reasons in the
+              "decided against" table.
+
+              Back is absent on step 0 — it is the entrance, so there is nothing
+              behind it (see goBack). */}
           <div className="mb-1 sm:mb-1.5 shrink-0 pt-1 px-2">
-            <div className="relative flex items-center justify-center min-h-6 mb-1">
-              {stepIndex > 0 && (
-                <button
-                  type="button"
-                  onClick={goBack}
-                  className="absolute left-0 flex items-center gap-1 text-xs text-[#9A9A9A] hover:text-[#5A5A5A] transition-colors"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" /> Back
-                </button>
-              )}
-              <p className="text-center text-base sm:text-lg font-semibold text-[#3D3D3D]" role="status" aria-live="polite">
-                {REWARD_STEPS.includes(currentStep)
-                  ? REWARD_LABEL[currentStep] ?? "Quick win"
-                  : activeQuestionIndex === QUESTION_STEPS.length - 1
-                    ? "Last question"
-                    : activeQuestionIndex === QUESTION_STEPS.length - 2
-                      ? "Almost there"
-                      : `Question ${activeQuestionIndex + 1} of ${QUESTION_STEPS.length}`}
-              </p>
-            </div>
-            <div className="flex justify-center gap-2 sm:gap-3">
-              {QUESTION_STEPS.map((step, index) => {
-                const isActive = activeQuestionIndex === index;
-                return (
-                  <motion.div
-                    key={step}
-                    className={`h-2 rounded-full transition-colors duration-300 ${
-                      isActive
-                        ? "bg-linear-to-r from-primary to-primary/80"
-                        : "bg-foreground/20"
-                    }`}
-                    animate={{ width: isActive ? 40 : 8 }}
-                    transition={{
-                      type: "spring",
-                      damping: 30,
-                      stiffness: 200,
-                      duration: prefersReducedMotion ? 0 : 0.4,
-                    }}
-                  />
-                );
-              })}
-            </div>
+            {stepIndex === 0 ? (
+              <div className="text-center">
+                {/* The funnel's only h1. Benefit first, then the two costs she
+                    is actually weighing in the second before she leaves: how
+                    long, and what it will cost her to find out. */}
+                <h1 className="text-base sm:text-lg font-bold leading-tight text-[#3D3D3D]">
+                  Find out what&apos;s driving your symptoms
+                </h1>
+                <p className="mt-0.5 text-[11px] sm:text-xs leading-snug text-[#5A5A5A]">
+                  Free 2-minute check
+                  <span aria-hidden className="mx-1.5 text-[#9A9A9A]">
+                    ·
+                  </span>
+                  No email needed
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="relative flex items-center justify-center min-h-6 mb-1">
+                  <button
+                    type="button"
+                    onClick={goBack}
+                    className="absolute left-0 flex items-center gap-1 text-xs text-[#9A9A9A] hover:text-[#5A5A5A] transition-colors"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" /> Back
+                  </button>
+                  <p className="text-center text-base sm:text-lg font-semibold text-[#3D3D3D]" role="status" aria-live="polite">
+                    {REWARD_STEPS.includes(currentStep)
+                      ? REWARD_LABEL[currentStep] ?? "Quick win"
+                      : activeQuestionIndex === QUESTION_STEPS.length - 1
+                        ? "Last question"
+                        : activeQuestionIndex === QUESTION_STEPS.length - 2
+                          ? "Almost there"
+                          : `Question ${activeQuestionIndex + 1} of ${QUESTION_STEPS.length}`}
+                  </p>
+                </div>
+                <div className="flex justify-center gap-2 sm:gap-3">
+                  {QUESTION_STEPS.map((step, index) => {
+                    const isActive = activeQuestionIndex === index;
+                    return (
+                      <motion.div
+                        key={step}
+                        className={`h-2 rounded-full transition-colors duration-300 ${
+                          isActive
+                            ? "bg-linear-to-r from-primary to-primary/80"
+                            : "bg-foreground/20"
+                        }`}
+                        animate={{ width: isActive ? 40 : 8 }}
+                        transition={{
+                          type: "spring",
+                          damping: 30,
+                          stiffness: 200,
+                          duration: prefersReducedMotion ? 0 : 0.4,
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Question Content - Scrollable area */}
@@ -6011,8 +6357,21 @@ function RegisterPageContent() {
                     <h2 className="text-lg sm:text-xl font-bold mb-0.5">
                       Which one is hitting you hardest?
                     </h2>
+                    {/* The sub-line's job is to make the tap cheap, and "Just
+                        tap it" did not do it: it repeated the instruction the
+                        h2 had already given and answered nothing she was
+                        hesitating over. What she hesitates over is measurable —
+                        median 9.0s on this screen against 4.6s on the
+                        identically-shaped four-tile age grid, so she is not
+                        tapping, she is *ranking*, and a woman with five of these
+                        nine cannot rank them. "Hitting you hardest" asks for a
+                        measurement she does not have; "the one you'd fix first"
+                        asks for a preference she answers instantly, and it lands
+                        on the same tile. The h2 keeps the harder wording because
+                        naming the pain is its job; the permission to stop
+                        ranking goes here. */}
                     <p className="text-sm text-muted-foreground">
-                      Just tap it.
+                      More than one? Tap the one you&apos;d fix first.
                     </p>
                   </div>
                   {/* Nine tiles, three by three, sized to the card rather than to

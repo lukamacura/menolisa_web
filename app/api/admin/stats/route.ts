@@ -134,11 +134,11 @@ const DAY_MS = 86_400_000;
  */
 const PERIOD_DAYS = PLAN_ACCESS_DAYS;
 /**
- * There is no refund window to track. The money-back guarantee was removed on
- * 2026-09-09 (paywall, landing page, welcome email and Terms §11 together), so
- * the "Owed" alert and the `refundExposure` figure it printed went with it —
- * a contingent liability the product no longer carries. Stripe refunds issued
- * by hand still show up in `refunds30`.
+ * The money-back guarantee is back (2026-09-12, `GUARANTEE_DAYS` in
+ * lib/pricing.ts, Terms §11). Refunds are issued by hand in Stripe and show up
+ * in `refunds30`; there is no separate exposure figure yet. If refunds become
+ * material, re-add one: sales inside the last `GUARANTEE_DAYS` are the money
+ * that can still come back.
  */
 /**
  * Grace added after access ends before a customer counts as "has decided not to
