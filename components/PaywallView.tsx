@@ -5,6 +5,7 @@ import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
+  ArrowRight,
   Bot,
   Building2,
   Check,
@@ -555,6 +556,11 @@ function useExitQuestion(opts: {
  * reading the first dollar. One charge of {PRICE} buys the whole
  * {PLAN_WEEKS}-week block, so the honest label is the block - and the figure
  * beside it is the entire ask, not an instalment.
+ *
+ * **Shape mirrors `LandingCtaBar`, colour does not.** Same centred bold label,
+ * same arrow in a translucent square pinned right, same press behaviour, so
+ * the button she tapped on the landing page and the one she pays with read as
+ * one control. The fill stays green for the reason above.
  */
 function CheckoutButton({
   loading,
@@ -564,40 +570,31 @@ function CheckoutButton({
   onClick: () => void | Promise<void>;
 }) {
   return (
-    <motion.button
+    <button
       type="button"
       disabled={loading}
       onClick={onClick}
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      className="relative w-full min-h-14 py-4 font-bold text-white rounded-2xl transition-all flex items-center justify-center gap-2 text-base sm:text-base disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden group"
+      className="relative flex min-h-14 w-full items-center justify-center rounded-2xl px-12 text-center text-[17px] font-bold leading-tight tracking-[0.01em] text-white transition-transform hover:brightness-105 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
       style={{
         background:
           "linear-gradient(180deg, rgba(134,239,172,0.45) 0%, rgba(134,239,172,0) 46%), linear-gradient(135deg, #15803D 0%, #16A34A 50%, #15803D 100%)",
         boxShadow:
           "0 0 28px rgba(34,197,94,0.50), 0 8px 26px rgba(21,128,61,0.38), 0 2px 8px rgba(21,128,61,0.25)",
+        textShadow: "0 1px 1px rgba(10, 60, 30, 0.25)",
       }}
     >
+      {loading ? "Redirecting to checkout…" : <>Start my {PLAN_WEEKS}-week plan &middot; {PRICE}</>}
       <span
+        className="absolute right-2 grid h-10 w-10 place-items-center rounded-xl bg-white/20"
         aria-hidden
-        className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out"
-        style={{
-          background:
-            "linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.55) 50%, transparent 70%)",
-        }}
-      />
-      {loading ? (
-        <>
-          <Loader2 className="w-5 h-5 animate-spin" />
-          Redirecting to checkout&hellip;
-        </>
-      ) : (
-        <>
-          <Lock className="w-4 h-4" />
-          Start my {PLAN_WEEKS}-week plan &middot; {PRICE}
-        </>
-      )}
-    </motion.button>
+      >
+        {loading ? (
+          <Loader2 className="h-5 w-5 animate-spin" />
+        ) : (
+          <ArrowRight className="h-5 w-5" strokeWidth={2.5} />
+        )}
+      </span>
+    </button>
   );
 }
 
