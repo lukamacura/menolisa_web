@@ -5453,92 +5453,6 @@ function RegisterPageContent() {
                   <p className="mt-2.5 text-center text-[11px] text-[#9A9A9A] leading-snug">
                     You get all of this automatically in your mobile app.
                   </p>
-
-                  {/* The tray the phone lies on. Glass, not a card, since
-                      2026-09-12, and the reason is a colour collision rather
-                      than a taste: <PhoneMock />'s screen is #FFFCF8 and
-                      `bg-card` is #FFFCF8, so the box under the phone and the
-                      app inside it were the same white. The only thing
-                      separating the product from the surface it sat on was the
-                      bezel, and the block read as one flat slab about 500px
-                      tall.
-
-                      So the surface is translucent instead: DIAGNOSIS_PAPER
-                      shows through it at roughly a third strength, the phone's
-                      opaque screen lifts off it, and the screen ends up with
-                      one texture rather than a sheet of paper laid on a sheet
-                      of paper at a different rule pitch.
-
-                      No `backdrop-filter`. The backdrop here is a fixed
-                      gradient plus 28px rules, so a blur buys nothing a lower
-                      alpha does not - and this is a ~500px pane inside a
-                      scroller, on an audience arriving in the Instagram
-                      webview. The CTA bar is the one place on this screen worth
-                      spending a blur on.
-
-                      The glass is three cheap cues, all in the shadow stack: a
-                      1px white inner edge along the top (the lit rim), a
-                      hairline #E8DDD9 ring (so it still has the funnel's card
-                      edge), and the sheen below. */}
-                  <div
-                    className="relative mt-4 rounded-2xl overflow-hidden"
-                    style={{
-                      background:
-                        "linear-gradient(158deg, rgba(255,255,255,0.74) 0%, rgba(255,252,248,0.46) 48%, rgba(255,255,255,0.62) 100%)",
-                      boxShadow: [
-                        "inset 0 1px 0 rgba(255,255,255,0.95)",
-                        "inset 0 -1px 0 rgba(255,255,255,0.55)",
-                        "0 0 0 1px rgba(232,221,217,0.85)",
-                        "0 18px 40px -24px rgba(61,43,26,0.45)",
-                      ].join(", "),
-                    }}
-                  >
-                    {/* The specular: one soft diagonal wipe across the top-left
-                        corner. It is what makes the panel read as glass rather
-                        than as a card someone forgot to fill in - a flat
-                        translucent rectangle has no light in it, and light is
-                        the whole tell. Under the phone by DOM order, so it
-                        never washes the screenshot. */}
-                    <span
-                      aria-hidden
-                      className="pointer-events-none absolute inset-0"
-                      style={{
-                        background:
-                          "linear-gradient(118deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.28) 26%, rgba(255,255,255,0) 46%)",
-                      }}
-                    />
-                    {/* The plan, playing on a phone: her four tasks for today
-                        ticking themselves off, then the eight weeks those days
-                        add up to. It loops on its own while it's on screen -
-                        nothing in it is tappable, so it never competes with the
-                        CTA for a thumb.
-
-                        Until 2026-09-12 both acts played inside a parchment
-                        scroll that unrolled on arrival and wrote her name onto
-                        the paper first. The scroll is gone and the phone is now
-                        the whole stage - see the header of <PlanStage /> for
-                        the three reasons, of which the load-bearing one is that
-                        the phone was 190px wide inside the paper and the task
-                        rows were the smallest legible thing on the screen they
-                        are the point of.
-
-                        A <ShotStage /> of nutrition/habits/rewards used to
-                        close this card. Those three are now slides 2-4 of the
-                        hero directly above, at a size where the checklist,
-                        the habit and the streak can actually be read - so the
-                        stage was the same three images a second time, ~300px
-                        lower, tilted to ~30% width behind a gradient fade.
-                        Showing a shot twice on one screen doesn't double the
-                        proof; it halves the attention on the legible copy. */}
-                    <PlanStage
-                      firstName={firstName.trim() || undefined}
-                      goalLabel={goalLabel}
-                      tasks={pillarTasks}
-                      // `relative` only so the phone stacks over the sheen
-                      // above it - both are positioned, so DOM order decides.
-                      className="relative pb-2"
-                    />
-                  </div>
                 </motion.div>
               );
             })()}
@@ -5674,6 +5588,97 @@ function RegisterPageContent() {
                 </motion.div>
               );
             })()}
+
+            {/* ── The plan, playing on a phone. Swapped below the before/after
+                cards on 2026-09-13: the outcome cards now sit directly under
+                the hero screenshots, the animation follows them. ────────── */}
+            <div className="mb-6">
+              {/* The tray the phone lies on. Glass, not a card, since
+                  2026-09-12, and the reason is a colour collision rather
+                  than a taste: <PhoneMock />'s screen is #FFFCF8 and
+                  `bg-card` is #FFFCF8, so the box under the phone and the
+                  app inside it were the same white. The only thing
+                  separating the product from the surface it sat on was the
+                  bezel, and the block read as one flat slab about 500px
+                  tall.
+
+                  So the surface is translucent instead: DIAGNOSIS_PAPER
+                  shows through it at roughly a third strength, the phone's
+                  opaque screen lifts off it, and the screen ends up with
+                  one texture rather than a sheet of paper laid on a sheet
+                  of paper at a different rule pitch.
+
+                  No `backdrop-filter`. The backdrop here is a fixed
+                  gradient plus 28px rules, so a blur buys nothing a lower
+                  alpha does not - and this is a ~500px pane inside a
+                  scroller, on an audience arriving in the Instagram
+                  webview. The CTA bar is the one place on this screen worth
+                  spending a blur on.
+
+                  The glass is three cheap cues, all in the shadow stack: a
+                  1px white inner edge along the top (the lit rim), a
+                  hairline #E8DDD9 ring (so it still has the funnel's card
+                  edge), and the sheen below. */}
+              <div
+                className="relative rounded-2xl overflow-hidden"
+                style={{
+                  background:
+                    "linear-gradient(158deg, rgba(255,255,255,0.74) 0%, rgba(255,252,248,0.46) 48%, rgba(255,255,255,0.62) 100%)",
+                  boxShadow: [
+                    "inset 0 1px 0 rgba(255,255,255,0.95)",
+                    "inset 0 -1px 0 rgba(255,255,255,0.55)",
+                    "0 0 0 1px rgba(232,221,217,0.85)",
+                    "0 18px 40px -24px rgba(61,43,26,0.45)",
+                  ].join(", "),
+                }}
+              >
+                {/* The specular: one soft diagonal wipe across the top-left
+                    corner. It is what makes the panel read as glass rather
+                    than as a card someone forgot to fill in - a flat
+                    translucent rectangle has no light in it, and light is
+                    the whole tell. Under the phone by DOM order, so it
+                    never washes the screenshot. */}
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0"
+                  style={{
+                    background:
+                      "linear-gradient(118deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.28) 26%, rgba(255,255,255,0) 46%)",
+                  }}
+                />
+                {/* The plan, playing on a phone: her four tasks for today
+                    ticking themselves off, then the eight weeks those days
+                    add up to. It loops on its own while it's on screen -
+                    nothing in it is tappable, so it never competes with the
+                    CTA for a thumb.
+
+                    Until 2026-09-12 both acts played inside a parchment
+                    scroll that unrolled on arrival and wrote her name onto
+                    the paper first. The scroll is gone and the phone is now
+                    the whole stage - see the header of <PlanStage /> for
+                    the three reasons, of which the load-bearing one is that
+                    the phone was 190px wide inside the paper and the task
+                    rows were the smallest legible thing on the screen they
+                    are the point of.
+
+                    A <ShotStage /> of nutrition/habits/rewards used to
+                    close this card. Those three are now slides 2-4 of the
+                    hero at the top of this screen, where the checklist,
+                    the habit and the streak can actually be read - so the
+                    stage was the same three images a second time, ~300px
+                    lower, tilted to ~30% width behind a gradient fade.
+                    Showing a shot twice on one screen doesn't double the
+                    proof; it halves the attention on the legible copy. */}
+                <PlanStage
+                  firstName={firstName.trim() || undefined}
+                  goalLabel={getOfferPromise(goal).toLowerCase()}
+                  tasks={pillarTasks}
+                  // `relative` only so the phone stacks over the sheen
+                  // above it - both are positioned, so DOM order decides.
+                  className="relative pb-2"
+                />
+              </div>
+            </div>
 
             {/* ── Block 3 was <SocialProofPolaroid />, deleted 2026-09-09 as the
                 middle of three viewings of the same card. `useMemberRotation`
@@ -6718,16 +6723,7 @@ function RegisterPageContent() {
                   front of a payoff she has already seen reads as the funnel
                   changing its mind. Scrollable rather than clipped - the
                   print plus her story is the tallest reward payoff, and a short
-                  viewport must cut off nothing.
-
-                  The framed line under it is her progress, not a second telling
-                  of the member's story - the print's own caption already
-                  introduces her, and restating it 40px lower is the duplicate
-                  payoff the results screen's count-up was fixed for. The count
-                  is `activeQuestionIndex + 1`, i.e. questions actually
-                  answered; `stepIndex` would bill her for the reward screens
-                  too, which is exactly the kind of invented number the meter
-                  copy above is careful not to print. */}
+                  viewport must cut off nothing. */}
               {currentStep === "reward_social_proof" && (
                 <QuizReward
                   messages={[
@@ -6745,15 +6741,6 @@ function RegisterPageContent() {
                           default 8s would show her one woman and call it a
                           rotation. See `rotateMs` in components/SocialProof.tsx. */}
                       <SocialProofPolaroid reduced={!!prefersReducedMotion} rotateMs={4500} />
-                      <motion.p
-                        initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: prefersReducedMotion ? 0 : 0.5, duration: 0.45 }}
-                        className="-mt-2 rounded-xl bg-primary/5 border border-primary/20 px-4 py-3 text-center text-sm sm:text-base font-semibold text-[#3D3D3D] leading-snug"
-                      >
-                        You&apos;re {activeQuestionIndex + 1} questions in. A few
-                        more and your {PLAN_WEEKS}-week plan is ready.
-                      </motion.p>
                     </div>
                   </div>
                 </QuizReward>
