@@ -264,6 +264,7 @@ const STEPS: Step[] = [
   // SYMPTOM_LOAD note in `lib/quiz-results-helpers.ts` before changing either.
   "q_symptom_primary",
   "q1_age",
+  "q3_goals",
   "q_symptom_impact",
   "q2_here_for",
   "q_menopause_type",
@@ -283,9 +284,8 @@ const STEPS: Step[] = [
 
 // Single-choice steps advance on tap - the extra "Next" press on a question that
 // can only hold one answer is pure friction, and it's the same press she already
-// made. `q3_goals` (multi-select), the two numeric inputs and the name step keep
-// the button, because there the tap is a toggle and only she knows when she's
-// done.
+// made. The two numeric inputs and the name step keep the button, because
+// only she knows when she's done.
 //
 // On the steps that keep it, the bar does not render until the step has an
 // answer - it is not drawn disabled. A greyed-out dead button reads as broken
@@ -2926,15 +2926,20 @@ function PlanHeroCarousel({ slides }: { slides: ReadonlyArray<{ src: string; cap
 }
 
 /**
- * The app filmed in her hand: ticking off nutrition, the water counter, the
- * breathing timer. Real footage, current UI.
+ * The app filmed in her hand: today's plan, ticking off nutrition, the
+ * breathing timer, a movement session. Real footage, current UI.
  *
- * The master was a 77MB, 800x1422 GIF, and `public/` ships bytes as-is, so it
- * would have been downloaded whole by every woman reaching this screen. It is
- * a cropped-to-the-phone H.264 MP4 instead (480x728, 10fps, no audio,
- * faststart, ~445KB) plus a ~17KB WebP poster, re-encoded with:
- *   ffmpeg -i master.gif -vf "crop=660:1000:110:220,scale=480:-2:flags=lanczos,format=yuv420p"
- *     -c:v libx264 -preset veryslow -crf 28 -r 10 -an -movflags +faststart in_action.mp4
+ * The master is a 1080x1920 30fps phone recording with sound (~8MB), and
+ * `public/` ships bytes as-is. It is cropped to the phone at native resolution
+ * (no upscaling: the phone is ~400px wide in the master), audio stripped,
+ * lightly denoised so the encoder spends bits on the screen rather than the
+ * desk grain, and kept at 30fps so taps and the confetti stay smooth:
+ * 520x790, ~1MB, plus a WebP poster of the first frame. Re-encode with:
+ *   ffmpeg -i master.mp4 -vf "crop=520:790:350:780,hqdn3d=1.5:1.5:4:4,fps=30,format=yuv420p"
+ *     -c:v libx264 -preset veryslow -crf 28 -profile:v high -level 4.0 -an
+ *     -movflags +faststart in_action.mp4
+ * The one-year `immutable` cache in next.config.ts means a re-encode must ship
+ * under a new filename, or returning visitors keep the old clip.
  *
  * `preload="none"` plus play-when-in-view means the video costs nothing until
  * she scrolls to it; it pauses when it leaves. `muted` + `playsInline` are
@@ -2944,8 +2949,8 @@ function PlanHeroCarousel({ slides }: { slides: ReadonlyArray<{ src: string; cap
 const IN_ACTION_CLIP = {
   src: "/screenshots/in_action.mp4",
   poster: "/screenshots/in_action_poster.webp",
-  width: 480,
-  height: 728,
+  width: 520,
+  height: 790,
 } as const;
 
 function AppInActionClip() {
@@ -4595,13 +4600,10 @@ function RegisterPageContent() {
     setSymptomSeverity({ [problemId]: SELECTED_SEVERITY });
   };
 
-  const toggleGoal = (goalId: string) => {
-    setGoal((prev) => {
-      if (prev.includes(goalId)) {
-        return prev.filter((id) => id !== goalId);
-      }
-      return [...prev, goalId];
-    });
+  // One goal, one tap - same shape as the primary symptom. `goal` stays an
+  // array because save-quiz, getOfferPromise and the Expo app all read one.
+  const selectGoal = (goalId: string) => {
+    setGoal([goalId]);
   };
 
   const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -6359,9 +6361,7 @@ function RegisterPageContent() {
                       What do you want back?
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                      {goal.length > 0
-                        ? `${goal.length} selected`
-                        : "Tap all that apply"}
+                      More than one? Tap the one that matters most.
                     </p>
                   </div>
                   <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 -mr-1 pb-1 [scrollbar-width:thin]">
@@ -6371,12 +6371,12 @@ function RegisterPageContent() {
                         size. */}
                     <div className="flex flex-wrap justify-center gap-2">
                       {GOAL_OPTIONS.map((option) => {
-                        const isSelected = goal.includes(option.id);
+                        const isSelected = goal[0] === option.id;
                         return (
                           <button
                             key={option.id}
                             type="button"
-                            onClick={() => toggleGoal(option.id)}
+                            onClick={() => selectAndAdvance(() => selectGoal(option.id))}
                             className={`flex flex-col w-[calc(50%-0.25rem)] sm:w-[calc(33.333%-0.334rem)] rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer outline-none focus:outline-none ${
                               isSelected
                                 ? "ring-2 ring-inset ring-primary shadow-lg shadow-primary/30"
