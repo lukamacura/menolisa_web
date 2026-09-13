@@ -8,6 +8,7 @@ import {
   ArrowRight,
   Bot,
   Building2,
+  CalendarCheck,
   Check,
   Dumbbell,
   Loader2,
@@ -23,7 +24,6 @@ import {
 import { SocialProofPolaroid } from "@/components/SocialProof";
 import {
   META_CURRENCY,
-  PLAN_VALUE,
   newInitiateCheckoutEventId,
   viewContentEventId,
 } from "@/lib/metaPixel";
@@ -36,14 +36,17 @@ import {
   PLAN_ACCESS_DAYS,
   PLAN_BLOCKS_COPY,
   PLAN_ID,
-  PLAN_PRICE,
   PLAN_WEEKS,
-  PRICE_LINE,
   PRICE_SUBLINE,
+  QUIZ_DISCOUNT_PCT,
+  QUIZ_PRICE_LABEL,
+  QUIZ_PRICE_REASON,
   SUPPORT_EMAIL,
   WHAT_YOU_GET,
   formatChargeDate,
   formatPrice,
+  priceLine,
+  type PlanOffer,
 } from "@/lib/pricing";
 import { trackFb } from "@/lib/metaPixelClient";
 import { pingFunnelStep } from "@/lib/funnelClient";
@@ -113,10 +116,15 @@ export interface PaywallViewProps {
    * on the card is her real week rather than seven identical boxes.
    */
   week?: PlannerDay[];
+  /** Her first name from the quiz, for the line above the headline. */
+  firstName?: string;
+  /**
+   * The price this account is offered: `planOffer(isQuizPriceEligible(...))`.
+   * Required, because `create-checkout` decides the charge with the same
+   * function; a default here is how the page and Stripe would disagree.
+   */
+  offer: PlanOffer;
 }
-
-/** The only figure on this page she is ever charged — see lib/pricing.ts. */
-const PRICE = formatPrice(PLAN_PRICE);
 
 /**
  * "Start tonight" is a promise about her evening, so it has to be true when she
@@ -405,7 +413,7 @@ function WeekOneCard({
       <p className="mt-3 flex items-center gap-1.5 text-[11px] leading-snug text-[#8A8A8A]">
         {hidden.length > 0 && <Lock className="h-3 w-3 shrink-0 text-[#B5ADA9]" />}
         {hidden.length > 0
-          ? `${hidden.length} more in week 1 — yours the moment you join.`
+          ? `${hidden.length} more in week 1, yours the moment you join.`
           : "Week 2 builds on what you actually did."}
       </p>
     </div>
@@ -554,8 +562,11 @@ function useExitQuestion(opts: {
  * the weekly offer, because eight weeks was what she got while one week was
  * what she agreed to, and every 8-week cue had her pricing 8 x $4.99 before
  * reading the first dollar. One charge of {PRICE} buys the whole
- * {PLAN_WEEKS}-week block, so the honest label is the block - and the figure
- * beside it is the entire ask, not an instalment.
+ * {PLAN_WEEKS}-week block, so the honest label is the block.
+ *
+ * **No price on the button (2026-09-13).** The figure is the largest thing in
+ * the price card and {PRICE_LINE} sits directly under this button in the
+ * sticky bar, so the disclosure is still on the element she taps.
  *
  * **Shape mirrors `LandingCtaBar`, colour does not.** Same centred bold label,
  * same arrow in a translucent square pinned right, same press behaviour, so
@@ -583,7 +594,7 @@ function CheckoutButton({
         textShadow: "0 1px 1px rgba(10, 60, 30, 0.25)",
       }}
     >
-      {loading ? "Redirecting to checkout…" : <>Start my {PLAN_WEEKS}-week plan &middot; {PRICE}</>}
+      {loading ? "Redirecting to checkout…" : <>Start my {PLAN_WEEKS}-week plan</>}
       <span
         className="absolute right-2 grid h-10 w-10 place-items-center rounded-xl bg-white/20"
         aria-hidden
@@ -610,10 +621,14 @@ export function PaywallView({
   weekOne,
   week,
   userId,
+  firstName,
+  offer,
 }: PaywallViewProps) {
   // Same outcome as the finish board's far end (lib/planTimeline.ts) - the
   // headline and the chart have to name the same thing.
   const outcome = getOutcomeHeadline(goal ?? []);
+  /** The only figure on this page she is charged; see lib/pricing.ts. */
+  const PRICE = formatPrice(offer.price);
   const startWord = useStartWord();
   const accessEnd = useAccessEnd();
   const primarySymptom = topProblems?.[0] ?? null;
@@ -648,7 +663,7 @@ export function PaywallView({
       content_name: "paywall",
       content_category: trackingSource,
       content_type: "product",
-      value: PLAN_VALUE,
+      value: offer.price,
       currency: META_CURRENCY,
     };
 
@@ -697,7 +712,7 @@ export function PaywallView({
         content_name: PLAN_ID,
         content_category: trackingSource,
         content_type: "product",
-        value: PLAN_VALUE,
+        value: offer.price,
         currency: META_CURRENCY,
         num_items: 1,
       },
@@ -757,28 +772,24 @@ export function PaywallView({
 
         {banner && <div className="mb-3">{banner}</div>}
 
-        {/* ── The product, as a cropped peek ────────────────────────────────
+        {/* ── The product, top of the phone ─────────────────────────────────
             The page had no picture of the thing being sold: the only two
             images on it were the card marks and the Stripe badge. She is
             paying on a web page for something that lives in an app she has
             not downloaded, and nothing here showed her that app.
 
-            It is cropped, and the crop is the whole design. The master is
-            640x1440 — at the width that makes the screen legible it stands
-            ~370px tall, and there are only ~73px of room above the fold
-            (measured at 390x700: the numeral sits at 183 and the sticky bar
-            at 568). So a fixed-height window shows the top of the phone and
-            a mask fades the rest out, which reads as a screen continuing
-            past the edge rather than as a shrunken thumbnail. A mask rather
-            than a gradient overlay because the page background is itself a
-            gradient — an opaque fade would band against it.
+            A fixed-height window shows the top of the phone (status bar,
+            "Steady the basics", the streak card) at a width where the screen
+            text is readable, and a mask fades the rest out so it reads as a
+            screen continuing past the edge. A mask rather than a gradient
+            overlay because the page background is itself a gradient; an
+            opaque fade would band against it.
 
-            The negative top offset is not a nudge: the master carries 156px
-            of transparent padding above the phone (measured off its alpha
-            channel — opaque bbox is 72,156 to 593,1319). At this render
-            width that is 48 CSS px, i.e. a third of the window spent on
-            nothing, and without the offset the crop stops at the progress
-            ring. Re-measure it if the asset is ever re-exported.
+            It was a 196px peek shifted up by 48px until 2026-09-13. The shift
+            skipped 156px of transparent padding in an older export; the
+            current master (640x1198) is opaque from y=10, so the same shift
+            cut the top off the phone. No offset now. Re-measure the alpha
+            bbox if the asset is ever re-exported.
 
             It is deliberately NOT the diagnosis screen's carousel shots.
             Those are PLAN_HERO_SLIDES, which she scrolled through seconds
@@ -787,15 +798,15 @@ export function PaywallView({
             of the app (the daily checklist) doing a different job: evidence
             that the product exists and is finished. */}
         <div
-          className="relative mx-auto mb-2 h-[144px] w-[196px] shrink-0 overflow-hidden sm:h-[165px] sm:w-[224px]"
+          className="relative mx-auto mb-2 h-[240px] w-[260px] shrink-0 overflow-hidden sm:h-[277px] sm:w-[300px]"
           style={{
             // no-repeat is load-bearing: mask-repeat defaults to `repeat`, so
             // without it the gradient tiles down the box and the faded-out
             // half of the phone reappears underneath itself.
-            WebkitMaskImage: "linear-gradient(to bottom, #000 70%, transparent 100%)",
+            WebkitMaskImage: "linear-gradient(to bottom, #000 80%, transparent 100%)",
             WebkitMaskRepeat: "no-repeat",
             WebkitMaskSize: "100% 100%",
-            maskImage: "linear-gradient(to bottom, #000 70%, transparent 100%)",
+            maskImage: "linear-gradient(to bottom, #000 80%, transparent 100%)",
             maskRepeat: "no-repeat",
             maskSize: "100% 100%",
           }}
@@ -804,17 +815,13 @@ export function PaywallView({
           <Image
             src="/screenshots/mockup.webp"
             alt=""
-            width={224}
-            height={504}
-            // 192px lands the srcset pick on the 384 candidate at DPR2 (the
-            // next one up is 640, which is 53KB for a 196px box). Quality 60
-            // rather than the 75 default: this is a masked, faded peek, not a
-            // detail shot — together they take the topmost image on the
-            // buying screen from 53KB to 19KB.
-            sizes="192px"
-            quality={60}
+            width={640}
+            height={1198}
+            // Default quality: the screen text has to be legible now, which
+            // the old quality-60 peek did not need.
+            sizes="(min-width: 640px) 300px, 260px"
             priority
-            className="absolute left-1/2 top-[-48px] w-[196px] max-w-none -translate-x-1/2 sm:top-[-55px] sm:w-[224px]"
+            className="absolute left-1/2 top-0 w-[260px] max-w-none -translate-x-1/2 sm:w-[300px]"
           />
         </div>
 
@@ -855,11 +862,11 @@ export function PaywallView({
           transition={{ delay: 0.15 }}
           className="text-center mb-3"
         >
-          {/* The bridge: she came in on a free quiz and this is the first screen
-              with a price on it. One line names the switch before the headline
-              makes the claim. */}
+          {/* The bridge from the quiz: the plan is hers and it exists already.
+              Her name when the funnel has it; the dashboard paywall has no
+              quiz behind it and gets the nameless line. */}
           <p className="text-[13px] font-semibold uppercase tracking-[0.08em] text-[#A8899B] mb-1.5">
-            Your audit is done &amp; free. This is the plan it built.
+            {firstName ? `Plan is ready for you, ${firstName}` : "Your plan is ready for you"}
           </p>
           {/* The headline is her outcome and when she has it (2026-09-09). It
               was the price - "Start tonight for {PRICE}." - from the
@@ -900,12 +907,13 @@ export function PaywallView({
             fires, so the answer has to sit in the same eyeful. The full green
             card is still down the page for the reader who wants terms.
 
-            No strikethrough, no "% off" pill, no countdown (removed
-            2026-09-12). On a cold click for a brand she has never heard of, a
-            $50 anchor with a 30:00 clock is the visual grammar of every scam
-            page she has learned to ignore - and $50 was never a price anything
-            was sold at. The price stands on its own; the guarantee carries the
-            risk.
+            The strikethrough (2026-09-13) is not the $50 one removed on
+            2026-09-12. That was a figure nobody was ever charged; the regular
+            price here is charged by create-checkout (STRIPE_PRICE_PLAN_REGULAR)
+            to anyone not on her first purchase after the quiz, and
+            isQuizPriceEligible() decides it for this page and for Stripe with
+            the same code. The line under the figure says why she gets it.
+            Still no countdown.
 
             Every figure and sentence comes from lib/pricing.ts, and Stripe
             Checkout prints the same sentence under its pay button
@@ -936,6 +944,16 @@ export function PaywallView({
               is still the largest thing above the fold and still says what the
               money buys: an evening she can begin, not a subscription she has
               to work out. */}
+          {offer.quizPrice && (
+            <div className="mb-1 flex items-center justify-center gap-2">
+              <span className="text-lg font-bold text-[#9A9A9A] line-through decoration-2">
+                {formatPrice(offer.regularPrice)}
+              </span>
+              <span className="rounded-full bg-[#15803D] px-2 py-0.5 text-[11px] font-extrabold tracking-wide text-white">
+                {QUIZ_DISCOUNT_PCT}% OFF
+              </span>
+            </div>
+          )}
           <p className="flex flex-wrap items-baseline justify-center gap-x-2 gap-y-0.5 text-center">
             <span className="text-[22px] sm:text-[24px] font-bold leading-tight tracking-[-0.01em] text-[#2B2627]">
               Start {startWord} for
@@ -947,32 +965,35 @@ export function PaywallView({
           <p className="mt-1 text-center text-xs font-semibold text-[#8A8A8A]">
             One payment &middot; all {PLAN_WEEKS} weeks
           </p>
+          {offer.quizPrice && (
+            <p className="mx-auto mt-2 max-w-[19rem] text-center text-xs leading-snug text-[#5A5A5A]">
+              <b className="text-[#15803D]">{QUIZ_PRICE_LABEL}.</b> {QUIZ_PRICE_REASON}
+            </p>
+          )}
           {/* The offer as one sentence, for a screen reader and for the rule
               that this page and Stripe say the same words. */}
           <p className="sr-only">
-            {PRICE_LINE} {PRICE_SUBLINE} {GUARANTEE_HEADLINE}.
+            {offer.quizPrice
+              ? `Regular price ${formatPrice(offer.regularPrice)}. ${QUIZ_PRICE_LABEL}: `
+              : ""}
+            {priceLine(offer.price)} {PRICE_SUBLINE} {GUARANTEE_HEADLINE}.
           </p>
 
-          {/* What {PRICE} covers, and - the part that matters at this price -
-              what comes after it, which is nothing. The row opposite the figure
-              used to be the renewal ("every {PLAN_WEEKS} weeks, until you
-              cancel"); a one-time payment has no renewal, so the slot goes to
-              the strongest true sentence on the page. She arrived from an ad
-              assuming any card entry is a subscription trap, and this is where
-              that assumption gets answered - beside the number, not 1,600px
-              below it. */}
-          <div className="mt-3.5 flex items-baseline justify-between gap-3 rounded-xl border border-[#EFE2E8] bg-white/70 px-3 py-2 text-left">
-            <span className="text-sm text-[#5A5A5A]">
-              All {PLAN_WEEKS} weeks included
+          {/* What {PRICE} covers, shaped like the guarantee row under it so the
+              two read as a pair: what you get, and what if it is not for you.
+              The green "No subscription" beside it went on 2026-09-13; the
+              fact is still on the sticky bar (priceLine) and in the details
+              sheet ("Renews: Never"). */}
+          <div className="mt-3.5 flex items-center gap-2.5 rounded-xl border border-[#F6CFE0] bg-[#FFF3F8] px-3 py-2.5">
+            <CalendarCheck className="h-5 w-5 shrink-0 text-primary" strokeWidth={2.4} />
+            <p className="text-left leading-snug">
+              <b className="block text-[15px] text-[#2B2627]">All {PLAN_WEEKS} weeks included</b>
               {/* Concrete nouns, not product names: "Lisa" means nothing yet
                   at this point of the page. The full list is further down. */}
-              <span className="block text-xs text-[#8A8A8A]">
+              <span className="block text-xs text-[#6B6B6B]">
                 Plan, video workouts, AI coach &amp; tracker
               </span>
-            </span>
-            <span className="shrink-0 whitespace-nowrap text-sm font-extrabold text-[#15803D]">
-              No subscription
-            </span>
+            </p>
           </div>
 
           {/* The row above answers "will this keep charging me". This one
@@ -1247,7 +1268,7 @@ export function PaywallView({
               {
                 Icon: Lock,
                 bold: "Secure checkout",
-                sub: `Stripe takes ${PRICE} once — we never see your card.`,
+                sub: `Stripe takes ${PRICE} once. We never see your card.`,
               },
               {
                 Icon: Smartphone,
@@ -1302,7 +1323,7 @@ export function PaywallView({
               card above (/terms#money-back), which is the section a buyer at
               this moment actually wants. */}
           <p className="text-[11px] sm:text-xs text-[#5A5A5A] text-center mt-2 leading-relaxed">
-            {PRICE_LINE}
+            {priceLine(offer.price)}
           </p>
           <p className="text-[11px] sm:text-xs text-[#7A7A7A] text-center mt-1 sm:mt-1.5 leading-relaxed">
             <span className="inline-flex items-center justify-center gap-1 flex-wrap">
@@ -1346,7 +1367,7 @@ export function PaywallView({
             >
               {exitAnswered ? (
                 <p className="py-6 text-center text-base font-semibold text-[#3D3D3D]">
-                  Thank you &mdash; that helps.
+                  Thank you, that helps.
                 </p>
               ) : (
                 <>
@@ -1424,11 +1445,11 @@ export function DisputedAccountBanner() {
  * back by reflex:
  *
  *  - **The countdown and the struck-through $50 anchor** (removed
- *    2026-09-12). On a cold click for an unknown brand they read as scam-page
- *    furniture, and $50 was never a price the plan was sold at, i.e. a
- *    former-price claim with nothing behind it. The price stands alone and the
- *    money-back guarantee carries the risk. If a timer ever comes back, it
- *    must never change a figure and never visibly reset.
+ *    2026-09-12). $50 was never a price the plan was sold at, i.e. a
+ *    former-price claim with nothing behind it. The $60 strikethrough that
+ *    replaced it (2026-09-13) is a price create-checkout really charges; keep
+ *    it that way or take it down. If a timer ever comes back, it must never
+ *    change a figure and never visibly reset.
  *  - **The free-trial branch.** No `trial_period_days`, no "$0 today", no
  *    first-charge date. The card is charged the full {PRICE} at checkout.
  *  - **The first-week discount and its coupon.** Gone 2026-09-11 with the

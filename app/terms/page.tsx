@@ -3,6 +3,7 @@ import {
   GUARANTEE_DAYS,
   PLAN_ACCESS_DAYS,
   PLAN_PRICE,
+  PLAN_REGULAR_PRICE,
   PLAN_WEEKS,
   SUPPORT_EMAIL,
   formatPrice,
@@ -84,7 +85,8 @@ export default function TermsPage() {
             </li>
             <li>
               <strong>You pay once — this is not a subscription</strong>:{" "}
-              {formatPrice(PLAN_PRICE)} for your full {PLAN_WEEKS}-week plan, and{" "}
+              {formatPrice(PLAN_PRICE)} for your full {PLAN_WEEKS}-week plan on your first purchase
+              after completing the assessment ({formatPrice(PLAN_REGULAR_PRICE)} otherwise), and{" "}
               <strong>nothing renews automatically</strong> (Section 10). Your access runs{" "}
               {PLAN_ACCESS_DAYS} days and then ends. <strong>If it is not right for you, you can get a
               full refund within {GUARANTEE_DAYS} days of paying</strong>, for any reason (Section 11).
@@ -541,15 +543,15 @@ export default function TermsPage() {
 
           <h3 id="subscription" className="text-xl font-semibold mb-3">10.1 What you are buying</h3>
           <p>
-            Access to the Service requires payment. The price is{" "}
-            <strong>
-              {formatPrice(PLAN_PRICE)}, charged once
-            </strong>
-            , unless a different price is clearly displayed to you at checkout. That single payment
-            gives you access to the Service for <strong>{PLAN_ACCESS_DAYS} days</strong> (
-            {PLAN_WEEKS} weeks) starting on the date of purchase. Prices are in U.S. dollars and
-            exclude any tax, which is added where applicable. There is no free trial and no
-            introductory discount.
+            Access to the Service requires payment. The regular price is{" "}
+            <strong>{formatPrice(PLAN_REGULAR_PRICE)}, charged once</strong>. If you have
+            completed the MenoLisa assessment and have not purchased before, the price is{" "}
+            <strong>{formatPrice(PLAN_PRICE)}, charged once</strong> (the &ldquo;quiz-taker
+            price&rdquo;). The price that applies to you is displayed before you pay, and you are
+            always charged the amount shown at checkout. That single payment gives you access to the
+            Service for <strong>{PLAN_ACCESS_DAYS} days</strong> ({PLAN_WEEKS} weeks) starting on
+            the date of purchase. Prices are in U.S. dollars and exclude any tax, which is added
+            where applicable. There is no free trial.
           </p>
 
           <h3 className="text-xl font-semibold mb-3 mt-6">10.2 There is no automatic renewal</h3>
@@ -557,8 +559,9 @@ export default function TermsPage() {
             <p className="mb-2 font-semibold">Your payment is a one-time charge.</p>
             <ul className="mb-0">
               <li>
-                <strong>What you are charged:</strong> {formatPrice(PLAN_PRICE)}, once, at the time
-                of purchase.
+                <strong>What you are charged:</strong> the price shown at checkout (
+                {formatPrice(PLAN_PRICE)} or {formatPrice(PLAN_REGULAR_PRICE)}, as Section 10.1
+                describes), once, at the time of purchase.
               </li>
               <li>
                 <strong>What recurs:</strong> nothing. We do not enrol you in a subscription, we do
@@ -620,7 +623,7 @@ export default function TermsPage() {
           <h3 className="text-xl font-semibold mb-3 mt-6">10.6 Failed payments</h3>
           <p>
             If your payment fails or is later reversed, we may suspend or terminate your access. If
-            you hold a legacy subscription from before {formatPrice(PLAN_PRICE)} one-time pricing
+            you hold a legacy subscription from before one-time pricing
             was introduced, we and Stripe may retry a failed renewal over a short period. You remain
             responsible for amounts properly owed for access already provided.
           </p>
@@ -659,7 +662,7 @@ export default function TermsPage() {
           </ul>
           <p>
             <strong>
-              {formatPrice(PLAN_PRICE)} is charged once and buys {PLAN_ACCESS_DAYS} days of access.
+              Your payment is charged once and buys {PLAN_ACCESS_DAYS} days of access.
               Nothing renews, so there is no future charge to stop.
             </strong>{" "}
             After the {GUARANTEE_DAYS}-day window, and except where a refund is required by the law
@@ -674,7 +677,7 @@ export default function TermsPage() {
             <li>
               <strong>There is no recurring charge to stop.</strong>{" "}
               <strong>
-                {formatPrice(PLAN_PRICE)} is all you ever pay unless you choose to buy a further{" "}
+                The price you pay at checkout is all you ever pay unless you choose to buy a further{" "}
                 {PLAN_WEEKS} weeks.
               </strong>{" "}
               You keep access for the {PLAN_ACCESS_DAYS} days you paid for, and nothing is charged

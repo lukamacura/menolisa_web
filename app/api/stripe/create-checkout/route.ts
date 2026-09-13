@@ -2,11 +2,17 @@ import { NextRequest, NextResponse, after } from "next/server";
 import Stripe from "stripe";
 import { getAuthenticatedUser } from "@/lib/getAuthenticatedUser";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { CHECKOUT_SUBMIT_TEXT, PLAN_ID, isPlanId } from "@/lib/pricing";
+import {
+  PLAN_ID,
+  checkoutSubmitText,
+  isPlanId,
+  isQuizPriceEligible,
+  planOffer,
+} from "@/lib/pricing";
 import { PRODUCT_METADATA_VALUE } from "@/lib/stripe/productBoundary";
 import { sendMetaInitiateCheckout } from "@/lib/metaCapi";
 import { GPC_METADATA_KEY, hasGpcOptOut } from "@/lib/privacySignals";
-import { META_CURRENCY, PLAN_VALUE, isValidMetaEventId } from "@/lib/metaPixel";
+import { META_CURRENCY, isValidMetaEventId } from "@/lib/metaPixel";
 import {
   FUNNEL_SESSION_METADATA_KEY,
   IS_TEST_METADATA_KEY,
@@ -83,19 +89,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // A third variable name on purpose. STRIPE_PRICE_8WEEK held the archived
-    // $59 price and STRIPE_PRICE_WEEKLY the archived $4.99 weekly one; either
-    // still sitting in an env somewhere would charge a figure no surface
-    // prints. A missing variable fails the checkout loudly instead.
-    const priceId = process.env.STRIPE_PRICE_PLAN;
-    if (!priceId) {
-      console.error("Missing STRIPE_PRICE_PLAN env var");
-      return NextResponse.json(
-        { error: "Checkout is not configured for this plan." },
-        { status: 500 }
-      );
-    }
-
     const baseUrl = getBaseUrl(
       typeof returnOrigin === "string" && returnOrigin.startsWith("http")
         ? new URL(returnOrigin).origin
@@ -112,13 +105,26 @@ export async function POST(req: NextRequest) {
     // asks for no email, so nothing before the card recognises a returning
     // customer, and a retargeting ad puts her back at the paywall as readily as
     // it puts a stranger there.
+    let quizPrice = false;
     {
       const supabaseAdmin = getSupabaseAdmin();
-      const { data: existing } = await supabaseAdmin
-        .from("user_trials")
-        .select("provider, account_status, subscription_ends_at")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      const [{ data: existing }, { data: profile }] = await Promise.all([
+        supabaseAdmin
+          .from("user_trials")
+          .select("provider, account_status, subscription_ends_at, fulfilled_at")
+          .eq("user_id", user.id)
+          .maybeSingle(),
+        supabaseAdmin
+          .from("user_profiles")
+          .select("user_id")
+          .eq("user_id", user.id)
+          .maybeSingle(),
+      ]);
+      quizPrice = isQuizPriceEligible({
+        hasProfile: !!profile,
+        accountStatus: existing?.account_status,
+        fulfilledAt: existing?.fulfilled_at,
+      });
 
       // (1) This account is already paid up with Stripe. Previously only a
       // *foreign* provider was blocked, so a customer who clicked a retargeting
@@ -169,6 +175,26 @@ export async function POST(req: NextRequest) {
           );
         }
       }
+    }
+
+    // Two prices (2026-09-13): the quiz-taker price for a first purchase after
+    // the assessment, the regular price for everyone else. Decided here, off
+    // the rows just read, with the same function both paywalls print from.
+    //
+    // Neither variable reuses an old name: STRIPE_PRICE_8WEEK held the archived
+    // $59 price and STRIPE_PRICE_WEEKLY the archived $4.99 one, and a stale
+    // value under a reused name charges a figure no surface prints. A missing
+    // variable fails the checkout loudly instead of falling back to the other
+    // price.
+    const offer = planOffer(quizPrice);
+    const priceEnv = offer.quizPrice ? "STRIPE_PRICE_PLAN" : "STRIPE_PRICE_PLAN_REGULAR";
+    const priceId = process.env[priceEnv];
+    if (!priceId) {
+      console.error(`Missing ${priceEnv} env var`);
+      return NextResponse.json(
+        { error: "Checkout is not configured for this plan." },
+        { status: 500 }
+      );
     }
 
     // `session_id` + `plan` are read by the download screen, which calls
@@ -281,7 +307,7 @@ export async function POST(req: NextRequest) {
       // campaign is US-only and the paywall says $29 once; the sheet must too.
       adaptive_pricing: { enabled: false },
       // The same sentence the paywall shows, under Stripe's pay button.
-      custom_text: { submit: { message: CHECKOUT_SUBMIT_TEXT } },
+      custom_text: { submit: { message: checkoutSubmitText(offer.price) } },
       success_url: useMobileReturns ? customSuccess : defaultSuccess,
       cancel_url: useMobileReturns ? customCancel : defaultCancel,
       client_reference_id: user.id,
@@ -297,6 +323,7 @@ export async function POST(req: NextRequest) {
       metadata: {
         user_id: user.id,
         plan,
+        price_tier: offer.quizPrice ? "quiz" : "regular",
         checkout_surface: checkoutSurface,
         ...funnelMetadata,
         ...metaMetadata,
@@ -368,7 +395,7 @@ export async function POST(req: NextRequest) {
           // Stamped before the response, so the event time is when she actually
           // tapped rather than whenever the deferred work got scheduled.
           eventTimeSec,
-          value: PLAN_VALUE,
+          value: offer.price,
           currency: META_CURRENCY,
           userId: user.id,
           email: user.email?.trim() ? user.email : null,

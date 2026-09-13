@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient";
 import { identifyMetaUser } from "@/lib/metaPixelClient";
 import { DisputedAccountBanner, PaywallView } from "@/components/PaywallView";
-import { PLAN_ID } from "@/lib/pricing";
+import { PLAN_ID, planOffer } from "@/lib/pricing";
 import { funnelSessionId, isQaSession } from "@/lib/funnelClient";
 import type { AccountState } from "@/lib/getAccountState";
 
@@ -14,6 +14,8 @@ export const dynamic = "force-dynamic";
 type AccountStatusResponse = {
   state?: AccountState;
   has_access?: boolean;
+  quiz_price?: boolean;
+  first_name?: string | null;
 };
 
 export default function PaywallPage() {
@@ -25,6 +27,13 @@ export default function PaywallPage() {
   // Held for PaywallView's ViewContent: it keys the once-per-tab guard and
   // derives the event_id the server copy dedups against. See `userId` there.
   const [userId, setUserId] = useState<string | null>(null);
+  // The server decides the price (create-checkout charges with the same rule),
+  // so the page prints what /api/account/status says. A woman who backed out
+  // of Stripe from the funnel lands here and must see the $29 she was shown.
+  // If the status call fails, show the regular price: printing less than
+  // Stripe then charges is the worse mismatch.
+  const [quizPrice, setQuizPrice] = useState(false);
+  const [firstName, setFirstName] = useState<string | undefined>(undefined);
 
   // Bounce users who don't belong here: unauthenticated → /login, has access → /dashboard.
   useEffect(() => {
@@ -57,6 +66,8 @@ export default function PaywallPage() {
           return;
         }
         setIsDisputed(json.state === "disputed");
+        setQuizPrice(json.quiz_price === true);
+        setFirstName(json.first_name ?? undefined);
         setGateLoading(false);
       } catch {
         if (!cancelled) setGateLoading(false);
@@ -135,6 +146,8 @@ export default function PaywallPage() {
           banner={isDisputed ? <DisputedAccountBanner /> : undefined}
           trackingSource="dashboard"
           userId={userId}
+          firstName={firstName}
+          offer={planOffer(quizPrice)}
         />
       </div>
     </main>

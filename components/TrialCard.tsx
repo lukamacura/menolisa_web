@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Clock, CreditCard } from "lucide-react";
 import type { AccountState } from "@/lib/getAccountState";
-import { PLAN_PRICE, SUPPORT_EMAIL, formatPrice } from "@/lib/pricing";
+import { SUPPORT_EMAIL } from "@/lib/pricing";
 
 export type { AccountState };
 
@@ -235,7 +235,7 @@ export function TrialCard({
             ? "Your subscription is active"
             : state === "canceling"
               ? `Access until ${when}`
-              : `Access until ${when} · ${formatPrice(PLAN_PRICE)} paid, nothing recurring`}
+              : `Access until ${when} · paid once, nothing recurring`}
         </p>
       );
     }

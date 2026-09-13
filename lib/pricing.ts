@@ -61,10 +61,68 @@ export type PlanId = typeof PLAN_ID;
 export const PLAN_WEEKS = 8;
 
 /**
- * What she pays, once, in USD. Must match the `unit_amount` on
+ * The quiz-taker price, once, in USD: what she pays when she has finished the
+ * assessment and this is her first purchase (see {@link isQuizPriceEligible}).
+ * It is what every funnel buyer pays. Must match the `unit_amount` on
  * `STRIPE_PRICE_PLAN`; `scripts/stripe-plan-price.ts` throws if they disagree.
  */
 export const PLAN_PRICE = 29;
+
+/**
+ * The regular price (2026-09-13): what a purchase costs when the quiz-taker
+ * price does not apply, i.e. a returning buyer or an account with no quiz
+ * behind it. **It is a real price**, charged by `create-checkout` through
+ * `STRIPE_PRICE_PLAN_REGULAR`, and that is the only reason the paywall may
+ * strike it through. The $50 anchor removed on 2026-09-12 was a figure nobody
+ * was ever charged; do not let this one become that by routing everyone to
+ * the quiz-taker price.
+ */
+export const PLAN_REGULAR_PRICE = 60;
+
+/** `52`: the quiz-taker price as a discount off the regular price. */
+export const QUIZ_DISCOUNT_PCT = Math.round((1 - PLAN_PRICE / PLAN_REGULAR_PRICE) * 100);
+
+/** The price one account is offered, and whether it is the quiz-taker price. */
+export type PlanOffer = { price: number; regularPrice: number; quizPrice: boolean };
+
+/**
+ * Who gets {@link PLAN_PRICE}: she has finished the assessment (a
+ * `user_profiles` row exists) and has never completed a purchase. Everyone
+ * else pays {@link PLAN_REGULAR_PRICE}.
+ *
+ * "Never purchased" is read two ways because neither alone is complete:
+ * `fulfilled_at` is the fulfillment claim every checkout since 2026-08-10 sets
+ * and nothing clears, and `account_status` catches paid rows older than that.
+ *
+ * Pure on purpose. `create-checkout` (which charges), `/api/account/status`
+ * (which `/paywall` prints from) and `/register` (which prints from the row it
+ * already reads) must decide it with the same code, or the paywall shows one
+ * figure and Stripe charges another.
+ */
+export function isQuizPriceEligible(opts: {
+  hasProfile: boolean;
+  accountStatus?: string | null;
+  fulfilledAt?: string | null;
+}): boolean {
+  if (!opts.hasProfile || opts.fulfilledAt) return false;
+  return !opts.accountStatus || opts.accountStatus === "pending_payment";
+}
+
+export function planOffer(quizPrice: boolean): PlanOffer {
+  return {
+    price: quizPrice ? PLAN_PRICE : PLAN_REGULAR_PRICE,
+    regularPrice: PLAN_REGULAR_PRICE,
+    quizPrice,
+  };
+}
+
+/**
+ * Why she gets the discount, printed under the price. True by construction:
+ * the paywall only shows it when {@link isQuizPriceEligible} passed, and that
+ * requires a finished assessment and no earlier purchase ("first 8 weeks").
+ */
+export const QUIZ_PRICE_LABEL = "Quiz-taker price";
+export const QUIZ_PRICE_REASON = `You finished your assessment, so your first ${PLAN_WEEKS} weeks are ${formatPrice(PLAN_PRICE)} instead of ${formatPrice(PLAN_REGULAR_PRICE)}.`;
 
 /**
  * The money-back window, in days from the day she paid (2026-09-12).
@@ -131,7 +189,9 @@ export function formatPrice(amount: number): string {
  * One negation, and the space it freed goes to what the money buys. See the
  * note on repetition above {@link PRICE_SUBLINE}.
  */
-export const PRICE_LINE = `${formatPrice(PLAN_PRICE)} once for your full ${PLAN_WEEKS}-week plan — everything included, no subscription.`;
+export function priceLine(amount: number): string {
+  return `${formatPrice(amount)} once for your full ${PLAN_WEEKS}-week plan. Everything included, no subscription.`;
+}
 
 /**
  * ── The rule these strings are written to (2026-09-11) ────────────────────
@@ -189,7 +249,7 @@ export const PRICE_SUBLINE = `Your plan, Lisa and your symptom tracking unlock t
 export const GUARANTEE_HEADLINE = `${GUARANTEE_DAYS}-day money-back guarantee`;
 
 /** The support line under the guarantee row in the price card. */
-export const GUARANTEE_INLINE_BODY = `Not right for you? Email us within ${GUARANTEE_DAYS} days of paying and get all ${formatPrice(PLAN_PRICE)} back. No questions asked.`;
+export const GUARANTEE_INLINE_BODY = `Not right for you? Email us within ${GUARANTEE_DAYS} days of paying and get a full refund. No questions asked.`;
 
 /**
  * The body of the full green card, low on the paywall and on the landing page.
@@ -198,7 +258,7 @@ export const GUARANTEE_INLINE_BODY = `Not right for you? Email us within ${GUARA
  * {@link GUARANTEE_BODY_HEAD} and {@link GUARANTEE_BODY_TAIL} do the split
  * here, once, so no caller retypes half of it in JSX.
  */
-export const GUARANTEE_BODY = `If it isn't right for you, you get all ${formatPrice(PLAN_PRICE)} back. Email ${SUPPORT_EMAIL} within ${GUARANTEE_DAYS} days of paying — no reason needed, no forms — and the refund goes back to the way you paid.`;
+export const GUARANTEE_BODY = `If it isn't right for you, you get every dollar back. Email ${SUPPORT_EMAIL} within ${GUARANTEE_DAYS} days of paying. No reason needed, no forms, and the refund goes back to the way you paid.`;
 
 /** The bolded opening clause of {@link GUARANTEE_BODY}. Split here, not in JSX. */
 export const GUARANTEE_BODY_HEAD = GUARANTEE_BODY.slice(0, GUARANTEE_BODY.indexOf(". ") + 1);
@@ -244,7 +304,9 @@ export const PLAN_BLOCKS_COPY = `Your ${PLAN_WEEKS} weeks start the day you join
  * are the same sentence, and closes on the guarantee, because the Stripe sheet
  * is where the card goes in and the fear peaks.
  */
-export const CHECKOUT_SUBMIT_TEXT = `${PRICE_LINE} ${GUARANTEE_HEADLINE}.`;
+export function checkoutSubmitText(amount: number): string {
+  return `${priceLine(amount)} ${GUARANTEE_HEADLINE}.`;
+}
 
 /**
  * What {@link PLAN_PRICE} buys, one row per thing she will open in the app.

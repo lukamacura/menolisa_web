@@ -4,7 +4,8 @@ import { getAuthenticatedUser } from "@/lib/getAuthenticatedUser";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendMetaViewContent } from "@/lib/metaCapi";
 import { hasGpcOptOut } from "@/lib/privacySignals";
-import { META_CURRENCY, PLAN_VALUE, viewContentEventId } from "@/lib/metaPixel";
+import { META_CURRENCY, viewContentEventId } from "@/lib/metaPixel";
+import { isQuizPriceEligible, planOffer } from "@/lib/pricing";
 
 export const runtime = "nodejs";
 
@@ -72,11 +73,23 @@ export async function POST(request: NextRequest) {
   // for weeks, so the row is there in both cases. A miss is not an error - the
   // parameter is simply absent, exactly as it was before.
   const supabaseAdmin = getSupabaseAdmin();
-  const { data: profile } = await supabaseAdmin
-    .from("user_profiles")
-    .select("name")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const [{ data: profile }, { data: trial }] = await Promise.all([
+    supabaseAdmin.from("user_profiles").select("name").eq("user_id", user.id).maybeSingle(),
+    supabaseAdmin
+      .from("user_trials")
+      .select("account_status, fulfilled_at")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+  ]);
+  // The value is the price this account is shown, not a constant: $29 on a
+  // first purchase after the quiz, the regular price otherwise.
+  const value = planOffer(
+    isQuizPriceEligible({
+      hasProfile: !!profile,
+      accountStatus: trial?.account_status,
+      fulfilledAt: trial?.fulfilled_at,
+    })
+  ).price;
 
   const url = new URL(request.url);
   const sourceParam = url.searchParams.get("source");
@@ -89,7 +102,7 @@ export async function POST(request: NextRequest) {
   await sendMetaViewContent({
     eventId: viewContentEventId(user.id),
     eventTimeSec: Math.floor(Date.now() / 1000),
-    value: PLAN_VALUE,
+    value,
     currency: META_CURRENCY,
     userId: user.id,
     email: user.email?.trim() ? user.email : null,

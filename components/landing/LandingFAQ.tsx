@@ -3,6 +3,7 @@ import {
   GUARANTEE_DAYS,
   PLAN_ACCESS_DAYS,
   PLAN_PRICE,
+  PLAN_REGULAR_PRICE,
   PLAN_WEEKS,
   SUPPORT_EMAIL,
   formatPrice,
@@ -17,11 +18,11 @@ const FAQS = [
   },
   {
     q: "How much does the plan cost?",
-    a: `${formatPrice(PLAN_PRICE)}, paid once, for your full ${PLAN_WEEKS}-week plan. Nothing renews and there is nothing to cancel. Your access runs for ${PLAN_ACCESS_DAYS} days, and you can come back for another block if you want one.`,
+    a: `${formatPrice(PLAN_PRICE)} when you take the free check first (the regular price is ${formatPrice(PLAN_REGULAR_PRICE)}), paid once, for your full ${PLAN_WEEKS}-week plan. Nothing renews and there is nothing to cancel. Your access runs for ${PLAN_ACCESS_DAYS} days, and you can come back for another block if you want one.`,
   },
   {
     q: "What if it's not for me?",
-    a: `Then you get your money back. Email ${SUPPORT_EMAIL} within ${GUARANTEE_DAYS} days of paying and we'll refund the full ${formatPrice(PLAN_PRICE)}. No reason needed, no forms.`,
+    a: `Then you get your money back. Email ${SUPPORT_EMAIL} within ${GUARANTEE_DAYS} days of paying and we'll refund your payment in full. No reason needed, no forms.`,
   },
   {
     q: "Where do I use my plan?",

@@ -33,7 +33,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Key Design Decisions
 - **Passwordless auth only** — 6-digit email OTP via Supabase (`signInWithOtp` + `verifyOtp`). No passwords, no magic links. Shared `<OtpForm />` (`components/auth/OtpForm.tsx`) is the only auth UI, and `/login` is now its only caller.
-- **The paywall sells one thing: $29, charged ONCE, for 8 weeks of access (2026-09-11). It is not a subscription.** Checkout runs `mode: "payment"`, one Stripe price with no `recurring` block (env `STRIPE_PRICE_PLAN`), no coupon, no trial, no promo-code box. **Nothing renews**, so there is nothing to cancel — "cancel anytime" was removed from every surface because it became false, not merely off-message. Stripe supplies no period end for a one-time payment, so `fulfillCheckout` computes the access cutoff itself (`now + PLAN_ACCESS_DAYS`, 56 days) and nothing overwrites it. The risk reversal is structural — one charge, no card kept, no second charge — and since 2026-09-12 a **7-day money-back guarantee** (`GUARANTEE_DAYS`, unconditional, once per person, claimed by one email to `SUPPORT_EMAIL`) sits beside the price, on the sticky bar, in Stripe's submit text, the welcome email and Terms §11; §11 and the paywall move in the same commit, in both directions. No strikethrough anchor and no countdown. Terms §10 now reads "there is no automatic renewal" and must never promise renewal while checkout is in payment mode. Copy lives in `lib/pricing.ts`. See "The plan and its price" in §4.
+- **The paywall sells one thing: $29, charged ONCE, for 8 weeks of access (2026-09-11). It is not a subscription.** Checkout runs `mode: "payment"`, two one-time Stripe prices since 2026-09-13, neither with a `recurring` block: **$29 quiz-taker** (`STRIPE_PRICE_PLAN`) for a first purchase after the assessment and **$60 regular** (`STRIPE_PRICE_PLAN_REGULAR`) for everyone else, chosen server-side by `isQuizPriceEligible()` in `lib/pricing.ts`, the same function both paywalls print from. No coupon, no trial, no promo-code box. **Nothing renews**, so there is nothing to cancel — "cancel anytime" was removed from every surface because it became false, not merely off-message. Stripe supplies no period end for a one-time payment, so `fulfillCheckout` computes the access cutoff itself (`now + PLAN_ACCESS_DAYS`, 56 days) and nothing overwrites it. The risk reversal is structural — one charge, no card kept, no second charge — and since 2026-09-12 a **7-day money-back guarantee** (`GUARANTEE_DAYS`, unconditional, once per person, claimed by one email to `SUPPORT_EMAIL`) sits beside the price, on the sticky bar, in Stripe's submit text, the welcome email and Terms §11; §11 and the paywall move in the same commit, in both directions. The paywall strikes through $60 ("52% OFF, quiz-taker price"); that is allowed only because $60 is really charged, and it comes down the day it stops being. No countdown. Terms §10 now reads "there is no automatic renewal" and must never promise renewal while checkout is in payment mode. Copy lives in `lib/pricing.ts`. See "The plan and its price" in §4.
 - **The `/register` funnel never asks for an email** — it signs her in anonymously and lets Stripe collect the address at checkout. See "Anonymous accounts" below.
 - **Dual auth paths** — cookie (web) and Bearer token (mobile) coexist in every API route via `getAuthenticatedUser()`
 - **Verbatim KB-first RAG** — AI chat tries to return exact knowledge base content before falling back to LLM generation; this ensures medically accurate, consistent answers
@@ -721,7 +721,18 @@ the plan block were different lengths, and `/admin` grew a cohort table whose
 rows were weeks and whose columns were also weeks but meant something else. One
 charge for one window removes the whole class of problem.
 
-- **Stripe:** one price, `$29`, **no `recurring` block** → `STRIPE_PRICE_PLAN`.
+- **Two prices (2026-09-13).** `$29` is the quiz-taker price: she has a
+  `user_profiles` row and has never completed a purchase (`fulfilled_at` null,
+  `account_status` null or `pending_payment`). Everyone else, i.e. a returning
+  buyer, pays `$60` (`PLAN_REGULAR_PRICE`). `create-checkout` picks the Stripe
+  price, `/api/account/status` returns `quiz_price` for `/paywall`, and
+  `/register` reads it off the row `completeRegistration()` already loads; all
+  three call `isQuizPriceEligible()`. Decide it anywhere else and the paywall
+  prints one figure while Stripe charges another. Stripe's cancel URL lands
+  funnel buyers on `/paywall`, which is why the price follows the account and
+  not the page.
+- **Stripe:** `$29` quiz-taker, **no `recurring` block** → `STRIPE_PRICE_PLAN`;
+  `$60` regular → `STRIPE_PRICE_PLAN_REGULAR`.
   `scripts/stripe-plan-price.ts` creates it and archives every older price. A
   recurring price is rejected outright in payment mode — a 500 on the card
   form, not a wrong charge.
@@ -873,7 +884,8 @@ Rules that came out of the re-order, all of them about *sequence*, not styling:
   and the plain row is the one carrying the claim — day 1, movement 1, not a
   bookend or a header. What is under the blur is never invented rows.
 - **The ask and the deliverable are the same block (2026-09-11), so every cue
-  names it.** The button says "Start my 8-week plan · $29", the badge says
+  names it.** The button says "Start my 8-week plan" (no price on it since
+  2026-09-13; `PRICE_LINE` sits directly under it), the badge says
   "YOUR 8-WEEK PLAN", and the row beside the price says "All 8 weeks included /
   one payment, then nothing". This
   *reverses* the 2026-09-08 rule ("the ask is one week, everywhere it is
@@ -1705,13 +1717,13 @@ feature (checked 2026-09-08).
 | Split the funnel back into two bands with two bases | The seam is what created the duplicate row (`Finished the quiz` *is* `calculating`, in women), made the curve appear to climb where the bands overlapped, and put paywall → card form — the number that splits a weak offer screen from a leaking checkout — on opposite sides of a line so it could not be computed. Over one window `calculating` is 54 visits and `user_profiles` 54 women: the units converge before the money rows begin. |
 | Put a `Finished the quiz` row back on the curve | It is the `calculating` row counted a second way. One event, one row. |
 | Add a `download` row beside `Paid` | Same event, and Stripe is the side that knows whether money moved. |
-| Bring back the `$50` strikethrough, a "% off" pill or the paywall countdown | Removed 2026-09-12. On a cold click for an unknown brand they read as scam-page furniture, and $50 was never a price the plan was sold at. If a timer ever returns it must never change a figure, never select a second Stripe Price and never visibly reset. |
+| Strike through a price nobody is charged, or bring back the paywall countdown | The `$50` anchor was removed 2026-09-12 because $50 was never a price the plan was sold at. The `$60` strikethrough (2026-09-13) is allowed only because `create-checkout` really charges it (`STRIPE_PRICE_PLAN_REGULAR`) to everyone not on a first purchase after the quiz. If that path ever stops charging $60, the strikethrough comes down in the same commit. If a timer ever returns it must never change a figure and never visibly reset. |
 | Show an App Store or Google Play listing before checkout | Each listing prints "Free · In-App Purchases". One screen before a $29 web checkout it tells her to leave and buy in the store — losing the sale, the attribution and the plan her quiz built. Badges belong on the post-checkout download screen only. |
 | Invent an expert, advisory board, credential or clinical citation | Trust is the currency in women's health, which is exactly why a fabricated one is the whole of an FTC complaint. Name a real person with their agreement, or name nobody. |
 | Put `seconds` back into `DEFAULT_WARMUP` / `DEFAULT_COOLDOWN` | They take the catalog's dose via `bookendFrom()`. A second copy of a number already in `DOSE` drifted the first time `DOSE` changed. |
 | Bring back the 8-week adherence refund guarantee (or any outcome refund) | Removed 2026-09-04. The "100% guarantee" is the free trial: try it, cancel before the first charge, pay nothing. A refund promise needs a measurement, a claim process and a Terms section a regulator can check; the trial needs none of them. Terms §11's 7-day refund window is the only refund left. |
 | Bring back a free trial, `trial_period_days`, or any `trialing` state | Removed 2026-09-08 after two saved cards and zero conversions. The plan is $29 per 8 weeks, charged in full at checkout; `getAccountState()` never learned about a trial and must not. |
-| Re-add an introductory price, a first-period discount or a Stripe coupon | Gone 2026-09-11. An introductory price that steps up is a second number, and the weekly plan proved what a second number costs on this screen: the paywall had to reconcile three durations and Terms §10.1 had to state that the billing period and the plan block were different lengths. `create-checkout` passes no `discounts`. |
+| Re-add an introductory price, a first-period discount or a Stripe coupon | Gone 2026-09-11. An introductory price that steps up is a second number, and the weekly plan proved what a second number costs on this screen: the paywall had to reconcile three durations and Terms §10.1 had to state that the billing period and the plan block were different lengths. `create-checkout` passes no `discounts`. (The $29 quiz-taker price is not this: it is its own one-time Price, and nothing after it steps up.) |
 | Turn the plan back into a subscription without rewriting Terms §10 in the same commit | §10 currently states, in its own bordered box, that nothing recurs and there is nothing to cancel. Shipping recurring billing under that text is the same misrepresentation as a wrong price, pointing the other way — and it is the paragraph a customer quotes when she disputes the charge. |
 | Print "cancel anytime" anywhere | There is no subscription and no scheduled charge, so it is false, not just off-message. The reassurance that replaced it ("one payment, nothing recurring") is stronger and true. |
 | Make the access-ending alert conditional on cancellation again | It was `.eq("subscription_canceled", true)`, which is false for every one-time customer — so every access window would have expired in silence. It is now the only warning she gets that the app is about to stop. |

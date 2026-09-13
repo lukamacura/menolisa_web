@@ -7,6 +7,7 @@ import {
   type TrialRow,
 } from "@/lib/checkTrialStatus";
 import { getAccountState, type AccountStateRow } from "@/lib/getAccountState";
+import { isQuizPriceEligible, planOffer } from "@/lib/pricing";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
   const [{ data, error }, { data: profile }] = await Promise.all([
     supabase
       .from("user_trials")
-      .select(TRIAL_SELECT_COLS)
+      .select(`${TRIAL_SELECT_COLS}, fulfilled_at`)
       .eq("user_id", user.id)
       .maybeSingle(),
     supabase
@@ -47,6 +48,14 @@ export async function GET(req: NextRequest) {
   const decision = evaluateTrialStatus(row);
   const expired = decision === "paywall";
   const account = getAccountState(row);
+  // The price /paywall prints. Same function create-checkout charges with.
+  const offer = planOffer(
+    isQuizPriceEligible({
+      hasProfile: !!profile,
+      accountStatus: row?.account_status,
+      fulfilledAt: (data as { fulfilled_at?: string | null } | null)?.fulfilled_at,
+    })
+  );
 
   return NextResponse.json({
     expired,
@@ -74,5 +83,9 @@ export async function GET(req: NextRequest) {
     // account that predates the question; the app falls back to an evening
     // reminder, which is what everybody got before it existed.
     training_time: profile?.training_time ?? null,
+    // What a purchase would cost this account right now (USD).
+    plan_price: offer.price,
+    regular_price: offer.regularPrice,
+    quiz_price: offer.quizPrice,
   });
 }

@@ -92,7 +92,7 @@ export const SYMPTOM_FIRST_MOVE: Record<string, { do: string; why: string }> = {
     why: "A cooler start gives the night surge less to build on.",
   },
   sleep_issues: {
-    do: "Set tomorrow's wake time now — and keep it even if tonight goes badly.",
+    do: "Set tomorrow's wake time now, and keep it even if tonight goes badly.",
     why: "The wake time is what anchors the next night. The bedtime isn't.",
   },
   brain_fog: {
@@ -104,7 +104,7 @@ export const SYMPTOM_FIRST_MOVE: Record<string, { do: string; why: string }> = {
     why: "The late scroll is a stress spike you can't buffer the way you used to.",
   },
   weight_changes: {
-    do: "Set tomorrow's protein out tonight — eggs on the counter, yoghurt at the front.",
+    do: "Set tomorrow's protein out tonight: eggs on the counter, yoghurt at the front.",
     why: "Muscle is the thing you're protecting, and it's built from the first meal.",
   },
   low_energy: {
@@ -112,7 +112,7 @@ export const SYMPTOM_FIRST_MOVE: Record<string, { do: string; why: string }> = {
     why: "The rhythm that runs your energy is set at first light, not at noon.",
   },
   anxiety: {
-    do: "Write the loop down — one line, whatever it is — and shut the notebook.",
+    do: "Write the loop down (one line, whatever it is) and shut the notebook.",
     why: "On paper it stops re-arriving every twenty minutes.",
   },
   joint_pain: {

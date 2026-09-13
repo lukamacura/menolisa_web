@@ -169,6 +169,8 @@ import {
   SUPPORT_EMAIL,
   formatChargeDate,
   formatPrice,
+  isQuizPriceEligible,
+  planOffer,
 } from "@/lib/pricing";
 import { funnelSessionId, isQaSession, pingFunnelStep } from "@/lib/funnelClient";
 import { getSymptomTransforms } from "@/lib/testimonials";
@@ -3723,6 +3725,10 @@ function RegisterPageContent() {
   const [nutritionStyle, setNutritionStyle] = useState<string>("");
   const [relaxationStyle, setRelaxationStyle] = useState<string>("");
   const [firstName, setFirstName] = useState<string>("");
+  // Quiz-taker price unless completeRegistration() finds this account has
+  // already bought once; see isQuizPriceEligible (create-checkout charges with
+  // the same rule, so this only decides what the paywall prints).
+  const [quizPrice, setQuizPrice] = useState(true);
 
   // Derived for funnel compatibility: save-quiz / user_profiles still consume top_problems[].
   const topProblems = useMemo(
@@ -4415,7 +4421,7 @@ function RegisterPageContent() {
       if (sessionUser) {
         const { data: trialRow } = await supabase
           .from("user_trials")
-          .select(TRIAL_SELECT_COLS)
+          .select(`${TRIAL_SELECT_COLS}, fulfilled_at`)
           .eq("user_id", sessionUser.id)
           .maybeSingle();
         if (trialRow && stateAllowsAccess(getAccountState(trialRow).state)) {
@@ -4423,6 +4429,14 @@ function RegisterPageContent() {
           router.refresh();
           return false;
         }
+        // hasProfile: true because save-quiz writes it a moment from now.
+        setQuizPrice(
+          isQuizPriceEligible({
+            hasProfile: true,
+            accountStatus: trialRow?.account_status,
+            fulfilledAt: trialRow?.fulfilled_at,
+          })
+        );
       }
 
       if (!sessionUser) {
@@ -5733,6 +5747,8 @@ function RegisterPageContent() {
           weekOne={weekOneRows}
           week={weekPlanner ?? undefined}
           userId={userId}
+          firstName={firstName.trim() || undefined}
+          offer={planOffer(quizPrice)}
         />
       )}
 
@@ -5757,7 +5773,8 @@ function RegisterPageContent() {
                   itself on that. The access-end date stays: it is the one
                   warning she gets before the welcome email, and a woman who
                   finds out on day 57 is a chargeback. */}
-              All {PLAN_WEEKS} weeks are paid ({formatPrice(PLAN_PRICE)}, once) &mdash; the plan,
+              {/* No figure: /paywall buyers at the regular price land here too. */}
+              All {PLAN_WEEKS} weeks are paid, once: the plan,
               Lisa and your symptom tracking, yours until{" "}
               {accessEndsDate ?? `${PLAN_WEEKS} weeks from today`}. Your {PLAN_WEEKS}-week plan is
               being built right now; download the app to start it.

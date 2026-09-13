@@ -1,6 +1,9 @@
 /**
- * Create the $29 **one-time** price and archive every other price on the
- * product. Idempotent: run it twice and it changes nothing.
+ * Create the two **one-time** prices (2026-09-13) and archive every other
+ * price on the product: the $29 quiz-taker price (STRIPE_PRICE_PLAN) and the
+ * $60 regular price (STRIPE_PRICE_PLAN_REGULAR). Both stay active; the paywall
+ * strikes the regular price through, which is only honest while it is a live
+ * price someone is charged. Idempotent: run it twice and it changes nothing.
  *
  *   npx tsx --env-file=.env.local scripts/stripe-plan-price.ts
  *
@@ -22,10 +25,11 @@
  * them.
  */
 import Stripe from "stripe";
-import { PLAN_PRICE, PLAN_WEEKS } from "../lib/pricing";
+import { PLAN_PRICE, PLAN_REGULAR_PRICE, PLAN_WEEKS } from "../lib/pricing";
 
 const PRODUCT_NAMES = ["MenoLisa 8 Week Plan", "MenoLisa 8-Week Plan"];
 const LOOKUP_KEY = `menolisa_plan${PLAN_WEEKS}w_once_${PLAN_PRICE}`;
+const REGULAR_LOOKUP_KEY = `menolisa_plan${PLAN_WEEKS}w_once_${PLAN_REGULAR_PRICE}`;
 
 async function main() {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -49,29 +53,35 @@ async function main() {
     console.log(`Product: ${product.id} (${product.name})`);
   }
 
-  // The plan price: one charge, no `recurring` block at all.
-  const byKey = await stripe.prices.list({ lookup_keys: [LOOKUP_KEY], limit: 1 });
-  let plan = byKey.data[0];
-  if (!plan) {
-    plan = await stripe.prices.create({
-      product: product.id,
-      currency: "usd",
-      unit_amount: Math.round(PLAN_PRICE * 100),
-      nickname: `${PLAN_WEEKS}-week plan, one-time ($${PLAN_PRICE})`,
-      lookup_key: LOOKUP_KEY,
-    });
-    console.log(`Created one-time price ${plan.id}`);
-  } else {
-    console.log(`Plan price: ${plan.id}`);
-  }
-  // `recurring` must be absent. A recurring price here is rejected by Checkout
-  // in payment mode, which is a 500 on the card form rather than a wrong
-  // charge — loud, but only once someone taps.
-  if (plan.unit_amount !== Math.round(PLAN_PRICE * 100) || plan.recurring) {
-    throw new Error(
-      `Price ${plan.id} does not match lib/pricing.ts (expected a one-time ${PLAN_PRICE * 100} price) — fix one of them`
-    );
-  }
+  // Both prices: one charge each, no `recurring` block at all.
+  const productId = product.id;
+  const ensurePrice = async (amount: number, lookupKey: string, label: string) => {
+    const byKey = await stripe.prices.list({ lookup_keys: [lookupKey], limit: 1 });
+    let price = byKey.data[0];
+    if (!price) {
+      price = await stripe.prices.create({
+        product: productId,
+        currency: "usd",
+        unit_amount: Math.round(amount * 100),
+        nickname: `${PLAN_WEEKS}-week plan, one-time, ${label} ($${amount})`,
+        lookup_key: lookupKey,
+      });
+      console.log(`Created one-time ${label} price ${price.id}`);
+    } else {
+      console.log(`${label} price: ${price.id}`);
+    }
+    // `recurring` must be absent. A recurring price here is rejected by
+    // Checkout in payment mode, which is a 500 on the card form rather than a
+    // wrong charge: loud, but only once someone taps.
+    if (price.unit_amount !== Math.round(amount * 100) || price.recurring) {
+      throw new Error(
+        `Price ${price.id} does not match lib/pricing.ts (expected a one-time ${amount * 100} price); fix one of them`
+      );
+    }
+    return price;
+  };
+  const plan = await ensurePrice(PLAN_PRICE, LOOKUP_KEY, "quiz-taker");
+  const regular = await ensurePrice(PLAN_REGULAR_PRICE, REGULAR_LOOKUP_KEY, "regular");
 
   // The plan price becomes the product default first — Stripe refuses to
   // archive a product's default price.
@@ -85,7 +95,7 @@ async function main() {
   // one all live here.
   const prices = await stripe.prices.list({ product: product.id, active: true, limit: 100 });
   for (const p of prices.data) {
-    if (p.id === plan.id) continue;
+    if (p.id === plan.id || p.id === regular.id) continue;
     await stripe.prices.update(p.id, { active: false });
     console.log(
       `Deactivated ${p.id} (${p.nickname ?? `${p.unit_amount} / ${p.recurring?.interval_count} ${p.recurring?.interval}`})`
@@ -93,6 +103,7 @@ async function main() {
   }
 
   console.log(`\nSTRIPE_PRICE_PLAN=${plan.id}`);
+  console.log(`STRIPE_PRICE_PLAN_REGULAR=${regular.id}`);
 }
 
 main().catch((e) => {
