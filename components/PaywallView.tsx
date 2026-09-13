@@ -6,7 +6,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
   ArrowRight,
-  Bot,
   Building2,
   CalendarCheck,
   Check,
@@ -19,7 +18,6 @@ import {
   Sparkles,
   Sunrise,
   X,
-  Zap,
 } from "lucide-react";
 import { SocialProofPolaroid } from "@/components/SocialProof";
 import {
@@ -45,6 +43,7 @@ import {
   WHAT_YOU_GET,
   formatChargeDate,
   formatPrice,
+  perDayLabel,
   priceLine,
   type PlanOffer,
 } from "@/lib/pricing";
@@ -165,58 +164,22 @@ function useAccessEnd(): string | null {
 }
 
 
-// Scannable 2x2 grid, one promise per box. At the payment moment she scans
-// rather than reads, so every box is a 2-3 word headline with one support line.
-//
-// **No box states the price.** One did until 2026-09-08, when the price card
-// was still the eighth block on the page and this grid was one of the few
-// places the figure appeared at all. The price is now the second block, above
-// the fold, and it is also on the sticky bar - so that box was the third
-// printing of one number, spending a quarter of the grid on nothing new. The
-// slot went to the objection this screen actually leaves unanswered: she is
-// paying on a web page for a product that lives in an app she has not
-// downloaded.
-const TRUST_LABELS = [
-  {
-    icon: Zap,
-    bg: "bg-yellow-100",
-    fg: "text-yellow-700",
-    title: "Instant access",
-    sub: "Your plan is ready now",
-  },
-  {
-    icon: Smartphone,
-    bg: "bg-pink-100",
-    fg: "text-pink-600",
-    title: "iPhone & Android",
-    sub: "Download right after checkout",
-  },
-  {
-    // This slot has now lost two billing reassurances in a row. It was "Cancel
-    // in 2 taps" until 2026-09-11, which a one-time payment made false, and
-    // then "No subscription / One payment. Nothing recurring" - true, but the
-    // *fourth* printing of that fact on a screen that had already stated it
-    // beside the price, under the price and in the paragraph above this grid.
-    // A negation repeated four times stops reading as a fact and starts
-    // reading as a page protesting.
-    //
-    // What the slot is worth instead is the one claim this grid can make that
-    // no other block does: the plan behind the button is hers, built from the
-    // thirteen answers she just gave. That is the whole argument for buying
-    // this rather than a PDF, and it was nowhere in the scannable row.
-    icon: Sparkles,
-    bg: "bg-sky-100",
-    fg: "text-sky-600",
-    title: "Built from your answers",
-    sub: "Your quiz shaped every week",
-  },
-  {
-    icon: ShieldCheck,
-    bg: "bg-green-100",
-    fg: "text-green-700",
-    title: "Stripe secured",
-    sub: "We never see your card",
-  },
+/**
+ * The two people behind the product, shown with their faces in "The people
+ * behind MenoLisa". Both are real and agreed to be shown (owner's call,
+ * 2026-09-13). The roles are the ones the owner gave; do not dress them up
+ * into credentials. Avatars are 192px crops in public/brand/.
+ */
+const FOUNDERS = [
+  { name: "Zoka", role: "Came up with MenoLisa", src: "/brand/founder-zoka.webp" },
+  { name: "Luka", role: "Built the app", src: "/brand/founder-luka.webp" },
+];
+
+/** "How it works", directly under the price. See the block where it renders. */
+const HOW_IT_WORKS = [
+  { Icon: Lock, bold: "Pay once", sub: "Secure, via Stripe" },
+  { Icon: Smartphone, bold: "Get the app", sub: "iPhone or Android" },
+  { Icon: Sunrise, bold: "Start day 1", sub: "Your plan is waiting" },
 ];
 
 /**
@@ -798,7 +761,7 @@ export function PaywallView({
             of the app (the daily checklist) doing a different job: evidence
             that the product exists and is finished. */}
         <div
-          className="relative mx-auto mb-2 h-[240px] w-[260px] shrink-0 overflow-hidden sm:h-[277px] sm:w-[300px]"
+          className="relative mx-auto mb-2 h-[210px] w-[260px] shrink-0 overflow-hidden sm:h-[250px] sm:w-[300px]"
           style={{
             // no-repeat is load-bearing: mask-repeat defaults to `repeat`, so
             // without it the gradient tiles down the box and the faded-out
@@ -894,6 +857,16 @@ export function PaywallView({
             <br />
             <HighlightSweep variant="green">{PLAN_WEEKS} weeks from now.</HighlightSweep>
           </h1>
+          {/* What she is buying, in one sentence (2026-09-13). The page named
+              an outcome and a price and never said what the thing *is*, and
+              "I don't understand the offer" was the reported objection. One
+              plain line: a daily plan, in an app, made from her answers, and
+              the four things it covers (the same four pillars as
+              lib/planPillars.ts and the first WHAT_YOU_GET row). */}
+          <p className="mx-auto mt-2.5 max-w-[21rem] text-[15px] leading-snug text-[#5A5A5A] text-balance">
+            A day-by-day plan in the MenoLisa app, built from your answers: short workouts, food,
+            calm and sleep.
+          </p>
         </motion.div>
 
         {/* ── The price, as a number rather than a sentence ──────────────────
@@ -962,8 +935,11 @@ export function PaywallView({
               {PRICE}
             </span>
           </p>
+          {/* The per-day figure is derived (perDayLabel), never typed: it is
+              the one payment spread over the PLAN_ACCESS_DAYS it buys. */}
           <p className="mt-1 text-center text-xs font-semibold text-[#8A8A8A]">
-            One payment &middot; all {PLAN_WEEKS} weeks
+            One payment &middot; all {PLAN_WEEKS} weeks &middot;{" "}
+            <span className="text-[#15803D]">just {perDayLabel(offer.price)}</span>
           </p>
           {offer.quizPrice && (
             <p className="mx-auto mt-2 max-w-[19rem] text-center text-xs leading-snug text-[#5A5A5A]">
@@ -991,7 +967,7 @@ export function PaywallView({
               {/* Concrete nouns, not product names: "Lisa" means nothing yet
                   at this point of the page. The full list is further down. */}
               <span className="block text-xs text-[#6B6B6B]">
-                Plan, video workouts, AI coach &amp; tracker
+                Daily plan, video workouts &amp; symptom tracker
               </span>
             </p>
           </div>
@@ -1031,6 +1007,47 @@ export function PaywallView({
             and as a second identical button ~90px above it on a tall one. The
             sticky bar *is* the in-fold CTA. */}
 
+        {/* How it works, directly under the price (2026-09-13). It was the
+            last block on the page as "What happens next", i.e. the mechanics
+            of the purchase - pay on a web page, get an app, sign in - were
+            explained ~2,000px after the number. For a woman who does not yet
+            understand what she is buying, "where does this go after I pay?"
+            is the question the price raises, so the answer sits under it: three
+            steps she can read in one glance, and the one sentence that makes
+            buying here rather than in a store make sense. */}
+        <div className="mb-3 rounded-2xl border border-[#E8DDD9] bg-white px-3 py-3.5">
+          <p className="mb-2.5 text-center text-[11px] font-extrabold uppercase tracking-[0.12em] text-[#B5ADA9]">
+            How it works
+          </p>
+          <ol className="grid grid-cols-3 gap-1.5">
+            {HOW_IT_WORKS.map((step, i) => (
+              <li key={step.bold} className="relative flex flex-col items-center text-center">
+                {/* Connector to the next step, behind the icon row. */}
+                {i < HOW_IT_WORKS.length - 1 && (
+                  <span
+                    aria-hidden
+                    className="absolute left-[calc(50%+22px)] right-[calc(-50%+22px)] top-[18px] border-t-2 border-dotted border-[#16A34A]/30"
+                  />
+                )}
+                <span className="relative inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#16A34A]/10">
+                  <step.Icon className="h-4 w-4 text-[#15803D]" strokeWidth={2.4} />
+                  <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#16A34A] text-[9.5px] font-extrabold text-white">
+                    {i + 1}
+                  </span>
+                </span>
+                <b className="mt-1.5 text-[13px] leading-tight text-[#2B2627]">{step.bold}</b>
+                <span className="text-[11px] leading-tight text-[#8A8A8A]">{step.sub}</span>
+              </li>
+            ))}
+          </ol>
+          {/* Why buy here rather than in the store: the plan her answers built
+              is saved to this account, and nowhere else. */}
+          <p className="mt-3 rounded-xl bg-[#F7F1EE] px-3 py-2 text-center text-xs leading-snug text-[#5A5A5A]">
+            Sign in with the email you pay with. Your plan and your answers are already there,
+            nothing to redo.
+          </p>
+        </div>
+
         {/* Her finish line, in dates. Below the price now - it is proof that
             supports the offer, not the thing that opens the screen. */}
         <PlanFinishBoard topProblems={topProblems} goal={goal} className="mb-2.5" />
@@ -1060,7 +1077,7 @@ export function PaywallView({
             boxShadow: "0 0 16px rgba(245,197,24,0.18)",
           }}
         >
-          <h2 className="text-3xl sm:text-4xl font-bold text-[#3D3D3D] leading-tight mb-3">
+          <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] leading-tight mb-3">
             What you get for <HighlightSweep variant="yellow">{PRICE}</HighlightSweep>
           </h2>
           <ul className="space-y-3">
@@ -1090,15 +1107,133 @@ export function PaywallView({
           </p>
         </div>
 
-        {/* The details, as a fact sheet (2026-09-12). Every question a
-            careful buyer asks before typing a card number - how much, does it
-            renew, how long, where, how do I log in, can I get my money back,
-            who do I ask - answered in one place, in one line each, with no
-            adjectives. A buyer who is "sure what she gets" is one who has
-            nothing left to look up. The access date is her real one: purchase
-            day + PLAN_ACCESS_DAYS, which is exactly what fulfillCheckout
-            writes. PLAN_BLOCKS_COPY stays as the footnote: it is the one
-            sentence that says what happens when the weeks run out. */}
+        {/* Who is behind this (2026-09-12; faces 2026-09-13). A cold visitor
+            handing card details to an unnamed entity, in women's health, is
+            gambling. Two real faces answer "who am I paying?" faster than any
+            badge, and they sit directly above the members' own words so the
+            page reads people → people. Every line is checkable: the three
+            training modalities are what lib/plan/catalog.ts prescribes; the
+            company and the address are the ones in the Terms.
+
+            The "Lisa is an AI, not a doctor" row went on 2026-09-13 (owner's
+            call: to this audience the word reads as "a chatbot instead of
+            help"). The disclosure did not go - it is in the landing FAQ and
+            Terms §1 - and nothing here may imply Lisa is a person.
+
+            **Do not add a name, a credential or an advisory board here unless
+            it is real and the person has agreed to be named.** An invented
+            OB-GYN converts for a week and is the whole of an FTC complaint. */}
+        <div className="mb-4 rounded-2xl border border-[#E8DDD9] bg-white px-4 py-4">
+          <p className="mb-3 text-center text-[11px] font-extrabold uppercase tracking-[0.12em] text-[#B5ADA9]">
+            The people behind MenoLisa
+          </p>
+          <div className="flex justify-center gap-8">
+            {FOUNDERS.map((f) => (
+              <figure key={f.name} className="flex flex-col items-center text-center">
+                <Image
+                  src={f.src}
+                  alt={f.name}
+                  width={64}
+                  height={64}
+                  className="h-16 w-16 rounded-full object-cover shadow-[0_0_0_3px_#fff,0_0_0_5px_#F6CFE0,0_6px_16px_rgba(61,61,61,0.14)]"
+                />
+                <figcaption className="mt-2">
+                  <b className="block text-sm leading-tight text-[#2B2627]">{f.name}</b>
+                  <span className="block text-[11px] leading-tight text-[#8A8A8A]">{f.role}</span>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+          <p className="mx-auto mt-3 max-w-[20rem] text-center text-[13px] leading-snug text-[#5A5A5A]">
+            A small team, not a faceless company. Every email to{" "}
+            <b className="break-words text-[#3D3D3D]">{SUPPORT_EMAIL}</b> is read by one of us.
+          </p>
+          <ul className="mt-3.5 space-y-2.5 border-t border-[#F0E6E2] pt-3.5">
+            {[
+              {
+                Icon: Dumbbell,
+                bold: "Built on what the research supports",
+                sub: "Strength training, daily walking and short intervals, set to the fitness level you told us.",
+              },
+              {
+                Icon: Building2,
+                bold: "A registered US company",
+                sub: "Macura Solutions LLC, registered in Wyoming, USA.",
+              },
+            ].map((row) => (
+              <li key={row.bold} className="flex items-start gap-2.5">
+                <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                  <row.Icon className="h-3.5 w-3.5 text-primary" strokeWidth={2.4} />
+                </span>
+                <span className="min-w-0 text-sm leading-snug text-[#3D3D3D]">
+                  <strong>{row.bold}</strong>
+                  <span className="block text-xs text-[#6B6B6B] break-words">{row.sub}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-center text-[10.5px] leading-snug text-[#9A9A9A]">
+            MenoLisa is a wellness product, not medical care.
+          </p>
+        </div>
+
+        {/* Social proof, directly under the team: the people who made it, then
+            the people who use it. <SymptomOutcomeCards /> is not here: those
+            before/after cards are `getSymptomTransforms` on her own symptoms,
+            which the diagnosis screen renders one screen earlier. The polaroid
+            stays - it rotates through different women, so a second viewing is
+            new proof rather than the same proof. */}
+        {/* "4.9 · 12,800+ women" sat here until 2026-09-12. Nothing in the
+            codebase or the database sources either number, and on the screen
+            whose job is trust it is the one claim a sceptic can disprove -
+            next to a guarantee she can hold us to. The members below are real
+            and speak in their own words (lib/testimonials.ts drops anything
+            unconfirmed from production). Put a rating back only with a
+            source you can show. */}
+        <p className="mb-2 text-center text-[11px] font-extrabold uppercase tracking-[0.12em] text-[#B5ADA9]">
+          Members, in their own words
+        </p>
+        <SocialProofPolaroid />
+
+        {/* The guarantee, in full - the terms, with the link to the contract
+            that binds us to them. It moves with Terms §11 in both directions.
+            Why it is back: lib/pricing.ts, the block above GUARANTEE_HEADLINE. */}
+        <div
+          className="rounded-2xl border-2 border-green-300 bg-green-50 p-4 mb-4"
+          style={{ boxShadow: "0 0 0 2px rgba(22,163,74,0.12), 0 8px 28px rgba(22,163,74,0.12)" }}
+        >
+          <div className="flex flex-col items-center text-center">
+            <ShieldCheck className="w-12 h-12 text-green-600 shrink-0 mb-2" />
+            <h2 className="text-xl font-bold text-green-800 mb-2">{GUARANTEE_HEADLINE}</h2>
+            <p className="text-sm text-[#3D3D3D] leading-relaxed">
+              {/* Both halves come from GUARANTEE_BODY (split in lib/pricing.ts).
+                  The head was retyped here in JSX, so an edit to the constant
+                  moved the tail and left the bolded sentence behind. */}
+              <b className="text-green-700">{GUARANTEE_BODY_HEAD}</b>{" "}
+              <span className="break-words">{GUARANTEE_BODY_TAIL}</span>
+            </p>
+            <a
+              href="/terms#money-back"
+              className="mt-2 text-xs font-semibold text-green-700 underline underline-offset-2"
+            >
+              Full guarantee terms
+            </a>
+          </div>
+        </div>
+
+        {/* The details, as a fact sheet (2026-09-12), last: it is the page's
+            FAQ. Every question a careful buyer asks before typing a card number
+            - how much, does it renew, how long, where, how do I log in, can I
+            get my money back, who do I ask - answered in one line each, with no
+            adjectives. The access date is her real one: purchase day +
+            PLAN_ACCESS_DAYS, which is exactly what fulfillCheckout writes.
+            PLAN_BLOCKS_COPY stays as the footnote: it is the one sentence that
+            says what happens when the weeks run out.
+
+            The 2x2 trust grid that sat under it went on 2026-09-13. Its four
+            tiles (instant access, iPhone & Android, built from your answers,
+            Stripe secured) were each already said by "How it works", this
+            sheet, the "What you get" list and the sticky bar. */}
         <div className="mb-4 rounded-2xl border border-[#E8DDD9] bg-white px-4 py-3.5">
           <p className="mb-1 text-center text-[11px] font-extrabold uppercase tracking-[0.12em] text-[#B5ADA9]">
             The details
@@ -1131,172 +1266,6 @@ export function PaywallView({
           <p className="mt-2 text-center text-[11px] leading-snug text-[#8A8A8A]">
             {PLAN_BLOCKS_COPY}
           </p>
-        </div>
-
-        {/* Trust boxes */}
-        <div className="grid grid-cols-2 gap-2 mb-4">
-          {TRUST_LABELS.map((item, i) => {
-            const Icon = item.icon;
-            return (
-              <motion.div
-                key={item.title}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.35 + i * 0.05 }}
-                className="rounded-xl border bg-white px-3 py-2.5 shadow-sm"
-                style={{ borderColor: "#E8DDD9" }}
-              >
-                <span
-                  className={`inline-flex items-center justify-center w-7 h-7 rounded-full mb-1.5 ${item.bg}`}
-                >
-                  <Icon className={`w-4 h-4 ${item.fg}`} />
-                </span>
-                <p className="text-sm font-bold text-[#3D3D3D] leading-tight">{item.title}</p>
-                <p className="text-xs text-[#7A7A7A] leading-snug mt-0.5">{item.sub}</p>
-              </motion.div>
-            );
-          })}
-        </div>
-
-        {/* Who is behind this (2026-09-12). A cold visitor handing card
-            details to an unnamed entity, in women's health, is gambling -
-            and nothing on the page said who Lisa is, what the plan is built
-            on, or who she is paying. Every line here is checkable: Lisa's AI
-            status is disclosed in the FAQ and enforced by the safety validator
-            (lib/rag/safety-validator.ts sends medication questions to a
-            doctor); the three training modalities are what lib/plan/catalog.ts
-            actually prescribes; the company and address are the ones in the
-            Terms.
-
-            **Do not add a name, a credential or an advisory board here unless
-            it is real and the person has agreed to be named.** An invented
-            OB-GYN converts for a week and is the whole of an FTC complaint. */}
-        <div className="mb-4 rounded-2xl border border-[#E8DDD9] bg-white px-4 py-3.5">
-          <p className="mb-2.5 text-center text-[11px] font-extrabold uppercase tracking-[0.12em] text-[#B5ADA9]">
-            Who&apos;s behind MenoLisa
-          </p>
-          <ul className="space-y-2.5">
-            {[
-              {
-                Icon: Bot,
-                bold: "Lisa is an AI, not a doctor",
-                sub: "She answers from a menopause library built on published research - and when a question belongs with your doctor, she tells you so.",
-              },
-              {
-                Icon: Dumbbell,
-                bold: "The plan is built on what the research supports",
-                sub: "Strength training, daily walking and short intervals, set to the fitness level you told us.",
-              },
-              {
-                Icon: Building2,
-                bold: "A real company you can reach",
-                sub: `Made by Macura Solutions LLC, registered in Wyoming, USA. Real people read ${SUPPORT_EMAIL}.`,
-              },
-            ].map((row) => (
-              <li key={row.bold} className="flex items-start gap-2.5">
-                <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10">
-                  <row.Icon className="h-3.5 w-3.5 text-primary" strokeWidth={2.4} />
-                </span>
-                <span className="min-w-0 text-sm leading-snug text-[#3D3D3D]">
-                  <strong>{row.bold}</strong>
-                  <span className="block text-xs text-[#6B6B6B] break-words">{row.sub}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-3 text-center text-[10.5px] leading-snug text-[#9A9A9A]">
-            MenoLisa is a wellness product, not medical care.
-          </p>
-        </div>
-
-        {/* The guarantee, in full - the terms, with the link to the contract
-            that binds us to them. It moves with Terms §11 in both directions.
-            Why it is back: lib/pricing.ts, the block above GUARANTEE_HEADLINE. */}
-        <div
-          className="rounded-2xl border-2 border-green-300 bg-green-50 p-4 mb-4"
-          style={{ boxShadow: "0 0 0 2px rgba(22,163,74,0.12), 0 8px 28px rgba(22,163,74,0.12)" }}
-        >
-          <div className="flex flex-col items-center text-center">
-            <ShieldCheck className="w-12 h-12 text-green-600 shrink-0 mb-2" />
-            <h2 className="text-xl font-bold text-green-800 mb-2">{GUARANTEE_HEADLINE}</h2>
-            <p className="text-sm text-[#3D3D3D] leading-relaxed">
-              {/* Both halves come from GUARANTEE_BODY (split in lib/pricing.ts).
-                  The head was retyped here in JSX, so an edit to the constant
-                  moved the tail and left the bolded sentence behind. */}
-              <b className="text-green-700">{GUARANTEE_BODY_HEAD}</b>{" "}
-              <span className="break-words">{GUARANTEE_BODY_TAIL}</span>
-            </p>
-            <a
-              href="/terms#money-back"
-              className="mt-2 text-xs font-semibold text-green-700 underline underline-offset-2"
-            >
-              Full guarantee terms
-            </a>
-          </div>
-        </div>
-
-        {/* Social proof, low on the page rather than above the headline.
-            <SymptomOutcomeCards /> went with it: those before/after cards are
-            `getSymptomTransforms` on her own symptoms, which is exactly what
-            the diagnosis screen renders one screen earlier from the same
-            function. A close that re-runs the previous screen's pitch buys no
-            belief and adds scroll between her and the button. The polaroid
-            stays - it rotates through different women, so a second viewing is
-            new proof rather than the same proof. */}
-        {/* "4.9 · 12,800+ women" sat here until 2026-09-12. Nothing in the
-            codebase or the database sources either number, and on the screen
-            whose job is trust it is the one claim a sceptic can disprove -
-            next to a guarantee she can hold us to. The members below are real
-            and speak in their own words (lib/testimonials.ts drops anything
-            unconfirmed from production). Put a rating back only with a
-            source you can show. */}
-        <p className="mb-2 text-center text-[11px] font-extrabold uppercase tracking-[0.12em] text-[#B5ADA9]">
-          Members, in their own words
-        </p>
-        <SocialProofPolaroid />
-
-        {/* What actually happens when she taps the button. The last unanswered
-            objection here is mechanical: she is paying on a web page for a
-            product that lives in an app she has not downloaded. Step 3 is the
-            promise the download screen then has to keep. */}
-        <div className="mb-4 rounded-2xl border border-[#E8DDD9] bg-white px-4 py-3.5">
-          <p className="mb-2.5 text-center text-[11px] font-extrabold uppercase tracking-[0.12em] text-[#B5ADA9]">
-            What happens next
-          </p>
-          <ol className="space-y-2.5">
-            {[
-              {
-                Icon: Lock,
-                bold: "Secure checkout",
-                sub: `Stripe takes ${PRICE} once. We never see your card.`,
-              },
-              {
-                Icon: Smartphone,
-                bold: "Download the app",
-                // Why buy here rather than in the store: the plan her answers
-                // built is saved to this account, and nowhere else.
-                sub: "iPhone or Android. Sign in with the email you just used - your plan and your answers are already there, nothing to redo.",
-              },
-              {
-                Icon: Sunrise,
-                bold: "Day 1 is waiting",
-                sub: "Your plan is already built. Start it tonight or tomorrow.",
-              },
-            ].map((step, i) => (
-              <li key={step.bold} className="flex items-start gap-2.5">
-                <span className="relative mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#16A34A]/10">
-                  <step.Icon className="h-3.5 w-3.5 text-[#15803D]" strokeWidth={2.4} />
-                  <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#16A34A] text-[9px] font-extrabold text-white">
-                    {i + 1}
-                  </span>
-                </span>
-                <span className="min-w-0 text-sm leading-snug text-[#3D3D3D]">
-                  <strong>{step.bold}</strong>
-                  <span className="block text-xs text-[#6B6B6B]">{step.sub}</span>
-                </span>
-              </li>
-            ))}
-          </ol>
         </div>
 
         {error && (

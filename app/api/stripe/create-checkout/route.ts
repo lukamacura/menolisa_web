@@ -328,24 +328,17 @@ export async function POST(req: NextRequest) {
         ...funnelMetadata,
         ...metaMetadata,
       },
-      subscription_data: {
-        // The browser snapshot rides on the subscription too: an invoice or a
-        // subscription event knows its subscription but not the Checkout
-        // Session that started it, so this is the only object those events
-        // can reach which still carries her visit id, `_fbp`/`_fbc`, IP, UA,
-        // GPC answer and surface.
-        metadata: {
-          user_id: user.id,
-          checkout_surface: checkoutSurface,
-          ...funnelMetadata,
-          ...metaMetadata,
-        },
-        // No `consent_collection.terms_of_service` here: Stripe rejects the
-        // whole session unless a Terms URL is set in Dashboard → Settings →
-        // Public details, and a checkout that 500s on a missing dashboard field
-        // is a worse failure than a missing checkbox. Add it once that URL is
-        // confirmed set in live mode.
-      },
+      // **No `subscription_data` — Stripe rejects it in payment mode** ("You can
+      // not pass `subscription_data` in `payment` mode"), and it did: the block
+      // survived the 2026-09-11 switch to one-time pricing, so every checkout
+      // 500'd before the card form and no Purchase could ever fire. There is no
+      // subscription for it to describe anyway. The webhook reads everything it
+      // needs — visit id, `_fbp`/`_fbc`, IP, UA, GPC, surface — off the
+      // session's own `metadata` above.
+      //
+      // No `consent_collection.terms_of_service` either: Stripe rejects the
+      // whole session unless a Terms URL is set in Dashboard → Settings →
+      // Public details. Add it once that URL is confirmed set in live mode.
     };
     const session = await stripe.checkout.sessions.create(sessionParams);
 

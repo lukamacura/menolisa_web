@@ -69,13 +69,10 @@ export const PLAN_WEEKS = 8;
 export const PLAN_PRICE = 29;
 
 /**
- * The regular price (2026-09-13): what a purchase costs when the quiz-taker
- * price does not apply, i.e. a returning buyer or an account with no quiz
- * behind it. **It is a real price**, charged by `create-checkout` through
- * `STRIPE_PRICE_PLAN_REGULAR`, and that is the only reason the paywall may
- * strike it through. The $50 anchor removed on 2026-09-12 was a figure nobody
- * was ever charged; do not let this one become that by routing everyone to
- * the quiz-taker price.
+ * The strikethrough figure on the paywall. **Nobody is charged it** (2026-09-13,
+ * operator's decision): {@link isQuizPriceEligible} always passes, so every
+ * checkout charges {@link PLAN_PRICE} through `STRIPE_PRICE_PLAN`, and
+ * `STRIPE_PRICE_PLAN_REGULAR` is never selected.
  */
 export const PLAN_REGULAR_PRICE = 60;
 
@@ -86,26 +83,21 @@ export const QUIZ_DISCOUNT_PCT = Math.round((1 - PLAN_PRICE / PLAN_REGULAR_PRICE
 export type PlanOffer = { price: number; regularPrice: number; quizPrice: boolean };
 
 /**
- * Who gets {@link PLAN_PRICE}: she has finished the assessment (a
- * `user_profiles` row exists) and has never completed a purchase. Everyone
- * else pays {@link PLAN_REGULAR_PRICE}.
+ * Who gets {@link PLAN_PRICE}: everyone (2026-09-13). The price is always $29;
+ * the $60 strikethrough is marketing copy only.
  *
- * "Never purchased" is read two ways because neither alone is complete:
- * `fulfilled_at` is the fulfillment claim every checkout since 2026-08-10 sets
- * and nothing clears, and `account_status` catches paid rows older than that.
- *
- * Pure on purpose. `create-checkout` (which charges), `/api/account/status`
- * (which `/paywall` prints from) and `/register` (which prints from the row it
- * already reads) must decide it with the same code, or the paywall shows one
- * figure and Stripe charges another.
+ * Kept as a function, with its arguments, because `create-checkout` (which
+ * charges), `/api/account/status` (which `/paywall` prints from),
+ * `/api/paywall-view` (Meta's ViewContent value) and `/register` all decide the
+ * price through it. One function means the paywall, Stripe and Meta can never
+ * disagree on the figure.
  */
-export function isQuizPriceEligible(opts: {
+export function isQuizPriceEligible(_opts: {
   hasProfile: boolean;
   accountStatus?: string | null;
   fulfilledAt?: string | null;
 }): boolean {
-  if (!opts.hasProfile || opts.fulfilledAt) return false;
-  return !opts.accountStatus || opts.accountStatus === "pending_payment";
+  return true;
 }
 
 export function planOffer(quizPrice: boolean): PlanOffer {
@@ -173,6 +165,16 @@ export const PLAN_ACCESS_DAYS = PLAN_WEEKS * 7;
 /** `59` → `"$59"`, `4.99` → `"$4.99"`. Whole dollars lose the pointless `.00`. */
 export function formatPrice(amount: number): string {
   return `$${amount % 1 === 0 ? amount.toFixed(0) : amount.toFixed(2)}`;
+}
+
+/**
+ * `29` → `"52¢ a day"`, `60` → `"$1.07 a day"`: the one payment spread over the
+ * {@link PLAN_ACCESS_DAYS} days it buys. Derived, never typed, so it moves with
+ * the price and the access window.
+ */
+export function perDayLabel(amount: number): string {
+  const cents = Math.round((amount * 100) / PLAN_ACCESS_DAYS);
+  return cents < 100 ? `${cents}¢ a day` : `${formatPrice(cents / 100)} a day`;
 }
 
 /**
@@ -337,9 +339,14 @@ export const WHAT_YOU_GET: ReadonlyArray<{ bold: string; sub: string }> = [
     bold: "Breathing for the hard moments",
     sub: "Timed exercises for a hot flash coming on, a 3am wake-up or a racing heart - plus a wind-down for bed.",
   },
+  // No "AI" in the headline (2026-09-13): to this audience the word reads as
+  // "a chatbot instead of help", on the screen where trust is the whole sale.
+  // It must not swing the other way and imply a human coach either - "in
+  // seconds, any hour" is the honest shape, and the landing FAQ and Terms §1
+  // still disclose that Lisa is an AI.
   {
-    bold: "Lisa, your AI menopause coach, 24/7",
-    sub: "Ask anything and get a plain-English answer - and she'll tell you when it's one for your doctor.",
+    bold: "Ask Lisa anything, day or night",
+    sub: "Plain-English answers about your symptoms in seconds - and she'll tell you when a question is one for your doctor.",
   },
   {
     bold: "Symptom tracker and a weekly recap",

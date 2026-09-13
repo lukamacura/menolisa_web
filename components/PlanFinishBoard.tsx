@@ -263,7 +263,10 @@ export function PlanFinishBoard({
         // built-in `mb-*` here cannot be overridden by a caller passing its own
         // — both classes survive and which one wins is stylesheet order. The
         // two callers space it themselves.
-        "relative rounded-2xl border px-3.5 pt-5 pb-3 shadow-sm",
+        // Compacted 2026-09-13 (pins, needle box, caption): the board is
+        // supporting proof under the price, and at full height it read as the
+        // biggest thing on the paywall.
+        "relative rounded-2xl border px-3 pt-4 pb-2 shadow-sm",
         className
       )}
       style={{
@@ -295,7 +298,7 @@ export function PlanFinishBoard({
       <div aria-hidden className="px-5">
         {/* Pins. Positioned by their own `at`, so moving a milestone moves its
             pin, its caption and the colour of the track under it together. */}
-        <div className="relative h-9">
+        <div className="relative h-[30px]">
           {stages.slice(1).map((stage, i) => {
             const lit = index >= i + 1;
             return (
@@ -310,16 +313,16 @@ export function PlanFinishBoard({
                     opacity: lit ? 1 : 0.45,
                   }}
                   transition={{ type: "spring", stiffness: 300, damping: 18 }}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-full ring-2 ring-white"
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-full ring-2 ring-white"
                   style={{
                     background: lit ? stage.color : "#E8DDD9",
-                    boxShadow: lit ? `0 4px 12px ${stage.color}55` : "none",
+                    boxShadow: lit ? `0 3px 8px ${stage.color}55` : "none",
                   }}
                 >
-                  <stage.icon className="h-3.5 w-3.5 text-white" strokeWidth={2.5} />
+                  <stage.icon className="h-3 w-3 text-white" strokeWidth={2.5} />
                 </motion.span>
                 <span
-                  className="mt-0.5 text-[9px] font-bold uppercase tracking-wide tabular-nums"
+                  className="whitespace-nowrap text-[9px] font-bold uppercase tracking-wide tabular-nums"
                   style={{ color: lit ? stage.color : "#B5ADA9" }}
                 >
                   Wk {stage.week}
@@ -331,12 +334,12 @@ export function PlanFinishBoard({
 
         {/* Needle + track. One relative box so the needle's stem can run from
             its badge down to the knob sitting on the track. */}
-        <div className="relative h-[54px]">
+        <div className="relative h-[40px]">
           {/* Track, at the bottom of the box. The gradient is painted full width
               and *revealed* by the needle rather than stretched behind it, so
               week 8 is green at every position — the colours belong to the
               weeks, not to how far the needle has got. */}
-          <div className="absolute inset-x-0 bottom-2 h-3 rounded-full overflow-hidden">
+          <div className="absolute inset-x-0 bottom-2 h-2.5 rounded-full overflow-hidden">
             <div
               className="absolute inset-0"
               style={{
@@ -364,16 +367,16 @@ export function PlanFinishBoard({
           {/* The needle itself: a badge that reads the week, a stem, and a knob
               riding the track. */}
           <motion.div className="absolute inset-y-0 z-10" style={{ left: position }}>
-            <div className="h-full -translate-x-1/2 flex flex-col items-center pb-[7px]">
+            <div className="h-full -translate-x-1/2 flex flex-col items-center pb-[6px]">
               <motion.span
                 animate={{ backgroundColor: active.color }}
                 transition={{ duration: 0.35 }}
-                className="rounded-full px-2 py-[3px] text-[10px] font-extrabold text-white whitespace-nowrap tabular-nums shadow-md"
+                className="rounded-full px-1.5 py-[2px] text-[9.5px] font-extrabold text-white whitespace-nowrap tabular-nums shadow-md"
               >
                 {week === 0 ? "Today" : `Week ${week}`}
               </motion.span>
               <span className="w-[2px] flex-1 bg-[#3D3D3D]" />
-              <span className="h-3.5 w-3.5 rounded-full bg-[#3D3D3D] ring-2 ring-white shadow-[0_2px_6px_rgba(61,61,61,0.45)]" />
+              <span className="h-3 w-3 rounded-full bg-[#3D3D3D] ring-2 ring-white shadow-[0_2px_6px_rgba(61,61,61,0.45)]" />
             </div>
           </motion.div>
         </div>
@@ -383,13 +386,13 @@ export function PlanFinishBoard({
         <div className="flex items-start justify-between -mt-1">
           <div>
             <p className="text-[9px] font-bold uppercase tracking-wide text-[#B5ADA9]">Today</p>
-            <p className="text-sm font-bold text-[#7A7A7A] leading-tight tabular-nums">
+            <p className="text-[13px] font-bold text-[#7A7A7A] leading-tight tabular-nums">
               {hydrated ? startLabel : " "}
             </p>
           </div>
           <div className="text-right">
             <p className="text-[9px] font-bold uppercase tracking-wide text-green-600">8 weeks</p>
-            <p className="text-sm font-extrabold text-green-700 leading-tight tabular-nums">
+            <p className="text-[13px] font-extrabold text-green-700 leading-tight tabular-nums">
               {hydrated ? finishLabel : " "}
             </p>
           </div>
@@ -409,7 +412,7 @@ export function PlanFinishBoard({
           the rule, and the clamped size is what makes the guarantee free: the
           longest string here is ~41 characters, which fits at 10px on a 320px
           screen and grows to 12px once the card has the room. */}
-      <div aria-hidden className="mt-2 min-h-[34px]">
+      <div aria-hidden className="mt-1.5 min-h-[30px]">
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={index}
@@ -418,7 +421,7 @@ export function PlanFinishBoard({
             exit={prefersReducedMotion ? undefined : { opacity: 0, y: -5 }}
             transition={{ duration: 0.25 }}
             className={cn(
-              "flex items-center gap-1.5 rounded-xl px-2 py-2",
+              "flex items-center gap-1.5 rounded-xl px-2 py-1.5",
               index === 0 ? "" : "font-semibold"
             )}
             style={{ background: active.soft }}
