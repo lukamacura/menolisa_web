@@ -268,7 +268,6 @@ const STEPS: Step[] = [
   "q_symptom_impact",
   "q2_here_for",
   "q_menopause_type",
-  "q3_goals",
   "reward_symptoms",
   "q_body",
   "q_fitness",
@@ -296,6 +295,11 @@ const AUTO_ADVANCE_STEPS: Step[] = [
   // button, no second decision.
   "q_symptom_primary",
   "q1_age",
+  // Single-select since 2026-09-13. Off this list, the Continue bar rendered
+  // the instant a tile lit up while the tap's own timer was also advancing -
+  // so a tap on Continue inside those 260ms moved two screens and skipped
+  // `q_symptom_impact` entirely.
+  "q3_goals",
   "q2_here_for",
   "q_menopause_type",
   "q_symptom_impact",
@@ -925,24 +929,43 @@ let planCatalogCache: PlanCatalog | null = null;
 
 function warmPlanCatalog() {
   if (planCatalogCache) return;
-  void loadPlanCatalog().then((m) => {
-    planCatalogCache = m;
-  });
+  void loadPlanCatalog()
+    .then((m) => {
+      planCatalogCache = m;
+    })
+    // usePlanCatalog retries on its own; a warm-up failure is only a miss.
+    .catch(() => {});
 }
+
+// Retries a failed chunk load (flaky in-app webview, a deploy mid-visit).
+// Without it one failure was permanent: `reward_plan_shape` and
+// `reward_progress` gate their payoff on this chunk, so the meter sat at 100%
+// with no Continue bar - a dead end at step 14 with no way forward.
+const PLAN_CATALOG_RETRIES = 6;
 
 function usePlanCatalog(): PlanCatalog | null {
   const [catalog, setCatalog] = useState<PlanCatalog | null>(planCatalogCache);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (catalog) return;
     let alive = true;
-    void loadPlanCatalog().then((m) => {
-      planCatalogCache = m;
-      if (alive) setCatalog(m);
-    });
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    loadPlanCatalog()
+      .then((m) => {
+        planCatalogCache = m;
+        if (alive) setCatalog(m);
+      })
+      .catch((err) => {
+        console.error("Plan catalog chunk failed to load:", err);
+        if (alive && attempt < PLAN_CATALOG_RETRIES) {
+          retry = setTimeout(() => setAttempt((a) => a + 1), 1000 * (attempt + 1));
+        }
+      });
     return () => {
       alive = false;
+      if (retry) clearTimeout(retry);
     };
-  }, [catalog]);
+  }, [catalog, attempt]);
   return catalog;
 }
 
@@ -3074,8 +3097,8 @@ function CarouselDots({
 
 type TileOption = { id: string; label: string; image: string };
 
-/** The single-choice image grid behind seven of the twelve questions - age,
- *  status, how menopause began, fitness, nutrition, relaxation and HRT. Tap a
+/** The single-choice 2x2 image grid behind the four-option questions - age,
+ *  goal, status, fitness, nutrition, relaxation and HRT. Tap a
  *  tile to answer; the step advances itself (see AUTO_ADVANCE_STEPS).
  *  `priority` is for the first question only, which is above the fold on load. */
 function ImageChoiceGrid({
@@ -4412,8 +4435,27 @@ function RegisterPageContent() {
     ]
   );
 
+  // Input settle window after every step change. Buttons carry
+  // `touch-action: manipulation`, so a double tap is two clicks - and the second
+  // lands on the *next* screen: on the Continue bar (which stays mounted from a
+  // reward into `q_body`, pre-answered by its sliders) it skipped height/weight
+  // unseen, and on two identical 2x2 grids in a row (age → goal, eating →
+  // unwinding) it answered a question she never read. 350ms is under the
+  // screen's own 300ms slide-in plus a beat; nobody reads and taps that fast.
+  const stepShownAt = useRef<number | null>(null);
+  useEffect(() => {
+    // Not on mount: the first screen takes 100% of paid traffic, and a fast
+    // first tap there is never a double tap.
+    stepShownAt.current = stepShownAt.current === null ? 0 : performance.now();
+  }, [stepIndex]);
+  const justArrived = () =>
+    stepShownAt.current !== null && performance.now() - stepShownAt.current < 350;
+
   const goNext = useCallback(() => {
+    if (justArrived()) return;
     if (!stepIsAnswered(currentStep)) return;
+    // A pending tile auto-advance would land on top of this one and skip a step.
+    if (advanceTimer.current) clearTimeout(advanceTimer.current);
     if (stepIndex < STEPS.length - 1) {
       setStepIndex(stepIndex + 1);
     } else {
@@ -4437,6 +4479,7 @@ function RegisterPageContent() {
     };
   }, []);
   const selectAndAdvance = useCallback((apply: () => void) => {
+    if (justArrived()) return;
     apply();
     if (advanceTimer.current) clearTimeout(advanceTimer.current);
     advanceTimer.current = setTimeout(() => {
@@ -4650,6 +4693,11 @@ function RegisterPageContent() {
    * on the page.
    */
   const [checkoutEmail, setCheckoutEmail] = useState<string | null>(null);
+  /** Set when sync-session says the purchase merged onto an older account (her
+   *  Stripe address was already taken). This session then holds no purchase,
+   *  so "Go to my account" must sign out and go to /login, not /dashboard -
+   *  the proxy would bounce the empty account back into the funnel to pay again. */
+  const mergedAccount = useRef(false);
   /**
    * When her access ends — written by fulfillment as purchase + PLAN_ACCESS_DAYS
    * and read back through `/api/account/status`. Null until fulfillment lands;
@@ -4674,12 +4722,20 @@ function RegisterPageContent() {
         const sessionId = searchParams.get("session_id");
         if (sessionId) {
           try {
-            await fetch("/api/stripe/sync-session", {
+            const res = await fetch("/api/stripe/sync-session", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ session_id: sessionId }),
             });
-            email = await read();
+            const body = (await res.json().catch(() => ({}))) as { merged?: boolean; email?: string | null };
+            if (body.merged) {
+              // The purchase landed on her older account; this anonymous one
+              // never gets the address. Show the one she signs in with.
+              mergedAccount.current = true;
+              email = typeof body.email === "string" ? body.email : null;
+            } else {
+              email = await read();
+            }
           } catch {
             // The screen reads fine without it - the copy falls back to "the
             // email address you used at checkout".
@@ -5562,6 +5618,9 @@ function RegisterPageContent() {
                             alt={`${t.label}: before and after with MenoLisa`}
                             width={1000}
                             height={546}
+                            // The card is 82% of the scroller; without this the
+                            // optimizer only offers 1080/1920px versions.
+                            sizes="(max-width: 768px) 82vw, 630px"
                             className="w-full object-cover"
                           />
                           {/* Red tint over left half */}
@@ -5921,16 +5980,24 @@ function RegisterPageContent() {
                 if (sessionId) {
                   setSyncingPayment(true);
                   try {
-                    await fetch("/api/stripe/sync-session", {
+                    const res = await fetch("/api/stripe/sync-session", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ session_id: sessionId }),
                     });
+                    const body = (await res.json().catch(() => ({}))) as { merged?: boolean };
+                    if (body.merged) mergedAccount.current = true;
                   } catch {
                     // ignore - middleware will handle gracefully if webhook already ran
                   } finally {
                     setSyncingPayment(false);
                   }
+                }
+                if (mergedAccount.current) {
+                  const supabase = await getSupabase();
+                  await supabase.auth.signOut();
+                  router.push("/login?redirectedFrom=/dashboard/account");
+                  return;
                 }
                 router.push("/dashboard");
               }}
@@ -5955,17 +6022,19 @@ function RegisterPageContent() {
             // Reserved on every non-auto-advance step, including while the bar
             // is still hidden for want of an answer: the space is what stops
             // the card resizing under her thumb the moment she taps a tile.
-            autoAdvances
+            // The name step has no fixed bar either (its Continue is in the
+            // card), and 76px is a lot to waste above an open keyboard.
+            autoAdvances || currentStep === "q8_name"
               ? "pb-[env(safe-area-inset-bottom)]"
               : "pb-[calc(76px+env(safe-area-inset-bottom))]"
           )}
         >
           {/* A one-line note from Lisa over the top of the earliest screens -
               the ones where the funnel loses most and explains least, dressed
-              as the iOS/Android push banner it is imitating. Everything outside
-              the card itself is `pointer-events-none`, so it cannot take the
-              tap this screen is waiting for; the card takes taps only to run
-              its own close button and swipe. The rules it lives under are at
+              as the iOS/Android push banner it is imitating. All of it is
+              `pointer-events-none` except its close button, so it can never
+              take the tap this screen is waiting for - it sits over the Back
+              button. The rules it lives under are at
               the component. Steps with no line render nothing. */}
           <QuizNudge step={currentStep} seen={nudgeSeen.current} />
 
@@ -6126,7 +6195,21 @@ function RegisterPageContent() {
                           <button
                             key={u}
                             type="button"
-                            onClick={() => setHeightUnit(u)}
+                            // Convert, don't swap: the two units are stored
+                            // separately, so a bare toggle showed (and saved)
+                            // the other unit's untouched default.
+                            onClick={() => {
+                              if (u === heightUnit) return;
+                              if (u === "cm") {
+                                const inches = parseInt(heightFt || "5", 10) * 12 + parseInt(heightIn || "0", 10);
+                                setHeightCm(String(Math.min(210, Math.max(120, Math.round(inches * 2.54)))));
+                              } else {
+                                const total = Math.min(84, Math.max(48, Math.round(parseFloat(heightCm || "165") / 2.54)));
+                                setHeightFt(String(Math.floor(total / 12)));
+                                setHeightIn(String(total % 12));
+                              }
+                              setHeightUnit(u);
+                            }}
                             className={`min-h-8 px-3 py-1 rounded-md text-xs font-medium transition-all duration-150 cursor-pointer ${
                               heightUnit === u
                                 ? "bg-primary text-primary-foreground shadow-sm"
@@ -6191,7 +6274,17 @@ function RegisterPageContent() {
                           <button
                             key={u}
                             type="button"
-                            onClick={() => setWeightUnit(u)}
+                            onClick={() => {
+                              if (u === weightUnit) return;
+                              if (u === "kg") {
+                                const lb = parseFloat(weightLb || "154");
+                                setWeightKg(String(Math.min(160, Math.max(40, Math.round(lb / 2.20462)))));
+                              } else {
+                                const kg = parseFloat(weightKg || "70");
+                                setWeightLb(String(Math.min(352, Math.max(88, Math.round(kg * 2.20462)))));
+                              }
+                              setWeightUnit(u);
+                            }}
                             className={`min-h-8 px-3 py-1 rounded-md text-xs font-medium transition-all duration-150 cursor-pointer ${
                               weightUnit === u
                                 ? "bg-primary text-primary-foreground shadow-sm"
@@ -6364,48 +6457,15 @@ function RegisterPageContent() {
                       More than one? Tap the one that matters most.
                     </p>
                   </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 -mr-1 pb-1 [scrollbar-width:thin]">
-                    {/* Flex-wrap, not grid: both of these lists have an odd option count,
-                        so a grid always left a hole in the last row. Wrapping with a
-                        centred last row fills the shelf and keeps every tile the same
-                        size. */}
-                    <div className="flex flex-wrap justify-center gap-2">
-                      {GOAL_OPTIONS.map((option) => {
-                        const isSelected = goal[0] === option.id;
-                        return (
-                          <button
-                            key={option.id}
-                            type="button"
-                            onClick={() => selectAndAdvance(() => selectGoal(option.id))}
-                            className={`flex flex-col w-[calc(50%-0.25rem)] sm:w-[calc(33.333%-0.334rem)] rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer outline-none focus:outline-none ${
-                              isSelected
-                                ? "ring-2 ring-inset ring-primary shadow-lg shadow-primary/30"
-                                : "hover:opacity-90"
-                            }`}
-                          >
-                            <div className="relative aspect-square">
-                              <Image
-                                src={option.image}
-                                alt={option.label}
-                                fill
-                                sizes="(min-width: 640px) 33vw, 50vw"
-                                className="object-cover"
-                              />
-                              {isSelected && <div className="absolute inset-0 bg-primary/15" />}
-                              {isSelected && (
-                                <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-primary flex items-center justify-center shadow-md animate-in zoom-in duration-200">
-                                  <Check className="w-3 h-3 text-primary-foreground" />
-                                </div>
-                              )}
-                            </div>
-                            <div className={`${TILE_FOOTER_BASE} ${isSelected ? "bg-primary" : "bg-[#2a2a2a]"}`}>
-                              <span className={TILE_LABEL}>{option.label}</span>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+                  {/* Four tiles, one tap - the same grid as age, so it fits the
+                      card 2x2 with no scroll. It was a hand-rolled flex-wrap of
+                      square tiles from its multi-select days, which on a short
+                      phone pushed the second row below the fold. */}
+                  <ImageChoiceGrid
+                    options={GOAL_OPTIONS}
+                    selected={goal[0] ?? ""}
+                    onSelect={(id) => selectAndAdvance(() => selectGoal(id))}
+                  />
                 </div>
               )}
 
@@ -6840,6 +6900,7 @@ function RegisterPageContent() {
                     <input
                       type="text"
                       value={firstName}
+                      maxLength={50}
                       onChange={(e) => setFirstName(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {

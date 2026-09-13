@@ -390,7 +390,27 @@ export async function fulfillCheckout(opts: {
   // once and reused, because the welcome email has to state the *same* date
   // the access gate will enforce — deriving it twice is how the email and the
   // lockout come to disagree by a day.
-  const accessEndsAt = subscription_ends_at ?? fallbackAccessEndIso(atSec, plan_type);
+  let accessEndsAt = subscription_ends_at ?? fallbackAccessEndIso(atSec, plan_type);
+
+  // Never move a paid customer's access end backwards. Replaying an older
+  // checkout (a resent webhook, or her old success URL reloaded after a repeat
+  // purchase) recomputes the cutoff off that older session and would otherwise
+  // lock out someone who has since paid again.
+  if (!subscription) {
+    const { data: current } = await supabaseAdmin
+      .from("user_trials")
+      .select("account_status, subscription_ends_at")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (
+      current?.account_status === "paid" &&
+      current.subscription_ends_at &&
+      accessEndsAt &&
+      new Date(current.subscription_ends_at).getTime() > new Date(accessEndsAt).getTime()
+    ) {
+      accessEndsAt = current.subscription_ends_at as string;
+    }
+  }
 
   const result = await writeSubscription(supabaseAdmin, {
     userId,

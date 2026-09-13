@@ -83,11 +83,26 @@ export async function POST(req: NextRequest) {
     stripe,
     session,
     sessionUserId: user.id,
-    atSec: Math.floor(Date.now() / 1000),
+    // The session's own timestamp, never "now". Access is computed as
+    // atSec + PLAN_ACCESS_DAYS, and this route is callable again and again off
+    // the saved success URL ("Go to my account" calls it on every tap) - with
+    // "now", reloading on day 50 bought another 56 days for free.
+    atSec: session.created,
     // Never stamp the out-of-order watermark here: it records how far Stripe's
     // event stream has been processed, and a value from this path would make the
     // next genuine webhook look stale and be dropped.
   });
 
-  return NextResponse.json({ paid: true, fulfilled: result.fulfilled });
+  // `merged`: her Stripe address already belonged to an older account, so the
+  // purchase landed there and this (anonymous) session holds nothing. The
+  // client must send her to /login rather than /dashboard, or the proxy bounces
+  // her back into the funnel to pay again. The address is her own, typed by
+  // her into this session, so returning it discloses nothing.
+  const merged = result.userId !== user.id;
+  return NextResponse.json({
+    paid: true,
+    fulfilled: result.fulfilled,
+    merged,
+    ...(merged ? { email: session.customer_details?.email ?? null } : {}),
+  });
 }

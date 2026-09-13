@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { AnimatePresence, motion, useReducedMotion, type PanInfo } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { X } from "lucide-react";
 
 /**
@@ -144,14 +144,6 @@ const NUDGE_DELAY_MS = 900;
 /** How long it stays. Long enough to read twice at 50, short enough to leave. */
 const NUDGE_VISIBLE_MS = 6000;
 
-/**
- * Swipe-up-to-dismiss thresholds, matched to the gesture iOS actually accepts:
- * a short flick counts on velocity, a slow drag counts on distance. Anything
- * that satisfies neither springs back, so a stray scroll never dismisses it.
- */
-const SWIPE_DISMISS_PX = 28;
-const SWIPE_DISMISS_VELOCITY = 320;
-
 export interface QuizNudgeProps {
   /** The current quiz step key. A step with no {@link QUIZ_NUDGES} entry renders nothing. */
   step: string;
@@ -177,15 +169,6 @@ export function QuizNudge({ step, seen }: QuizNudgeProps) {
     if (hideTimer.current) clearTimeout(hideTimer.current);
     setVisible(false);
   }, []);
-
-  const handleDragEnd = useCallback(
-    (_e: unknown, info: PanInfo) => {
-      if (info.offset.y < -SWIPE_DISMISS_PX || info.velocity.y < -SWIPE_DISMISS_VELOCITY) {
-        dismiss();
-      }
-    },
-    [dismiss]
-  );
 
   useEffect(() => {
     if (!message || seen.has(step)) return;
@@ -244,15 +227,13 @@ export function QuizNudge({ step, seen }: QuizNudgeProps) {
             // `backdrop-filter` gets the opaque white fallback and the banner
             // still reads, which is why the translucent value is behind
             // `supports-backdrop-filter:` rather than being the base.
-            className="pointer-events-auto relative flex w-full max-w-sm cursor-default select-none items-start gap-2.5 rounded-[18px] bg-white py-2 pl-3 pr-11 shadow-[0_10px_28px_-10px_rgba(61,40,50,0.32),0_2px_8px_-4px_rgba(61,40,50,0.16)] ring-1 ring-black/[0.06] backdrop-blur-xl backdrop-saturate-150 supports-backdrop-filter:bg-white/78"
-            // Swipe up to dismiss, the gesture the real banner teaches. Dragging
-            // down does nothing (`dragConstraints` pins the bottom at 0), so a
-            // downward swipe over the banner cannot drag it into the page.
-            drag={reduceMotion ? false : "y"}
-            dragDirectionLock
-            dragConstraints={{ top: 0, bottom: 0 }}
-            dragElastic={{ top: 0.6, bottom: 0 }}
-            onDragEnd={handleDragEnd}
+            // Taps pass straight through the card; only the X takes them.
+            // The card sits over the quiz header, and until 2026-09-13 it
+            // swallowed every tap on Back for the six seconds it was up
+            // (measured at 390x700: covered from ~1.5s to ~6.9s on q1_age).
+            // That cost the swipe-to-dismiss gesture, which needs pointer
+            // events; the X and the auto-hide remain.
+            className="pointer-events-none relative flex w-full max-w-sm cursor-default select-none items-start gap-2.5 rounded-[18px] bg-white py-2 pl-3 pr-11 shadow-[0_10px_28px_-10px_rgba(61,40,50,0.32),0_2px_8px_-4px_rgba(61,40,50,0.16)] ring-1 ring-black/[0.06] backdrop-blur-xl backdrop-saturate-150 supports-backdrop-filter:bg-white/78"
           >
             {/* The app icon, in the rounded square iOS gives every app rather
                 than the circle a chat avatar would get - the banner names the
@@ -307,7 +288,7 @@ export function QuizNudge({ step, seen }: QuizNudgeProps) {
               type="button"
               onClick={dismiss}
               aria-label="Dismiss notification"
-              className="absolute right-1 top-1 flex h-9 w-9 items-center justify-center text-[#6F6A6D]"
+              className="pointer-events-auto absolute right-1 top-1 flex h-9 w-9 items-center justify-center text-[#6F6A6D]"
             >
               <span className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-black/[0.06] transition-colors active:bg-black/[0.12]">
                 <X className="h-3 w-3" strokeWidth={2.5} />

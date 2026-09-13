@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient";
 import { identifyMetaUser } from "@/lib/metaPixelClient";
 import { DisputedAccountBanner, PaywallView } from "@/components/PaywallView";
-import { PLAN_ID, planOffer } from "@/lib/pricing";
+import { PLAN_ID, isQuizPriceEligible, planOffer } from "@/lib/pricing";
 import { funnelSessionId, isQaSession } from "@/lib/funnelClient";
 import type { AccountState } from "@/lib/getAccountState";
 
@@ -30,9 +30,22 @@ export default function PaywallPage() {
   // The server decides the price (create-checkout charges with the same rule),
   // so the page prints what /api/account/status says. A woman who backed out
   // of Stripe from the funnel lands here and must see the $29 she was shown.
-  // If the status call fails, show the regular price: printing less than
-  // Stripe then charges is the worse mismatch.
-  const [quizPrice, setQuizPrice] = useState(false);
+  // If the status call fails, ask the rule with nothing known about her. Today
+  // every checkout charges the quiz-taker price, so this prints what Stripe
+  // charges; if the rule ever gets conditions again, "no profile" falls to the
+  // regular price - printing less than Stripe charges is the worse mismatch.
+  const [quizPrice, setQuizPrice] = useState(() => isQuizPriceEligible({ hasProfile: false }));
+
+  // `handleCheckout` leaves the page mid-spinner, and a Back from Stripe
+  // restores it from bfcache exactly as it was - with the only CTA disabled.
+  // /register has had this guard since it was found; this page never got it.
+  useEffect(() => {
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) setCheckoutLoading(false);
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, []);
   const [firstName, setFirstName] = useState<string | undefined>(undefined);
 
   // Bounce users who don't belong here: unauthenticated → /login, has access → /dashboard.
@@ -105,6 +118,11 @@ export default function PaywallPage() {
         }),
       });
       const data = await res.json().catch(() => ({}));
+      if (res.status === 409 && data.error === "already_subscribed") {
+        // She already has access (another tab, or the webhook just landed).
+        router.replace("/dashboard");
+        return;
+      }
       if (!res.ok) {
         setError(data.error ?? "Could not start checkout. Please try again.");
         setCheckoutLoading(false);
