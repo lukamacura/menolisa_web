@@ -863,7 +863,7 @@ export function PaywallView({
               plain line: a daily plan, in an app, made from her answers, and
               the four things it covers (the same four pillars as
               lib/planPillars.ts and the first WHAT_YOU_GET row). */}
-          <p className="mx-auto mt-2.5 max-w-[21rem] text-[15px] leading-snug text-[#5A5A5A] text-balance">
+          <p className="mx-auto mt-2.5 max-w-84 text-[15px] leading-snug text-[#5A5A5A] text-balance">
             A day-by-day plan in the MenoLisa app, built from your answers: short workouts, food,
             calm and sleep.
           </p>
@@ -942,7 +942,7 @@ export function PaywallView({
             <span className="text-[#15803D]">just {perDayLabel(offer.price)}</span>
           </p>
           {offer.quizPrice && (
-            <p className="mx-auto mt-2 max-w-[19rem] text-center text-xs leading-snug text-[#5A5A5A]">
+            <p className="mx-auto mt-2 max-w-76 text-center text-xs leading-snug text-[#5A5A5A]">
               <b className="text-[#15803D]">{QUIZ_PRICE_LABEL}.</b> {QUIZ_PRICE_REASON}
             </p>
           )}
@@ -1146,7 +1146,7 @@ export function PaywallView({
           </div>
           <p className="mx-auto mt-3 max-w-[20rem] text-center text-[13px] leading-snug text-[#5A5A5A]">
             A small team, not a faceless company. Every email to{" "}
-            <b className="break-words text-[#3D3D3D]">{SUPPORT_EMAIL}</b> is read by one of us.
+            <b className="wrap-break-word text-[#3D3D3D]">{SUPPORT_EMAIL}</b> is read by one of us.
           </p>
           <ul className="mt-3.5 space-y-2.5 border-t border-[#F0E6E2] pt-3.5">
             {[
@@ -1167,7 +1167,7 @@ export function PaywallView({
                 </span>
                 <span className="min-w-0 text-sm leading-snug text-[#3D3D3D]">
                   <strong>{row.bold}</strong>
-                  <span className="block text-xs text-[#6B6B6B] break-words">{row.sub}</span>
+                  <span className="block text-xs text-[#6B6B6B] wrap-break-word">{row.sub}</span>
                 </span>
               </li>
             ))}
@@ -1210,7 +1210,7 @@ export function PaywallView({
                   The head was retyped here in JSX, so an edit to the constant
                   moved the tail and left the bolded sentence behind. */}
               <b className="text-green-700">{GUARANTEE_BODY_HEAD}</b>{" "}
-              <span className="break-words">{GUARANTEE_BODY_TAIL}</span>
+              <span className="wrap-break-word">{GUARANTEE_BODY_TAIL}</span>
             </p>
             <a
               href="/terms#money-back"
@@ -1257,7 +1257,7 @@ export function PaywallView({
                 <dt className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-[#9A9A9A]">
                   {row.k}
                 </dt>
-                <dd className="min-w-0 break-words text-right text-[13px] font-semibold text-[#3D3D3D]">
+                <dd className="min-w-0 wrap-break-word text-right text-[13px] font-semibold text-[#3D3D3D]">
                   {row.v}
                 </dd>
               </div>

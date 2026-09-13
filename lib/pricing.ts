@@ -114,7 +114,7 @@ export function planOffer(quizPrice: boolean): PlanOffer {
  * requires a finished assessment and no earlier purchase ("first 8 weeks").
  */
 export const QUIZ_PRICE_LABEL = "Quiz-taker price";
-export const QUIZ_PRICE_REASON = `You finished your assessment, so your first ${PLAN_WEEKS} weeks are ${formatPrice(PLAN_PRICE)} instead of ${formatPrice(PLAN_REGULAR_PRICE)}.`;
+export const QUIZ_PRICE_REASON = `You finished your quiz, so your first ${PLAN_WEEKS} weeks are ${formatPrice(PLAN_PRICE)} instead of ${formatPrice(PLAN_REGULAR_PRICE)}.`;
 
 /**
  * The money-back window, in days from the day she paid (2026-09-12).
@@ -192,7 +192,7 @@ export function perDayLabel(amount: number): string {
  * note on repetition above {@link PRICE_SUBLINE}.
  */
 export function priceLine(amount: number): string {
-  return `${formatPrice(amount)} once for your full ${PLAN_WEEKS}-week plan. Everything included, no subscription.`;
+  return `${formatPrice(amount)} once for your full ${PLAN_WEEKS}-week plan. Everything included.`;
 }
 
 /**

@@ -2926,6 +2926,66 @@ function PlanHeroCarousel({ slides }: { slides: ReadonlyArray<{ src: string; cap
 }
 
 /**
+ * The app filmed in her hand: ticking off nutrition, the water counter, the
+ * breathing timer. Real footage, current UI.
+ *
+ * The master was a 77MB, 800x1422 GIF, and `public/` ships bytes as-is, so it
+ * would have been downloaded whole by every woman reaching this screen. It is
+ * a cropped-to-the-phone H.264 MP4 instead (480x728, 10fps, no audio,
+ * faststart, ~445KB) plus a ~17KB WebP poster, re-encoded with:
+ *   ffmpeg -i master.gif -vf "crop=660:1000:110:220,scale=480:-2:flags=lanczos,format=yuv420p"
+ *     -c:v libx264 -preset veryslow -crf 28 -r 10 -an -movflags +faststart in_action.mp4
+ *
+ * `preload="none"` plus play-when-in-view means the video costs nothing until
+ * she scrolls to it; it pauses when it leaves. `muted` + `playsInline` are
+ * what iOS and the Instagram webview require before `play()` is allowed.
+ * Reduced motion gets the poster and nothing else.
+ */
+const IN_ACTION_CLIP = {
+  src: "/screenshots/in_action.mp4",
+  poster: "/screenshots/in_action_poster.webp",
+  width: 480,
+  height: 728,
+} as const;
+
+function AppInActionClip() {
+  const prefersReducedMotion = useReducedMotion();
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const inView = useInView(videoRef, { amount: 0.4 });
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || prefersReducedMotion) return;
+    if (inView) {
+      video.muted = true;
+      // A rejected play() (low-power mode, data saver) leaves the poster up.
+      video.play().catch(() => {});
+    } else {
+      video.pause();
+    }
+  }, [inView, prefersReducedMotion]);
+
+  return (
+    <div className="mx-auto mb-3 w-[64%] max-w-[260px] overflow-hidden rounded-2xl border-2 border-[#E8DDD9] bg-card shadow-md shadow-primary/5">
+      <video
+        ref={videoRef}
+        src={IN_ACTION_CLIP.src}
+        poster={IN_ACTION_CLIP.poster}
+        width={IN_ACTION_CLIP.width}
+        height={IN_ACTION_CLIP.height}
+        muted
+        loop
+        playsInline
+        preload="none"
+        disablePictureInPicture
+        aria-hidden
+        className="block h-auto w-full"
+      />
+    </div>
+  );
+}
+
+/**
  * Position indicator for the horizontal snap carousels.
  *
  * Both of them (the before/after cards here, and the paywall's outcome cards)
@@ -5677,6 +5737,9 @@ function RegisterPageContent() {
                     </p>
                   </div>
 
+                  {/* Proof before the loop: the app running, then what the
+                      days are. See AppInActionClip for the weight budget. */}
+                  <AppInActionClip />
                   <HowLisaRuns topLabel={topLabel} />
                 </div>
               );
