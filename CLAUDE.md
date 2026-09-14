@@ -1786,13 +1786,52 @@ feature (checked 2026-09-08).
 
 ### Recent work
 
-**2026-09-14 (latest) — the last quiz reward is the founder's note.**
+**2026-09-14 (latest) — trust pass from an outside read of the funnel.** Seven
+findings, six fixed; the audience is a sceptical 52-year-old who notices
+everything, and each fix is a contradiction she could catch:
+
+- **One duration.** The diagnosis screen typed "About 15 minutes a day" while
+  the week-1 board said 175 min for the movement-snacks week (5 min of bursts
+  + a 20-min walk, daily = 25 a day) and 145-290 for the other levels. It now
+  prints `weekShape.perDayMinutes`, the board's own total over seven days.
+  The app screenshots (`public/screenshots/screen1.webp`, `movement.webp`)
+  print "4 sessions a day" from an older build; the owner's call is to leave
+  them as they are — they are screenshots, not copy.
+- **`SUPPORT_EMAIL` is `support@macurasolutions.us`** (was the Gmail) and
+  prints once on the paywall, under Help in "The details"; the team card and
+  the guarantee say "email us". Terms §11 still makes it the whole refund
+  claim process, so **the mailbox must exist and be read**.
+- **The founder note is Zoka's** (`FOUNDER` in `RewardBoards.tsx`,
+  `public/brand/founder-zoka-portrait.webp`, a 4:5 crop of
+  `public/proof/zoka.webp`). Luka stays on the paywall team card with his
+  existing avatar (`founder-luka.webp`, cut from `public/proof/luka.webp`) —
+  owner's call, that photo stays. `founder-luka-portrait.webp` is deleted as
+  unused.
+- **Testimonials lead with her symptom.** `SocialProofMember.symptoms` tags
+  each story; `getSocialProofMembers(leadWith)` moves matching members to the
+  front, stable otherwise. The funnel's reward board and the paywall pass
+  `top_problems[0]`; the landing page passes nothing. Weight → Lindsey, then
+  Mara; hot flashes / anxiety → Taryn.
+- **"Lisa" is named nowhere before checkout.** Results CTA subline, the
+  "With Lisa" labels on the trajectory chart and both before/after cards,
+  "Ask Lisa anything" in `WHAT_YOU_GET`, "she decides what you do next" and
+  `HowLisaRuns`'s two rows, `PRICE_SUBLINE`, the body/time-of-day/name
+  sublines, and the `QuizNudge` sender ("Lisa · your coach" → the app,
+  "Quick note"). The AI disclosure stays in the landing FAQ and Terms §1.
+  `HowLisaRuns` keeps its identifier.
+- **The results card bridges cause to plan** for weight-first women: after the
+  three links, "Diets cut calories, which shrinks muscle faster … short
+  strength work rebuilds the muscle that sets your burn, so that's where your
+  plan starts." General physiology, same register as the links.
+- **Before/after imagery: left as is** (owner's call). The "Illustrative"
+  footnote under it stays.
+
+**2026-09-14 — the last quiz reward is the founder's note.**
 `reward_progress` (step 16, the last payoff before the name step) showed
 `<FirstSessionBoard />`: her week-1 session, one movement plain, the rest
 blurred. It is now `<FounderNoteBoard />` (`components/funnel/RewardBoards.tsx`):
-the owner's print, captioned "Developer" at his request, not by name
-(`public/brand/founder-luka-portrait.webp`, 8KB crop of
-`public/proof/luka.webp`), a goal-keyed headline (`FOUNDER_HEADLINE` in
+~~the owner's print, captioned "Developer"~~ (Zoka's, later the same day — see
+above), a goal-keyed headline (`FOUNDER_HEADLINE` in
 `app/register/page.tsx` — "Nobody loses weight in one good week."), a
 first-person note on why consistency is the product, and a "Today, in your
 app" checklist of the four `PLAN_PILLARS` that ticks itself off. The argument:
@@ -1920,10 +1959,9 @@ from the paywall — nothing sources either number. Verified by Playwright
 render at 390x700.
 
 **Not done, needs a decision:** ~~the landing page's "Reviewed by menopause
-specialists" badge~~ (gone with the landing rebuild, 2026-09-12). The support address is still
-split three ways (`support@macurasolutions.us` in Terms and the guarantee,
-`menolisahelp@gmail.com` on the download screen, `support@menolisa.com` in
-the dispute banner).
+specialists" badge~~ (gone with the landing rebuild, 2026-09-12). ~~The support
+address is still split three ways~~ (one constant since 2026-09-12; on the
+company domain since 2026-09-14 — see `SUPPORT_EMAIL`).
 
 **2026-09-11 — $29 ONE-TIME. The product is no longer a
 subscription.** Shipped hours after the $29-per-8-weeks version below, and it

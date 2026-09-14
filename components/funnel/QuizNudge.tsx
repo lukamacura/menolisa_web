@@ -41,31 +41,30 @@ import { X } from "lucide-react";
  */
 
 /**
- * Who the note is from.
+ * Who the note is from: the app, not a person.
  *
- * **Lisa is the default because Lisa is real in the only sense that matters
- * here: she is the product's disclosed AI companion, named on the landing
- * page, in the app and in the privacy policy.** A note from her is the brand
- * speaking in the voice it already uses.
+ * It was "Lisa · your coach" until 2026-09-14. That was defensible - Lisa is
+ * the product's disclosed AI companion - but the funnel named her in five
+ * other places before checkout and every one of them was replaced with "your
+ * plan" / "the app" in the same pass, because a name means nothing to a woman
+ * who has not opened the app yet, and a half-removed persona is worse than a
+ * whole one. So the banner is the app speaking, the way a real notification
+ * from an app with no sender reads.
  *
- * A founder's note converts better than a coach's, and if you want that, put
- * *your own* name and role here — a real person, reachable at the support
- * address, who would stand behind the sentence. Do not invent one. A fabricated
- * owner with a stock portrait is a made-up human vouching for a health product
- * to women deciding whether to trust it with their symptoms, and it is the
- * single easiest thing on this funnel for a sceptic to disprove: one reverse
- * image search. Everything else on these screens is checkable, which is why
- * they work.
+ * If a *person* is ever wanted here, it has to be a real one — reachable at
+ * the support address, who would stand behind the sentence — with their own
+ * photo. Do not invent one. A fabricated owner with a stock portrait is a
+ * made-up human vouching for a health product to women deciding whether to
+ * trust it with their symptoms, and it is the single easiest thing on this
+ * funnel for a sceptic to disprove: one reverse image search. Everything else
+ * on these screens is checkable, which is why they work.
  *
- * `avatar` must be a real file in `public/`. If you swap the name, swap the
- * face; Lisa's portrait over someone else's name is the same problem twice.
- *
- * `app` is the notification's app name row — the product, not the person, the
- * same way a real banner names the app above the sender.
+ * `avatar` must be a real file in `public/`; today it is the app's mark, which
+ * is what the icon slot of a real banner shows. `app` is the notification's
+ * app name row.
  */
 export const NUDGE_AUTHOR = {
-  name: "Lisa",
-  role: "your coach",
+  name: "Quick note",
   avatar: "/brand/lisa-profile.webp",
   app: "MenoLisa",
 } as const;
@@ -254,7 +253,6 @@ export function QuizNudge({ step, seen }: QuizNudgeProps) {
                   {NUDGE_AUTHOR.app}
                   <span className="text-[#B4B0B2]"> · </span>
                   <span className="text-[#5E5A5C]">{NUDGE_AUTHOR.name}</span>
-                  <span className="font-medium text-[#A9A5A7]"> · {NUDGE_AUTHOR.role}</span>
                 </p>
                 <span className="shrink-0 text-[9.5px] font-medium text-[#A9A5A7]">now</span>
                 {/* The dismiss control. Real banners have no X - they are swiped

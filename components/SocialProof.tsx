@@ -530,13 +530,22 @@ function Tape({ className }: { className: string }) {
  *
  * The floor stays a read rather than a glance: this shortens the hold, it does
  * not turn the card into a slideshow.
+ *
+ * `leadWith` is her screen-1 symptom. The member whose story is about it goes
+ * first - see `getSocialProofMembers()` - because the first print is the one
+ * she is guaranteed to see, and a woman from the weight-gain ad reading a
+ * hot-flash story is a message mismatch at the moment she decides whether
+ * this is for her. The funnel and the paywall pass it; the landing page has
+ * nothing to pass and gets the authored order.
  */
 export function SocialProofPolaroid({
   reduced = false,
   rotateMs = ROTATE_MS,
+  leadWith,
 }: {
   reduced?: boolean;
   rotateMs?: number;
+  leadWith?: string | null;
 }) {
   const prefersReducedMotion = useReducedMotion();
   const still = reduced || !!prefersReducedMotion;
@@ -580,7 +589,7 @@ export function SocialProofPolaroid({
     setOpen((v) => !v);
   };
 
-  const members = useMemo(() => getSocialProofMembers(), []);
+  const members = useMemo(() => getSocialProofMembers(leadWith), [leadWith]);
   const { index, running, intervalMs, steered, goTo, hold } = useMemberRotation(
     members.length,
     open,

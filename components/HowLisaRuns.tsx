@@ -43,13 +43,16 @@ function buildSteps(topLabel: string): Step[] {
       title: "You tick off today",
       body: "Four small things, and one tap for how you felt. Two minutes, and you're done.",
     },
+    // "The app", not "Lisa" (2026-09-14): before checkout the name means
+    // nothing, and the funnel now names the plan and the app everywhere it
+    // used to name her. The AI disclosure lives in the landing FAQ and Terms §1.
     {
-      title: "Lisa reads what you logged",
-      body: `She rewrites next week around your ${topLabel} - so the plan follows you, not a template.`,
+      title: "The app reads what you logged",
+      body: `It rewrites next week around your ${topLabel} - so the plan follows you, not a template.`,
     },
     {
-      title: "And she's there at 2am",
-      body: "Ask her anything, any hour. Straight answers, no waiting room.",
+      title: "And it's there at 2am",
+      body: "Ask anything, any hour. Straight answers, no waiting room.",
     },
   ];
 }

@@ -148,8 +148,18 @@ export const GUARANTEE_DAYS = 7;
  * So every surface imports this, including /privacy and /contact, which used
  * to hold their own copies. Same rule as the price: one constant, no second
  * spelling for the next edit to miss.
+ *
+ * **On the company domain, and printed once on the paywall (2026-09-14).** It
+ * was the Gmail address until then; a Gmail on a payment page reads as a side
+ * project to a buyer who has been sold to for thirty years. And it was printed
+ * three times on that one page - the team card, the guarantee card and the
+ * details sheet - which reads as bracing for refunds. It now appears only in
+ * "The details" under Help; the team card and the guarantee say "email us".
+ * Terms §11 makes this address the whole of the refund claim process, so
+ * **the mailbox has to exist and be read** - a claim sent to a dead address is
+ * a guarantee that does not exist.
  */
-export const SUPPORT_EMAIL = "menolisahelp@gmail.com";
+export const SUPPORT_EMAIL = "support@macurasolutions.us";
 
 /**
  * How long one payment buys, in days.
@@ -225,7 +235,7 @@ export function priceLine(amount: number): string {
  * The line under the price, on the paywall — and now the deliverable rather
  * than a third phrasing of the same negation.
  */
-export const PRICE_SUBLINE = `Your plan, Lisa and your symptom tracking unlock the moment you pay.`;
+export const PRICE_SUBLINE = `Your plan, the chat and your symptom tracking unlock the moment you pay.`;
 
 /**
  * ── The guarantee, as she experiences it (back 2026-09-12) ────────────────
@@ -259,8 +269,12 @@ export const GUARANTEE_INLINE_BODY = `Not right for you? Email us within ${GUARA
  * **The first sentence is bolded by both callers**, so it has to stand alone.
  * {@link GUARANTEE_BODY_HEAD} and {@link GUARANTEE_BODY_TAIL} do the split
  * here, once, so no caller retypes half of it in JSX.
+ *
+ * "Email us", not the address: on the paywall the address prints once, in
+ * "The details" under Help (see {@link SUPPORT_EMAIL}); on the landing page the
+ * FAQ's refund answer carries it. Terms §11 has it in full.
  */
-export const GUARANTEE_BODY = `If it isn't right for you, you get every dollar back. Email ${SUPPORT_EMAIL} within ${GUARANTEE_DAYS} days of paying. No reason needed, no forms, and the refund goes back to the way you paid.`;
+export const GUARANTEE_BODY = `If it isn't right for you, you get every dollar back. Email us within ${GUARANTEE_DAYS} days of paying. No reason needed, no forms, and the refund goes back to the way you paid.`;
 
 /** The bolded opening clause of {@link GUARANTEE_BODY}. Split here, not in JSX. */
 export const GUARANTEE_BODY_HEAD = GUARANTEE_BODY.slice(0, GUARANTEE_BODY.indexOf(". ") + 1);
@@ -343,10 +357,13 @@ export const WHAT_YOU_GET: ReadonlyArray<{ bold: string; sub: string }> = [
   // "a chatbot instead of help", on the screen where trust is the whole sale.
   // It must not swing the other way and imply a human coach either - "in
   // seconds, any hour" is the honest shape, and the landing FAQ and Terms §1
-  // still disclose that Lisa is an AI.
+  // still disclose that Lisa is an AI. And no "Lisa" (2026-09-14): the name
+  // means nothing before she has opened the app, and it was the last of five
+  // places the funnel named a persona instead of the plan. No "she" for the
+  // same reason.
   {
-    bold: "Ask Lisa anything, day or night",
-    sub: "Plain-English answers about your symptoms in seconds - and she'll tell you when a question is one for your doctor.",
+    bold: "Ask anything, day or night",
+    sub: "Plain-English answers about your symptoms in seconds - and a clear steer when a question is one for your doctor.",
   },
   {
     bold: "Symptom tracker and a weekly recap",

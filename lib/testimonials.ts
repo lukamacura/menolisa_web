@@ -39,6 +39,13 @@ export type SocialProofMember = {
   alt: string;
   /** One line under her name on the print - her own framing of how it started. */
   context: string;
+  /**
+   * The `PROBLEM_OPTIONS` ids her story is about, most central first, and
+   * only what her own words say. Decides who leads for a visitor who tapped
+   * that symptom on screen 1 - see `getSocialProofMembers(leadWith)`. A member
+   * with no tags is never led with; she is still in the rotation.
+   */
+  symptoms?: string[];
   pullQuote: string;
   story: string[];
   /** Her words are not confirmed yet. Dev-only; never rendered in production. */
@@ -53,6 +60,11 @@ export const SOCIAL_PROOF_MEMBERS: SocialProofMember[] = [
     photo: "/proof/social.webp",
     alt: "Mara, a MenoLisa member, holding her phone with her plan open",
     context: "Menopause overnight, after a hysterectomy",
+    // Fatigue is why she started (it is the reason she gives for beginning
+    // with movement snacks); the 20 pounds is the goal she names. Fatigue
+    // first, so a weight-first visitor meets Lindsey - whose caption is the
+    // weight - before her.
+    symptoms: ["low_energy", "weight_changes"],
     pullQuote:
       "I finally feel like I have a plan instead of just trying to figure everything out on my own.",
     // `PLAN_WEEKS` is interpolated rather than typed out as "8-week" so the
@@ -76,6 +88,7 @@ export const SOCIAL_PROOF_MEMBERS: SocialProofMember[] = [
     // brought it up" in her own words, which is hers to say, but printing it as
     // our caption turns a member's experience into our claim about her care.
     context: "Hot flashes and anxiety in her mid-40s, out of nowhere",
+    symptoms: ["hot_flashes", "anxiety"],
     pullQuote:
       "I don\u2019t feel like I just have to suffer through menopause anymore.",
     story: [
@@ -97,6 +110,7 @@ export const SOCIAL_PROOF_MEMBERS: SocialProofMember[] = [
     // member describing her own labs is a testimonial; us printing it over her
     // photograph is a claim about what the app finds.
     context: "Weight gain in her 40s, sure she was too young",
+    symptoms: ["weight_changes"],
     pullQuote:
       "For the first time, I feel like I\u2019m working with my body\u2014not fighting against it.",
     story: [
@@ -136,11 +150,28 @@ export const SOCIAL_PROOF_MEMBERS: SocialProofMember[] = [
  * copy nobody has confirmed she said - are visible while developing and
  * stripped from production. `process.env.NODE_ENV` is inlined identically on
  * both sides of the render, so this cannot cause a hydration mismatch.
+ *
+ * `leadWith` is the symptom she tapped on screen 1 (`top_problems[0]`). The
+ * members whose story is about it move to the front, in the order their own
+ * `symptoms` rank it; everyone else keeps her place behind them. The card
+ * shows the first member for its whole first hold, so without this a woman
+ * who came from the weight-gain ad could land on a hot-flash story at the
+ * moment she is deciding whether this is for her (2026-09-14). A symptom no
+ * member is tagged with leaves the list in authored order.
  */
-export function getSocialProofMembers(): SocialProofMember[] {
+export function getSocialProofMembers(leadWith?: string | null): SocialProofMember[] {
   const live = SOCIAL_PROOF_MEMBERS.filter((m) => !m.draft);
-  if (process.env.NODE_ENV === "production") return live;
-  return SOCIAL_PROOF_MEMBERS.length > 0 ? SOCIAL_PROOF_MEMBERS : live;
+  const pool =
+    process.env.NODE_ENV === "production" || SOCIAL_PROOF_MEMBERS.length === 0
+      ? live
+      : SOCIAL_PROOF_MEMBERS;
+  if (!leadWith) return pool;
+  const rank = (m: SocialProofMember) => {
+    const i = m.symptoms?.indexOf(leadWith) ?? -1;
+    return i < 0 ? Number.POSITIVE_INFINITY : i;
+  };
+  // `sort` is stable, so members with the same rank keep their authored order.
+  return [...pool].sort((a, b) => rank(a) - rank(b));
 }
 
 // \u2500\u2500\u2500 Before/after transformations, keyed by symptom \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500

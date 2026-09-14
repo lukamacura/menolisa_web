@@ -1107,8 +1107,8 @@ export function PaywallView({
               where they can actually be read - so this was the same three
               images a second time, tilted to ~30% width behind a fade, on the
               screen whose job is to close rather than to pitch. The list above
-              stays because Lisa and the tracker are named nowhere else in the
-              funnel; the pictures went. */}
+              stays because the chat and the tracker are named nowhere else in
+              the funnel; the pictures went. */}
           <p className="mt-3 text-center text-[11px] text-[#8A7F6B] leading-snug">
             All of it in one app, yours the moment you join. No add-ons, no upsells.
           </p>
@@ -1151,9 +1151,12 @@ export function PaywallView({
               </figure>
             ))}
           </div>
+          {/* "Email us", not the address. The page printed SUPPORT_EMAIL three
+              times - here, in the guarantee card and in "The details" - and
+              three copies of an address on a pay page reads as bracing for
+              refunds. It prints once now, under Help in the details sheet. */}
           <p className="mx-auto mt-3 max-w-[20rem] text-center text-[13px] leading-snug text-[#5A5A5A]">
-            A small team, not a faceless company. Every email to{" "}
-            <b className="wrap-break-word text-[#3D3D3D]">{SUPPORT_EMAIL}</b> is read by one of us.
+            A small team, not a faceless company. Email us and one of us reads it.
           </p>
           <ul className="mt-3.5 space-y-2.5 border-t border-[#F0E6E2] pt-3.5">
             {[
@@ -1200,7 +1203,10 @@ export function PaywallView({
         <p className="mb-2 text-center text-[11px] font-extrabold uppercase tracking-[0.12em] text-[#B5ADA9]">
           Members, in their own words
         </p>
-        <SocialProofPolaroid />
+        {/* Her screen-1 symptom leads the rotation: a weight-first buyer meets
+            the weight story first, not whichever woman is at the top of the
+            list. See getSocialProofMembers(). */}
+        <SocialProofPolaroid leadWith={primarySymptom} />
 
         {/* The guarantee, in full - the terms, with the link to the contract
             that binds us to them. It moves with Terms §11 in both directions.

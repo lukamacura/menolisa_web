@@ -817,7 +817,7 @@ export function TrainingWeekBoard({
   );
 }
 
-/* ── Board 3: why she keeps going this time, from the person who built it ──
+/* ── Board 3: why she keeps going this time, from the woman who started it ──
  *
  * Was (until 2026-09-14): <FirstSessionBoard />, her week-1 session written
  * out, movement 1 plain and the rest blurred.
@@ -831,12 +831,20 @@ export function TrainingWeekBoard({
  * It is that the app decides her day, so keeping it up is the easy part. That
  * claim needs a person standing behind it, so a person says it.
  *
+ * **The person is Zoka, who came up with MenoLisa** (2026-09-14, later the
+ * same day). The first cut showed the developer: a young man in a blue-lit
+ * studio portrait telling menopausal women that nobody loses weight in one
+ * good week. The audience is a sceptical woman in her fifties, and the person
+ * saying that line to her has to be someone she can picture having lived it.
+ * He is on the paywall's team card ("Built the app"); she is here.
+ *
  * Rules, all of them about what the board may claim:
  *
- * - **The person in the print is real and agreed to be shown** - the owner,
- *   who built the app. He asked to be captioned "Developer" rather than by
- *   name (2026-09-14), and nothing here dresses that up into a credential.
- *   Never add a name or a title here that is not real and agreed.
+ * - **The person in the print is real and agreed to be shown** - Zoka is
+ *   named, with the same photo and the same role, on the paywall's "The people
+ *   behind MenoLisa" card (owner's call, 2026-09-13). The role is the one the
+ *   owner gave; nothing here dresses it up into a credential. Never add a name
+ *   or a title here that is not real and agreed.
  * - **No outcome promise.** The headline (FOUNDER_HEADLINE in
  *   app/register/page.tsx) is a truism about consistency - "nobody loses weight
  *   in one good week" - never "you will lose X". Weight is the most common
@@ -849,10 +857,13 @@ export function TrainingWeekBoard({
  *
  * The ticks are the board's reward beat: four boxes filling themselves in one
  * after another is "it looks easy" shown rather than said.
+ *
+ * The print is a 400x500 crop of public/proof/zoka.webp - daylight, no
+ * coloured lighting, the same photograph the team card's avatar is cut from.
  */
 const FOUNDER = {
-  name: "Developer",
-  photo: "/brand/founder-luka-portrait.webp",
+  name: "Zoka",
+  photo: "/brand/founder-zoka-portrait.webp",
 } as const;
 
 /** When the first tick lands, and the gap between ticks. */
@@ -864,12 +875,12 @@ export function FounderNoteBoard({ headline }: { headline: string }) {
   const doneAt = TICK_BASE + PLAN_PILLARS.length * TICK_STEP;
 
   return (
-    <RewardPaper title="Why I built this" meta="Founder">
+    <RewardPaper title="Why MenoLisa exists" meta={`A note from ${FOUNDER.name}`}>
       <div className="mt-2 flex items-start gap-3">
         {/* A print pinned to the note, not an avatar: the paywall already has
             the round 64px avatar, and a second one would read as the same
-            badge twice. The dark frame fill matches the photo's background, so
-            a slow load shows a dark print rather than a grey hole. */}
+            badge twice. The frame fill is the paper's own warm grey, so a slow
+            load shows a blank print rather than a hole. */}
         <motion.figure
           initial={reduced ? false : { opacity: 0, y: 10, rotate: 9, scale: 0.9 }}
           animate={{ opacity: 1, y: 0, rotate: 3, scale: 1 }}
@@ -880,10 +891,10 @@ export function FounderNoteBoard({ headline }: { headline: string }) {
           }
           className="relative w-[88px] shrink-0 rounded-[3px] bg-white p-1.5 pb-1 shadow-[0_10px_20px_-10px_rgba(0,0,0,0.5)] ring-1 ring-black/5"
         >
-          <div className="relative aspect-[4/5] overflow-hidden rounded-[2px] bg-[#0B1020]">
+          <div className="relative aspect-[4/5] overflow-hidden rounded-[2px] bg-[#E8DDD9]">
             <Image
               src={FOUNDER.photo}
-              alt="The developer who built MenoLisa"
+              alt={`${FOUNDER.name}, who came up with MenoLisa`}
               fill
               sizes="80px"
               className="object-cover"
@@ -910,7 +921,7 @@ export function FounderNoteBoard({ headline }: { headline: string }) {
           What breaks is the busy Tuesday, when the plan turns into one more thing to figure out.
         </Line>
         <Line i={3} base={0.4}>
-          So I built MenoLisa to do the figuring out.{" "}
+          That&apos;s why I wanted MenoLisa to do the figuring out for you.{" "}
           <span className="font-extrabold">Open the app and today is already laid out.</span>{" "}
           Do it, tick it off. That&apos;s the whole job.
         </Line>
@@ -961,7 +972,7 @@ export function FounderNoteBoard({ headline }: { headline: string }) {
       </Line>
 
       <Signoff delay={doneAt + 0.15}>
-        Your part is showing up. <span className="font-extrabold">I made the rest easy.</span>
+        Your part is showing up. <span className="font-extrabold">We made the rest easy.</span>
       </Signoff>
     </RewardPaper>
   );

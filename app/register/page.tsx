@@ -1545,7 +1545,9 @@ const getSeverityPainText = (
 // Naming the plan here also closes the loop the ad opened ("your personalized
 // 8-week plan, built around your symptoms") - the promised object finally exists
 // and the next tap opens it.
-const RESULTS_CTA_SUB = "Look what Lisa prepared for you.";
+// "Your plan", not "Lisa" (2026-09-14): the name means nothing to her yet, and
+// this was one of five places the funnel named a persona instead of the plan.
+const RESULTS_CTA_SUB = "See what's in your plan.";
 
 // The funnel's one forward-tap look: gradient, dark ink, pink glow. It was
 // pasted inline at five call sites (results, plan, the deleted relief screen,
@@ -2005,7 +2007,10 @@ function TrajectoryChart({ score, reduced }: { score: number; reduced?: boolean 
           its own line lands, which is what stops them reading as a legend. */}
       <motion.g initial="hidden" animate={shown ? "show" : "hidden"} variants={variants.climbLabel}>
         <circle cx={endT[0]} cy={endT[1]} r="4.5" fill="#16A34A" />
-        <text x={endT[0] + 8} y={endT[1] - 3} fontSize="12" fill="#16A34A" fontWeight="800">With{" "}Lisa</text>
+        {/* "Your plan", the mirror of "No plan" below - and not "With Lisa"
+            (2026-09-14): the name means nothing before checkout. It has to
+            fit `padRight` (64px), which "With the plan" does not. */}
+        <text x={endT[0] + 8} y={endT[1] - 3} fontSize="12" fill="#16A34A" fontWeight="800">Your{" "}plan</text>
         <text x={endT[0] + 8} y={endT[1] + 10} fontSize="10" fill="#16A34A" fontWeight="600" opacity="0.85">better</text>
       </motion.g>
 
@@ -2486,6 +2491,25 @@ function ScoreCauseCard({
               <span className="font-bold text-[#3D3D3D]">This is biology and it responds.</span>
             )}
           </p>
+
+          {/* The bridge from the cause to the plan's first move (2026-09-14).
+              The chain explained why she gained the weight and never said why
+              short strength work beats the diets she has already tried - so
+              the plan read as one more thing to try. General physiology, in
+              the same register as the links above: restricting calories costs
+              muscle as well as fat, and muscle is the link that sets resting
+              burn, so the first row of every week-1 plan is strength work
+              (buildWeekOneRows leads on movement; day 1 of every level is a
+              strength session or a burst). Never a claim about her. */}
+          {chain && (
+            <p className="mt-2 text-[13px] leading-relaxed text-[#5A5A5A]">
+              Diets cut calories, which shrinks muscle faster and makes the burn problem worse.{" "}
+              <span className="font-bold text-[#3D3D3D]">
+                Short strength work rebuilds the muscle that sets your burn, so that&apos;s where
+                your plan starts.
+              </span>
+            </p>
+          )}
         </div>
       )}
 
@@ -4008,7 +4032,7 @@ function RegisterPageContent() {
   // recomputing it in front of her. A ref rather than state: nothing renders
   // off it, it only decides <QuizReward />'s initial state at mount.
   const rewardSeen = useRef<Partial<Record<Step, boolean>>>({});
-  // Which quiz screens have already shown their note from Lisa. A Set rather
+  // Which quiz screens have already shown their note. A Set rather
   // than a boolean map because <QuizNudge /> owns the "once per visit" rule and
   // only needs somewhere durable to keep it — going Back and forward must not
   // replay a line she has read.
@@ -4080,11 +4104,17 @@ function RegisterPageContent() {
     const cardioMinutes =
       week1.zone2.sessions * week1.zone2.minutes + week1.intervals * planCatalog.intervalsMinutes();
     const easy = `${week1.zone2.sessions} x ${week1.zone2.minutes} min of easy cardio`;
+    // For snacks `minutes` is already the whole day (all bursts together).
+    const weeklyMinutes =
+      (volume.perDay ? volume.minutes * 7 : volume.sessions * volume.minutes) + cardioMinutes;
     return {
-      weeklyMinutes:
-        // For snacks `minutes` is already the whole day (all bursts together).
-        (volume.perDay ? volume.minutes * 7 : volume.sessions * volume.minutes) +
-        cardioMinutes,
+      weeklyMinutes,
+      // The same week per day, for the diagnosis screen's "about N minutes a
+      // day". Derived from the board's total so the two figures can never
+      // disagree: it was a typed "15" until 2026-09-14, against a board that
+      // said 175 min a week (25 a day) for the movement-snacks week and
+      // 145-290 for the other three. She reads both screens minutes apart.
+      perDayMinutes: Math.round(weeklyMinutes / 7),
       cadence: volume.perDay
         ? `${volume.sessions} one-move bursts a day, about ${span} min all in, plus a ${cardio.minutes[0]} min walk every day`
         : `${volume.sessions} x ${span} min a week, plus ${easy}${week1.intervals ? ` and ${week1.intervals} short interval session${week1.intervals > 1 ? "s" : ""}` : ""}`,
@@ -5427,8 +5457,11 @@ function RegisterPageContent() {
                       to {goalLabel}.
                     </h1>
                     <p className="text-xs text-[#5A5A5A] mt-1.5">
-                      Built from your {QUESTION_STEPS.length} answers. About 15 minutes a day -
-                      enough to take your score from{" "}
+                      {/* The minutes are `weekShape`'s figure, i.e. the week-1
+                          board's total over seven days - never typed here. */}
+                      Built from your {QUESTION_STEPS.length} answers.{" "}
+                      {weekShape ? `About ${weekShape.perDayMinutes} minutes a day - enough` : "Enough"}{" "}
+                      to take your score from{" "}
                       <span className="font-bold text-[#3D3D3D]">{score}</span> to{" "}
                       <span className="font-bold text-green-600">{SCORE_GOAL}+</span>.
                     </p>
@@ -5534,7 +5567,7 @@ function RegisterPageContent() {
                           </span>
                           {/* Green label */}
                           <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-green-600 text-[10px] font-bold text-white tracking-wide shadow-sm">
-                            With Lisa
+                            With the plan
                           </span>
                           {/* Verified check on the "after" half - stock photography
                               on its own says nothing about software; the tick is
@@ -5558,7 +5591,7 @@ function RegisterPageContent() {
                               <p className="text-[11px] text-[#8F2A22] leading-snug">{t.before}</p>
                             </div>
                             <div className="rounded-xl bg-green-50 border border-green-200 px-2.5 py-2">
-                              <p className="text-[10px] font-semibold text-green-600 mb-0.5 uppercase tracking-wide">With Lisa</p>
+                              <p className="text-[10px] font-semibold text-green-600 mb-0.5 uppercase tracking-wide">With the plan</p>
                               <p className="text-[11px] text-green-800 leading-snug">{t.after}</p>
                             </div>
                           </div>
@@ -5783,7 +5816,7 @@ function RegisterPageContent() {
                       <HighlightSweep>run itself</HighlightSweep>. Mobile app runs it.
                     </h2>
                     <p className="text-xs text-[#5A5A5A] mt-1.5">
-                      Every day for {PLAN_WEEKS} weeks, she decides what you do next - so you
+                      Every day for {PLAN_WEEKS} weeks, the app decides what you do next - so you
                       never have to.
                     </p>
                   </div>
@@ -5889,7 +5922,7 @@ function RegisterPageContent() {
                   finds out on day 57 is a chargeback. */}
               {/* No figure: /paywall buyers at the regular price land here too. */}
               All {PLAN_WEEKS} weeks are paid, once: the plan,
-              Lisa and your symptom tracking, yours until{" "}
+              the chat and your symptom tracking, yours until{" "}
               {accessEndsDate ?? `${PLAN_WEEKS} weeks from today`}. Your {PLAN_WEEKS}-week plan is
               being built right now; download the app to start it.
             </p>
@@ -6188,7 +6221,7 @@ function RegisterPageContent() {
                       Your body baseline
                     </h2>
                     <p className="text-sm sm:text-base text-muted-foreground">
-                      Lisa uses this to size your movement and nutrition plan
+                      We use this to size your movement and nutrition plan
                     </p>
                   </div>
 
@@ -6370,7 +6403,7 @@ function RegisterPageContent() {
                       When is the best time for you to exercise?
                     </h2>
                     <p className="text-sm text-muted-foreground leading-snug">
-                      Lisa reminds you about your movement in that part of the day - and
+                      The app reminds you about your movement in that part of the day - and
                       nowhere else. You can change it any time.
                     </p>
                   </div>
@@ -6744,7 +6777,15 @@ function RegisterPageContent() {
                           whole screen and she leaves it in seconds, so the
                           default 8s would show her one woman and call it a
                           rotation. See `rotateMs` in components/SocialProof.tsx. */}
-                      <SocialProofPolaroid reduced={!!prefersReducedMotion} rotateMs={4500} />
+                      {/* `leadWith`: the woman whose story is her screen-1
+                          symptom goes first, so a weight-first visitor is not
+                          reading a hot-flash story on the one screen that is
+                          someone else's word. See getSocialProofMembers(). */}
+                      <SocialProofPolaroid
+                        reduced={!!prefersReducedMotion}
+                        rotateMs={4500}
+                        leadWith={topProblems[0]}
+                      />
                     </div>
                   </div>
                 </QuizReward>
@@ -6786,8 +6827,8 @@ function RegisterPageContent() {
                 );
               })()}
 
-              {/* Reward 4: why she will keep going this time, from the person
-                  who built it (2026-09-14). This slot was <FirstSessionBoard />,
+              {/* Reward 4: why she will keep going this time, from the woman
+                  who came up with it (2026-09-14). This slot was <FirstSessionBoard />,
                   her week-1 session with one movement plain and the rest
                   blurred; the note above <FounderNoteBoard /> says why a note
                   replaced it. The step key stays `reward_progress` on purpose:
@@ -6803,7 +6844,7 @@ function RegisterPageContent() {
                   messages={[
                     "That's the hard questions done...",
                     "Before you see your results...",
-                    "A note from the person who built this...",
+                    "A note from the woman who started this...",
                   ]}
                   initialDone={!!rewardSeen.current.reward_progress}
                   onDone={() => markRewardSeen("reward_progress")}
@@ -6847,7 +6888,7 @@ function RegisterPageContent() {
                 <div className="flex-1 flex flex-col justify-start gap-3 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div>
                     <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-1">
-                      What should Lisa call you?
+                      What should we call you?
                     </h2>
                     <p className="text-sm sm:text-base text-muted-foreground">
                       Just for personalization - a nickname, first name or alias
