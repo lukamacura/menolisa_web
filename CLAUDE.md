@@ -993,7 +993,8 @@ is right; what follows is the pass that finished it.
   not tapping, she is *ranking* — and a woman with five of these nine cannot
   rank them. "Hitting you hardest" asks for a measurement she does not have, so
   the h2 keeps it (naming the pain is its job) and the sub-line now gives the
-  permission: *"More than one? Tap the one you'd fix first."* A preference is
+  permission: *"Pick the one you'd most like to fix first."* (2026-09-14; was
+  "More than one? Tap the one you'd fix first."). A preference is
   answered instantly and lands on the same tile. It replaced "Just tap it.",
   which repeated the h2's instruction and answered nothing she was hesitating
   over.

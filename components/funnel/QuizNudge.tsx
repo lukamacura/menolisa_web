@@ -117,8 +117,8 @@ export const QUIZ_NUDGES: Record<string, string> = {
   // the headline now does better and does not stop doing; and its other
   // candidate job — giving her permission to stop *ranking* nine symptoms she
   // has five of (9.0s dwell here against 4.6s on the identically-shaped age
-  // grid) — is carried permanently by the screen's own sub-line, "More than
-  // one? Tap the one you'd fix first.", which sits in the card where she is
+  // grid) — is carried permanently by the screen's own sub-line, "Pick the
+  // one you'd most like to fix first.", which sits in the card where she is
   // already looking rather than over the top of it.
   //
   // If a note is ever wanted on that screen again, it needs a position that is

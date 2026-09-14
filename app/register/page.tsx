@@ -6537,7 +6537,7 @@ function RegisterPageContent() {
                 <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl font-bold mb-0.5">
-                      Which one is hitting you hardest?
+                      Which symptom is hitting you hardest?
                     </h2>
                     {/* The sub-line's job is to make the tap cheap, and "Just
                         tap it" did not do it: it repeated the instruction the
@@ -6547,13 +6547,13 @@ function RegisterPageContent() {
                         identically-shaped four-tile age grid, so she is not
                         tapping, she is *ranking*, and a woman with five of these
                         nine cannot rank them. "Hitting you hardest" asks for a
-                        measurement she does not have; "the one you'd fix first"
+                        measurement she does not have; "the one you'd most like to fix first"
                         asks for a preference she answers instantly, and it lands
                         on the same tile. The h2 keeps the harder wording because
                         naming the pain is its job; the permission to stop
                         ranking goes here. */}
                     <p className="text-sm text-muted-foreground">
-                      More than one? Tap the one you&apos;d fix first.
+                      Pick the one you&apos;d most like to fix first.
                     </p>
                   </div>
                   {/* Nine tiles, three by three, sized to the card rather than to
