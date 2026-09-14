@@ -919,7 +919,7 @@ export function PaywallView({
           </span>
 
           {/* The old headline, in the block that owns the number. It reads as
-              one sentence with the numeral inside it - "Start tonight for $29"
+              one sentence with the numeral inside it - "Start tonight for $19"
               - rather than as a figure with a caption beside it, so the price
               is still the largest thing above the fold and still says what the
               money buys: an evening she can begin, not a subscription she has

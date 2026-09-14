@@ -29,7 +29,7 @@ export default function PaywallPage() {
   const [userId, setUserId] = useState<string | null>(null);
   // The server decides the price (create-checkout charges with the same rule),
   // so the page prints what /api/account/status says. A woman who backed out
-  // of Stripe from the funnel lands here and must see the $29 she was shown.
+  // of Stripe from the funnel lands here and must see the $19 she was shown.
   // If the status call fails, ask the rule with nothing known about her. Today
   // every checkout charges the quiz-taker price, so this prints what Stripe
   // charges; if the rule ever gets conditions again, "no profile" falls to the

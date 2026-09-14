@@ -24,7 +24,7 @@ import { PLAN_WEEKS } from "@/lib/pricing";
  * **No store listings, before the purchase (removed 2026-09-12).** Two
  * captured App Store / Google Play listings sat under the rows, meant as proof
  * the app is real. Each listing prints "Free · In-App Purchases" in Apple's and
- * Google's own chrome, one screen before a $29 web checkout, so the page itself
+ * Google's own chrome, one screen before a $19 web checkout, so the page itself
  * suggested the cheaper route: leave, search the store, and buy (or not) there
  * — outside the funnel, outside attribution, and without the plan her quiz
  * built. The store badges live on the post-checkout download screen, which is

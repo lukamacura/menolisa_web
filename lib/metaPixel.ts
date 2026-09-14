@@ -88,7 +88,7 @@ export const META_CURRENCY = "USD";
 /**
  * Reported conversion value, in USD, on `ViewContent` and `InitiateCheckout`:
  * what the checkout she is being shown will charge today. `Purchase` does not
- * use it — the webhook reports `session.amount_total`, which is the same $29
+ * use it — the webhook reports `session.amount_total`, which is the same $19
  * unless Stripe says otherwise, and Stripe is the side that knows.
  *
  * Renewals are deliberately *not* reported: Purchase fires from

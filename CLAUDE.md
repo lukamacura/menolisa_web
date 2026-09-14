@@ -33,7 +33,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Key Design Decisions
 - **Passwordless auth only** — 6-digit email OTP via Supabase (`signInWithOtp` + `verifyOtp`). No passwords, no magic links. Shared `<OtpForm />` (`components/auth/OtpForm.tsx`) is the only auth UI, and `/login` is now its only caller.
-- **The paywall sells one thing: $29, charged ONCE, for 8 weeks of access (2026-09-11). It is not a subscription.** Checkout runs `mode: "payment"`, two one-time Stripe prices since 2026-09-13, neither with a `recurring` block: **$29 quiz-taker** (`STRIPE_PRICE_PLAN`) for a first purchase after the assessment and **$60 regular** (`STRIPE_PRICE_PLAN_REGULAR`) for everyone else, chosen server-side by `isQuizPriceEligible()` in `lib/pricing.ts`, the same function both paywalls print from. No coupon, no trial, no promo-code box. **Nothing renews**, so there is nothing to cancel — "cancel anytime" was removed from every surface because it became false, not merely off-message. Stripe supplies no period end for a one-time payment, so `fulfillCheckout` computes the access cutoff itself (`now + PLAN_ACCESS_DAYS`, 56 days) and nothing overwrites it. The risk reversal is structural — one charge, no card kept, no second charge — and since 2026-09-12 a **7-day money-back guarantee** (`GUARANTEE_DAYS`, unconditional, once per person, claimed by one email to `SUPPORT_EMAIL`) sits beside the price, on the sticky bar, in Stripe's submit text, the welcome email and Terms §11; §11 and the paywall move in the same commit, in both directions. The paywall strikes through $60 ("52% OFF, quiz-taker price"); that is allowed only because $60 is really charged, and it comes down the day it stops being. No countdown. Terms §10 now reads "there is no automatic renewal" and must never promise renewal while checkout is in payment mode. Copy lives in `lib/pricing.ts`. See "The plan and its price" in §4.
+- **The paywall sells one thing: $19, charged ONCE, for 8 weeks of access (one-time since 2026-09-11; $29 → $19 on 2026-09-14). It is not a subscription.** Checkout runs `mode: "payment"`, two one-time Stripe prices since 2026-09-13, neither with a `recurring` block: **$19 quiz-taker** (`STRIPE_PRICE_PLAN`) for a first purchase after the assessment and **$60 regular** (`STRIPE_PRICE_PLAN_REGULAR`) for everyone else, chosen server-side by `isQuizPriceEligible()` in `lib/pricing.ts`, the same function both paywalls print from. No coupon, no trial, no promo-code box. **Nothing renews**, so there is nothing to cancel — "cancel anytime" was removed from every surface because it became false, not merely off-message. Stripe supplies no period end for a one-time payment, so `fulfillCheckout` computes the access cutoff itself (`now + PLAN_ACCESS_DAYS`, 56 days) and nothing overwrites it. The risk reversal is structural — one charge, no card kept, no second charge — and since 2026-09-12 a **7-day money-back guarantee** (`GUARANTEE_DAYS`, unconditional, once per person, claimed by one email to `SUPPORT_EMAIL`) sits beside the price, on the sticky bar, in Stripe's submit text, the welcome email and Terms §11; §11 and the paywall move in the same commit, in both directions. The paywall strikes through $60 ("68% OFF, quiz-taker price"); that is allowed only because $60 is really charged, and it comes down the day it stops being. No countdown. Terms §10 now reads "there is no automatic renewal" and must never promise renewal while checkout is in payment mode. Copy lives in `lib/pricing.ts`. See "The plan and its price" in §4.
 - **The `/register` funnel never asks for an email** — it signs her in anonymously and lets Stripe collect the address at checkout. See "Anonymous accounts" below.
 - **Dual auth paths** — cookie (web) and Bearer token (mobile) coexist in every API route via `getAuthenticatedUser()`
 - **Verbatim KB-first RAG** — AI chat tries to return exact knowledge base content before falling back to LLM generation; this ensures medically accurate, consistent answers
@@ -708,11 +708,15 @@ Migration: `scripts/sql/2026-09-02-funnel-events.sql`.
 
 ### The plan and its price (2026-09-11) — ONE-TIME, not a subscription
 
-**$29, charged once, buys 8 weeks of access. Nothing renews.** Checkout runs in
+**$19, charged once, buys 8 weeks of access. Nothing renews.** Checkout runs in
 `mode: "payment"`; no Subscription object exists for a new customer. This is the
-fourth pricing shape in a month ($59 + free trial → $1-then-$4.99/week → $29
-every 8 weeks → $29 once), and the last three lasted days, so treat the
-*reasoning* below as the durable part.
+fifth pricing shape in a month ($59 + free trial → $1-then-$4.99/week → $29
+every 8 weeks → $29 once → $19 once on 2026-09-14), and most lasted days, so
+treat the *reasoning* below as the durable part. **A price change is a new
+Stripe Price object, never a dashboard edit** — `unit_amount` is immutable, so
+re-run `scripts/stripe-plan-price.ts` and put the new id in `STRIPE_PRICE_PLAN`
+locally and in Vercel; until then Stripe charges the old figure while every
+page prints the new one.
 
 Why one-time: the weekly offer put **three different durations on one screen**
 (a $1 week, a $4.99 week, an 8-week block). The paywall spent its largest type
@@ -721,7 +725,7 @@ the plan block were different lengths, and `/admin` grew a cohort table whose
 rows were weeks and whose columns were also weeks but meant something else. One
 charge for one window removes the whole class of problem.
 
-- **Two prices (2026-09-13).** `$29` is the quiz-taker price: she has a
+- **Two prices (2026-09-13).** `$19` is the quiz-taker price: she has a
   `user_profiles` row and has never completed a purchase (`fulfilled_at` null,
   `account_status` null or `pending_payment`). Everyone else, i.e. a returning
   buyer, pays `$60` (`PLAN_REGULAR_PRICE`). `create-checkout` picks the Stripe
@@ -731,7 +735,7 @@ charge for one window removes the whole class of problem.
   prints one figure while Stripe charges another. Stripe's cancel URL lands
   funnel buyers on `/paywall`, which is why the price follows the account and
   not the page.
-- **Stripe:** `$29` quiz-taker, **no `recurring` block** → `STRIPE_PRICE_PLAN`;
+- **Stripe:** `$19` quiz-taker, **no `recurring` block** → `STRIPE_PRICE_PLAN`;
   `$60` regular → `STRIPE_PRICE_PLAN_REGULAR`.
   `scripts/stripe-plan-price.ts` creates it and archives every older price. A
   recurring price is rejected outright in payment mode — a 500 on the card
@@ -831,7 +835,7 @@ charge for one window removes the whole class of problem.
 
 - **LTV's floor is one charge, and that is the point.** There is no renewal
   tail to bail out an expensive click: CAC must come in under `keptPerSale`
-  (~$27.86 after Stripe's fee) or the ads lose money on every customer. Say so
+  (~$18.15 after Stripe's fee) or the ads lose money on every customer. Say so
   plainly when anyone asks whether to raise budget.
 
 ### The paywall's reading order (2026-09-08, second pass)
@@ -1038,7 +1042,7 @@ is right; what follows is the pass that finished it.
 — `checkTrialExpired()`, `proxy.ts`, `/api/account/status`, the dashboard
 layout — is a caller. Add a rule here, not at a call site.
 
-The plan is a single $29 charge buying 56 days of access, with **no trial** and **no renewal**, so the shape is simple:
+The plan is a single $19 charge buying 56 days of access, with **no trial** and **no renewal**, so the shape is simple:
 
 | Row state | `state` | Access |
 |---|---|---|
@@ -1298,7 +1302,7 @@ have made it worse, so the counting was fixed in the same pass.
 site, not an optimization target, not in AEM, and a server copy buys nothing in
 the auction.
 
-There is one plan — $29 per 8 weeks, no trial and no introductory discount — so
+There is one plan — $19 once for 8 weeks, no trial and no introductory discount — so
 the reported `Purchase` value is money actually collected at checkout and
 Events Manager should reconcile against Stripe's new-customer charges. The single
 source of truth for the price, the plan id sent as `plan`, and every displayed
@@ -1764,7 +1768,7 @@ feature (checked 2026-09-08).
 | Send a server-side `PageView` | Highest volume on the site, not an optimization target, not in AEM. It buys nothing in the auction. |
 | Read revenue from `user_trials` instead of Stripe charges | The table is one row per person, overwritten on every renewal. It can say who is paying, never how many times or how much arrived last month — that history does not exist to read. |
 | Divide ad spend by every charge to get cost per customer | Ads do not buy renewals. It flatters CAC and gets worse every cycle as the renewal base grows. Divide by *new* customers only. |
-| Assume a renewal tail will rescue an expensive click | There isn't one. With one-time pricing LTV's floor is a single charge, so CAC must come in under `keptPerSale` (~$27.86 after Stripe's fee) or the ads lose money on every customer. Any value above that requires her to come back and deliberately buy again. |
+| Assume a renewal tail will rescue an expensive click | There isn't one. With one-time pricing LTV's floor is a single charge, so CAC must come in under `keptPerSale` (~$18.15 after Stripe's fee) or the ads lose money on every customer. Any value above that requires her to come back and deliberately buy again. |
 | Put ad spend back in `localStorage` | One browser, one number, no history — so no windowed cost per sale, and an empty box the moment you open `/admin` on your phone. |
 | Call `isoDay()` without the timezone offset | `toISOString()` renders the UTC date, so local midnight east of Greenwich files today's ad spend under yesterday. It shipped broken once already. |
 | Put AI cost, MRR or the full client table back on `/admin` | None of them changed a decision, and together they buried the two figures that do. The `llm_usage` ledger behind the cost figure was deleted on 2026-09-04, so re-adding the tile now means rebuilding the instrumentation first — and it must cover `/api/langchain-rag`, which it never did. |

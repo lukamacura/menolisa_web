@@ -143,7 +143,7 @@ async function handleCheckoutSessionCompleted(
     });
 
     // Meta `Purchase` — server-only, on the first successful payment, at the
-    // amount Stripe collected ($29 for the plan block). There is no browser
+    // amount Stripe collected ($19 for the plan block). There is no browser
     // copy any more; the id still derives from the session so a retried
     // webhook collapses to one event. Deferred with after() so Stripe gets its
     // 200 without waiting on Meta.

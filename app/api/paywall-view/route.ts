@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
       .eq("user_id", user.id)
       .maybeSingle(),
   ]);
-  // The value is the price this account is shown, not a constant: $29 on a
+  // The value is the price this account is shown, not a constant: $19 on a
   // first purchase after the quiz, the regular price otherwise.
   const value = planOffer(
     isQuizPriceEligible({

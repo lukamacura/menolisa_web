@@ -304,7 +304,7 @@ export async function POST(req: NextRequest) {
       // the visitor's local currency off her IP ("Then RSD 523.87 per week"
       // was the first thing this build showed from a non-US address), which
       // would put a number on the card form the paywall never printed. The
-      // campaign is US-only and the paywall says $29 once; the sheet must too.
+      // campaign is US-only and the paywall says $19 once; the sheet must too.
       adaptive_pricing: { enabled: false },
       // The same sentence the paywall shows, under Stripe's pay button.
       custom_text: { submit: { message: checkoutSubmitText(offer.price) } },

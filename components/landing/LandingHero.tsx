@@ -6,7 +6,7 @@ import { PLAN_WEEKS } from "@/lib/pricing";
 
 // Each one is checkable: the quiz and her results render before the paywall,
 // and Stripe is the first thing that asks for an address. "Free" is scoped to
-// the quiz — the plan the headline names is $29.
+// the quiz — the plan the headline names is $19.
 const PROMISES = ["Free 2-minute quiz", "No email needed", "Results before any price"];
 
 /**

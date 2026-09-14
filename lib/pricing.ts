@@ -20,6 +20,7 @@
  *   columns were also weeks but meant something else. It sold 74 quiz
  *   finishers and two saved cards, both cancelled.
  * - $29 auto-renewing every 8 weeks (2026-09-11, for part of a day).
+ * - $29 once (2026-09-11 → 2026-09-14), then $19 once from 2026-09-14.
  *
  * What is gone, deliberately, and must not come back on its own:
  *
@@ -49,7 +50,10 @@
  * {@link PRICE_LINE} and {@link CHECKOUT_SUBMIT_TEXT}.
  *
  * Stripe side (`scripts/stripe-plan-price.ts` creates it):
- *   - Price: $29 USD, **one-time** (no `recurring`) → `STRIPE_PRICE_PLAN`.
+ *   - Price: $19 USD, **one-time** (no `recurring`) → `STRIPE_PRICE_PLAN`.
+ *     A Stripe Price's amount is immutable, so a price change is a new Price
+ *     object and a new id in `STRIPE_PRICE_PLAN` (local and Vercel); the
+ *     script archives the old one.
  *   - No coupon, no trial, no promo-code box.
  */
 
@@ -66,7 +70,7 @@ export const PLAN_WEEKS = 8;
  * It is what every funnel buyer pays. Must match the `unit_amount` on
  * `STRIPE_PRICE_PLAN`; `scripts/stripe-plan-price.ts` throws if they disagree.
  */
-export const PLAN_PRICE = 29;
+export const PLAN_PRICE = 19;
 
 /**
  * The strikethrough figure on the paywall. **Nobody is charged it** (2026-09-13,
@@ -76,14 +80,14 @@ export const PLAN_PRICE = 29;
  */
 export const PLAN_REGULAR_PRICE = 60;
 
-/** `52`: the quiz-taker price as a discount off the regular price. */
+/** `68`: the quiz-taker price as a discount off the regular price. */
 export const QUIZ_DISCOUNT_PCT = Math.round((1 - PLAN_PRICE / PLAN_REGULAR_PRICE) * 100);
 
 /** The price one account is offered, and whether it is the quiz-taker price. */
 export type PlanOffer = { price: number; regularPrice: number; quizPrice: boolean };
 
 /**
- * Who gets {@link PLAN_PRICE}: everyone (2026-09-13). The price is always $29;
+ * Who gets {@link PLAN_PRICE}: everyone (2026-09-13). The price is always $19;
  * the $60 strikethrough is marketing copy only.
  *
  * Kept as a function, with its arguments, because `create-checkout` (which
@@ -178,7 +182,7 @@ export function formatPrice(amount: number): string {
 }
 
 /**
- * `29` → `"52¢ a day"`, `60` → `"$1.07 a day"`: the one payment spread over the
+ * `19` → `"34¢ a day"`, `60` → `"$1.07 a day"`: the one payment spread over the
  * {@link PLAN_ACCESS_DAYS} days it buys. Derived, never typed, so it moves with
  * the price and the access window.
  */
@@ -326,7 +330,7 @@ export function checkoutSubmitText(amount: number): string {
 
 /**
  * What {@link PLAN_PRICE} buys, one row per thing she will open in the app.
- * Shared by the paywall ("What you get for $29") and the landing page. Each
+ * Shared by the paywall ("What you get for $19") and the landing page. Each
  * line is checkable against the code, and must stay that way:
  *  - the plan: four pillars (lib/planPillars.ts) over PLAN_WEEKS weeks, built
  *    from her quiz answers, each week built on what she logged (history.ts);

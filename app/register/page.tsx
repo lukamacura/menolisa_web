@@ -5798,7 +5798,7 @@ function RegisterPageContent() {
                 `<HowLisaRuns />` states the loop. It was an animated numbered
                 sequence until 2026-09-09; the numbers made a daily loop read as
                 a one-off checklist. The two store listings under it went on
-                2026-09-12: "Free · In-App Purchases" one screen before a $29 web
+                2026-09-12: "Free · In-App Purchases" one screen before a $19 web
                 checkout sent her to the store instead - see HowLisaRuns.tsx. ── */}
             {(() => {
               const topSymptom = [...topProblems]
@@ -5879,7 +5879,7 @@ function RegisterPageContent() {
         </div>
       )}
 
-      {/* Paywall Phase. A single $29 charge at Stripe for the whole 8-week
+      {/* Paywall Phase. A single $19 charge at Stripe for the whole 8-week
           block — `create-checkout` runs `mode: "payment"`, applies no coupon
           and no trial, and creates no subscription. */}
       {phase === "paywall" && (
@@ -6116,7 +6116,7 @@ function RegisterPageContent() {
                     promised rather than as a turn.
 
                     "Free" is scoped to the quiz, never to the plan: the plan is
-                    $29 at the paywall, and "free" next to it here is the bait
+                    $19 at the paywall, and "free" next to it here is the bait
                     reading the paywall's opening line exists to prevent.
 
                     One line, and that is measured: "Get your personal…"

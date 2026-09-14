@@ -1,6 +1,6 @@
 /**
  * Create the two **one-time** prices (2026-09-13) and archive every other
- * price on the product: the $29 quiz-taker price (STRIPE_PRICE_PLAN) and the
+ * price on the product: the $19 quiz-taker price (STRIPE_PRICE_PLAN) and the
  * $60 regular price (STRIPE_PRICE_PLAN_REGULAR). Both stay active; the paywall
  * strikes the regular price through, which is only honest while it is a live
  * price someone is charged. Idempotent: run it twice and it changes nothing.
@@ -14,7 +14,7 @@
  * subscriptions keep resolving against the price stored on them.
  *
  * **It creates no coupon and no recurring price.** The product is a single
- * $29 charge that buys 8 weeks of access; `create-checkout` runs Stripe in
+ * $19 charge that buys 8 weeks of access; `create-checkout` runs Stripe in
  * `mode: "payment"`, so a price with a `recurring` block would be rejected
  * outright. The old `OuChKp3c` coupon is left alone in Stripe — nothing
  * references it, and deleting a coupon that historical invoices point at buys
@@ -91,8 +91,8 @@ async function main() {
   }
 
   // Deactivate (never delete) every other active price on the product — the
-  // $59 block price, the $4.99 weekly price and the short-lived $29 recurring
-  // one all live here.
+  // $59 block price, the $4.99 weekly price, the short-lived $29 recurring
+  // one and the $29 one-time price (2026-09-11 → 09-14) all live here.
   const prices = await stripe.prices.list({ product: product.id, active: true, limit: 100 });
   for (const p of prices.data) {
     if (p.id === plan.id || p.id === regular.id) continue;

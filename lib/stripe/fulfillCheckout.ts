@@ -35,7 +35,8 @@ import {
  *
  * `plan8w` is the {@link PLAN_WEEKS}-week block, and it is the only type a new
  * checkout can produce. It covers both the historical $59 recurring block and
- * today's one-time $29 — `plan_amount` is what tells those apart, and no
+ * the one-time $29 (2026-09-11 → 09-14) and today's one-time $19 —
+ * `plan_amount` is what tells those apart, and no
  * behaviour branches on the difference.
  *
  * `weekly` ($4.99 a week, first week $1) is what the 2026-09-08 → 09-11 rows

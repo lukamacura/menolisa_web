@@ -1,6 +1,7 @@
-# Stripe product — the $29 one-time, 8-week plan
+# Stripe product — the $19 one-time, 8-week plan
 
-**It is not a subscription.** One charge of $29 buys 8 weeks of access and
+**It is not a subscription.** One charge of $19 (since 2026-09-14; $29 from
+2026-09-11 to 09-14) buys 8 weeks of access and
 nothing renews: Checkout runs in `mode: "payment"`, no Subscription object is
 created, and `customer.subscription.*` never fires for a new customer.
 
@@ -15,6 +16,13 @@ STRIPE_SECRET_KEY=sk_live_… npx tsx scripts/stripe-plan-price.ts   # live mode
 It prints the Price ID; put it in `STRIPE_PRICE_PLAN` locally and in Vercel.
 **Vercel does not apply an env change until you redeploy.**
 
+**Changing the price is never an edit in the Stripe dashboard.** A Price's
+`unit_amount` is immutable, so a new figure in `lib/pricing.ts` means a new
+Price object: re-run the script (it finds nothing under the new lookup key,
+creates the price, makes it the default and archives the old one), then put the
+new id in `STRIPE_PRICE_PLAN`. Until the env var is updated, `create-checkout`
+still charges the old price while every page prints the new one.
+
 The variable name has changed twice and neither old name is reused:
 `STRIPE_PRICE_8WEEK` held the archived $59 price and `STRIPE_PRICE_WEEKLY` the
 archived $4.99 weekly one. A stale value under a reused name charges a figure no
@@ -26,7 +34,8 @@ rather than on the page.
 | Object | Value |
 |---|---|
 | Product | `MenoLisa 8 Week Plan` (the existing product is reused if its name matches) |
-| Price | `$29` USD, **one-time — no `recurring` block**, lookup key `menolisa_plan8w_once_29`. Set as the product's default price. |
+| Price | `$19` USD, **one-time — no `recurring` block**, lookup key `menolisa_plan8w_once_19`. Set as the product's default price. |
+| Regular price | `$60` USD, one-time, lookup key `menolisa_plan8w_once_60`. The paywall's strikethrough figure. |
 | Coupon | **none** |
 | Old prices | every other active price on the product is **deactivated, not deleted** — existing subscriptions keep resolving |
 
