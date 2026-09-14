@@ -125,35 +125,13 @@ export interface PaywallViewProps {
   offer: PlanOffer;
 }
 
-/**
- * "Start tonight" is a promise about her evening, so it has to be true when she
- * reads it. Before {@link EVENING_HOUR} her local time it is "today"; after it,
- * "tonight" - the same offer, in the word that is not already wrong.
- *
- * Read through `useSyncExternalStore` rather than computed during render,
- * because the server has no clock she shares: the build runs in UTC, so a
- * component that read the hour inline would hydrate one word and repaint
- * another. The server snapshot is the word the copy was written in; the client
- * snapshot is the truth, and React swaps it in after hydration. There is
- * nothing to subscribe to - the word only has to be right when the page loads,
- * and a woman who sits on this screen through 5pm has a bigger problem than
- * the tense.
- */
-const EVENING_HOUR = 17;
-
 const subscribeToNothing = () => () => {};
-const startWordNow = (): "tonight" | "today" =>
-  new Date().getHours() >= EVENING_HOUR ? "tonight" : "today";
-
-function useStartWord(): "tonight" | "today" {
-  return useSyncExternalStore(subscribeToNothing, startWordNow, () => "tonight");
-}
 
 /**
  * The day her access would end if she bought now - `Nov 7` - for the details
- * sheet. Client-only for the same reason as {@link useStartWord}: the server
- * renders in UTC, so the server snapshot is `null` and the sheet prints the
- * duration instead until hydration swaps the real date in. Mirrors what
+ * sheet. Read through `useSyncExternalStore` because the server renders in
+ * UTC, so the server snapshot is `null` and the sheet prints the duration
+ * instead until hydration swaps the real date in. Mirrors what
  * `fulfillCheckout` writes (purchase time + PLAN_ACCESS_DAYS).
  */
 const accessEndNow = () =>
@@ -599,7 +577,6 @@ export function PaywallView({
   const outcome = getOutcomeHeadline(goal ?? []);
   /** The only figure on this page she is charged; see lib/pricing.ts. */
   const PRICE = formatPrice(offer.price);
-  const startWord = useStartWord();
   const accessEnd = useAccessEnd();
   const primarySymptom = topProblems?.[0] ?? null;
 
@@ -918,12 +895,11 @@ export function PaywallView({
             YOUR {PLAN_WEEKS}-WEEK PLAN
           </span>
 
-          {/* The old headline, in the block that owns the number. It reads as
-              one sentence with the numeral inside it - "Start tonight for $19"
-              - rather than as a figure with a caption beside it, so the price
-              is still the largest thing above the fold and still says what the
-              money buys: an evening she can begin, not a subscription she has
-              to work out. */}
+          {/* One sentence with the numeral inside it - "Full 8-Week Plan for
+              $19" - rather than a figure with a caption beside it, so the
+              price is still the largest thing above the fold and names what
+              the money buys: the whole plan, not a subscription she has to
+              work out. */}
           {offer.quizPrice && (
             <div className="mb-1 flex items-center justify-center gap-2">
               <span className="text-lg font-bold text-[#9A9A9A] line-through decoration-2">
@@ -936,7 +912,7 @@ export function PaywallView({
           )}
           <p className="flex flex-wrap items-baseline justify-center gap-x-2 gap-y-0.5 text-center">
             <span className="text-[22px] sm:text-[24px] font-bold leading-tight tracking-[-0.01em] text-[#2B2627]">
-              Start {startWord} for
+              Full {PLAN_WEEKS}-Week Plan for
             </span>
             <span className="text-[56px] sm:text-[64px] font-extrabold leading-none tracking-[-0.03em] text-[#15803D] tabular-nums">
               {PRICE}

@@ -867,10 +867,9 @@ Rules that came out of the re-order, all of them about *sequence*, not styling:
   `PlanFinishBoard` draws below it. The 2026-09-08 pass was right that the
   price had no type at all and wrong about where it belongs: the numeral kept
   its size and moved one block down into the price card, which now reads
-  "Start today for $1" as one sentence with the figure inside it. That phrase
-  is time-aware — "tonight" from 17:00 local, "today" before it, through
-  `useSyncExternalStore` so the UTC server render never hydrates the wrong
-  word. **The subline is gone**: "Your full 8-week plan to {goal}" said the
+  "Full 8-Week Plan for $19" as one sentence with the figure inside it
+  (2026-09-14; it was the time-aware "Start today/tonight for", whose hook
+  was deleted with it). **The subline is gone**: "Your full 8-week plan to {goal}" said the
   headline's job twice and re-told the diagnosis screen a third time, and the
   renewal it carried is already on the price card, the sticky bar and Stripe's
   submit text.
