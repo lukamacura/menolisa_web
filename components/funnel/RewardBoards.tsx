@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
+import Image from "next/image";
 import { Dumbbell, Footprints, Moon, Utensils, Zap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { BlurStack } from "@/components/BlurStack";
+import { PLAN_PILLARS } from "@/lib/planPillars";
 import { cn } from "@/lib/utils";
 
 /**
@@ -28,11 +30,12 @@ import { cn } from "@/lib/utils";
  * her. The tape is doing real work — it is the cheapest possible signal that
  * this is a document about her rather than another card in a funnel.
  *
- * The rule for all three: **nothing on a board is written here.** Every row is
- * either one of her own answers read back or a value pulled from
- * `lib/plan/catalog.ts` — the same tables `generatePlan()` reads. That is what
- * makes the third board the strong one: the exercise names and the sets on it
- * are the session she gets on day one, not a mock-up of one.
+ * The rule for boards 1 and 2: **nothing on a board is written here.** Every row
+ * is either one of her own answers read back or a value pulled from
+ * `lib/plan/catalog.ts` — the same tables `generatePlan()` reads. Board 3 is
+ * the exception by design since 2026-09-14: it is a note from the person who
+ * built the app, and the rules for what it may claim sit above
+ * <FounderNoteBoard />.
  *
  * There is a second rule, added 2026-08-30 when board 1 was rebuilt: **a board
  * has to hand her something she did not walk in with.** Boards 2 and 3 always
@@ -41,14 +44,14 @@ import { cn } from "@/lib/utils";
  * the most expensive slot in the funnel. It now ranks those answers and gives
  * her one free thing to do tonight. See the note above <StartingPointBoard />.
  *
- * A third rule, added 2026-09-09 with the blur: **boards 2 and 3 now show one
- * row and fade the rest** (<BlurStack />). It reads against the second rule and
+ * A third rule, added 2026-09-09 with the blur: **board 2 shows one row and
+ * fades the rest** (<BlurStack />). It reads against the second rule and
  * does not break it - what she is handed is still hers and still real, and the
  * count under each stack states exactly how much is behind it. What changes is
  * that the board stops answering the question it exists to make her ask. Two
  * consequences to keep: the blurred rows must never become invented ones, and
  * the plain row has to be the one that carries the claim - day 1 on board 2,
- * movement 1 on board 3, not a bookend or a header.
+ * not a bookend or a header.
  */
 
 const PAPER = {
@@ -271,19 +274,6 @@ function Tape({ side, reduced }: { side: "left" | "right"; reduced: boolean }) {
 const LINE_STEP = 0.13;
 
 /**
- * The grey label strip that heads a section on a board.
- *
- * It is what makes a payoff read as a filled-in document rather than a card:
- * every block on <FirstSessionBoard /> and <StartingPointBoard /> opens with
- * one, and every row under it carries a value in the same right-hand column.
- * <FirstSessionBoard /> uses it free-standing for the warm-up and cool-down
- * bookends, so that one adds its own rounding; <StartingPointBoard /> uses it
- * as the head of a bordered block, where rounding is the block's job.
- */
-const SECTION_BAR =
-  "flex items-center justify-between gap-2 bg-[#F3EDE9] px-2 py-[3px] text-[10.5px] font-bold uppercase tracking-wide text-[#8C8279]";
-
-/**
  * One line of a board, written in.
  *
  * The stagger is the whole effect: four rows arriving together is a card, four
@@ -463,7 +453,7 @@ function Signoff({ delay, children }: { delay: number; children: React.ReactNode
  *
  * **Laid out as a ledger, 2026-08-31.** The content above was right and the
  * shape was not: boards 2 and 3 are ruled lists where every row is an identity
- * on the left and a value on the right, bracketed by grey SECTION_BAR strips,
+ * on the left and a value on the right, bracketed by grey label strips,
  * and this one was four chips over two loose paragraphs with a green box
  * stapled underneath. Same three beats, now in that idiom - hairline-ruled
  * rows each ending in a boxed rank (#1 is the START HERE chip, which is the
@@ -533,7 +523,7 @@ export function StartingPointBoard({
     <RewardPaper title="Where to start" meta="worst first">
       {/* Section 1 - the ranking, as a ruled list. Hairlines and a boxed value
           on every row are what make this read as a filled-in form rather than a
-          stack of chips; it is the same skeleton as <FirstSessionBoard />'s
+          stack of chips; it is the same skeleton the old session board's
           movement rows, which is the point. */}
       <div className="mt-1.5">
         {rows.map((row, n) => {
@@ -600,7 +590,7 @@ export function StartingPointBoard({
           {mechanism && (
             <Line i={0} delay={mechAt} className="text-[11.5px] leading-snug text-[#5A5A5A]">
               <span className="text-[9.5px] font-extrabold uppercase tracking-wide text-[#8C8279]">
-                Why it&apos;s first
+                Why it happens
               </span>{" "}
               &middot; {mechanism}
             </Line>
@@ -827,108 +817,151 @@ export function TrainingWeekBoard({
   );
 }
 
-/* ── Board 3: her first session, written out ───────────────────────────────
+/* ── Board 3: why she keeps going this time, from the person who built it ──
  *
- * Was: "42 moves matched to your level — nothing generic."
+ * Was (until 2026-09-14): <FirstSessionBoard />, her week-1 session written
+ * out, movement 1 plain and the rest blurred.
  *
- * That sentence asked her to take our word for it one screen before the price,
- * which is the worst place in the funnel to be asking for trust rather than
- * spending it. This board is the same claim, discharged: the movement names,
- * the sets and the seconds are read out of `lib/plan/catalog.ts` by the same
- * functions the generator calls — `allowedExercises()`, `defaultDoseForWeek()`,
- * `buildPowerBlock()` — for week 1. She is looking at Monday.
+ * Replaced on the owner's call, and the argument is about what is still left
+ * to sell this late in the quiz. By step 16 she has had her worst symptom
+ * ranked, her week laid out, and a woman who finished it. A list of exercises
+ * answers "what will I do?", which is no longer her question. The one she has
+ * not had answered is "why would this go differently from every plan I have
+ * already started and dropped?" - and the honest answer is not the exercises.
+ * It is that the app decides her day, so keeping it up is the easy part. That
+ * claim needs a person standing behind it, so a person says it.
  *
- * The pool size survives as one small line under the rule, where it belongs:
- * it is the footnote to the session, not the headline over it.
+ * Rules, all of them about what the board may claim:
+ *
+ * - **The person in the print is real and agreed to be shown** - the owner,
+ *   who built the app. He asked to be captioned "Developer" rather than by
+ *   name (2026-09-14), and nothing here dresses that up into a credential.
+ *   Never add a name or a title here that is not real and agreed.
+ * - **No outcome promise.** The headline (FOUNDER_HEADLINE in
+ *   app/register/page.tsx) is a truism about consistency - "nobody loses weight
+ *   in one good week" - never "you will lose X". Weight is the most common
+ *   goal and the most regulated claim in this category.
+ * - **The checklist names the plan's four real pillars and no tasks.**
+ *   `PLAN_PILLARS` is what the app's day is built from. Her actual tasks are
+ *   what the paywall's week-1 card blurs on purpose; printing them one screen
+ *   before would answer the question that card exists to make her ask.
+ * - **"Tick it off" is literal**: `POST /api/plan/complete` is the tick.
+ *
+ * The ticks are the board's reward beat: four boxes filling themselves in one
+ * after another is "it looks easy" shown rather than said.
  */
-export type SessionRow = { name: string; dose: string; power?: boolean };
+const FOUNDER = {
+  name: "Developer",
+  photo: "/brand/founder-luka-portrait.webp",
+} as const;
 
-export function FirstSessionBoard({
-  heading,
-  minutesLabel,
-  warmup,
-  rows,
-  cooldown,
-  poolCount,
-  sessionsTotal,
-}: {
-  heading: string;
-  minutesLabel: string;
-  warmup?: { count: number; minutes: number };
-  rows: SessionRow[];
-  cooldown?: { count: number; minutes: number };
-  poolCount: number;
-  sessionsTotal: string;
-}) {
-  const bookendCls = cn(SECTION_BAR, "rounded-md");
-  let i = 0;
+/** When the first tick lands, and the gap between ticks. */
+const TICK_BASE = 1.15;
+const TICK_STEP = 0.2;
 
-  // The warm-up bar and movement 1 are hers to read; the rest of the session
-  // goes out of focus behind them (<BlurStack />). The bookend stays plain
-  // because it is chrome - "Warm-up · 4 moves" names no exercise, so blurring
-  // it would hide the frame and reveal nothing. Movement 1 is the row that
-  // discharges the claim, and the line under the stack counts what is behind
-  // it, so the board still says how big session 1 is.
-  const warmupLine = warmup && (
-          <Line i={i++} className={bookendCls}>
-            <span>Warm-up · {warmup.count} moves</span>
-            <span className="tabular-nums">{warmup.minutes} min</span>
-          </Line>
-        );
-
-  const rowLines = rows.map((row, n) => (
-          <Line key={row.name} i={i++} className="flex items-center gap-2">
-            <span
-              className={cn(
-                "flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[10px] font-extrabold tabular-nums",
-                row.power ? "bg-[#E8A33D] text-white" : "bg-[#3D3D3D] text-white"
-              )}
-            >
-              {row.power ? <Zap className="h-3 w-3" strokeWidth={2.6} aria-hidden /> : n + 1}
-            </span>
-            <span className="min-w-0 flex-1 truncate text-[12.5px] font-bold leading-tight text-[#3D3D3D]">
-              {row.name}
-            </span>
-            <span className="shrink-0 rounded-md border border-[#E0D5D0] bg-white px-1.5 py-[1px] text-[10.5px] font-extrabold tabular-nums text-[#5A5A5A]">
-              {row.dose}
-            </span>
-          </Line>
-        ));
-
-  const cooldownLine = cooldown && (
-          <Line i={i++} className={bookendCls}>
-            <span>Cool-down · {cooldown.count} stretches</span>
-            <span className="tabular-nums">{cooldown.minutes} min</span>
-          </Line>
-        );
-
-  const hidden = [...rowLines.slice(1), ...(cooldownLine ? [cooldownLine] : [])];
-  const moreMoves = Math.max(rows.length - 1, 0);
+export function FounderNoteBoard({ headline }: { headline: string }) {
+  const reduced = useReducedMotion();
+  const doneAt = TICK_BASE + PLAN_PILLARS.length * TICK_STEP;
 
   return (
-    <RewardPaper title={heading} meta={minutesLabel}>
-      <div className="mt-2 space-y-1">
-        {warmupLine}
-        {rowLines[0]}
+    <RewardPaper title="Why I built this" meta="Founder">
+      <div className="mt-2 flex items-start gap-3">
+        {/* A print pinned to the note, not an avatar: the paywall already has
+            the round 64px avatar, and a second one would read as the same
+            badge twice. The dark frame fill matches the photo's background, so
+            a slow load shows a dark print rather than a grey hole. */}
+        <motion.figure
+          initial={reduced ? false : { opacity: 0, y: 10, rotate: 9, scale: 0.9 }}
+          animate={{ opacity: 1, y: 0, rotate: 3, scale: 1 }}
+          transition={
+            reduced
+              ? { duration: 0 }
+              : { type: "spring", stiffness: 190, damping: 15, delay: 0.3 }
+          }
+          className="relative w-[88px] shrink-0 rounded-[3px] bg-white p-1.5 pb-1 shadow-[0_10px_20px_-10px_rgba(0,0,0,0.5)] ring-1 ring-black/5"
+        >
+          <div className="relative aspect-[4/5] overflow-hidden rounded-[2px] bg-[#0B1020]">
+            <Image
+              src={FOUNDER.photo}
+              alt="The developer who built MenoLisa"
+              fill
+              sizes="80px"
+              className="object-cover"
+            />
+          </div>
+          <figcaption className="pt-0.5 text-center font-script text-[16px] leading-none text-[#3D3D3D]">
+            {FOUNDER.name}
+          </figcaption>
+        </motion.figure>
+
+        <div className="min-w-0 flex-1 pt-0.5">
+          <Line i={0} base={0.4} className="font-script text-[23px] leading-[1.1] text-[#3D3D3D] text-balance">
+            {headline}
+          </Line>
+          <Line i={1} base={0.4} className="mt-1.5 text-[12px] font-semibold leading-snug text-[#8C8279]">
+            It happens in the ordinary days you keep showing up for.
+          </Line>
+        </div>
       </div>
-      <BlurStack items={hidden} className="mt-1 space-y-1" />
-      {moreMoves > 0 && (
-        <p className="mt-1.5 text-[10px] leading-snug text-[#9A9A9A]">
-          <span className="font-bold text-[#7A7A7A]">
-            {moreMoves} more {moreMoves === 1 ? "movement" : "movements"}
-          </span>{" "}
-          in session 1, with your sets and seconds on each.
-        </p>
-      )}
 
-      <p className="mt-2 border-t border-dashed border-[#E0D5D0] pt-1.5 text-[10px] leading-snug text-[#9A9A9A]">
-        Picked from the <span className="font-bold text-[#7A7A7A]">{poolCount} movements</span>{" "}
-        cleared for your level — not from a template.
-      </p>
+      <div className="mt-2.5 space-y-1.5 text-[12.5px] leading-snug text-[#3D3D3D]">
+        <Line i={2} base={0.4}>
+          You probably already know what helps: move, eat enough protein, wind down, sleep.
+          What breaks is the busy Tuesday, when the plan turns into one more thing to figure out.
+        </Line>
+        <Line i={3} base={0.4}>
+          So I built MenoLisa to do the figuring out.{" "}
+          <span className="font-extrabold">Open the app and today is already laid out.</span>{" "}
+          Do it, tick it off. That&apos;s the whole job.
+        </Line>
+      </div>
 
-      <Signoff delay={0.3 + i * 0.13}>
-        This is <span className="font-extrabold">session 1</span> of {sessionsTotal}. It&apos;s
-        already built.
+      <Line i={4} base={0.4} className="mt-2.5 rounded-xl border border-[#E8DDD9] bg-white px-2.5 py-2">
+        <div className="flex items-center justify-between gap-2 pb-1.5 text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#B5ADA9]">
+          <span>Today, in your app</span>
+          <motion.span
+            initial={reduced ? false : { opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={
+              reduced
+                ? { duration: 0 }
+                : { type: "spring", stiffness: 420, damping: 18, delay: doneAt }
+            }
+            className="shrink-0 tracking-wide text-[#15803D]"
+          >
+            Done for today
+          </motion.span>
+        </div>
+        <ul className="grid grid-cols-2 gap-x-2 gap-y-1.5">
+          {PLAN_PILLARS.map((p, n) => {
+            const at = TICK_BASE + n * TICK_STEP;
+            return (
+              <li key={p.key} className="flex min-w-0 items-center gap-1.5">
+                {/* The pillar's own icon is the tick: it lands greyed and small,
+                    then springs to full size in its colour, one after another.
+                    A check circle beside it said the same thing twice. */}
+                <motion.span
+                  aria-hidden
+                  initial={reduced ? false : { scale: 0.6, opacity: 0.35, filter: "grayscale(1)" }}
+                  animate={{ scale: 1, opacity: 1, filter: "grayscale(0)" }}
+                  transition={
+                    reduced
+                      ? { duration: 0 }
+                      : { type: "spring", stiffness: 480, damping: 16, delay: at }
+                  }
+                  className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-lg", p.chip)}
+                >
+                  <p.icon className={cn("h-3.5 w-3.5", p.tint)} strokeWidth={2.4} />
+                </motion.span>
+                <span className="truncate text-[12px] font-bold text-[#3D3D3D]">{p.label}</span>
+              </li>
+            );
+          })}
+        </ul>
+      </Line>
+
+      <Signoff delay={doneAt + 0.15}>
+        Your part is showing up. <span className="font-extrabold">I made the rest easy.</span>
       </Signoff>
     </RewardPaper>
   );

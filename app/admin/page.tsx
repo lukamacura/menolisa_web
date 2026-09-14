@@ -2084,7 +2084,7 @@ const STEP_LABELS: Record<string, string> = {
   q_relaxation: "Q11 · Unwinding",
   reward_plan_shape: "🎁 Her week, sized",
   q5_hrt: "Q12 · HRT",
-  reward_progress: "🎁 Plan rules",
+  reward_progress: "🎁 Founder note",
   q8_name: "Q13 · Name",
   calculating: "Building her plan",
   results: "Results + score",

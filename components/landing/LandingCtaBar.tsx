@@ -41,7 +41,7 @@ export default function LandingCtaBar() {
           </span>
         </Link>
         <p className="mt-1.5 text-center text-xs text-[#6B6B6B]">
-          Free 2-minute check · No email needed
+          Free 2-minute quiz · No email needed
         </p>
       </div>
     </div>

@@ -14,6 +14,7 @@
  * nothing reads.
  */
 import { CheckCircle2, Footprints, Salad, Wind, type LucideIcon } from "lucide-react";
+import { WEIGHT_LINK_BY_PILLAR } from "@/lib/quiz-results-helpers";
 
 export type PlanPillar = {
   key: string;
@@ -106,6 +107,12 @@ export type WeekOneRow = {
   task: string;
   /** The quieter line under it: why that one, or what else the week carries. */
   note?: string;
+  /**
+   * Weight-first women only: the link of the weight chain this pillar works on
+   * (WEIGHT_LINK_BY_PILLAR), so the plan reads as the fix for the cause the
+   * results card showed her. Absent for every other symptom and pillar.
+   */
+  link?: string;
 };
 
 /**
@@ -210,6 +217,14 @@ export function buildWeekOneRows(
       task: "One habit, ticked daily",
       note: "a new one each week, built on the last",
     });
+  }
+
+  // The weight chain's links, on the pillars that honestly act on them.
+  if (problems[0] === "weight_changes") {
+    for (const row of rows) {
+      const link = WEIGHT_LINK_BY_PILLAR[row.key];
+      if (link) row.link = link;
+    }
   }
 
   return rows;

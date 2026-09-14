@@ -260,6 +260,13 @@ function WeekOneCard({
             {row.note && (
               <span className="block text-xs leading-snug text-[#8A8A8A]">{row.note}</span>
             )}
+            {/* Weight-first only: the link of the chain the results card
+                showed her that this pillar works on. See WEIGHT_LINK_BY_PILLAR. */}
+            {row.link && (
+              <span className="mt-1 inline-block rounded-full bg-green-50 px-2 py-0.5 text-[10.5px] font-semibold text-green-700">
+                Works on {row.link}
+              </span>
+            )}
           </span>
         </li>
       );

@@ -41,21 +41,124 @@ export const SYMPTOM_MECHANISM: Record<string, string> = {
   hot_flashes:
     "Estrogen steadies the brain's thermostat. As it drops, a normal room reads as too hot.",
   sleep_issues:
-    "Estrogen helps hold deep sleep and keeps night temperature level. Both wobble as it falls.",
+    "Estrogen helps your brain's control centre hold deep sleep and level night temperature. Both wobble without it.",
   brain_fog:
     "Memory centres run on estrogen-driven blood flow, so word-finding is the first thing to slow.",
+  // Was "when estrogen swings through the day, mood swings with it" - true of
+  // perimenopause only, and half the women reading it are past it.
   mood_swings:
-    "Estrogen sets your serotonin level. When estrogen swings through the day, mood swings with it.",
+    "Estrogen props up serotonin, the brain's mood steadier. With less of it, mood tips faster.",
+  // The ad that sends most of this traffic says the change is run from the
+  // brain's control centre, and this line never mentioned the brain. It now
+  // states the whole weight chain in one line for the reward board; the
+  // results card spells it out as three rows (getWeightChain).
   weight_changes:
-    "Less estrogen moves fat storage to your middle and lets muscle - your calorie burner - slip away.",
+    "With less estrogen, your brain's control centre raises hunger, lowers resting burn and stores fat at your middle.",
   low_energy:
     "Broken sleep plus an estrogen-shifted stress rhythm means the tank starts each morning part-empty.",
   anxiety:
-    "Estrogen buffers your stress response. With less of it, adrenaline hits harder and clears slower.",
+    "Estrogen buffers your brain's stress switch. With less of it, adrenaline hits harder and clears slower.",
   joint_pain:
     "Estrogen is anti-inflammatory and keeps cartilage cushioned, which is why mornings stiffen first.",
   bloating:
     "Shifting estrogen and progesterone slow the gut down and make the body hold on to water.",
+};
+
+// ─── Her stage, as the results card states the trigger ───────────────────────
+//
+// The card used to say "estrogen rising and falling" to everyone. That is
+// perimenopause. Of the 45 weight-first women since 2026-09-05, 31 said
+// post-menopausal and 2 said perimenopausal - so the sentence was true of 2 of
+// them, on the screen where belief is formed. After the periods stop, estrogen
+// has dropped and stays low; what keeps moving is the brain's control centre
+// (the hypothalamus) that relied on it - the reason hot flashes outlast the
+// last period by years.
+//
+// Surgical and medical menopause win over the stage answer: the drop was
+// overnight whatever she ticked for stage.
+
+export type HormoneStage = "peri" | "post" | "sudden" | "unknown";
+
+export function getHormoneStage(
+  hereFor?: string | null,
+  menopauseType?: string | null
+): HormoneStage {
+  if (menopauseType === "surgical" || menopauseType === "medical") return "sudden";
+  if (hereFor === "post_menopausal") return "post";
+  if (hereFor === "perimenopausal") return "peri";
+  return "unknown";
+}
+
+/**
+ * What the trigger node says, per stage. `settledLow` swaps the wave's meaning:
+ * the moving line becomes her control centre and a flat line underneath it is
+ * estrogen, now low. General physiology, never a measurement of her.
+ */
+export const ESTROGEN_TRIGGER: Record<
+  HormoneStage,
+  { trigger: string; after?: string; settledLow: boolean }
+> = {
+  peri: { trigger: "estrogen rising and falling", settledLow: false },
+  post: {
+    trigger: "estrogen dropped",
+    after: "and your brain's control centre is still adjusting",
+    settledLow: true,
+  },
+  sudden: {
+    trigger: "estrogen dropped overnight",
+    after: "and your brain's control centre is still adjusting",
+    settledLow: true,
+  },
+  unknown: { trigger: "estrogen shifting", settledLow: false },
+};
+
+// ─── Why her body holds on to weight: the chain ──────────────────────────────
+//
+// For a weight-first woman the results card shows three links instead of one
+// mechanism line. This exists because "one cause: estrogen" names the one
+// thing this product does not act on - if the whole problem is estrogen, the
+// fix is estrogen, and that is HRT, not a plan. Estrogen is the *trigger*; the
+// three links under it are what daily work moves, and each one is paired with
+// the plan pillar that works on it (WEIGHT_LINK_BY_PILLAR), so the paywall
+// reads as the fix for a cause she was just shown.
+//
+// Same rules as SYMPTOM_MECHANISM: general physiology, never a claim about her,
+// and estrogen named in every line.
+
+export type CauseLink = { id: string; label: string; why: string };
+
+export function getWeightChain(ageBand?: string | null): CauseLink[] {
+  return [
+    {
+      id: "control",
+      label: "Your control centre",
+      why: "Your brain sets hunger and resting burn partly on estrogen. With less, hunger rises and burn drops.",
+    },
+    {
+      id: "storage",
+      label: "Storage moves to your middle",
+      why: "With less estrogen, new fat is stored around your middle instead of your hips and thighs.",
+    },
+    {
+      id: "muscle",
+      label: "Muscle slips away",
+      why:
+        ageBand === "51_plus"
+          ? "Estrogen helped protect it. Past 50 it shrinks every year unless it works, and muscle burns calories at rest."
+          : "Estrogen helped protect it. From midlife it shrinks every year unless it works, and muscle burns calories at rest.",
+    },
+  ];
+}
+
+/**
+ * Which link each plan pillar works on, for a weight-first woman. Only the
+ * pairings with real evidence behind them: strength work keeps muscle, walking
+ * trims fat around the middle, protein at every meal blunts hunger. Relaxation
+ * and habits are left untagged rather than stretched into a weight claim.
+ */
+export const WEIGHT_LINK_BY_PILLAR: Record<string, string> = {
+  movement: "muscle + your middle",
+  nutrition: "hunger",
 };
 
 // Symptom id -> the one thing she can do about it tonight, free, before she has

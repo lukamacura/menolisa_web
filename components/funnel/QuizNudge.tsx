@@ -106,8 +106,8 @@ export const QUIZ_NUDGES: Record<string, string> = {
   // step rename.
   //
   // Second, why it is not simply re-keyed. Since 2026-09-12 that screen carries
-  // the funnel's only offer headline above the card — the benefit, "free
-  // 2-minute check", "no email needed". This banner is `fixed top-0` and spans
+  // the funnel's only offer headline above the card — her 8-week plan, "free
+  // 2-minute quiz", "no email needed". This banner is `fixed top-0` and spans
   // roughly y=20..140, and the headline sits at y=12: **the banner covers the
   // offer.** Measured at 390x700, re-keying it hid the headline from ~2.6s to
   // ~8.6s against a 9.0s median dwell — six of the first nine seconds, on the

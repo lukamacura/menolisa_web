@@ -61,10 +61,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { HighlightSweep } from "@/components/HighlightSweep";
-import type {
-  PlannerDay,
-  SessionRow,
-} from "@/components/funnel/RewardBoards";
+import type { PlannerDay } from "@/components/funnel/RewardBoards";
 import { QuizNudge } from "@/components/funnel/QuizNudge";
 
 /*
@@ -118,8 +115,8 @@ const StartingPointBoard = dynamic(() =>
 const TrainingWeekBoard = dynamic(() =>
   loadRewardBoards().then((m) => ({ default: m.TrainingWeekBoard }))
 );
-const FirstSessionBoard = dynamic(() =>
-  loadRewardBoards().then((m) => ({ default: m.FirstSessionBoard }))
+const FounderNoteBoard = dynamic(() =>
+  loadRewardBoards().then((m) => ({ default: m.FounderNoteBoard }))
 );
 
 /**
@@ -178,6 +175,11 @@ import { getOfferPromise } from "@/lib/planTimeline";
 import {
   SYMPTOM_LABELS,
   SYMPTOM_MECHANISM,
+  ESTROGEN_TRIGGER,
+  getHormoneStage,
+  getWeightChain,
+  type HormoneStage,
+  type CauseLink,
   SYMPTOM_FIRST_MOVE,
   AGE_BAND_LABELS,
   SCORE_GOAL,
@@ -232,10 +234,9 @@ type Step =
 //
 //   - `COHORT_PHRASE[hereFor]` on `reward_symptoms`, still four steps later
 //   - `MENOPAUSE_TYPE`/`hrt` in save-quiz, read at the end
-//   - `STAGE_PRIDE_LINE[hereFor]` on `reward_progress`, near the end
 //
 // If a question ever moves in front of `reward_symptoms` again, check those
-// three: this reorder is only safe because every answer a reward board prints
+// two: this reorder is only safe because every answer a reward board prints
 // is still collected before the board renders.
 const STEPS: Step[] = [
   // **Symptoms first, age second (2026-09-03).** This screen is the ad's landing
@@ -344,9 +345,9 @@ const AUTO_ADVANCE_STEPS: Step[] = [
 // q_symptom_primary, where there are no answers yet to have earned anything.
 //
 // It deliberately does not go last, before `q8_name`: the end of the quiz is
-// already carrying `reward_progress`, and social proof placed immediately
-// before the calculating screen would be the third human-interest beat in a row
-// on the way into results.
+// already carrying `reward_progress` - since 2026-09-14 the founder's note, a
+// second face - and two people in a row on the way into results is one too
+// many.
 const REWARD_STEPS: Step[] = [
   "reward_symptoms",
   "reward_social_proof",
@@ -360,7 +361,7 @@ const REWARD_LABEL: Record<string, string> = {
   reward_symptoms: "Yours, free",
   reward_social_proof: "Someone like you",
   reward_plan_shape: "Your week, sized",
-  reward_progress: "Your plan rules",
+  reward_progress: "From the founder",
 };
 
 // Numbered progress excludes the reward steps.
@@ -664,16 +665,18 @@ const COHORT_PHRASE: Record<string, string> = {
   not_sure: "women your age",
 };
 
-// Reward step 2: pride line keyed off where she is in the journey. It used to key
-// off "how long have symptoms been affecting you", which the quiz no longer asks -
-// her stage is the closest honest proxy, and it lands the same way: proud of
-// acting today, whatever her starting point.
-const STAGE_PRIDE_LINE: Record<string, string> = {
-  pre_menopausal: "You caught it early. That's the smartest thing you could do.",
-  perimenopausal: "You stopped guessing and started acting. That's real strength.",
-  post_menopausal: "You waited long enough. Today, you take the lead.",
-  not_sure: "You didn't wait for a label to take yourself seriously. That's everything.",
+// Reward 4 (`reward_progress`, the founder's note): the headline, keyed off
+// her goal. Each one is a truism about consistency, not a promise about her -
+// "nobody loses weight in one good week" is true of every plan ever sold, and
+// it is exactly the argument the note makes. Never turn one into an outcome
+// ("lose 10 lb in 8 weeks"); see the rules above <FounderNoteBoard />.
+const FOUNDER_HEADLINE: Record<string, string> = {
+  get_body_back: "Nobody loses weight in one good week.",
+  sleep_through_night: "Nobody fixes sleep with one early night.",
+  think_clearly: "Brain fog doesn't lift after one good day.",
+  feel_like_myself: "Nobody feels steady after one good week.",
 };
+const FOUNDER_HEADLINE_DEFAULT = "Nothing changes in one good week.";
 
 const HRT_OPTIONS = [
   { id: "currently", label: "I am currently taking HRT", image: "/quiz/hrt/current.webp" },
@@ -938,8 +941,8 @@ function warmPlanCatalog() {
 }
 
 // Retries a failed chunk load (flaky in-app webview, a deploy mid-visit).
-// Without it one failure was permanent: `reward_plan_shape` and
-// `reward_progress` gate their payoff on this chunk, so the meter sat at 100%
+// Without it one failure was permanent: `reward_plan_shape` gates its payoff
+// on this chunk, so the meter sat at 100%
 // with no Continue bar - a dead end at step 14 with no way forward.
 const PLAN_CATALOG_RETRIES = 6;
 
@@ -2059,8 +2062,23 @@ function TrajectoryChart({ score, reduced }: { score: number; reduced?: boolean 
  * this screen carried a two-line "before / now" chart that did make a personal
  * claim; it was removed for exactly that reason and should not come back
  * without real data behind it.
+ *
+ * ── `settledLow`: after the periods stop (2026-09-14) ────────────────────────
+ *
+ * "Rising and falling" is perimenopause, and most women reading this card are
+ * past it (31 of 45 weight-first women since 2026-09-05; 2 were peri). For
+ * them the moving line is re-labelled as her brain's control centre and a flat
+ * dashed line under it is estrogen, now low: the signal went quiet and the
+ * system that relied on it has not settled. Same loop, same curve - only the
+ * legend and one static line are added. Still no axes and no numbers.
  */
-function EstrogenWave({ className }: { className?: string }) {
+function EstrogenWave({
+  className,
+  settledLow = false,
+}: {
+  className?: string;
+  settledLow?: boolean;
+}) {
   const reduceMotion = useReducedMotion();
   const W = 168; // one full period of the pattern
   const H = 46;
@@ -2104,7 +2122,11 @@ function EstrogenWave({ className }: { className?: string }) {
         viewBox={`0 0 ${W} ${H}`}
         className="w-full h-auto"
         role="img"
-        aria-label="Estrogen swinging up and down without settling."
+        aria-label={
+          settledLow
+            ? "Estrogen low and flat, while the brain's control centre keeps swinging without settling."
+            : "Estrogen swinging up and down without settling."
+        }
         preserveAspectRatio="none"
       >
         <defs>
@@ -2145,8 +2167,33 @@ function EstrogenWave({ className }: { className?: string }) {
               strokeLinejoin="round"
             />
           </motion.g>
+          {settledLow && (
+            <line
+              x1="0"
+              y1={H - 3}
+              x2={W}
+              y2={H - 3}
+              stroke="#FFFFFF"
+              strokeOpacity="0.6"
+              strokeWidth="1.6"
+              strokeDasharray="4 4"
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
         </g>
       </svg>
+      {settledLow && (
+        <div aria-hidden className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10.5px] text-white/80">
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-[2px] w-3 rounded bg-white" />
+            your control centre
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-3 border-t-[1.5px] border-dashed border-white/70" />
+            estrogen, now low
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -2234,6 +2281,9 @@ function ScoreCauseCard({
   cohortLabel,
   drivers,
   symptomCount,
+  stage,
+  weightChain,
+  onHrt,
 }: {
   score: number;
   benchmark: number;
@@ -2242,22 +2292,39 @@ function ScoreCauseCard({
   drivers: string[];
   /** Every symptom she picked, not just the ones explained above. */
   symptomCount: number;
+  /** Her stage - decides what the trigger node says. See getHormoneStage. */
+  stage: HormoneStage;
+  /**
+   * Weight-first only: the three links of the weight chain, shown as the rail's
+   * rows in place of the single mechanism line. See getWeightChain.
+   */
+  weightChain?: CauseLink[];
+  /** Currently on HRT - the closing line must not tell her estrogen can't be touched. */
+  onHrt?: boolean;
 }) {
   // `gap` is always 12..68: calculateWellbeingScore compresses to a
   // SCORE_CEILING of 68 precisely so there is never a zero gap to render, which
   // is why there is no at-goal branch here. It is no longer printed as a
   // figure; it survives for the screen-reader summary and the handover line.
   const gap = Math.max(0, SCORE_GOAL - score);
-  const rows = drivers
-    .map((id) => ({
-      id,
-      label: SYMPTOM_LABELS[id] || id,
-      // A symptom with no mechanism line still renders - it just arrives at the
-      // estrogen node without explaining itself, which is the old behaviour.
-      why: SYMPTOM_MECHANISM[id],
-    }))
-    .filter((r) => r.label);
-  const hidden = Math.max(0, symptomCount - rows.length);
+  // Weight-first women get the chain - three links, each one something the
+  // plan works on - instead of one mechanism line. "One cause: estrogen" named
+  // the one thing this product does not act on; estrogen is now the trigger
+  // and the rows are what daily work moves.
+  const chain = weightChain?.length ? weightChain : undefined;
+  const rows = chain
+    ? chain
+    : drivers
+        .map((id) => ({
+          id,
+          label: SYMPTOM_LABELS[id] || id,
+          // A symptom with no mechanism line still renders - it just arrives at the
+          // estrogen node without explaining itself, which is the old behaviour.
+          why: SYMPTOM_MECHANISM[id],
+        }))
+        .filter((r) => r.label);
+  const hidden = chain ? 0 : Math.max(0, symptomCount - rows.length);
+  const trigger = ESTROGEN_TRIGGER[stage];
 
   return (
     <div className="rounded-2xl bg-card border-2 border-[#E8DDD9] mb-4 shadow-md shadow-primary/5 overflow-hidden">
@@ -2273,7 +2340,7 @@ function ScoreCauseCard({
       {rows.length > 0 && (
         <div className="px-4 pt-4">
           <p className="text-[11px] uppercase tracking-wide font-semibold text-[#9A9A9A]">
-            What&apos;s pulling your score down
+            {chain ? "Why your body holds on to weight" : "What's pulling your score down"}
           </p>
 
           <div className="mt-3 pl-6">
@@ -2366,11 +2433,16 @@ function ScoreCauseCard({
                 aria-hidden
                 className="absolute -left-[18px] top-[21px] h-px w-3 bg-[#B23A31]"
               />
+              {/* "The trigger", not "one cause" (2026-09-14): a single cause
+                  named estrogen, which the plan does not act on. And the words
+                  follow her stage - "rising and falling" is perimenopause and
+                  was being shown to women whose periods stopped years ago. */}
               <p className="text-[13.5px] leading-snug text-white/85">
-                One cause:{" "}
-                <span className="font-bold text-white">estrogen rising and falling</span>
+                The trigger:{" "}
+                <span className="font-bold text-white">{trigger.trigger}</span>
+                {trigger.after && <>, {trigger.after}</>}
               </p>
-              <EstrogenWave className="mt-1.5" />
+              <EstrogenWave className="mt-1.5" settledLow={trigger.settledLow} />
 
             </motion.div>
           </div>
@@ -2404,7 +2476,15 @@ function ScoreCauseCard({
                 lifting, and the green card immediately below is the door. */}
           <p className="mt-3 text-[13px] leading-relaxed text-[#5A5A5A]">
             Nobody sat you down and explained this. That part isn&apos;t on you.{" "}
-            <span className="font-bold text-[#3D3D3D]">This is biology and it responds.</span>
+            {chain ? (
+              <span className="font-bold text-[#3D3D3D]">
+                {onHrt
+                  ? "HRT puts some of the signal back. The three links still need daily work, and that's what your plan does."
+                  : "You can't restart the trigger. You can work on all three links, and that's what your plan does."}
+              </span>
+            ) : (
+              <span className="font-bold text-[#3D3D3D]">This is biology and it responds.</span>
+            )}
           </p>
         </div>
       )}
@@ -3915,6 +3995,13 @@ function RegisterPageContent() {
   // The symptoms behind that score, heaviest first. This is what the results
   // card leads on instead of the size of the gap - see <ScoreGapCard />.
   const scoreDrivers = useMemo(() => getTopBurdenSymptoms(scoredSeverity, 3), [scoredSeverity]);
+  // What the results card's trigger node says, and - for weight-first women -
+  // the three links it shows instead of one mechanism line. See ScoreCauseCard.
+  const hormoneStage = getHormoneStage(hereFor, menopauseType);
+  const weightChain = useMemo(
+    () => (topProblems[0] === "weight_changes" ? getWeightChain(ageBand) : undefined),
+    [topProblems, ageBand]
+  );
 
   // ─── What the three mid-quiz loaders print ────────────────────────────────
   // Seen-once guard, so Back into a reward shows the payoff instead of
@@ -4007,23 +4094,6 @@ function RegisterPageContent() {
     };
   }, [planCatalog, fitnessLevel]);
 
-  // Loader C: the size of the exercise pool her movement answer just produced.
-  // It is the one number in the quiz she can verify against the plan she buys -
-  // `allowedExercises` really does filter on her fitness level before the model
-  // sees the list.
-  const exercisePool = useMemo(() => {
-    if (!planCatalog) return null;
-    // Both pools. Since 2026-08-29 the `I` family is reserved for the power
-    // block and is no longer in `allowedExercises()`, so counting that alone
-    // would drop the number she is shown by the very movements the plan then
-    // puts in front of her twice a week.
-    return {
-      allowed:
-        planCatalog.allowedExercises(fitnessLevel || null).length +
-        planCatalog.allowedPower(fitnessLevel || null).length,
-    };
-  }, [planCatalog, fitnessLevel]);
-
   // Loader B, part two: the seven days themselves, for <TrainingWeekBoard />.
   //
   // `weekShape` gives the SIZE of her week; this gives its SHAPE, and the shape
@@ -4080,112 +4150,6 @@ function RegisterPageContent() {
     }
 
     return days;
-  }, [planCatalog, fitnessLevel]);
-
-  // Loader C: her actual first session, for <FirstSessionBoard />.
-  //
-  // The screen used to print the size of her pool and assert "nothing generic",
-  // which asks her to take our word for it one screen before the price. This
-  // discharges the claim instead: every name and every dose below comes out of
-  // the catalog through the same four functions the generator's own fallback
-  // path calls for week 1 - `allowedExercises()`, `PATTERN_PRIORITY`,
-  // `defaultDoseForWeek()` and `buildPowerBlock()`. She is looking at Monday.
-  //
-  // It is deliberately NOT a model call. A preview that disagreed with the plan
-  // she then buys would be the single most expensive inconsistency in the
-  // funnel, so the board only ever shows what the deterministic path guarantees.
-  const sessionPreview = useMemo(() => {
-    const c = planCatalog;
-    const volume = c?.MOVEMENT_VOLUME[fitnessLevel];
-    if (!c || !volume) return null;
-    const pool = c.allowedExercises(fitnessLevel || null);
-    if (!pool.length) return null;
-
-    const snack = volume.perDay;
-    // A snack day IS its burst count; a session shows four, which is
-    // `PATTERN_ESSENTIALS` - squat, push, hinge, core - the shape that makes a
-    // session whole-body.
-    const want = snack ? volume.sessions : c.PATTERN_ESSENTIALS;
-
-    const taken = new Set<string>();
-    const picks: typeof pool = [];
-    for (const pattern of c.PATTERN_PRIORITY) {
-      if (picks.length >= want) break;
-      // The HARDEST row she is cleared for in this pattern, not the first one
-      // in the pool. The pool is in id order, which puts every level-1 row
-      // ahead of every level-2 one - so `find` handed a medium and an advanced
-      // user the beginner session (chair squat, wall push-up) on the one screen
-      // that claims the movements are matched to her level. Measured: medium,
-      // advanced and beginner produced an identical five rows.
-      let hit: (typeof pool)[number] | undefined;
-      for (const e of pool) {
-        if (c.patternOf(e.id) !== pattern || taken.has(e.id)) continue;
-        if (!hit || e.level > hit.level) hit = e;
-      }
-      if (hit) {
-        picks.push(hit);
-        taken.add(hit.id);
-      }
-    }
-    // Only if her pool has fewer patterns than slots.
-    for (const e of pool) {
-      if (picks.length >= want) break;
-      if (!taken.has(e.id)) {
-        picks.push(e);
-        taken.add(e.id);
-      }
-    }
-    if (!picks.length) return null;
-
-    const warmSecs = c.listSeconds(c.DEFAULT_WARMUP);
-    const coolSecs = c.listSeconds(c.DEFAULT_COOLDOWN);
-    const bookendMin = snack ? 0 : Math.round((warmSecs + coolSecs) / 60);
-    const workMinutes = Math.max(5, volume.minutes - bookendMin);
-
-    const rows: SessionRow[] = picks.map((ex) => {
-      const d = c.defaultDoseForWeek(ex, 1, workMinutes, picks.length);
-      return {
-        name: ex.name,
-        dose: d.minutes
-          ? `${d.minutes} min`
-          : `${d.sets ?? 3} x ${d.seconds ?? ex.seconds ?? 40}s${ex.perSide ? "/side" : ""}`,
-      };
-    });
-
-    // Weeks 1-2 are held to the low-impact rows by POWER_RAMP_WEEKS, so the
-    // movement named here is the one she is genuinely handed on day one.
-    if (!snack) {
-      const block = c.buildPowerBlock(
-        c.allowedPower(fitnessLevel || null),
-        1,
-        c.powerMinutes(volume)
-      );
-      const first = block?.[0];
-      const ex = first ? c.getExercise(first.id) : undefined;
-      if (first && ex) {
-        rows.push({ name: ex.name, dose: `${first.sets ?? 3} x ${first.seconds ?? 20}s`, power: true });
-      }
-    }
-
-    const span =
-      volume.maxMinutes > volume.minutes
-        ? `${volume.minutes}-${volume.maxMinutes}`
-        : `${volume.minutes}`;
-
-    return {
-      heading: snack ? "Day 1 · your bursts" : "Week 1 · Session 1",
-      minutesLabel: `${span} min`,
-      warmup: snack
-        ? undefined
-        : { count: c.DEFAULT_WARMUP.length, minutes: Math.max(1, Math.round(warmSecs / 60)) },
-      cooldown: snack
-        ? undefined
-        : { count: c.DEFAULT_COOLDOWN.length, minutes: Math.max(1, Math.round(coolSecs / 60)) },
-      rows,
-      sessionsTotal: snack
-        ? `${volume.sessions * 7 * PLAN_WEEKS} bursts`
-        : `${volume.sessions * PLAN_WEEKS}`,
-    };
   }, [planCatalog, fitnessLevel]);
 
   // Her week 1 as four pillar rows, for the paywall's "Your first week" card
@@ -5242,6 +5206,9 @@ function RegisterPageContent() {
                 cohortLabel={AGE_BAND_LABELS[ageBand] ?? "women your age"}
                 drivers={scoreDrivers}
                 symptomCount={topProblems.length}
+                stage={hormoneStage}
+                weightChain={weightChain}
+                onHrt={hrtStatus === "currently"}
               />
             </motion.div>
 
@@ -5319,6 +5286,24 @@ function RegisterPageContent() {
                   </div>
                 ))}
               </div>
+
+              {/* The handover from cause to plan, weight-first only: each link
+                  the card above just named, and the part of her real week 1
+                  (buildWeekOneRows, off the catalog) that works on it. Renders
+                  nothing until the catalog chunk has loaded. */}
+              {weightChain && weekOneRows?.some((r) => r.link) && (
+                <ul className="mt-3 space-y-1.5 border-t border-green-600/15 pt-3">
+                  {weekOneRows
+                    .filter((r) => r.link)
+                    .map((r) => (
+                      <li key={r.key} className="text-xs leading-snug text-[#3D3D3D]">
+                        <span className="font-bold text-green-700">For {r.link}:</span>{" "}
+                        {r.task}
+                        {r.note ? `, ${r.note}` : ""}
+                      </li>
+                    ))}
+                </ul>
+              )}
 
               {/* <PlanFinishBoard /> sat here until 2026-09-12: a taped-down
                   paper chart with a needle travelling her eight weeks, rose at
@@ -6067,8 +6052,8 @@ function RegisterPageContent() {
               checkable against this codebase, which is the rule the whole
               funnel is written under — thirteen questions of one tap each, no
               charge and no address collected before Stripe (results, diagnosis
-              and the paywall all render first), and `diagnosis` is where what
-              is driving her symptoms is handed to her.
+              and the paywall all render first), and `diagnosis` is where her
+              plan is shown to her, built from these answers.
 
               What must NOT go here, in the two words it would take: a rating or
               a member count. "4.9 · 12,800+ women" came off the paywall on
@@ -6082,14 +6067,33 @@ function RegisterPageContent() {
           <div className="mb-1 sm:mb-1.5 shrink-0 pt-1 px-2">
             {stepIndex === 0 ? (
               <div className="text-center">
-                {/* The funnel's only h1. Benefit first, then the two costs she
-                    is actually weighing in the second before she leaves: how
-                    long, and what it will cost her to find out. */}
+                {/* The funnel's only h1. It names the object she walks out
+                    with, then the two costs she is weighing in the second
+                    before she leaves: how long, and whether it asks for her
+                    address.
+
+                    It said "Find out what's driving your symptoms" until
+                    2026-09-14, which promised an explanation. What the funnel
+                    actually builds is her 8-week plan, and a woman sent here by
+                    a post-menopause weight ad has already been told *why* by
+                    every article she has read; what she has not had is a plan
+                    made for the body she has now. Naming the plan up front also
+                    tells her what the thirteen questions are for - each one is
+                    building it - so the paywall arrives as the thing she was
+                    promised rather than as a turn.
+
+                    "Free" is scoped to the quiz, never to the plan: the plan is
+                    $29 at the paywall, and "free" next to it here is the bait
+                    reading the paywall's opening line exists to prevent.
+
+                    One line, and that is measured: "Get your personal…"
+                    wrapped at 375 and 360 wide, and the second line comes
+                    straight out of the tile grid below. */}
                 <h1 className="text-base sm:text-lg font-bold leading-tight text-[#3D3D3D]">
-                  Find out what&apos;s driving your symptoms
+                  Your personal {PLAN_WEEKS}-week menopause plan
                 </h1>
                 <p className="mt-0.5 text-[11px] sm:text-xs leading-snug text-[#5A5A5A]">
-                  Free 2-minute check
+                  Free 2-minute quiz
                   <span aria-hidden className="mx-1.5 text-[#9A9A9A]">
                     ·
                   </span>
@@ -6782,63 +6786,37 @@ function RegisterPageContent() {
                 );
               })()}
 
-              {/* Reward 3: the movement rules her last two answers just set,
-                  then the stage-keyed pride line.
+              {/* Reward 4: why she will keep going this time, from the person
+                  who built it (2026-09-14). This slot was <FirstSessionBoard />,
+                  her week-1 session with one movement plain and the rest
+                  blurred; the note above <FounderNoteBoard /> says why a note
+                  replaced it. The step key stays `reward_progress` on purpose:
+                  re-keying a funnel row throws away its 30-day window in
+                  /admin (CLAUDE.md, "One key per row").
 
-                  This used to lead on "6 years is how long the average woman
-                  waits for support" - a generic factoid, and a regret argument
-                  aimed at a woman who has just answered thirteen questions.
-                  What replaces it is the one number in the funnel she can
-                  verify against the plan she buys: `allowedExercises()` really
-                  does cut the pool to her level before the model sees it. See
-                  lib/plan/catalog.ts.
-
-                  It had a second branch until 2026-08-29, counting what her
-                  `q_limitations` answers took *out*. That screen is gone, so
-                  there is no subtraction to name and the number is the pool she
-                  got rather than the one she was spared.
-
-                  Since 2026-08-29 the pool size is a footnote and the screen is
-                  her real week-1 session - see `sessionPreview`. */}
-              {currentStep === "reward_progress" && (() => {
-                const pride = STAGE_PRIDE_LINE[hereFor] ?? "You're finally putting yourself first - that takes strength.";
-                return (
-                  <QuizReward
-                    messages={[
-                      "Checking your history...",
-                      "Matching moves to your level...",
-                      "Building session 1...",
-                    ]}
-                    initialDone={!!rewardSeen.current.reward_progress}
-                    onDone={() => markRewardSeen("reward_progress")}
-                    ready={!!exercisePool && !!sessionPreview}
-                  >
+                  No `ready` gate: nothing on the board comes from the plan
+                  catalog chunk, so there is nothing to wait for. The meter
+                  captions keep the reward rule - they say what is coming,
+                  never narrate work that is not happening. */}
+              {currentStep === "reward_progress" && (
+                <QuizReward
+                  messages={[
+                    "That's the hard questions done...",
+                    "Before you see your results...",
+                    "A note from the person who built this...",
+                  ]}
+                  initialDone={!!rewardSeen.current.reward_progress}
+                  onDone={() => markRewardSeen("reward_progress")}
+                >
                   <div className={REWARD_SCROLL_SHELL + " py-1"}>
                     <div className={REWARD_PAYOFF_CENTER}>
-                    {sessionPreview && (
-                      <FirstSessionBoard
-                        heading={sessionPreview.heading}
-                        minutesLabel={sessionPreview.minutesLabel}
-                        warmup={sessionPreview.warmup}
-                        rows={sessionPreview.rows}
-                        cooldown={sessionPreview.cooldown}
-                        poolCount={exercisePool?.allowed ?? 0}
-                        sessionsTotal={sessionPreview.sessionsTotal}
+                      <FounderNoteBoard
+                        headline={FOUNDER_HEADLINE[goal[0]] ?? FOUNDER_HEADLINE_DEFAULT}
                       />
-                    )}
-                    {/* The stage-keyed pride line survives the redesign, one
-                        size down and outside the paper. It is the only
-                        emotional beat on a board that is otherwise all
-                        prescription, and stacking it inside as a second pill
-                        would have fought the board's own sign-off. */}
-                    <p className="mx-auto mt-2 max-w-sm text-center text-[11.5px] italic leading-snug text-[#7A7A7A]">
-                      {pride}
-                    </p>
                     </div>
                   </div>
-                  </QuizReward>
-                );
-              })()}
+                </QuizReward>
+              )}
 
               {/* Q5b: HRT history (image grid, same style as Q1 age / Q2 status) */}
               {currentStep === "q5_hrt" && (

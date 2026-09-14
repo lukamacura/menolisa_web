@@ -871,9 +871,10 @@ Rules that came out of the re-order, all of them about *sequence*, not styling:
   renewal it carried is already on the price card, the sticky bar and Stripe's
   submit text.
 - **One row plain, the rest out of focus — `<BlurStack />`, and it is one
-  component for all three surfaces** (2026-09-09): the paywall's
-  `<WeekOneCard />`, and the funnel's `<TrainingWeekBoard />` and
-  `<FirstSessionBoard />` reward boards. Every row is still sourced — that rule
+  component for every surface that uses it** (2026-09-09): the paywall's
+  `<WeekOneCard />` and the funnel's `<TrainingWeekBoard />` (the third,
+  `<FirstSessionBoard />`, was replaced by the founder's note on 2026-09-14).
+  Every row is still sourced — that rule
   has not moved — but printing the whole list answers the question the screen
   exists to make her ask. Rules that come with it: the blur ladders live in
   `components/BlurStack.tsx` and nowhere else (three copies drift, and the
@@ -945,11 +946,21 @@ is right; what follows is the pass that finished it.
   made no promise of any kind. An endowed-progress meter reading 1-of-13 shows
   the worst number it will ever show her: at the entrance there is no progress
   to be proud of, only distance left. The counter and the dots now render from
-  step 1 onward and the entrance carries the offer instead — the benefit, "free
-  2-minute check", "no email needed". Every clause is checkable, which is the
-  rule the whole funnel is written under: thirteen one-tap questions, and
-  nothing charged and no address collected before Stripe (results, diagnosis and
-  the paywall all render first).
+  step 1 onward and the entrance carries the offer instead — *Your personal
+  8-week menopause plan / Free 2-minute quiz · No email needed*. Every clause is
+  checkable, which is the rule the whole funnel is written under: thirteen
+  one-tap questions, and nothing charged and no address collected before Stripe
+  (results, diagnosis and the paywall all render first).
+- **The headline names the plan, not an explanation (2026-09-14).** It read
+  "Find out what's driving your symptoms" for two days, which promised a
+  diagnosis while the funnel builds, and sells, a plan. The live ad targets
+  post-menopause weight gain, and that woman has already been told *why* many
+  times; what she has not had is a plan for the body she has now. Naming the
+  plan up front also tells her what the questions are for, so the paywall
+  reads as delivery rather than a turn. **"Free" is scoped to the quiz, never
+  the plan** — the plan is $29, and "free" beside it is the bait reading the
+  paywall's opening line exists to prevent. `LandingHero` repeats the headline
+  word for word; change both together.
 - **Nothing unsourced goes in that header.** A rating or a member count is the
   obvious thing to add and it is the one thing that must not be: "4.9 · 12,800+
   women" came off the paywall on 2026-09-12 because neither figure has a source,
@@ -1734,6 +1745,9 @@ feature (checked 2026-09-08).
 | Set `allow_promotion_codes` on the Checkout Session | The box is off by default and there is nothing to redeem — no coupon is applied at all since 2026-09-11. (It also cannot coexist with `discounts`: Stripe rejects the session and the whole checkout 500s.) |
 | Send a renewal notice email | There are no renewals. The access-ending alert is the one message about the end of her window, and it must not use the word "renew" — that implies an automatic charge and contradicts the paywall, the welcome email and Terms §10.2. |
 
+| Show "estrogen rising and falling" to every stage | It is perimenopause. After the last period estrogen has dropped and stays low; most of the traffic (31 of 45 weight-first women) is past it. `ESTROGEN_TRIGGER` words it per stage. |
+| Call estrogen the "one cause" on results | A single cause of estrogen points her to HRT, which we do not sell. Estrogen is the trigger; the rows under it are what the plan works on. |
+| Tag relaxation or habits with a weight link, or add the tags to `<PlanStage />` | Only strength → muscle, walking → the middle and protein → hunger have the evidence behind them. `<PlanStage />` mocks the app's screen, and the app shows no such tag. |
 | Put "Question 1 of 13" (or the progress dots) back on screen 1 | It is the whole cost of the funnel in the largest type on the screen that takes 100% of paid traffic, above a screen that then made no promise at all. 1-of-13 is the worst number an endowed-progress meter will ever show her; there is no progress to endow at an entrance. The counter earns its place from step 2 onward. |
 | Put a star rating, a member count or a countdown in the screen-1 header | Nothing sources "4.9 · 12,800+ women" — it came off the paywall on 2026-09-12 for that reason, and first position is the worst place for an unsourced claim because it becomes the first thing she evaluates. The header's three clauses are all checkable against this codebase. |
 | Re-key a `QuizNudge` onto `q_symptom_primary` | The banner is `fixed top-0` and covers the offer headline at y=12. Measured at 390x700 it hid the headline from ~2.6s to ~8.6s against a 9.0s median dwell. A later delay does not help — every delay long enough to protect the headline lands inside the dwell it then covers. The card's own sub-line carries the same message permanently. |
@@ -1772,7 +1786,60 @@ feature (checked 2026-09-08).
 
 ### Recent work
 
-**2026-09-12 (latest) — landing page (`/`) rebuilt as a plain on-ramp to
+**2026-09-14 (latest) — the last quiz reward is the founder's note.**
+`reward_progress` (step 16, the last payoff before the name step) showed
+`<FirstSessionBoard />`: her week-1 session, one movement plain, the rest
+blurred. It is now `<FounderNoteBoard />` (`components/funnel/RewardBoards.tsx`):
+the owner's print, captioned "Developer" at his request, not by name
+(`public/brand/founder-luka-portrait.webp`, 8KB crop of
+`public/proof/luka.webp`), a goal-keyed headline (`FOUNDER_HEADLINE` in
+`app/register/page.tsx` — "Nobody loses weight in one good week."), a
+first-person note on why consistency is the product, and a "Today, in your
+app" checklist of the four `PLAN_PILLARS` that ticks itself off. The argument:
+by step 16 "what will I do?" is answered; "why will this time stick?" is not,
+and the honest answer is that the app decides her day. Rules at the component:
+the person is real and agreed; the headline is a truism, never an outcome; the
+checklist names pillars, never her tasks (the paywall's week-1 card blurs
+those). **The step key stays `reward_progress`** so its `/admin` window
+survives; only the labels changed. `sessionPreview`, `exercisePool`,
+`STAGE_PRIDE_LINE` and `SECTION_BAR` were deleted with the old board. Read
+`reward_progress → q8_name` once a comparable number of visits is through.
+
+**2026-09-14 (latest) — the results card's cause, made true for her stage and
+tied to the plan.** The live ad targets post-menopause weight gain and says the
+change is run from the brain's control centre. The results card told everyone
+"one cause: estrogen rising and falling" — which is perimenopause (of the 45
+weight-first women since 2026-09-05, 31 said post-menopausal and 2 peri), never
+mentioned the brain on the weight line, and named as the single cause the one
+thing the plan does not act on (the fix for "estrogen" is HRT). Changes:
+
+- **The node says "The trigger:" and follows her stage** (`getHormoneStage`,
+  `ESTROGEN_TRIGGER` in `lib/quiz-results-helpers.ts`): peri keeps "rising and
+  falling"; post reads "estrogen dropped, and your brain's control centre is
+  still adjusting"; surgical/medical "dropped overnight"; unknown "shifting".
+- **`<EstrogenWave settledLow />`** — for post and sudden stages the same loop
+  is relabelled as her control centre, with a flat dashed "estrogen, now low"
+  line and a legend under it. The animation itself is unchanged.
+- **Weight-first women get a three-link chain** (`getWeightChain`) on the rail
+  instead of one line — control centre (hunger, resting burn), storage moves
+  to the middle, muscle slips away (worded for 50+ off `age_band`) — and the
+  closing line "You can't restart the trigger. You can work on all three links,
+  and that's what your plan does." (an HRT variant for `hrt_status =
+  currently`).
+- **The plan names the links it works on.** `WeekOneRow.link`, set in
+  `buildWeekOneRows` from `WEIGHT_LINK_BY_PILLAR` (movement → muscle + your
+  middle, nutrition → hunger; relaxation and habits deliberately untagged).
+  Rendered as "For …:" rows on the results plan-ready card and a "Works on …"
+  chip on the paywall's week-one card. Not on `<PlanStage />`: it is a mock of
+  the app's Today screen, and the app has no such tag.
+- `SYMPTOM_MECHANISM`: sleep, anxiety and weight lines name the brain's control
+  centre; the mood line stopped saying estrogen "swings through the day". The
+  first reward board's "Why it's first" is "Why it happens" (one symptom, no
+  ranking).
+- Screen 1's headline changed the same day to *Your personal 8-week menopause
+  plan / Free 2-minute quiz* — see §4 "The funnel's entrance".
+
+**2026-09-12 — landing page (`/`) rebuilt as a plain on-ramp to
 `/register`.** Fourteen animated sections (~4,100 lines) became seven server
 components in `components/landing/`: hero (screen 1's headline verbatim, Day 1
 in the funnel's phone bezel), how it works, real app screens, member stories
@@ -1795,7 +1862,9 @@ changes, each from a measurement rather than a preference:
 - **`stepIndex === 0` gets its own header.** "Question 1 of 13" over thirteen
   dots — the cost of the funnel in the largest type on the page — is replaced by
   the offer: *Find out what's driving your symptoms / Free 2-minute check · No
-  email needed*. The counter and dots render from step 1 on.
+  email needed* (headline replaced 2026-09-14 by *Your personal 8-week
+  menopause plan / Free 2-minute quiz* — see §4). The counter and dots render
+  from step 1 on.
 - **`PROBLEM_OPTIONS` re-ordered by measured demand.** `weight_changes` is 27.3%
   of primaries and was sitting in slot 5; the top row now holds 63.1%.
 - **The sub-line gives permission to stop ranking** — "More than one? Tap the

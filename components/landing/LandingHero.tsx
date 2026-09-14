@@ -4,9 +4,10 @@ import { SHOT_W, SHOT_H } from "@/lib/constants";
 import { PLAN_HERO_SLIDES } from "@/lib/planShots";
 import { PLAN_WEEKS } from "@/lib/pricing";
 
-// Each one is checkable: the check and her results render before the paywall,
-// and Stripe is the first thing that asks for an address.
-const PROMISES = ["Free 2-minute check", "No email needed", "Results before any price"];
+// Each one is checkable: the quiz and her results render before the paywall,
+// and Stripe is the first thing that asks for an address. "Free" is scoped to
+// the quiz — the plan the headline names is $29.
+const PROMISES = ["Free 2-minute quiz", "No email needed", "Results before any price"];
 
 /**
  * The headline is the funnel's screen-1 headline, word for word, so the page
@@ -23,7 +24,7 @@ export default function LandingHero() {
             For perimenopause &amp; menopause
           </p>
           <h1 className="mt-4 text-4xl font-extrabold leading-[1.1] text-[#2E2A2B] sm:text-5xl">
-            Find out what&apos;s driving your symptoms
+            Your personal {PLAN_WEEKS}-week menopause plan
           </h1>
           <p className="mt-4 text-lg leading-relaxed text-[#5B5557]">
             Answer a few one-tap questions and get a personalized {PLAN_WEEKS}-week
