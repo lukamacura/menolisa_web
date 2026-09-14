@@ -7,7 +7,7 @@ import { CANONICAL_ORIGIN, POSTS, formatPostDate } from "@/lib/blog";
 export const metadata: Metadata = {
   title: "The MenoLisa Blog | Menopause, in plain English",
   description:
-    "Straight answers to the menopause questions women actually search for: weight, sleep, hot flashes and what helps.",
+    "Straight answers to the menopause questions women actually search for: weight, belly fat, walking, protein and what a realistic plan looks like.",
   alternates: { canonical: `${CANONICAL_ORIGIN}/blog` },
 };
 

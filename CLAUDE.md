@@ -1791,14 +1791,20 @@ feature (checked 2026-09-08).
 ### Recent work
 
 **2026-09-14 — blog, first post, sitemap and robots.** `/blog` and
-`/blog/why-am-i-gaining-weight-in-menopause`, authored by Zoka (role "Came up
-with MenoLisa", never a credential). Posts register in `lib/blog.ts`, which also
-feeds `app/sitemap.ts`; canonical URLs use `CANONICAL_ORIGIN`
-(`https://www.menolisa.com`, hardcoded because the apex 307s). Each page reuses
-`LandingCtaBar` + two in-article `BlogQuizCta` cards, all to `/register`. Claims
-are held to the legal-page rule: general physiology or a real named study (SWAN,
-the 2021 lifespan-metabolism study), no outcome promise, no "Lisa" (pre-checkout
-surface). The weight mechanism mirrors `getWeightChain`; change both together.
+five posts (weight despite eating the same, belly not hips, walking 20 min,
+protein over 50, what a realistic plan week looks like), authored by Zoka (role
+"Came up with MenoLisa", never a credential; first person, but no invented
+personal history). Posts register in `lib/blog.ts`, which also feeds
+`app/sitemap.ts`; canonical URLs use `CANONICAL_ORIGIN`
+(`https://www.menolisa.com`, hardcoded because the apex 307s). Every post
+renders in `<BlogArticle />` and **ends the same way**: `<MechanismClose />` —
+the results card's weight chain, word for word bar US spelling — then one line
+to `/register`; the fixed `LandingCtaBar` is the only button. Format: 800-1,200
+words, plain language. The plan post reads every figure off `MOVEMENT_VOLUME`,
+`CARDIO_VOLUME`, `POWER_RAMP_WEEKS` and `PLAN_ARC`, so it can't drift from the
+generator. Claims are held to the legal-page rule: general physiology or a real
+named study, no outcome promise, no "Lisa" (pre-checkout surface). Change
+`MechanismClose` and `getWeightChain` together.
 
 **2026-09-14 (latest) — trust pass from an outside read of the funnel.** Seven
 findings, six fixed; the audience is a sceptical 52-year-old who notices
