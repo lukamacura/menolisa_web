@@ -68,6 +68,7 @@ web app/
 │   │   └── user-preferences/# Notification preferences
 │   ├── admin/               # Admin stats page
 │   ├── auth/                # Auth callback + mobile bridge
+│   ├── blog/                # SEO articles; every CTA goes to /register (registry: lib/blog.ts)
 │   ├── checkout/            # Stripe checkout success
 │   ├── dashboard/           # Protected authenticated area
 │   │   ├── account/         # Plan, billing, cancellation — never payment-gated
@@ -1788,6 +1789,16 @@ feature (checked 2026-09-08).
 | Send anything from her symptoms, plan or check-in to Meta | Already covered above, and the check-in is the newest thing that looks harmless and isn't. |
 
 ### Recent work
+
+**2026-09-14 — blog, first post, sitemap and robots.** `/blog` and
+`/blog/why-am-i-gaining-weight-in-menopause`, authored by Zoka (role "Came up
+with MenoLisa", never a credential). Posts register in `lib/blog.ts`, which also
+feeds `app/sitemap.ts`; canonical URLs use `CANONICAL_ORIGIN`
+(`https://www.menolisa.com`, hardcoded because the apex 307s). Each page reuses
+`LandingCtaBar` + two in-article `BlogQuizCta` cards, all to `/register`. Claims
+are held to the legal-page rule: general physiology or a real named study (SWAN,
+the 2021 lifespan-metabolism study), no outcome promise, no "Lisa" (pre-checkout
+surface). The weight mechanism mirrors `getWeightChain`; change both together.
 
 **2026-09-14 (latest) — trust pass from an outside read of the funnel.** Seven
 findings, six fixed; the audience is a sceptical 52-year-old who notices

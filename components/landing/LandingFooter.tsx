@@ -51,6 +51,11 @@ export default function LandingFooter() {
                   FAQ
                 </Link>
               </li>
+              <li>
+                <Link href="/blog" prefetch={false} className="text-muted-foreground hover:text-foreground transition-colors">
+                  Blog
+                </Link>
+              </li>
             </ul>
           </div>
 
