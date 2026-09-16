@@ -288,7 +288,7 @@ function WeekOneCard({
       </div>
       {symptomLabel && (
         <p className="mt-1.5 text-xs text-[#5A5A5A]">
-          Built around <b className="text-[#3D3D3D]">{symptomLabel.toLowerCase()}</b> - the symptom
+          Built around <b className="text-[#3D3D3D]">{symptomLabel.toLowerCase()}</b>, the symptom
           you said hits hardest.
         </p>
       )}
@@ -813,7 +813,7 @@ export function PaywallView({
               Her name when the funnel has it; the dashboard paywall has no
               quiz behind it and gets the nameless line. */}
           <p className="text-[13px] font-semibold uppercase tracking-[0.08em] text-[#A8899B] mb-1.5">
-            {firstName ? `Plan is ready for you, ${firstName}` : "Your plan is ready for you"}
+            {firstName ? `${firstName}, your plan is ready` : "Your plan is ready"}
           </p>
           {/* The headline is her outcome and when she has it (2026-09-09). It
               was the price - "Start tonight for {PRICE}." - from the
@@ -1132,7 +1132,7 @@ export function PaywallView({
               three copies of an address on a pay page reads as bracing for
               refunds. It prints once now, under Help in the details sheet. */}
           <p className="mx-auto mt-3 max-w-[20rem] text-center text-[13px] leading-snug text-[#5A5A5A]">
-            A small team, not a faceless company. Email us and one of us reads it.
+            A small team, not a faceless company. Email us and one of us will read it.
           </p>
           <ul className="mt-3.5 space-y-2.5 border-t border-[#F0E6E2] pt-3.5">
             {[

@@ -37,31 +37,37 @@ export const SYMPTOM_LABELS: Record<string, string> = {
 //
 // Kept to roughly 12-16 words: this is read on a phone, three at a time, by
 // someone who has been answering questions for two minutes.
+//
+// Written in the words a US woman would use to describe it to a friend
+// (2026-09-16): "belly", "metabolism", "wake up", never "storage", "resting
+// burn", "tank" or "control centre". A reader who has to translate a line
+// before she can recognise herself in it doesn't recognise herself in it.
+// US spelling throughout - the traffic is US-only.
 export const SYMPTOM_MECHANISM: Record<string, string> = {
   hot_flashes:
-    "Estrogen steadies the brain's thermostat. As it drops, a normal room reads as too hot.",
+    "Estrogen keeps your brain's thermostat steady. With less of it, your brain thinks a normal room is too hot.",
   sleep_issues:
-    "Estrogen helps your brain's control centre hold deep sleep and level night temperature. Both wobble without it.",
+    "Estrogen helps your brain stay in deep sleep and keep you cool at night. With less of it, you wake more.",
   brain_fog:
-    "Memory centres run on estrogen-driven blood flow, so word-finding is the first thing to slow.",
+    "Estrogen supports the parts of your brain that handle memory. With less of it, words and names come slower.",
   // Was "when estrogen swings through the day, mood swings with it" - true of
   // perimenopause only, and half the women reading it are past it.
   mood_swings:
-    "Estrogen props up serotonin, the brain's mood steadier. With less of it, mood tips faster.",
+    "Estrogen supports serotonin, which keeps your mood steady. With less of it, little things hit harder.",
   // The ad that sends most of this traffic says the change is run from the
-  // brain's control centre, and this line never mentioned the brain. It now
-  // states the whole weight chain in one line for the reward board; the
-  // results card spells it out as three rows (getWeightChain).
+  // brain's control center. This line states the whole weight chain in one
+  // sentence for the reward board; the results card spells it out as three
+  // rows (getWeightChain).
   weight_changes:
-    "With less estrogen, your brain's control centre raises hunger, lowers resting burn and stores fat at your middle.",
+    "With less estrogen, your brain turns hunger up, slows your metabolism and stores fat on your belly.",
   low_energy:
-    "Broken sleep plus an estrogen-shifted stress rhythm means the tank starts each morning part-empty.",
+    "Poor sleep plus estrogen's effect on your stress hormones means you wake up already running low.",
   anxiety:
-    "Estrogen buffers your brain's stress switch. With less of it, adrenaline hits harder and clears slower.",
+    "Estrogen helps calm your brain's stress response. With less of it, stress hits harder and lingers longer.",
   joint_pain:
-    "Estrogen is anti-inflammatory and keeps cartilage cushioned, which is why mornings stiffen first.",
+    "Estrogen fights inflammation and keeps joints cushioned. With less of it, you feel stiff, especially in the morning.",
   bloating:
-    "Shifting estrogen and progesterone slow the gut down and make the body hold on to water.",
+    "Changing estrogen and progesterone slow your digestion and make your body hold on to water.",
 };
 
 // ─── Her stage, as the results card states the trigger ───────────────────────
@@ -101,15 +107,15 @@ export const ESTROGEN_TRIGGER: Record<
   peri: { trigger: "estrogen rising and falling", settledLow: false },
   post: {
     trigger: "estrogen dropped",
-    after: "and your brain's control centre is still adjusting",
+    after: "and your brain is still adjusting to less of it",
     settledLow: true,
   },
   sudden: {
     trigger: "estrogen dropped overnight",
-    after: "and your brain's control centre is still adjusting",
+    after: "and your brain is still adjusting to less of it",
     settledLow: true,
   },
-  unknown: { trigger: "estrogen shifting", settledLow: false },
+  unknown: { trigger: "estrogen changing", settledLow: false },
 };
 
 // ─── Why her body holds on to weight: the chain ──────────────────────────────
@@ -124,6 +130,12 @@ export const ESTROGEN_TRIGGER: Record<
 //
 // Same rules as SYMPTOM_MECHANISM: general physiology, never a claim about her,
 // and estrogen named in every line.
+//
+// The label is what she *notices* (hungrier, belly, losing muscle), the line
+// under it is why. It was the other way round until 2026-09-16 - labels like
+// "Storage moves to your middle" named a mechanism she had to decode before
+// she could recognise her own body in it. "Links" and "chain" are our words
+// for the structure and never appear on screen.
 
 export type CauseLink = { id: string; label: string; why: string };
 
@@ -131,33 +143,36 @@ export function getWeightChain(ageBand?: string | null): CauseLink[] {
   return [
     {
       id: "control",
-      label: "Your control centre",
-      why: "Your brain sets hunger and resting burn partly on estrogen. With less, hunger rises and burn drops.",
+      label: "You're hungrier, and you burn less",
+      why: "Your brain uses estrogen to help set appetite and metabolism. With less of it, hunger goes up and your body burns less at rest.",
     },
     {
       id: "storage",
-      label: "Storage moves to your middle",
-      why: "With less estrogen, new fat is stored around your middle instead of your hips and thighs.",
+      label: "Weight goes to your belly",
+      why: "Estrogen used to send fat to your hips and thighs. With less of it, new fat settles around your belly instead.",
     },
     {
       id: "muscle",
-      label: "Muscle slips away",
+      label: "You're losing muscle",
       why:
         ageBand === "51_plus"
-          ? "Estrogen helped protect it. Past 50 it shrinks every year unless it works, and muscle burns calories at rest."
-          : "Estrogen helped protect it. From midlife it shrinks every year unless it works, and muscle burns calories at rest.",
+          ? "Estrogen helped protect it. After 50 you lose a little every year unless you use it, and muscle burns calories even while you sit."
+          : "Estrogen helped protect it. From your 40s on you lose a little every year unless you use it, and muscle burns calories even while you sit.",
     },
   ];
 }
 
 /**
- * Which link each plan pillar works on, for a weight-first woman. Only the
+ * Which change each plan pillar works on, for a weight-first woman. Only the
  * pairings with real evidence behind them: strength work keeps muscle, walking
- * trims fat around the middle, protein at every meal blunts hunger. Relaxation
- * and habits are left untagged rather than stretched into a weight claim.
+ * trims belly fat, protein at every meal blunts hunger. Relaxation and habits
+ * are left untagged rather than stretched into a weight claim.
+ *
+ * Printed as "For {value}:" on results and "Works on {value}" on the paywall,
+ * so it has to read naturally after both.
  */
 export const WEIGHT_LINK_BY_PILLAR: Record<string, string> = {
-  movement: "muscle + your middle",
+  movement: "muscle and belly fat",
   nutrition: "hunger",
 };
 
@@ -207,7 +222,8 @@ export const SYMPTOM_FIRST_MOVE: Record<string, { do: string; why: string }> = {
     why: "The late scroll is a stress spike you can't buffer the way you used to.",
   },
   weight_changes: {
-    do: "Set tomorrow's protein out tonight: eggs on the counter, yoghurt at the front.",
+    // Eggs live in the fridge in the US - "eggs on the counter" read as foreign.
+    do: "Put tomorrow's protein where you'll see it: eggs and Greek yogurt at the front of the fridge.",
     why: "Muscle is the thing you're protecting, and it's built from the first meal.",
   },
   low_energy: {
@@ -215,8 +231,8 @@ export const SYMPTOM_FIRST_MOVE: Record<string, { do: string; why: string }> = {
     why: "The rhythm that runs your energy is set at first light, not at noon.",
   },
   anxiety: {
-    do: "Write the loop down (one line, whatever it is) and shut the notebook.",
-    why: "On paper it stops re-arriving every twenty minutes.",
+    do: "Write down the worry that keeps coming back, in one line, and close the notebook.",
+    why: "Once it's on paper, it stops popping back up every twenty minutes.",
   },
   joint_pain: {
     do: "Two minutes of slow ankle and hip circles on the edge of the bed.",

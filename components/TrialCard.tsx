@@ -232,7 +232,7 @@ export function TrialCard({
       return (
         <p className="text-sm text-white/80">
           {!when
-            ? "Your subscription is active"
+            ? "Your plan is active"
             : state === "canceling"
               ? `Access until ${when}`
               : `Access until ${when} · paid once, nothing recurring`}

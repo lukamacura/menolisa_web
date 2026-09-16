@@ -1219,7 +1219,7 @@ screen that told her what it was claiming.
 - [ ] Drop any hardcoded nutrition labels, groups or the count of nine
 - [ ] Surface each nutrition row's `why` (tap-to-open, expander, info sheet)
 - [ ] Read `exercises[].dose` for sets and seconds; keep the flat fields as fallback
-- [ ] Show "each side" wherever `dose.perSide` is true
+- [x] ~~Show "each side" wherever `dose.perSide` is true~~ — withdrawn, see §27: the app folds a per-side dose into one plain set and prints no side
 - [ ] Remove every rep count from the UI — `dose.unit` is never `"reps"` again
 - [ ] Read `cycle` from `GET /api/plan` on both `generating` and `ready`
 - [ ] Show the 8-week recap once per finished cycle, during the rollover wait
@@ -1280,7 +1280,14 @@ if a screen wants to say "first charge Sep 11" rather than "renews Sep 11".
 - [ ] Nothing to build. Do not add a trial state; branch on `in_trial` for copy only, if at all.
 
 
-## §26 — Weekly billing, no trial; the name is optional (2026-09-08)
+## §26 — Weekly billing, no trial; the name is optional (2026-09-08) — SUPERSEDED 2026-09-11
+
+> **Superseded.** Since 2026-09-11 the plan is **one charge for 56 days of
+> access, nothing renews** ($19 quiz-taker / $60 regular since 2026-09-13/14;
+> `mode: "payment"`, no Subscription object). `GET /api/account/status` still
+> returns `has_access` and `ends_at` — that date is now the end of her access,
+> not a renewal. Never print "renews", "cancel anytime" or "$4.99/week" in the
+> app. See `menolisa_web/CLAUDE.md` §4 "The plan and its price".
 
 The web paywall now sells the plan at **$1 for the first week, then $4.99 a
 week** (Stripe coupon on the first invoice, no trial of any kind). Nothing in
@@ -1303,3 +1310,91 @@ Two things the app has to do:
 - [ ] Cancellation lives in the app ("Cancel anytime from the app" is printed at
       checkout): make sure the Account screen's manage/cancel path is one tap
       away.
+
+## §27 — The app no longer runs or shows sides (2026-09-15)
+
+**API unchanged.** `dose.perSide` is still sent and still means what §11 says:
+the seconds are per side and the set is meant to run twice. What changed is
+the app's reading of it.
+
+`runnableDose()` in `src/lib/sessionSteps.ts` (applied by `resolveDose()`,
+which every consumer goes through) folds a per-side dose into one plain set:
+
+```
+{ perSide: true,  sets: 3, seconds: 24 }   →   { perSide: false, sets: 3, seconds: 48 }
+```
+
+- The **total work is unchanged** — the server's `estimatedSeconds` was
+  already `sets × seconds × 2 + rest`, and that is exactly what the fold runs
+  (minus the 10-second switch beat the app used to insert on its own).
+- The guided session runs one work step per set. The `switch` step kind, the
+  `side` field on a work step, "Switch sides", "Left side" / "Right side",
+  "Skip side" and every " each side" suffix are deleted from the app.
+- She splits the set between sides herself; the clip shows the movement.
+- `npm run verify-session` asserts the fold: a per-side wire dose resolves to
+  `perSide: false`, twice the seconds, and a run length equal to the server's
+  estimate.
+
+Why: the left/right presentation was not wanted in the session UI. Nothing on
+the server needed to move — the catalog's `perSide` flag still sizes the dose
+(`defaultDoseForWeek` gives a per-side move 60% of the seconds so a session of
+them does not run double), and the mobile fold restores the two sides' worth
+of time on one clock. If sides come back, they come back in `runnableDose()`
+and the step machine, not in the screens.
+
+## §28 — One payment, 56 days, then the app stops (2026-09-15)
+
+**How access reaches the phone, end to end.** Stripe Checkout runs in
+`mode: "payment"`; on `checkout.session.completed` (or the success screen's
+`sync-session` fallback) `fulfillCheckout` writes `user_trials` with
+`account_status: "paid"` and `subscription_ends_at = now + 56 days`, and
+nothing ever overwrites that date. `GET /api/account/status` derives
+`has_access` from it via `getAccountState()`: `true` until `ends_at`, then
+`state: "ended"` and `has_access: false`, and every gated `/api/*` route
+answers `403` from the same instant. `AppNavigator` gates on `has_access`, so
+the app moves her to `SubscriptionRequiredScreen` on the next status read
+(every screen focus, plus any 403). Nothing to build for the gate itself.
+
+**New on `GET /api/account/status` (additive): `auto_renews: boolean`.**
+True only for a legacy row that will charge again at `ends_at` — an
+uncancelled Stripe subscription (`stripe_subscription_id` set,
+`subscription_canceled` false) or an Apple/Google one still set to renew.
+False for every one-time purchase. Read it before printing anything about the
+date: for a one-time customer `ends_at` is the day the app stops; for an
+auto-renewing legacy row it is a charge, and "your access ends on …" is false.
+The server's in-app `access_ending` alert applies the same rule and skips
+auto-renewing rows.
+
+**What the app does now, and the rules it follows:**
+
+- **The access-ending screen (`PlanContinue`) opens once, 3 days before
+  `ends_at`, for anyone with `has_access` and `!auto_renews`** — it used to
+  require `!subscription_canceled`, which a one-time customer always is, and
+  it said "your plan renews on {date}", which was false. It now says the
+  access end date, that nothing is charged, and links to the price screen.
+  The marker is the `ends_at` string, so a repeat purchase re-arms it.
+- **The in-app "ends soon" overlay (`AccessEndedView`, ≤ 2 days) shows for
+  every one-time customer.** It was gated on `state === 'canceling'`, which a
+  one-time purchase never reaches — every access window would have run out
+  with no warning in the app. Same `auto_renews` exclusion.
+- **`SubscriptionRequiredScreen` says "Your 8 weeks are up" for
+  `previously_paid`**, "Your plan access has ended" otherwise, and every button
+  on it opens the **price screen**, not the account page.
+- **Settings has no "Manage subscription" row any more.** There is nothing to
+  manage: the row is "Your plan" (access end date, another block) and the
+  status line reads "Plan active • Access until {date}". "Renews" is printed
+  only when `auto_renews` is true.
+- **The mobile→web bridge honours `?next=`.** `openWebAccount(webPath)`
+  passes the path on the bridge URL and `/auth/mobile-bridge` lands there
+  after setting the cookie (same-origin paths only). `openWebPaywall()` is the
+  helper — "Get another 8 weeks" lands on `/paywall`, signed in, rather than on
+  the account card one tap short of it. The `access_ending` alert tap does the
+  same.
+- **Support address is `support@macurasolutions.us`** in Settings — the same
+  constant as `SUPPORT_EMAIL` in `lib/pricing.ts`, and the refund-claim
+  address in Terms §11.
+
+- [ ] Read `auto_renews` before printing "renews" / "ends" beside `ends_at`
+- [ ] Never re-gate the ending screen or the overlay on `subscription_canceled` or `state === 'canceling'`
+- [ ] Every "buy again" CTA opens `/paywall` via `openWebPaywall()`, not the account page
+- [ ] No "subscription", "renews", "cancel anytime" copy for a one-time customer

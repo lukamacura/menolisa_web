@@ -805,13 +805,13 @@ export function TrainingWeekBoard({
           <span className="font-bold text-[#7A7A7A]">
             {days.length - 1} more days
           </span>{" "}
-          already scheduled — every one of them is in your plan.
+          already planned for you.
         </p>
       )}
 
       <Signoff delay={1.3}>
         <span className="font-extrabold">{totalMinutes} minutes</span> across the whole week.
-        That&apos;s the entire ask.
+        That&apos;s everything we&apos;ll ask of you.
       </Signoff>
     </RewardPaper>
   );
@@ -845,10 +845,17 @@ export function TrainingWeekBoard({
  *   behind MenoLisa" card (owner's call, 2026-09-13). The role is the one the
  *   owner gave; nothing here dresses it up into a credential. Never add a name
  *   or a title here that is not real and agreed.
- * - **No outcome promise.** The headline (FOUNDER_HEADLINE in
- *   app/register/page.tsx) is a truism about consistency - "nobody loses weight
- *   in one good week" - never "you will lose X". Weight is the most common
- *   goal and the most regulated claim in this category.
+ * - **No outcome promise.** The board opens "You already know what to do." over
+ *   the advice she has already heard for her goal (FOUNDER_BECAUSE in
+ *   app/register/page.tsx), then argues that doing it daily takes discipline
+ *   that runs out on everyone - and the app removes the deciding. Never "you
+ *   will lose X". Weight is the most common goal and the most regulated claim
+ *   in this category. The answer is the habit system, not a result.
+ * - **Discipline is named as universal, never as her failing** (2026-09-16).
+ *   "Discipline you don't have" is true and insulting; "discipline runs out,
+ *   on everyone" is the same point and takes the blame off her.
+ * - **No invented personal history.** Zoka speaks in the first person, but
+ *   nothing here says what she tried or lived through - only what the app does.
  * - **The checklist names the plan's four real pillars and no tasks.**
  *   `PLAN_PILLARS` is what the app's day is built from. Her actual tasks are
  *   what the paywall's week-1 card blurs on purpose; printing them one screen
@@ -870,12 +877,12 @@ const FOUNDER = {
 const TICK_BASE = 1.15;
 const TICK_STEP = 0.2;
 
-export function FounderNoteBoard({ headline }: { headline: string }) {
+export function FounderNoteBoard({ because }: { because: string }) {
   const reduced = useReducedMotion();
   const doneAt = TICK_BASE + PLAN_PILLARS.length * TICK_STEP;
 
   return (
-    <RewardPaper title="Why MenoLisa exists" meta={`A note from ${FOUNDER.name}`}>
+    <RewardPaper title={`A note from ${FOUNDER.name}`}>
       <div className="mt-2 flex items-start gap-3">
         {/* A print pinned to the note, not an avatar: the paywall already has
             the round 64px avatar, and a second one would read as the same
@@ -907,23 +914,25 @@ export function FounderNoteBoard({ headline }: { headline: string }) {
 
         <div className="min-w-0 flex-1 pt-0.5">
           <Line i={0} base={0.4} className="font-script text-[23px] leading-[1.1] text-[#3D3D3D] text-balance">
-            {headline}
+            You already know what to do.
           </Line>
           <Line i={1} base={0.4} className="mt-1.5 text-[12px] font-semibold leading-snug text-[#8C8279]">
-            It happens in the ordinary days you keep showing up for.
+            {because}
           </Line>
         </div>
       </div>
 
       <div className="mt-2.5 space-y-1.5 text-[12.5px] leading-snug text-[#3D3D3D]">
         <Line i={2} base={0.4}>
-          You probably already know what helps: move, eat enough protein, wind down, sleep.
-          What breaks is the busy Tuesday, when the plan turns into one more thing to figure out.
+          Knowing was never the hard part.{" "}
+          <span className="font-extrabold">Doing it every single day is.</span> That takes
+          discipline, and discipline runs out, usually on the Tuesday you slept badly and the
+          day got away from you. That&apos;s not a flaw in you. It happens to everyone.
         </Line>
         <Line i={3} base={0.4}>
-          That&apos;s why I wanted MenoLisa to do the figuring out for you.{" "}
-          <span className="font-extrabold">Open the app and today is already laid out.</span>{" "}
-          Do it, tick it off. That&apos;s the whole job.
+          So MenoLisa doesn&apos;t run on willpower. Open the app and today is already planned
+          for you. Nothing to figure out, nothing to decide. You do it, you tick it off, and one
+          day at a time it becomes just what you do.
         </Line>
       </div>
 
@@ -972,7 +981,8 @@ export function FounderNoteBoard({ headline }: { headline: string }) {
       </Line>
 
       <Signoff delay={doneAt + 0.15}>
-        Your part is showing up. <span className="font-extrabold">We made the rest easy.</span>
+        You don&apos;t need more discipline.{" "}
+        <span className="font-extrabold">You need fewer decisions.</span>
       </Signoff>
     </RewardPaper>
   );

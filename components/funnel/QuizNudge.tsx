@@ -130,7 +130,7 @@ export const QUIZ_NUDGES: Record<string, string> = {
   q1_age: "No wrong answers here. Just tap what's closest.",
 
   // Height and weight, the one genuinely uncomfortable screen in the quiz.
-  q_body: "Only you see this. A rough guess is fine.",
+  q_body: "This stays private. A rough guess is fine.",
 
   // The only text input in the funnel, and the last question. The screen's own
   // sub-line already says no email is needed, so this takes the other half of

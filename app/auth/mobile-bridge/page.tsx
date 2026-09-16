@@ -15,6 +15,16 @@ export default function MobileBridgePage() {
       : window.location.hash;
     const token = raw ? decodeURIComponent(raw) : "";
 
+    // Where the app asked to land. The app opens this bridge for two different
+    // reasons — "look at my account" and "buy another 8 weeks" — and the second
+    // one has no business landing on the account card with one more tap to the
+    // price. Same-origin paths only: a bare `/`, never `//host`.
+    const requestedNext = new URLSearchParams(window.location.search).get("next");
+    const next =
+      requestedNext && requestedNext.startsWith("/") && !requestedNext.startsWith("//")
+        ? requestedNext
+        : null;
+
     if (!token) {
       setError("Missing session link. Open Account from the MenoLisa app again.");
       return;
@@ -39,9 +49,10 @@ export default function MobileBridgePage() {
           return;
         }
         const dest =
-          typeof data.redirect === "string" && data.redirect.startsWith("/")
+          next ??
+          (typeof data.redirect === "string" && data.redirect.startsWith("/")
             ? data.redirect
-            : "/dashboard/account";
+            : "/dashboard/account");
         router.replace(dest);
       })
       .catch(() => setError("Network error. Try again."));

@@ -810,6 +810,10 @@ charge for one window removes the whole class of problem.
   subscription an ending meant she had cancelled and was rare; now every
   customer's access ends, on a date she was told once in the welcome email
   eight weeks earlier. It must never be made conditional on cancellation again.
+  The one row it skips is a legacy subscription that will really charge again
+  (uncancelled Stripe subscription id, or Apple/Google still renewing) — for
+  her the date is a charge, not an end. `/api/account/status` exposes the same
+  test as `auto_renews` (2026-09-15) so the app's own ending screens agree.
 - **`/admin` reports no booked revenue, because none exists.** Nothing is
   scheduled; a forecast here would be invented money. The block shows who is
   inside their window and who is about to fall out of it — the entire
@@ -1791,6 +1795,52 @@ feature (checked 2026-09-08).
 
 ### Recent work
 
+**2026-09-16 — copy pass for plain US English on results and the founder
+note.** Supersedes the quoted copy in the 2026-09-14 entries below. The weight
+chain's labels are now what she notices ("You're hungrier, and you burn less",
+"Weight goes to your belly", "You're losing muscle"), and the physiology sits
+under them; the node reads "What set it off:"; "links", "storage", "resting
+burn", "restart the trigger" and "control centre" are gone from every screen
+(US spelling; `yoghurt` → yogurt; eggs moved from the counter to the fridge).
+`WEIGHT_LINK_BY_PILLAR` prints "muscle and belly fat". The founder note opens
+"You already know what to do." over the goal's familiar advice
+(`FOUNDER_BECAUSE`), says discipline runs out on everyone rather than that she
+lacks it, and signs off "You don't need more discipline. You need fewer
+decisions." `MechanismClose` moved with `getWeightChain`. Zoka should read the
+note before it ships — it is in her voice.
+
+Second pass the same day, across the rest of the funnel: the results headline
+no longer claims "worse than you've been told" or speaks as an unintroduced
+"I" (severe is now "this is not in your head"); the pain line is a full
+sentence with a verb that agrees with the symptom and **no longer says "it's
+treatable"** (a treatment claim); "untreated … often get worse" became "last
+4–7 years on average"; "Mobile app runs it." became "You don't have to keep
+track. The app does."; `HowLisaRuns` stopped saying "Two minutes, and you're
+done" beside a 15-40 minute day; "Comparing you to thousands of women" and
+"Only you see this" (both unverifiable) are gone; quiz tiles and
+`NUTRITION_START` / `RELAXATION_START` rewritten in plain words.
+
+**2026-09-15 — the phone caught up with one-time pricing.** The server side
+was already right (paid + `subscription_ends_at` in the future → access; past
+it → `ended`, 403 everywhere, welcome email and gate share one computed date),
+but the Expo app still read every ending as a renewal. Three of its surfaces
+would have failed silently for every one-time customer: the "ends soon"
+overlay was gated on `state === 'canceling'` (never true now), the once-only
+`PlanContinue` screen printed "your plan renews on {date}", and Settings said
+"Subscriber • Renews {date}" over a "Manage subscription" row. Web changes:
+`auto_renews` on `/api/account/status` (true only for a legacy row that will
+charge again), the access-ending cron skips those rows, and
+`/auth/mobile-bridge` honours `?next=` so the app can land on `/paywall`
+signed in. Mobile: every ending surface reads `auto_renews`, every "buy again"
+CTA opens the paywall via `openWebPaywall()`, Settings' row is "Your plan",
+the support address is `SUPPORT_EMAIL`'s. Contract:
+`docs/mobile-app-changes.md` §28. Verified: `tsc --noEmit` clean in both
+repos. **Not changed, and worth knowing:** a repeat purchase while access is
+still live sets `subscription_ends_at = now + 56` rather than stacking onto the
+old date (the replay guard in `fulfillCheckout` needs a per-session key before
+stacking is safe), and a repeat purchase sends no welcome email because
+`fulfilled_at` is claimed per account, not per checkout.
+
 **2026-09-14 — blog, first post, sitemap and robots.** `/blog` and
 five posts (weight despite eating the same, belly not hips, walking 20 min,
 protein over 50, what a realistic plan week looks like), authored by Zoka (role
@@ -1852,9 +1902,10 @@ everything, and each fix is a contradiction she could catch:
 `<FirstSessionBoard />`: her week-1 session, one movement plain, the rest
 blurred. It is now `<FounderNoteBoard />` (`components/funnel/RewardBoards.tsx`):
 ~~the owner's print, captioned "Developer"~~ (Zoka's, later the same day — see
-above), a goal-keyed headline (`FOUNDER_HEADLINE` in
-`app/register/page.tsx` — "Nobody loses weight in one good week."), a
-first-person note on why consistency is the product, and a "Today, in your
+above), the headline "Why do you need this?" answered by a goal-keyed line
+(`FOUNDER_BECAUSE` in `app/register/page.tsx` — "Because nobody loses weight in
+one good week."; was `FOUNDER_HEADLINE` until 2026-09-15), a first-person note
+that reframes the app as a daily habit system for consistency, and a "Today, in your
 app" checklist of the four `PLAN_PILLARS` that ticks itself off. The argument:
 by step 16 "what will I do?" is answered; "why will this time stick?" is not,
 and the honest answer is that the app decides her day. Rules at the component:

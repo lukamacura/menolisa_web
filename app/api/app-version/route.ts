@@ -44,8 +44,14 @@ const ANDROID_PACKAGE = "com.menolisa.app";
  * locking the whole install base out over a typo.
  */
 const DEFAULT_MINIMUM = "0.0.0";
-/** The newest build in both stores. Bump on release, or set MOBILE_LATEST_VERSION. */
-const DEFAULT_LATEST = "1.3.1";
+/**
+ * The newest build **live in both stores** — not the version in the app's
+ * app.config.js, which runs one ahead while a release is being prepared.
+ * Bump this only once the build is published, or set MOBILE_LATEST_VERSION.
+ * Every install below it gets the "Update" card on the daily loop, so raising
+ * it early sends people to a store listing with nothing newer to install.
+ */
+const DEFAULT_LATEST = "1.3.2";
 
 /** Dotted numeric versions only — anything else is treated as unset. */
 const VERSION_PATTERN = /^\d{1,5}(\.\d{1,5}){0,2}$/;

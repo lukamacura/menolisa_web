@@ -87,17 +87,17 @@ export function planPhaseForWeek(week: number): PlanPhase {
  * them is a second thing to forget to update.
  */
 export const NUTRITION_START: Record<string, string> = {
-  skipping: "One real meal, anchored first",
-  convenience: "Swaps, not a new diet",
-  inconsistent: "Your good days, made repeatable",
-  intentional: "Fine-tuned, not rebuilt",
+  skipping: "Start with one proper meal a day",
+  convenience: "Easy swaps, not a new diet",
+  inconsistent: "Make your good days the norm",
+  intentional: "Small tweaks, not a do-over",
 };
 
 export const RELAXATION_START: Record<string, string> = {
-  none: "Built from scratch, 3 min",
-  occasional: "Turned into a daily one",
-  routine: "Kept, aimed at your symptoms",
-  want_to: "Started this week, no experience",
+  none: "Start with 3 minutes a day",
+  occasional: "Turn it into a daily habit",
+  routine: "Keep yours, aimed at your symptoms",
+  want_to: "Start this week, no experience needed",
 };
 
 export type WeekOneRow = {

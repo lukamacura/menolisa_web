@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
     // still match on exactly the same condition, so nothing was lost.
     const { data: due, error } = await supabase
       .from("user_trials")
-      .select("user_id, subscription_ends_at")
+      .select("user_id, subscription_ends_at, subscription_canceled, stripe_subscription_id, provider")
       .eq("account_status", "paid")
       .gte("subscription_ends_at", from.toISOString())
       .lt("subscription_ends_at", to.toISOString());
@@ -65,8 +65,22 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Query failed" }, { status: 500 });
     }
 
+    // A legacy subscription that is still set to renew (an uncancelled Stripe
+    // subscription row, or an Apple/Google one) does not end at this date — it
+    // charges again — so "your access ends on …" would be false for it. Same
+    // rule as `auto_renews` on /api/account/status.
+    const autoRenews = (r: {
+      subscription_canceled: boolean | null;
+      stripe_subscription_id: string | null;
+      provider: string | null;
+    }) => {
+      if (r.subscription_canceled) return false;
+      const provider = (r.provider ?? "stripe").toLowerCase();
+      return !!r.stripe_subscription_id || provider === "apple" || provider === "google";
+    };
+
     const alerts: AlertRequest[] = (due ?? [])
-      .filter((r) => !!r.subscription_ends_at)
+      .filter((r) => !!r.subscription_ends_at && !autoRenews(r))
       .map((r) => ({
         userId: r.user_id,
         kind: "access_ending",

@@ -360,7 +360,7 @@ const REWARD_STEPS: Step[] = [
 const REWARD_LABEL: Record<string, string> = {
   reward_symptoms: "Yours, free",
   reward_social_proof: "Someone like you",
-  reward_plan_shape: "Your week, sized",
+  reward_plan_shape: "Your first week",
   reward_progress: "From the founder",
 };
 
@@ -376,8 +376,8 @@ const AGE_OPTIONS = [
 ];
 
 const HERE_FOR_OPTIONS = [
-  { id: "pre_menopausal", label: "Pre-menopausal (not started)", image: "/quiz/status/pre.webp" },
-  { id: "perimenopausal", label: "Perimenopausal", image: "/quiz/status/peri.webp" },
+  { id: "pre_menopausal", label: "Pre-menopausal (regular periods)", image: "/quiz/status/pre.webp" },
+  { id: "perimenopausal", label: "Perimenopausal (periods changing)", image: "/quiz/status/peri.webp" },
   { id: "post_menopausal", label: "Post-menopausal (periods stopped)", image: "/quiz/status/post.webp" },
   { id: "not_sure", label: "I'm not sure", image: "/quiz/status/notsure.webp" },
 ];
@@ -390,7 +390,7 @@ const HERE_FOR_OPTIONS = [
 const GOAL_OPTIONS = [
   { id: "sleep_through_night", label: "Sleep through the night", image: "/quiz/goals/sleep.webp" },
   { id: "think_clearly", label: "Think clearly again", image: "/quiz/goals/thinkclearly.webp" },
-  { id: "feel_like_myself", label: "Mental and emotional wellbeing", image: "/quiz/goals/feelmyself.webp" },
+  { id: "feel_like_myself", label: "Feel calm and steady again", image: "/quiz/goals/feelmyself.webp" },
   // id kept as `get_body_back` on purpose - existing user_profiles rows and the
   // mobile app still carry it; only the copy/image moved to weight loss.
   { id: "get_body_back", label: "Lose weight", image: "/quiz/goals/weight.webp" },
@@ -665,18 +665,20 @@ const COHORT_PHRASE: Record<string, string> = {
   not_sure: "women your age",
 };
 
-// Reward 4 (`reward_progress`, the founder's note): the headline, keyed off
-// her goal. Each one is a truism about consistency, not a promise about her -
-// "nobody loses weight in one good week" is true of every plan ever sold, and
-// it is exactly the argument the note makes. Never turn one into an outcome
-// ("lose 10 lb in 8 weeks"); see the rules above <FounderNoteBoard />.
-const FOUNDER_HEADLINE: Record<string, string> = {
-  get_body_back: "Nobody loses weight in one good week.",
-  sleep_through_night: "Nobody fixes sleep with one early night.",
-  think_clearly: "Brain fog doesn't lift after one good day.",
-  feel_like_myself: "Nobody feels steady after one good week.",
+// Reward 4 (`reward_progress`, the founder's note): the board opens "You
+// already know what to do." and this line lists it, keyed off her goal - the
+// advice she has heard a hundred times for that goal. The point is recognition,
+// not instruction: she knows all of it, and the note's argument is that knowing
+// was never the problem. Keep each one to the generic, everyone-says-it advice;
+// never a dose, and never an outcome ("lose 10 lb in 8 weeks"). See the rules
+// above <FounderNoteBoard />.
+const FOUNDER_BECAUSE: Record<string, string> = {
+  get_body_back: "Eat more protein. Move more. Skip the late-night snacks.",
+  sleep_through_night: "Same bedtime. No late coffee. Phone out of the bedroom.",
+  think_clearly: "Sleep more. Move more. Stress less.",
+  feel_like_myself: "Move more. Eat better. Make time for yourself.",
 };
-const FOUNDER_HEADLINE_DEFAULT = "Nothing changes in one good week.";
+const FOUNDER_BECAUSE_DEFAULT = "Move more. Eat better. Get more sleep.";
 
 const HRT_OPTIONS = [
   { id: "currently", label: "I am currently taking HRT", image: "/quiz/hrt/current.webp" },
@@ -740,7 +742,7 @@ const FITNESS_OPTIONS = [
 // The ids are load-bearing: `user_profiles.training_time` constrains them, and
 // the app switches on them.
 const TRAINING_TIME_OPTIONS = [
-  { id: "morning", label: "Morning", hint: "Before the day gets hold of me" },
+  { id: "morning", label: "Morning", hint: "Before the day gets away from me" },
   { id: "midday", label: "Midday", hint: "Around lunch, or a break in the afternoon" },
   { id: "evening", label: "Evening", hint: "Once everything else is done" },
 ];
@@ -779,10 +781,10 @@ const TRAINING_TIME_TONE: Record<string, ChoiceTone> = {
 // level instead of at week one of a textbook. Deliberately blame-free wording -
 // "skipping meals" is a description, not a verdict.
 const NUTRITION_STYLE_OPTIONS = [
-  { id: "skipping", label: "Skipping meals / on the run", image: "/quiz/nutrition/skipping.webp" },
+  { id: "skipping", label: "Skipping meals, on the go", image: "/quiz/nutrition/skipping.webp" },
   { id: "convenience", label: "Mostly convenience food", image: "/quiz/nutrition/convenience.webp" },
-  { id: "inconsistent", label: "Balanced, but inconsistent", image: "/quiz/nutrition/inconsistent.webp" },
-  { id: "intentional", label: "Already intentional about it", image: "/quiz/nutrition/intentional.webp" },
+  { id: "inconsistent", label: "Healthy some days, not others", image: "/quiz/nutrition/inconsistent.webp" },
+  { id: "intentional", label: "I already eat pretty well", image: "/quiz/nutrition/intentional.webp" },
 ];
 
 // The relaxation pillar needs a starting point too. "I want to build one but
@@ -835,7 +837,7 @@ const CALCULATING_MS = 6500;
 // answers rather than one indeterminate pause. The last two name the product.
 const LOADING_MESSAGES = [
   "Reading your answers...",
-  "Comparing you to thousands of women like you...",
+  "Finding the patterns in your answers...",
   "Matching habits to your symptoms...",
   "Building your 8 weeks...",
   "Almost ready...",
@@ -1463,13 +1465,17 @@ const getSeverityHeadline = (severity: string): SeverityHeadline => {
     // inline-block, so a phrase that wraps fills the line and anything after it
     // starts a new one - which left the period alone on a line of its own,
     // centred, reading as a stray bullet under the headline.
+    // 2026-09-16: "worse than you've been told" assumed what she had been told
+    // and read as alarm; "I need to be honest with you" came from an "I" the
+    // funnel never introduces. "Not in your head" is the sentence women in
+    // this market most often wish a doctor had said.
     case "severe":
-      return { pre: ", this is ", sweep: "worse than you've been told.", post: "" };
+      return { pre: ", this is ", sweep: "not in your head.", post: "" };
     case "moderate":
-      return { pre: ", ", sweep: "I need to be honest", post: " with you." };
+      return { pre: ", here's ", sweep: "what's really going on.", post: "" };
     case "mild":
     default:
-      return { pre: ", let's talk about ", sweep: "what's really going on.", post: "" };
+      return { pre: ", this is ", sweep: "the best time to act.", post: "" };
   }
 };
 
@@ -1500,35 +1506,41 @@ const PainEmphasis = ({ children }: { children: React.ReactNode }) => (
 // The phrasing deliberately carries no pronoun for the symptom: her nine
 // options split between singular ("Brain fog", "Anxiety") and plural ("Hot
 // flashes", "Mood swings"), and any "it/they" here is wrong for half of them.
+//
+// 2026-09-16: it read as a fragment ("Weight changes, running your days.") and
+// the severe line said "it's treatable" - a treatment claim a wellness product
+// must not make. The verb now agrees with the label (PLURAL_SYMPTOM_LABELS),
+// which gives full sentences without needing an "it/they".
+const PLURAL_SYMPTOM_LABELS = new Set(["Hot flashes", "Sleep issues", "Mood swings", "Weight changes"]);
+
 const getSeverityPainText = (
   severity: string,
-  symptomLabel: string,
-  name: string
+  symptomLabel: string
 ): React.ReactNode => {
-  const displayName = name || "you";
-  const symptom = <PainEmphasis>{symptomLabel || "Your symptoms"}</PainEmphasis>;
+  const label = symptomLabel || "Your symptoms";
+  const verb = !symptomLabel || PLURAL_SYMPTOM_LABELS.has(symptomLabel) ? "are" : "is";
+  const symptom = <PainEmphasis>{label}</PainEmphasis>;
   switch (severity) {
     case "severe":
       return (
         <>
-          {symptom}, running your days. {displayName}, this isn&apos;t your new normal -{" "}
-          <PainEmphasis>it&apos;s treatable</PainEmphasis>.
+          {symptom} {verb} running your days. That doesn&apos;t have to be{" "}
+          <PainEmphasis>your new normal</PainEmphasis>.
         </>
       );
     case "moderate":
       return (
         <>
-          {symptom}, costing you energy every single day. {displayName}, that&apos;s{" "}
-          <PainEmphasis>energy you can get back</PainEmphasis>.
+          {symptom} {verb} wearing you down every single day. The good news:{" "}
+          <PainEmphasis>your body still responds</PainEmphasis> to the right daily habits.
         </>
       );
     case "mild":
     default:
       return (
         <>
-          {symptom}, manageable today. Left alone this usually{" "}
-          <PainEmphasis>gets worse</PainEmphasis> - {displayName}, this is the easiest it will
-          ever be to turn around.
+          {symptom} {verb} still manageable. That makes right now{" "}
+          <PainEmphasis>the easiest time</PainEmphasis> to get ahead of it.
         </>
       );
   }
@@ -2129,7 +2141,7 @@ function EstrogenWave({
         role="img"
         aria-label={
           settledLow
-            ? "Estrogen low and flat, while the brain's control centre keeps swinging without settling."
+            ? "Estrogen low and flat, while your brain keeps swinging as it adjusts."
             : "Estrogen swinging up and down without settling."
         }
         preserveAspectRatio="none"
@@ -2191,7 +2203,7 @@ function EstrogenWave({
         <div aria-hidden className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10.5px] text-white/80">
           <span className="flex items-center gap-1">
             <span className="inline-block h-[2px] w-3 rounded bg-white" />
-            your control centre
+            your brain, adjusting
           </span>
           <span className="flex items-center gap-1">
             <span className="inline-block w-3 border-t-[1.5px] border-dashed border-white/70" />
@@ -2443,7 +2455,7 @@ function ScoreCauseCard({
                   follow her stage - "rising and falling" is perimenopause and
                   was being shown to women whose periods stopped years ago. */}
               <p className="text-[13.5px] leading-snug text-white/85">
-                The trigger:{" "}
+                What set it off:{" "}
                 <span className="font-bold text-white">{trigger.trigger}</span>
                 {trigger.after && <>, {trigger.after}</>}
               </p>
@@ -2484,8 +2496,8 @@ function ScoreCauseCard({
             {chain ? (
               <span className="font-bold text-[#3D3D3D]">
                 {onHrt
-                  ? "HRT puts some of the signal back. The three links still need daily work, and that's what your plan does."
-                  : "You can't restart the trigger. You can work on all three links, and that's what your plan does."}
+                  ? "HRT puts some estrogen back. These three changes still need daily work, and that's what your plan is for."
+                  : "You can't turn estrogen back up on your own. But all three of these respond to what you do every day, and that's what your plan is for."}
               </span>
             ) : (
               <span className="font-bold text-[#3D3D3D]">This is biology and it responds.</span>
@@ -2503,9 +2515,10 @@ function ScoreCauseCard({
               strength session or a burst). Never a claim about her. */}
           {chain && (
             <p className="mt-2 text-[13px] leading-relaxed text-[#5A5A5A]">
-              Diets cut calories, which shrinks muscle faster and makes the burn problem worse.{" "}
+              It&apos;s also why dieting works against you now: cutting calories alone costs you
+              muscle too, so you burn even less.{" "}
               <span className="font-bold text-[#3D3D3D]">
-                Short strength work rebuilds the muscle that sets your burn, so that&apos;s where
+                Short strength workouts help you keep and rebuild that muscle, so that&apos;s where
                 your plan starts.
               </span>
             </p>
@@ -5215,8 +5228,7 @@ function RegisterPageContent() {
             >
               {getSeverityPainText(
                 derivedSeverity,
-                SYMPTOM_LABELS[topProblems[0]] ?? "",
-                firstName || "you"
+                SYMPTOM_LABELS[topProblems[0]] ?? ""
               )}
             </motion.p>
 
@@ -5460,7 +5472,7 @@ function RegisterPageContent() {
                       {/* The minutes are `weekShape`'s figure, i.e. the week-1
                           board's total over seven days - never typed here. */}
                       Built from your {QUESTION_STEPS.length} answers.{" "}
-                      {weekShape ? `About ${weekShape.perDayMinutes} minutes a day - enough` : "Enough"}{" "}
+                      {weekShape ? `About ${weekShape.perDayMinutes} minutes a day, designed` : "Designed"}{" "}
                       to take your score from{" "}
                       <span className="font-bold text-[#3D3D3D]">{score}</span> to{" "}
                       <span className="font-bold text-green-600">{SCORE_GOAL}+</span>.
@@ -5469,7 +5481,7 @@ function RegisterPageContent() {
 
                   <PlanHeroCarousel slides={PLAN_HERO_SLIDES} />
                   <p className="mt-2.5 text-center text-[11px] text-[#9A9A9A] leading-snug">
-                    You get all of this automatically in your mobile app.
+                    All of this is set up for you in the app.
                   </p>
                 </motion.div>
               );
@@ -5577,7 +5589,7 @@ function RegisterPageContent() {
                               <Check className="w-2.5 h-2.5 text-white" strokeWidth={3.5} />
                             </span>
                             <span className="text-[9px] font-bold text-green-700 tracking-wide">
-                              8 week plan
+                              8-week plan
                             </span>
                           </span>
                         </div>
@@ -5759,13 +5771,13 @@ function RegisterPageContent() {
                   <motion.p variants={rise} className="text-xs text-[#5A5A5A] mb-3">
                     {firstName.trim() ? (
                       <>
-                        <span className="font-bold">{firstName.trim()}</span>, untreated
+                        <span className="font-bold">{firstName.trim()}</span>, menopause
                       </>
                     ) : (
-                      "Untreated"
+                      "Menopause"
                     )}{" "}
-                    menopause symptoms persist 4&ndash;7 years on average - and often get
-                    worse before they settle.
+                    symptoms last 4&ndash;7 years on average. That&apos;s a long time to just
+                    wait it out.
                   </motion.p>
                   {/* Not a `rise` child: the chart runs its own draw off its
                       own `whileInView`, so it starts when *it* is on screen
@@ -5812,12 +5824,12 @@ function RegisterPageContent() {
                 <div className="mb-5">
                   <div className="px-1 mb-3">
                     <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] leading-tight">
-                      The plan doesn&apos;t{" "}
-                      <HighlightSweep>run itself</HighlightSweep>. Mobile app runs it.
+                      You don&apos;t have to{" "}
+                      <HighlightSweep>keep track</HighlightSweep>. The app does.
                     </h2>
                     <p className="text-xs text-[#5A5A5A] mt-1.5">
-                      Every day for {PLAN_WEEKS} weeks, the app decides what you do next - so you
-                      never have to.
+                      Every day for {PLAN_WEEKS} weeks, the app tells you what to do next, so
+                      you never have to figure it out.
                     </p>
                   </div>
 
@@ -5921,10 +5933,10 @@ function RegisterPageContent() {
                   warning she gets before the welcome email, and a woman who
                   finds out on day 57 is a chargeback. */}
               {/* No figure: /paywall buyers at the regular price land here too. */}
-              All {PLAN_WEEKS} weeks are paid, once: the plan,
-              the chat and your symptom tracking, yours until{" "}
-              {accessEndsDate ?? `${PLAN_WEEKS} weeks from today`}. Your {PLAN_WEEKS}-week plan is
-              being built right now; download the app to start it.
+              You&apos;ve paid once, and that covers all {PLAN_WEEKS} weeks: your plan, the
+              ask-anything chat and symptom tracking, until{" "}
+              {accessEndsDate ?? `${PLAN_WEEKS} weeks from today`}. We&apos;re building your plan
+              right now. Download the app to start it.
             </p>
 
             {/* How she gets in, stated before the store badges rather than left
@@ -5943,7 +5955,7 @@ function RegisterPageContent() {
               {checkoutEmail ? (
                 <p className="text-sm text-[#3D3D3D] leading-snug">
                   Open the app and enter{" "}
-                  <span className="font-bold break-all">{checkoutEmail}</span> - the address you
+                  <span className="font-bold break-all">{checkoutEmail}</span>, the address you
                   used at checkout. We&apos;ll email you a 6-digit code. No password to remember.
                 </p>
               ) : (
@@ -6218,10 +6230,10 @@ function RegisterPageContent() {
                   <div className="my-auto w-full shrink-0 flex flex-col gap-3 sm:gap-4">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-1">
-                      Your body baseline
+                      Your height and weight
                     </h2>
                     <p className="text-sm sm:text-base text-muted-foreground">
-                      We use this to size your movement and nutrition plan
+                      So your workouts and food plan fit your body
                     </p>
                   </div>
 
@@ -6376,7 +6388,7 @@ function RegisterPageContent() {
                       How much time do you have for exercise?
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                      Pick what you can keep up for 8 weeks - your plan is built around it
+                      Pick what you can keep up for 8 weeks. Your plan is built around it.
                     </p>
                   </div>
                   <ImageChoiceGrid
@@ -6424,7 +6436,7 @@ function RegisterPageContent() {
                       How would you describe your eating right now?
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                      Honestly - this is where your plan starts, not a test
+                      Be honest. It&apos;s not a test, just where your plan starts.
                     </p>
                   </div>
                   <ImageChoiceGrid
@@ -6440,7 +6452,7 @@ function RegisterPageContent() {
                 <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl font-bold mb-0.5">
-                      How do you currently unwind or manage stress?
+                      How do you usually unwind or handle stress?
                     </h2>
                   </div>
                   <ImageChoiceGrid
@@ -6842,9 +6854,9 @@ function RegisterPageContent() {
               {currentStep === "reward_progress" && (
                 <QuizReward
                   messages={[
-                    "That's the hard questions done...",
+                    "The hard questions are done...",
                     "Before you see your results...",
-                    "A note from the woman who started this...",
+                    "A note from the woman behind MenoLisa...",
                   ]}
                   initialDone={!!rewardSeen.current.reward_progress}
                   onDone={() => markRewardSeen("reward_progress")}
@@ -6852,7 +6864,7 @@ function RegisterPageContent() {
                   <div className={REWARD_SCROLL_SHELL + " py-1"}>
                     <div className={REWARD_PAYOFF_CENTER}>
                       <FounderNoteBoard
-                        headline={FOUNDER_HEADLINE[goal[0]] ?? FOUNDER_HEADLINE_DEFAULT}
+                        because={FOUNDER_BECAUSE[goal[0]] ?? FOUNDER_BECAUSE_DEFAULT}
                       />
                     </div>
                   </div>
@@ -6864,7 +6876,7 @@ function RegisterPageContent() {
                 <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl font-bold mb-0.5">
-                      Have you ever taken any form of menopausal hormonal treatment (HRT)?
+                      Have you ever taken hormone therapy (HRT) for menopause?
                     </h2>
                   </div>
                   <ImageChoiceGrid
@@ -6891,8 +6903,8 @@ function RegisterPageContent() {
                       What should we call you?
                     </h2>
                     <p className="text-sm sm:text-base text-muted-foreground">
-                      Just for personalization - a nickname, first name or alias
-                      is fine. No email needed to see your results.
+                      Your first name or a nickname is fine. No email needed to see
+                      your results.
                     </p>
                   </div>
                   <div className="relative">

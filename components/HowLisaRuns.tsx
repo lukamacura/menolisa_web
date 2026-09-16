@@ -37,18 +37,18 @@ function buildSteps(topLabel: string): Step[] {
   return [
     {
       title: "It all lives in one app",
-      body: `Your ${PLAN_WEEKS}-week plan, a habit tracker and a symptom tracker - already filled in, nothing to set up.`,
+      body: `Your ${PLAN_WEEKS}-week plan, a habit tracker and a symptom tracker, already filled in. Nothing to set up.`,
     },
     {
       title: "You tick off today",
-      body: "Four small things, and one tap for how you felt. Two minutes, and you're done.",
+      body: "Four small things, then one tap for how you felt. Nothing to plan, nothing to remember.",
     },
     // "The app", not "Lisa" (2026-09-14): before checkout the name means
     // nothing, and the funnel now names the plan and the app everywhere it
     // used to name her. The AI disclosure lives in the landing FAQ and Terms §1.
     {
       title: "The app reads what you logged",
-      body: `It rewrites next week around your ${topLabel} - so the plan follows you, not a template.`,
+      body: `It builds next week from what you actually did, with your ${topLabel} in mind. Your plan, not a template.`,
     },
     {
       title: "And it's there at 2am",

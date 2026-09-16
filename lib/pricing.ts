@@ -239,7 +239,7 @@ export function priceLine(amount: number): string {
  * The line under the price, on the paywall — and now the deliverable rather
  * than a third phrasing of the same negation.
  */
-export const PRICE_SUBLINE = `Your plan, the chat and your symptom tracking unlock the moment you pay.`;
+export const PRICE_SUBLINE = `Your plan, the ask-anything chat and symptom tracking unlock the moment you pay.`;
 
 /**
  * ── The guarantee, as she experiences it (back 2026-09-12) ────────────────
@@ -367,7 +367,7 @@ export const WHAT_YOU_GET: ReadonlyArray<{ bold: string; sub: string }> = [
   // same reason.
   {
     bold: "Ask anything, day or night",
-    sub: "Plain-English answers about your symptoms in seconds - and a clear steer when a question is one for your doctor.",
+    sub: "Plain-English answers about your symptoms in seconds - and a heads-up when a question is one for your doctor.",
   },
   {
     bold: "Symptom tracker and a weekly recap",
@@ -375,7 +375,7 @@ export const WHAT_YOU_GET: ReadonlyArray<{ bold: string; sub: string }> = [
   },
   {
     bold: "A report for your doctor",
-    sub: "Your symptoms, summarised and ready to share at your next appointment.",
+    sub: "Your symptoms, summarized and ready to share at your next appointment.",
   },
 ];
 

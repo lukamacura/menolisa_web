@@ -15,7 +15,7 @@ export default function AccountPage() {
           Account
         </h1>
         <p className="text-sm sm:text-base text-muted-foreground max-w-xl">
-          Plan, trial, and billing - update anytime below.
+          Your plan and when your access ends. One payment, nothing recurring.
         </p>
       </div>
 

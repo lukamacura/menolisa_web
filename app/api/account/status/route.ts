@@ -48,6 +48,16 @@ export async function GET(req: NextRequest) {
   const decision = evaluateTrialStatus(row);
   const expired = decision === "paywall";
   const account = getAccountState(row);
+  // True only for a legacy subscription that will charge again at `ends_at`
+  // (a Stripe subscription row that has not been cancelled, or an Apple/Google
+  // one still set to renew). Every purchase since 2026-09-11 is one-time, so
+  // this is false for every new customer: her `ends_at` is the end of her
+  // access, not a renewal. The app uses it to decide whether "your access ends
+  // on …" is a true sentence.
+  const autoRenews =
+    account.hasAccess &&
+    !row?.subscription_canceled &&
+    (!!row?.stripe_subscription_id || account.isThirdPartyProvider);
   // The price /paywall prints. Same function create-checkout charges with.
   const offer = planOffer(
     isQuizPriceEligible({
@@ -66,6 +76,7 @@ export async function GET(req: NextRequest) {
     previously_paid: account.previouslyPaid,
     is_third_party_provider: account.isThirdPartyProvider,
     has_access: account.hasAccess,
+    auto_renews: autoRenews,
     account_status: row?.account_status ?? null,
     subscription_ends_at: row?.subscription_ends_at ?? null,
     subscription_canceled: row?.subscription_canceled ?? false,
