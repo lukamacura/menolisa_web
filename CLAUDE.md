@@ -954,8 +954,10 @@ is right; what follows is the pass that finished it.
   made no promise of any kind. An endowed-progress meter reading 1-of-13 shows
   the worst number it will ever show her: at the entrance there is no progress
   to be proud of, only distance left. The counter and the dots now render from
-  step 1 onward and the entrance carries the offer instead — *Your personal
-  8-week menopause plan / Free 2-minute quiz · No email needed*. Every clause is
+  step 1 onward and the entrance carries the offer instead — *Answer a few
+  questions. Get your 8-week plan. / Free 2-minute menopause quiz / No email
+  needed*, beside a small phone mockup of the app's Today screen (2026-09-17;
+  beside, never above — the tile grid takes whatever height is left). Every clause is
   checkable, which is the rule the whole funnel is written under: thirteen
   one-tap questions, and nothing charged and no address collected before Stripe
   (results, diagnosis and the paywall all render first).
@@ -965,7 +967,8 @@ is right; what follows is the pass that finished it.
   post-menopause weight gain, and that woman has already been told *why* many
   times; what she has not had is a plan for the body she has now. Naming the
   plan up front also tells her what the questions are for, so the paywall
-  reads as delivery rather than a turn. **"Free" is scoped to the quiz, never
+  reads as delivery rather than a turn. Since 2026-09-17 it says so outright:
+  answering the questions is how the plan gets built. **"Free" is scoped to the quiz, never
   the plan** — the plan is $29, and "free" beside it is the bait reading the
   paywall's opening line exists to prevent. `LandingHero` repeats the headline
   word for word; change both together.

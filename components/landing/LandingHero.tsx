@@ -24,12 +24,12 @@ export default function LandingHero() {
             For perimenopause &amp; menopause
           </p>
           <h1 className="mt-4 text-4xl font-extrabold leading-[1.1] text-[#2E2A2B] sm:text-5xl">
-            Your personal {PLAN_WEEKS}-week menopause plan
+            Answer a few questions. Get your {PLAN_WEEKS}-week plan.
           </h1>
           <p className="mt-4 text-lg leading-relaxed text-[#5B5557]">
-            Answer a few one-tap questions and get a personalized {PLAN_WEEKS}-week
-            plan for movement, food, calm and sleep, built around the symptom
-            hitting you hardest.
+            One tap each. Your answers build a personal {PLAN_WEEKS}-week
+            menopause plan for movement, food, calm and sleep, around the
+            symptom hitting you hardest.
           </p>
           <ul className="mt-6 flex flex-wrap justify-center gap-x-5 gap-y-2 text-sm font-medium text-[#3D3D3D] md:justify-start">
             {PROMISES.map((p) => (

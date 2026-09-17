@@ -6131,19 +6131,37 @@ function RegisterPageContent() {
                     $19 at the paywall, and "free" next to it here is the bait
                     reading the paywall's opening line exists to prevent.
 
-                    One line, and that is measured: "Get your personal…"
-                    wrapped at 375 and 360 wide, and the second line comes
-                    straight out of the tile grid below. */}
-                <h1 className="text-base sm:text-lg font-bold leading-tight text-[#3D3D3D]">
-                  Your personal {PLAN_WEEKS}-week menopause plan
-                </h1>
-                <p className="mt-0.5 text-[11px] sm:text-xs leading-snug text-[#5A5A5A]">
-                  Free 2-minute quiz
-                  <span aria-hidden className="mx-1.5 text-[#9A9A9A]">
-                    ·
-                  </span>
-                  No email needed
-                </p>
+                    The phone sits beside the headline, never above it
+                    (2026-09-17). "8-week plan" alone does not say whether she
+                    gets a PDF or an app; a real Today screen does, at a glance.
+                    Beside rather than above because the tile grid below is
+                    sized to whatever height is left: a hero on top would take
+                    a third of every tile on the screen that has to earn the
+                    first tap. At this size the header costs ~40px more than
+                    the one-line version it replaced. */}
+                <div className="flex items-center justify-center gap-3 text-left">
+                  <Image
+                    src="/screenshots/mockup.webp"
+                    alt="The MenoLisa app's Today screen"
+                    width={640}
+                    height={1198}
+                    loading="eager"
+                    sizes="56px"
+                    className="h-[84px] sm:h-24 w-auto shrink-0 drop-shadow-md"
+                  />
+                  <div className="min-w-0">
+                    <h1 className="text-lg sm:text-xl font-bold leading-tight text-[#3D3D3D]">
+                      Answer a few questions.
+                      <br />
+                      Get your {PLAN_WEEKS}-week plan.
+                    </h1>
+                    <p className="mt-1 text-xs leading-snug text-[#5A5A5A]">
+                      Free 2-minute menopause quiz
+                      <br />
+                      No email needed
+                    </p>
+                  </div>
+                </div>
               </div>
             ) : (
               <>
