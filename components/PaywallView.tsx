@@ -141,6 +141,49 @@ function useAccessEnd(): string | null {
   return useSyncExternalStore(subscribeToNothing, accessEndNow, () => null);
 }
 
+/**
+ * The 30-minute hold printed after QUIZ_PRICE_REASON. Two rules from the last
+ * time a countdown lived here: it never changes a figure (at zero the sentence
+ * disappears, the price does not move), and it never visibly resets - the
+ * deadline is stamped in localStorage on first view, so a reload or a return
+ * from Stripe's cancel URL continues the same clock.
+ */
+const PRICE_HOLD_MS = 30 * 60 * 1000;
+const PRICE_HOLD_KEY = "menolisa.quizPriceHoldUntil";
+let priceHoldUntil: number | null = null;
+
+function priceHoldSecondsLeft(): number {
+  if (priceHoldUntil === null) {
+    try {
+      const stored = Number(localStorage.getItem(PRICE_HOLD_KEY));
+      if (stored > 0) priceHoldUntil = stored;
+    } catch {}
+    if (priceHoldUntil === null) {
+      priceHoldUntil = Date.now() + PRICE_HOLD_MS;
+      try {
+        localStorage.setItem(PRICE_HOLD_KEY, String(priceHoldUntil));
+      } catch {}
+    }
+  }
+  return Math.max(0, Math.ceil((priceHoldUntil - Date.now()) / 1000));
+}
+
+const subscribeToSecond = (onTick: () => void) => {
+  const id = setInterval(onTick, 1000);
+  return () => clearInterval(id);
+};
+
+/** Seconds left on the hold; `null` on the server and before hydration. */
+function usePriceHold(): number | null {
+  return useSyncExternalStore(subscribeToSecond, priceHoldSecondsLeft, () => null);
+}
+
+function formatClock(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 
 /**
  * The two people behind the product, shown with their faces in "The people
@@ -578,6 +621,7 @@ export function PaywallView({
   /** The only figure on this page she is charged; see lib/pricing.ts. */
   const PRICE = formatPrice(offer.price);
   const accessEnd = useAccessEnd();
+  const priceHold = usePriceHold();
   const primarySymptom = topProblems?.[0] ?? null;
 
   // ViewContent: she has seen the offer. Reported twice, browser and server, and
@@ -927,6 +971,13 @@ export function PaywallView({
           {offer.quizPrice && (
             <p className="mx-auto mt-2 max-w-76 text-center text-xs leading-snug text-[#5A5A5A]">
               <b className="text-[#15803D]">{QUIZ_PRICE_LABEL}.</b> {QUIZ_PRICE_REASON}
+              {priceHold !== null && priceHold > 0 && (
+                <>
+                  {" "}It&apos;s valid for another{" "}
+                  <b className="tabular-nums text-[#2B2627]">{formatClock(priceHold)}</b>{" "}
+                  minutes.
+                </>
+              )}
             </p>
           )}
           {/* The offer as one sentence, for a screen reader and for the rule
