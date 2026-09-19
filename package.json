@@ -11,7 +11,8 @@
     "cleanup-docs": "tsx scripts/cleanup-oversized-documents.ts",
     "verify-plan-dose": "tsx scripts/verify-plan-dose.ts",
     "clips": "tsx scripts/exercise-clips.ts",
-    "meditation": "tsx scripts/relaxation-audio.ts"
+    "meditation": "tsx scripts/relaxation-audio.ts",
+    "perf": "zsh scripts/perf/measure-register.sh"
   },
   "dependencies": {
     "@langchain/community": "^0.3.0",

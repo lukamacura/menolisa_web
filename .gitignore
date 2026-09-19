@@ -52,3 +52,6 @@ next-env.d.ts
 
 # Accidental files
 npx
+
+# Lighthouse reports from `npm run perf`
+.lighthouse/

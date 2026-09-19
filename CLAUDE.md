@@ -158,6 +158,13 @@ npm run clips <subcommand>
 
 # Meditation audio, same shape as `clips`
 npm run meditation <subcommand>
+
+# Measure /register the way an ad click experiences it: the production build
+# served behind a fair-share HTTP/2 proxy (Vercel's edge ignores request
+# priority — see §4 "Page speed on /register"), Lighthouse mobile under real
+# (DevTools) throttling and under the simulation PageSpeed Insights reports.
+# Run `npm run build` first. `npm run perf -- devtools` for one mode.
+npm run perf
 ```
 
 Five more tools are run by hand rather than through `npm`, and are deliberately
@@ -1044,6 +1051,52 @@ is right; what follows is the pass that finished it.
   in the 836 — some unknown part of the loss is women who never saw the screen
   they are recorded as rejecting.
 
+### Page speed on `/register` — the edge, not the bundle (2026-09-19)
+
+Screen 1 is a static file on the CDN edge (`x-nextjs-prerender: 1`, TTFB
+~30ms) and its first paint on a phone was still 2.8s. Four findings, each now a
+rule:
+
+- **Vercel's edge serves HTTP/2 streams fair-share and ignores priority.**
+  Under real slow-4G throttling the 24KB stylesheet (VeryHigh) finished at
+  2.8s — behind ten images, four fonts and ~200KB of Low async JS requested in
+  the same instant — and first paint sat on it. `experimental.inlineCss` is on
+  for exactly this reason: the CSS rides in the one stream that is alone on
+  the wire. Measured behind the fair-share proxy in `scripts/perf/`: FCP 2.8s
+  → 0.9s, LCP 2.8s → 1.6s; live after deploy: FCP 1.0s, LCP 1.6s. It costs
+  ~37KB brotli on every document (Next inlines the stylesheet three times:
+  once as `<style>`, twice in the RSC payload), and the *simulated* LCP that
+  PageSpeed Insights reports barely moves (2.0–2.7s across runs, from 2.7s),
+  because the simulation assumes an edge that honours priority. **Do not
+  switch it off on a simulated number.**
+- **Measure through `npm run perf`, not against bare `next start` and not
+  from the simulation alone.** `next start` is HTTP/1.1 with six connections
+  and cannot reproduce the contention, and its LCP swings 3s on whether the
+  image optimizer is warm. The DevTools-throttled figure behind the proxy
+  matched the live page to within 0.1s both before and after the fix.
+- **No page-level `<Suspense>` around the funnel.** React streams any boundary
+  over 12.8KB *after* the shell, so the static HTML's visible DOM was a
+  "Loading..." spinner with question 1 in a hidden segment swapped in at the
+  end of the document. Nothing suspends; the boundary is gone, and the heading
+  plus nine tiles are in the shell. A boundary goes around the thing that
+  suspends, never around the page.
+- **`priority` on next/image no longer sets `fetchpriority` (Next 16).** The
+  nine tiles — the LCP — were fetched at Chrome's default Low, behind the JS.
+  They carry `fetchPriority="high"` and `decoding="sync"` explicitly, and the
+  next step's tile warm waits for the window `load` event so it can never
+  share the pipe with them.
+
+What is *not* the problem, so nobody re-audits it: the tiles are served at
+w=384 AVIF q60 (4–7KB each, ~45KB for nine) and the header mockup at w=128
+(3KB); fonts are next/font Poppins 400/500/600/700 latin, `display: swap`,
+self-hosted, no Google Fonts stylesheet; the Meta pixel is `lazyOnload` and
+its ~247KB lands after the load event (`PageView` still fires — verified in
+every run). The remaining first-party weight is ~330KB of JS: React + the App
+Router runtime (~135KB), framer-motion (44KB), the page (37KB). Cutting
+framer-motion to `LazyMotion`/`m` would save ~20KB and is the next lever; it
+is a mechanical edit across 76 `motion.` uses in the quiz and was left alone
+for that reason.
+
 ### Access control (who gets in)
 
 `lib/getAccountState.ts` is the single place access is decided. Everything else
@@ -1756,6 +1809,10 @@ feature (checked 2026-09-08).
 | Fire Meta `Purchase` from the browser, or at any value but `session.amount_total` | Server-only since 2026-09-08, at what Stripe collected. A browser copy knows nothing the webhook does not, and a hardcoded value drifts from whatever Stripe actually charged. |
 | Set `allow_promotion_codes` on the Checkout Session | The box is off by default and there is nothing to redeem — no coupon is applied at all since 2026-09-11. (It also cannot coexist with `discounts`: Stripe rejects the session and the whole checkout 500s.) |
 | Send a renewal notice email | There are no renewals. The access-ending alert is the one message about the end of her window, and it must not use the word "renew" — that implies an automatic charge and contradicts the paywall, the welcome email and Terms §10.2. |
+| Wrap `/register` in a page-level `<Suspense>` | React streams any boundary over 12.8KB after the shell: the static HTML's visible DOM becomes a spinner with question 1 in a hidden segment. Put a boundary around the thing that suspends, never around the page. |
+| Turn `experimental.inlineCss` off because the simulated LCP looks worse | The simulation assumes an edge that honours priority; Vercel's does not. Real-throttled first paint went 2.8s → 0.9s with it on. Measure with `npm run perf` before touching it. |
+| Judge `/register` load time against bare `next start` | HTTP/1.1, six connections, no contention: it cannot show the fair-share problem that set first paint at 2.8s, and its LCP swings 3s on whether the image optimizer is warm. |
+| Move the Meta pixel to `afterInteractive` | Still the 2.6s-of-LCP measurement in `components/MetaPixel.tsx`, and `PageView` fires under `lazyOnload` — verified 2026-09-19, `/tr/?ev=PageView` at ~0.6s in every Lighthouse run. |
 
 | Show "estrogen rising and falling" to every stage | It is perimenopause. After the last period estrogen has dropped and stays low; most of the traffic (31 of 45 weight-first women) is past it. `ESTROGEN_TRIGGER` words it per stage. |
 | Call estrogen the "one cause" on results | A single cause of estrogen points her to HRT, which we do not sell. Estrogen is the trigger; the rows under it are what the plan works on. |
@@ -1797,6 +1854,23 @@ feature (checked 2026-09-08).
 | Send anything from her symptoms, plan or check-in to Meta | Already covered above, and the check-in is the newest thing that looks harmless and isn't. |
 
 ### Recent work
+
+**2026-09-19 (later) — `/register` first paint 2.8s → 1.0s on a phone.** The
+page was already static; what set the paint time was Vercel's edge serving
+every stream fair-share, so the render-blocking CSS arrived last. Full
+contract and the four rules in §4 "Page speed on `/register`". Live Lighthouse
+mobile, before → after: real (DevTools) throttling FCP 2.8s → 1.0s, LCP
+2.8s → 1.6s, score 90 → 99; simulated (what PageSpeed Insights reports) score
+96 → 96–99, FCP 1.1s → 1.0s, LCP 2.7s → 2.0–2.7s (run-to-run noise in the
+model, not in the page), TBT ≤ 90ms, CLS 0. Changes: `experimental.inlineCss`
+on; the page-level `<Suspense>` spinner removed; `fetchPriority="high"` +
+`decoding="sync"` on the nine tiles and the header mockup; next-step tile
+warm deferred to the `load` event. `npm run perf` (`scripts/perf/`) is the
+measurement, and the reason bare `next start` is not. Nothing about copy,
+layout, events or the quiz moved; `PageView`, `/api/funnel-step` and the
+Vercel beacons were checked in every run. PageSpeed Insights itself could not
+be run (its API quota was exhausted for the day), so the simulated figures are
+Lighthouse 12 locally against the live URL with PSI's device profile.
 
 **2026-09-19 — the founder is named "Merry" on every surface.** The welcome
 email was signed "Merry, Founder" while the funnel's founder note, the
