@@ -1085,13 +1085,34 @@ rule:
   They carry `fetchPriority="high"` and `decoding="sync"` explicitly, and the
   next step's tile warm waits for the window `load` event so it can never
   share the pipe with them.
+- **Poppins is not preloaded (`preload: false`), and that is the fix for the
+  intermittent 5–6s LCP.** Chrome treats `<link rel="preload" as="font">` in
+  the head as render-blocking, and on the live page about one visit in three
+  had its *first paint held for ~1.0–1.1s* after everything had loaded and the
+  main thread was idle — traces show layout at ~220ms, all four fonts loaded
+  by 300ms, and `pagereveal` + first paint at ~1315ms. Lighthouse's model then
+  attributes that gap to the JS and reports LCP 5.6–6.6s; PageSpeed Insights
+  does the same. Isolated by blocking requests on the live page under a
+  fast-but-real network profile (60ms RTT, 20Mbps): fonts blocked → held 0/6
+  and first paint ~200ms; all JS blocked → still held 4/6; the unused 500
+  weight blocked alone → held 5/6. After the fix: held 1 in 16 (the first
+  request after the deploy), first paint ~190ms. Nothing is lost: the CSS is inline, so the `@font-face` rules are
+  parsed the instant the preloads would have been, and `display: swap` plus
+  the size-adjusted fallback keeps CLS at 0. **Never re-enable the preload**,
+  and never add a `<link rel="preload" as="font">` by hand. The repro is
+  `scripts/perf/measure-register.sh` with `--throttling.requestLatencyMs=60
+  --throttling.downloadThroughputKbps=20000` against the live URL; a run whose
+  observed FCP is over ~700ms with load at ~450ms is a held paint.
 
 What is *not* the problem, so nobody re-audits it: the tiles are served at
 w=384 AVIF q60 (4–7KB each, ~45KB for nine) and the header mockup at w=128
 (3KB); fonts are next/font Poppins 400/500/600/700 latin, `display: swap`,
 self-hosted, no Google Fonts stylesheet; the Meta pixel is `lazyOnload` and
 its ~247KB lands after the load event (`PageView` still fires — verified in
-every run). The remaining first-party weight is ~330KB of JS: React + the App
+every run). Every Lighthouse run against the live URL writes a
+`q_symptom_primary` row to `funnel_events` — **always append `?qa=1`** so the
+row is flagged `is_test`; about 45 unflagged rows from 2026-09-19 are
+Lighthouse, not visitors. The remaining first-party weight is ~330KB of JS: React + the App
 Router runtime (~135KB), framer-motion (44KB), the page (37KB). Cutting
 framer-motion to `LazyMotion`/`m` would save ~20KB and is the next lever; it
 is a mechanical edit across 76 `motion.` uses in the quiz and was left alone
@@ -1813,6 +1834,7 @@ feature (checked 2026-09-08).
 | Turn `experimental.inlineCss` off because the simulated LCP looks worse | The simulation assumes an edge that honours priority; Vercel's does not. Real-throttled first paint went 2.8s → 0.9s with it on. Measure with `npm run perf` before touching it. |
 | Judge `/register` load time against bare `next start` | HTTP/1.1, six connections, no contention: it cannot show the fair-share problem that set first paint at 2.8s, and its LCP swings 3s on whether the image optimizer is warm. |
 | Move the Meta pixel to `afterInteractive` | Still the 2.6s-of-LCP measurement in `components/MetaPixel.tsx`, and `PageView` fires under `lazyOnload` — verified 2026-09-19, `/tr/?ev=PageView` at ~0.6s in every Lighthouse run. |
+| Preload Poppins (or add any `<link rel="preload" as="font">`) | Head font preloads are render-blocking in Chrome, and on the live page they held the first paint ~1s in about one visit in three with everything loaded and the main thread idle — the intermittent 5–6s LCP on PageSpeed Insights. With the CSS inline the preload buys nothing. See §4 "Page speed on `/register`". |
 
 | Show "estrogen rising and falling" to every stage | It is perimenopause. After the last period estrogen has dropped and stays low; most of the traffic (31 of 45 weight-first women) is past it. `ESTROGEN_TRIGGER` words it per stage. |
 | Call estrogen the "one cause" on results | A single cause of estrogen points her to HRT, which we do not sell. Estrogen is the trigger; the rows under it are what the plan works on. |
@@ -1871,6 +1893,15 @@ layout, events or the quiz moved; `PageView`, `/api/funnel-step` and the
 Vercel beacons were checked in every run. PageSpeed Insights itself could not
 be run (its API quota was exhausted for the day), so the simulated figures are
 Lighthouse 12 locally against the live URL with PSI's device profile.
+
+Second pass the same afternoon, after PSI still showed a 5.6s LCP: the cause
+was neither the images nor the JS but Chrome holding the *first paint* ~1s on
+the four `<link rel="preload" as="font">` next/font emitted — intermittent,
+about one visit in three, and older than every change above (the original
+PSI reading's 3.7s FCP on a static page is the same signature). Fixed with
+`preload: false` on Poppins; full evidence and the repro in §4. Live after
+it: real slow-4G throttling FCP 0.8s, LCP 1.4s, score 100; PSI-style
+simulation 96–99, LCP 2.1–2.7s; held paint 1 in 16 runs, from 4 in 6.
 
 **2026-09-19 — the founder is named "Merry" on every surface.** The welcome
 email was signed "Merry, Founder" while the funnel's founder note, the
