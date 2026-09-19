@@ -1,7 +1,7 @@
  
 "use client";
 
-import React, { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef, Suspense } from "react";
+import React, { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image, { getImageProps } from "next/image";
 import Link from "next/link";
@@ -3946,23 +3946,42 @@ function RegisterPageContent() {
     const sizes = next === "q_symptom_primary" ? PRIMARY_TILE_SIZES : CHOICE_TILE_SIZES;
 
     let cancelled = false;
+    let handle: number | null = null;
+    // Safari has no requestIdleCallback; a short timer is the same idea with a
+    // worse guarantee, and either way the fetches are `fetchpriority=low`.
+    const canIdle = typeof window.requestIdleCallback === "function";
     const run = () => {
       if (cancelled) return;
       srcs.forEach((src) => warmTile(src, sizes));
     };
+    const schedule = () => {
+      if (cancelled) return;
+      handle = canIdle
+        ? window.requestIdleCallback(run, { timeout: 2000 })
+        : window.setTimeout(run, 600);
+    };
 
-    // Safari has no requestIdleCallback; a short timer is the same idea with a
-    // worse guarantee, and either way the fetches are `fetchpriority=low`.
-    const canIdle = typeof window.requestIdleCallback === "function";
-    const handle: number = canIdle
-      ? window.requestIdleCallback(run, { timeout: 2000 })
-      : window.setTimeout(run, 600);
+    // Not before the window's `load` event. "Idle" on the entrance arrives
+    // ~300ms in, while the nine tiles on screen are still downloading, and
+    // `fetchpriority=low` only orders the queue — once the four age tiles are
+    // in flight they share the pipe with the LCP image. `load` means every
+    // tile, font and script on this screen has landed, so the next step's
+    // warm can no longer cost the current one anything. Only the entrance is
+    // affected: on every later step `readyState` is already "complete" and
+    // this schedules immediately, exactly as before.
+    if (document.readyState === "complete") {
+      schedule();
+    } else {
+      window.addEventListener("load", schedule, { once: true });
+    }
 
     return () => {
       // Cancels only the *scheduling*. An in-flight warm is deliberately left
       // alone: a step change is exactly when these stop being a preload and
       // become the screen, so aborting here lands on the fetch it was warming.
       cancelled = true;
+      window.removeEventListener("load", schedule);
+      if (handle === null) return;
       if (canIdle && typeof window.cancelIdleCallback === "function") {
         window.cancelIdleCallback(handle);
       } else {
@@ -6339,6 +6358,11 @@ function RegisterPageContent() {
                     height={1198}
                     loading="eager"
                     sizes="56px"
+                    // Above the fold beside the h1, so it paints with the
+                    // tiles rather than after the scripts — see the tiles'
+                    // `fetchPriority` note below. ~3KB at the 128px candidate.
+                    fetchPriority="high"
+                    decoding="sync"
                     className="h-[84px] sm:h-24 w-auto shrink-0 drop-shadow-md"
                   />
                   <div className="min-w-0">
@@ -6835,6 +6859,28 @@ function RegisterPageContent() {
                                 // paint is a grid of labels over empty boxes on a
                                 // phone.
                                 priority
+                                // `priority` only *preloads* in Next 16 — it
+                                // no longer sets `fetchpriority`, so the nine
+                                // tiles were requested at Chrome's default
+                                // "Low" for images, behind ~330KB of async JS
+                                // on the same pipe. Verified on the live HTML
+                                // (no fetchpriority attribute on the <img> or
+                                // its preload) and in Lighthouse's waterfall.
+                                // "high" puts the LCP element ahead of the
+                                // scripts; the prop is forwarded to both the
+                                // <img> and the <link rel="preload">.
+                                fetchPriority="high"
+                                // Paint in the same frame the bytes land in.
+                                // With the default `async` the browser decodes
+                                // off-thread and paints on a *later* frame,
+                                // and on this page that later frame is behind
+                                // hydration: Lighthouse read it as ~2.2s of
+                                // "render delay" on a tile that had been in
+                                // cache for two seconds. A 384px AVIF decodes
+                                // in single-digit milliseconds, so paying it
+                                // inline is cheaper than waiting for the main
+                                // thread to come back.
+                                decoding="sync"
                                 /*
                                  * These nine are the largest thing on the LCP
                                  * path now that the page is static HTML, so
@@ -7282,17 +7328,31 @@ function RegisterPageContent() {
   );
 }
 
+/**
+ * No <Suspense> around the page, on purpose.
+ *
+ * It used to wrap `RegisterPageContent` in a boundary with a spinner fallback,
+ * a leftover from when the page called `useSearchParams()` and needed somewhere
+ * to bail out to. Nothing here suspends any more — the query string is read
+ * with `readQueryParam()` — but the boundary still cost the first paint, and
+ * the mechanism is worth knowing because it is invisible in the source:
+ *
+ * React's streaming renderer refuses to inline a boundary whose HTML is larger
+ * than `progressiveChunkSize` (12.8KB), so the shell goes out with the
+ * *fallback* in it and the real content follows as a hidden segment
+ * (`<div hidden id="S:0">`) that an inline `$RC` script swaps in once the whole
+ * document has been parsed. Question 1's markup is ~25KB, so every ad click
+ * got a static HTML file whose visible DOM was "Loading..." and a spinner, with
+ * the entrance sitting in a hidden div behind it — the first paint was the
+ * spinner, and the nine tiles (the LCP) could not paint until the end of the
+ * document. Measured 2026-09-19 with Lighthouse (mobile, simulated slow 4G):
+ * the tiles' render delay was 4.7s of a 5.7s LCP.
+ *
+ * With no boundary there is nothing to defer: the heading and all nine tiles
+ * are in the shell, visible as soon as the CSS lands. Do not wrap this in
+ * <Suspense> again unless something below genuinely suspends — and if it does,
+ * put the boundary around *that*, not around the page.
+ */
 export default function RegisterPage() {
-  return (
-    <Suspense
-      fallback={
-        <main className="overflow-hidden relative mx-auto p-3 sm:p-4 h-dvh flex flex-col pt-20 sm:pt-24 max-w-3xl min-h-0 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-r-transparent" />
-          <p className="text-sm text-muted-foreground mt-4">Loading...</p>
-        </main>
-      }
-    >
-      <RegisterPageContent />
-    </Suspense>
-  );
+  return <RegisterPageContent />;
 }

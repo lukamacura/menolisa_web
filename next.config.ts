@@ -14,6 +14,11 @@ const nextConfig: NextConfig = {
   // Performance optimizations
   experimental: {
     optimizePackageImports: ["framer-motion", "lucide-react", "@supabase/supabase-js"],
+    // `inlineCss` was tried on 2026-09-19 and rejected: it pastes the raw
+    // stylesheet (~450KB uncompressed) into every HTML document, which took
+    // `/register` from 37KB to 487KB on the wire before compression and made
+    // FCP, LCP and total transfer all worse under Lighthouse's slow-4G
+    // simulation. Keep the stylesheet external.
   },
 
   // Image optimization (AVIF + WebP, responsive device sizes)
