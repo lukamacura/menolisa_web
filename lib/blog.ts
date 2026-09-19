@@ -5,7 +5,7 @@ import { PLAN_WEEKS } from "@/lib/pricing";
  * The blog's post registry: the index page, the sitemap and each post's
  * metadata all read from here, so a post is added in one place.
  *
- * Every post answers one search question, in Zoka's voice (first person, plain
+ * Every post answers one search question, in Merry's voice (first person, plain
  * words, 800-1,200 words), and ends the same way: <MechanismClose /> - the
  * weight chain the funnel's results card explains - then one line to /register.
  */
@@ -26,13 +26,13 @@ export type BlogAuthor = {
 };
 
 /**
- * Zoka came up with MenoLisa. She is not a clinician, and nothing on the blog
+ * Merry came up with MenoLisa. She is not a clinician, and nothing on the blog
  * may say or imply she is (CLAUDE.md, "Invent an expert ... or credential").
  * Her first person claims no personal history either - no "when I went
  * through it", no weight she lost - unless she has said so and agreed to it.
  */
-export const ZOKA: BlogAuthor = {
-  name: "Zoka",
+export const MERRY: BlogAuthor = {
+  name: "Merry",
   role: "Came up with MenoLisa",
   photo: "/proof/zoka.webp",
 };
@@ -61,7 +61,7 @@ export const POSTS: BlogPost[] = [
     published: "2026-09-14",
     updated: "2026-09-14",
     readMinutes: 5,
-    author: ZOKA,
+    author: MERRY,
   },
   {
     slug: "why-menopause-weight-goes-to-your-belly",
@@ -72,7 +72,7 @@ export const POSTS: BlogPost[] = [
     published: "2026-09-14",
     updated: "2026-09-14",
     readMinutes: 5,
-    author: ZOKA,
+    author: MERRY,
   },
   {
     slug: "does-walking-help-menopause-belly-fat",
@@ -83,7 +83,7 @@ export const POSTS: BlogPost[] = [
     published: "2026-09-14",
     updated: "2026-09-14",
     readMinutes: 5,
-    author: ZOKA,
+    author: MERRY,
   },
   {
     slug: "how-much-protein-women-over-50",
@@ -94,7 +94,7 @@ export const POSTS: BlogPost[] = [
     published: "2026-09-14",
     updated: "2026-09-14",
     readMinutes: 5,
-    author: ZOKA,
+    author: MERRY,
   },
   {
     slug: "8-week-plan-menopause-weight-gain",
@@ -104,7 +104,7 @@ export const POSTS: BlogPost[] = [
     published: "2026-09-14",
     updated: "2026-09-14",
     readMinutes: 6,
-    author: ZOKA,
+    author: MERRY,
   },
 ];
 

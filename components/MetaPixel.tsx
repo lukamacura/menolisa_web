@@ -44,7 +44,8 @@ const PIXEL_ENABLED = process.env.NODE_ENV === "production";
  *
  * It has to be read in an effect. The property exists only in the browser, and
  * deciding during render would either crash SSR or hydrate a mismatched tree —
- * so the snippet mounts one tick later, which `afterInteractive` already implies.
+ * so the snippet mounts one tick later, which the script's own `lazyOnload`
+ * strategy already implies.
  */
 function gpcEnabled(): boolean {
   return (
@@ -119,7 +120,46 @@ export default function MetaPixel() {
         If we ever want a real Subscribe, fire it explicitly from the webhook's
         subscription-confirmation branch, not from the browser.
       */}
-      <Script id="fb-pixel" strategy="afterInteractive">
+      {/*
+        `lazyOnload`, not `afterInteractive`. **This is a load-time decision and
+        it is worth more than everything else on this page combined.**
+
+        fbevents.js is 108KB and pulls a 136KB `signals/config` bundle behind it
+        — 244KB of third-party JavaScript from a second origin, which is more
+        than a third of everything `/register` transfers. Under
+        `afterInteractive` that lands while the entrance is still painting, and
+        it competes with the nine quiz tiles for a slow-4G pipe.
+
+        Measured with Lighthouse (mobile, simulated slow 4G) on identical
+        builds, the only variable being whether `connect.facebook.net` was
+        blocked:
+
+            with the pixel     LCP 5.8s   TBT  90ms   score 78
+            without it         LCP 3.2s   TBT   0ms   score 93
+
+        2.6 seconds of Largest Contentful Paint, on the screen that takes 100%
+        of paid traffic and already loses a third of it before the first tap.
+
+        What this does NOT cost, which is why it is safe:
+          - **Nothing that earns money.** `Lead`, `ViewContent`,
+            `InitiateCheckout` and `Purchase` are all sent server-side through
+            the Conversions API. None of them is fired from this snippet.
+          - **Not the click id.** `captureFbClickId()` above runs in a plain
+            effect, independent of this script, so `_fbc` is written from the
+            landing URL's `fbclid` at the usual time whether fbevents.js has
+            loaded or not.
+
+        What it does cost: the browser `PageView` fires after the load event
+        rather than during it, so a visitor who leaves within a second or two
+        may not register one, and `_fbp` is set late for her. `PageView` is not
+        an AEM event and is not an optimization target (see the event table in
+        `lib/metaPixel.ts`), and a visitor that fast converts nothing — so the
+        trade was taken deliberately.
+
+        Do not move this back to `afterInteractive` without re-running the
+        measurement above.
+      */}
+      <Script id="fb-pixel" strategy="lazyOnload">
         {`
     !function(f,b,e,v,n,t,s)
     {if(f.fbq)return;n=f.fbq=function(){n.callMethod?

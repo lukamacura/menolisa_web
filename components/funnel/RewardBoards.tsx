@@ -831,7 +831,7 @@ export function TrainingWeekBoard({
  * It is that the app decides her day, so keeping it up is the easy part. That
  * claim needs a person standing behind it, so a person says it.
  *
- * **The person is Zoka, who came up with MenoLisa** (2026-09-14, later the
+ * **The person is Merry, who came up with MenoLisa** (2026-09-14, later the
  * same day). The first cut showed the developer: a young man in a blue-lit
  * studio portrait telling menopausal women that nobody loses weight in one
  * good week. The audience is a sceptical woman in her fifties, and the person
@@ -840,7 +840,7 @@ export function TrainingWeekBoard({
  *
  * Rules, all of them about what the board may claim:
  *
- * - **The person in the print is real and agreed to be shown** - Zoka is
+ * - **The person in the print is real and agreed to be shown** - Merry is
  *   named, with the same photo and the same role, on the paywall's "The people
  *   behind MenoLisa" card (owner's call, 2026-09-13). The role is the one the
  *   owner gave; nothing here dresses it up into a credential. Never add a name
@@ -854,7 +854,7 @@ export function TrainingWeekBoard({
  * - **Discipline is named as universal, never as her failing** (2026-09-16).
  *   "Discipline you don't have" is true and insulting; "discipline runs out,
  *   on everyone" is the same point and takes the blame off her.
- * - **No invented personal history.** Zoka speaks in the first person, but
+ * - **No invented personal history.** Merry speaks in the first person, but
  *   nothing here says what she tried or lived through - only what the app does.
  * - **The checklist names the plan's four real pillars and no tasks.**
  *   `PLAN_PILLARS` is what the app's day is built from. Her actual tasks are
@@ -869,7 +869,7 @@ export function TrainingWeekBoard({
  * coloured lighting, the same photograph the team card's avatar is cut from.
  */
 const FOUNDER = {
-  name: "Zoka",
+  name: "Merry",
   photo: "/brand/founder-zoka-portrait.webp",
 } as const;
 

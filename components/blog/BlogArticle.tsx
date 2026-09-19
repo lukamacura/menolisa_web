@@ -6,7 +6,7 @@ import LandingFooter from "@/components/landing/LandingFooter";
 import { CANONICAL_ORIGIN, type BlogPost, formatPostDate, postUrl } from "@/lib/blog";
 
 /**
- * The shell every post renders in: breadcrumb, the question as the H1, Zoka's
+ * The shell every post renders in: breadcrumb, the question as the H1, Merry's
  * byline, a short answer (the featured-snippet target), the body, and the
  * shared ending. The fixed <LandingCtaBar /> is the page's one button; the
  * only link inside the article is MechanismClose's line to /register.

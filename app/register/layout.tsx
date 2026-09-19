@@ -1,21 +1,26 @@
 /**
- * Forces the funnel to be server-rendered per request.
+ * **`/register` is a static file. Keep it that way.**
  *
- * `RegisterPageContent` calls `useSearchParams()` (for Stripe's
- * `?phase=download&session_id=…` return). Under static prerendering Next
- * cannot know those values, so it bails out of the enclosing <Suspense> and
- * bakes the *fallback* — the "Loading…" spinner — into the HTML, leaving the
- * whole funnel to render on the client. That trades a fast TTFB for a blank
- * first paint, which is the wrong way round for paid traffic: the start screen
- * is what the ad promised and it should be in the first byte.
+ * This layout used to carry `export const dynamic = "force-dynamic"`, because
+ * `RegisterPageContent` called `useSearchParams()` for Stripe's
+ * `?phase=download&session_id=…` return. A dynamic API leaves two options and
+ * both are bad for paid traffic: bail out of prerendering and bake the
+ * <Suspense> *spinner* into the HTML, or render on demand and pay a serverless
+ * invocation — and, on a cold lambda, a cold start — in front of the first byte
+ * of every ad click. This route took the second. It is invisible in local
+ * testing (warm TTFB is ~3ms) and it is charged to exactly the visitor the page
+ * exists for: a cold click from an in-app browser on mobile data.
  *
- * Rendering on demand keeps the start screen in the HTML. The cost is a
- * function invocation per ad click. To get both — static HTML *and* real
- * content — the `?phase=download` return has to stop being a query param on
- * this route (see the note in page.tsx); until then, content wins.
+ * The page now reads the query string with `readQueryParam()` (plain
+ * `window.location.search`), which is not a dynamic API, so `/register`
+ * prerenders to static HTML with question 1 already in it and is served from
+ * the CDN edge with no function in the path.
+ *
+ * Anything that reintroduces a dynamic API here — `useSearchParams`, `cookies()`,
+ * `headers()`, a `force-dynamic` export, an uncached fetch in a server
+ * component — puts the invocation back. Confirm with `npm run build`: the route
+ * table must show `○ /register` (static), never `ƒ` (dynamic).
  */
-export const dynamic = "force-dynamic";
-
 export default function RegisterLayout({
   children,
 }: {

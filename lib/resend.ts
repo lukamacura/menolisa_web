@@ -11,7 +11,7 @@ export function getResend(): Resend {
   return resendClient;
 }
 
-const DEFAULT_FROM = "Merry | MenoLisa Founder <onboarding@menolisa.com>";
+const DEFAULT_FROM = "Merry | MenoLisa <onboarding@menolisa.com>";
 const APP_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://menolisa.com";
 
 /**
@@ -59,7 +59,7 @@ export function buildEmailHtml(body: string): string {
               <tr>
                 <td style="border-top:1px solid #ede9fe;padding-top:22px">
                   <p style="margin:0 0 3px;font-weight:700;color:#7c3aed;font-size:15px">Merry</p>
-                  <p style="margin:0;color:#a78bc4;font-size:13px">Founder, MenoLisa</p>
+                  <p style="margin:0;color:#a78bc4;font-size:13px">Came up with MenoLisa</p>
                 </td>
               </tr>
             </table>

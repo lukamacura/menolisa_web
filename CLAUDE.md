@@ -1798,6 +1798,16 @@ feature (checked 2026-09-08).
 
 ### Recent work
 
+**2026-09-19 — the founder is named "Merry" on every surface.** The welcome
+email was signed "Merry, Founder" while the funnel's founder note, the
+paywall's team card and the blog byline said "Zoka" — the first customer saw
+both names twelve minutes apart. Same person, one name now: `FOUNDER` in
+`RewardBoards.tsx`, `FOUNDERS` in `PaywallView.tsx`, `MERRY` in `lib/blog.ts`,
+and the email signature reads "Came up with MenoLisa", the role the funnel
+uses. Entries below that say "Zoka" mean Merry; the image files keep their
+`zoka` filenames. The `EMAIL_FROM` default is "Merry | MenoLisa" — check the
+Vercel value matches.
+
 **2026-09-16 — copy pass for plain US English on results and the founder
 note.** Supersedes the quoted copy in the 2026-09-14 entries below. The weight
 chain's labels are now what she notices ("You're hungrier, and you burn less",

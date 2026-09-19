@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Image, { getImageProps } from "next/image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -1031,12 +1031,13 @@ const DIAGNOSIS_SHOTS: ReadonlyArray<{ src: string; sizes: string }> = PLAN_HERO
   ({ src }) => ({ src, sizes: PLAN_HERO_SIZES })
 );
 
-// Build the same URL next/image requests, so the preload warms both the Vercel
-// optimizer cache and the browser HTTP cache (640/828 cover phone + desktop).
-const optimizedImageUrl = (src: string, w: number) =>
-  `/_next/image?url=${encodeURIComponent(src)}&w=${w}&q=75`;
-
 // Preload a responsive image the way the browser will actually request it.
+//
+// `optimizedImageUrl(src, w)` — a hand-built `/_next/image?...&w=640&q=75` —
+// used to live here and had both callers. Both are gone (see `warmTile` and the
+// tile warm-up effect), and it is deleted rather than kept "in case": a helper
+// that builds an image URL by guessing a width and hardcoding a quality is the
+// bug described below, in a form that looks like a utility.
 //
 // The old warm-up did `new Image(); img.src = optimizedImageUrl(src, 640)`, which
 // guesses one candidate out of the srcset - and the guess is wrong on any phone
@@ -1086,6 +1087,58 @@ function preloadResponsiveImage(src: string, sizes: string) {
   img.srcset = props.srcSet;
   if (props.src) img.src = props.src;
   void img.decode().catch(() => {});
+}
+
+/**
+ * The quiz tiles: one intrinsic size, one quality, two `sizes` strings.
+ *
+ * All four live here rather than inline in the JSX because the warm-up below
+ * has to ask next/image for *exactly* the candidate the <Image> will ask for.
+ * Any drift — a different `sizes`, a different `quality` — resolves a different
+ * URL out of the srcset, which is not a cache miss but a second download of a
+ * picture already on the page.
+ */
+const TILE_MASTER_PX = 460;
+const TILE_QUALITY = 60;
+/** The nine-tile 3x3 grid on the entrance. */
+const PRIMARY_TILE_SIZES = "(min-width: 640px) 33vw, 40vw";
+/** The 2x2 grid behind every four-option question. */
+const CHOICE_TILE_SIZES = "50vw";
+
+/**
+ * Warm one upcoming tile, at the width the browser will actually request.
+ *
+ * Same argument as `preloadResponsiveImage` above, and the same mistake it was
+ * written to fix: guessing a width fetches a URL nothing on the page ever asks
+ * for. `getImageProps()` runs the real loader, so handing the browser
+ * `sizes` + `srcset` makes it resolve the candidate it would have resolved on
+ * its own.
+ *
+ * Low priority, and never for the step on screen — see the effect that calls it.
+ */
+const warmedTiles = new Set<string>();
+
+function warmTile(src: string, sizes: string) {
+  if (typeof window === "undefined" || warmedTiles.has(src)) return;
+  warmedTiles.add(src);
+  const { props } = getImageProps({
+    src,
+    alt: "",
+    width: TILE_MASTER_PX,
+    height: TILE_MASTER_PX,
+    sizes,
+    quality: TILE_QUALITY,
+  });
+  if (!props.srcSet || !props.src) return;
+  const img = new window.Image();
+  // `sizes` before `srcset`, so the candidate is resolved against the real
+  // layout width rather than the 100vw default.
+  img.sizes = props.sizes ?? sizes;
+  img.srcset = props.srcSet;
+  // This is the step *after* the one she is reading. It must never take
+  // bandwidth from the current screen's LCP.
+  img.setAttribute("fetchpriority", "low");
+  img.src = props.src;
 }
 
 // No email/OTP phase: the funnel never asks her to leave for an inbox. The
@@ -3249,8 +3302,14 @@ function ImageChoiceGrid({
                 src={option.image}
                 alt={option.label}
                 fill
-                sizes="50vw"
+                sizes={CHOICE_TILE_SIZES}
                 priority={priority}
+                // See the note on the nine landing tiles: flat illustrations
+                // at this size are indistinguishable at 60, and `qualities` in
+                // next.config.ts allows only 60 and 75. Both this and `sizes`
+                // come from the shared constants so `warmTile()` resolves the
+                // same URL — a mismatch is a second download, not a cache miss.
+                quality={TILE_QUALITY}
                 className="object-cover"
               />
               {isSelected && <div className="absolute inset-0 bg-primary/15" />}
@@ -3720,9 +3779,66 @@ function QuizReward({
   );
 }
 
+/**
+ * Read one query param from the live URL, without `useSearchParams()`.
+ *
+ * **This is what keeps `/register` a static file on the CDN edge, and it is the
+ * single largest thing anyone has done to this page's load time.** Touching it
+ * carelessly costs a serverless invocation on every Meta ad click.
+ *
+ * `useSearchParams()` is a dynamic API: Next cannot know the values at build
+ * time, so a page that calls it either bails out of static prerendering into
+ * the enclosing <Suspense> (baking the *spinner* into the HTML) or, if the
+ * route opts into `force-dynamic` to avoid that, is server-rendered on demand.
+ * This route did the second — `app/register/layout.tsx` carried
+ * `export const dynamic = "force-dynamic"` — which bought real HTML at the cost
+ * of a function invocation, and a possible cold start, in front of the first
+ * byte of every ad click. That is invisible locally (warm TTFB is ~3ms) and
+ * expensive on exactly the traffic this page exists for: a cold click from an
+ * in-app browser on mobile data.
+ *
+ * Reading `window.location.search` instead is not a dynamic API, so the page
+ * prerenders to static HTML with question 1 already in it, served from the edge
+ * with no function in the path at all.
+ *
+ * Returns null during SSR and prerender, which is correct and load-bearing: the
+ * server must render the same thing for everyone (question 1) or the HTML could
+ * not be a static file. The `?phase=download` return is re-applied on the
+ * client in a layout effect — see the `phase` initializer below.
+ */
+function readQueryParam(name: string): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return new URLSearchParams(window.location.search).get(name);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The phase the URL asks for, if it is one we honor — otherwise null.
+ *
+ * One function so the layout effect that applies it and the resume-ticket guard
+ * that must yield to it can never disagree about what the URL means. Returns
+ * null during prerender, so the static HTML is always question 1.
+ */
+function urlPhaseOverride(): Phase | null {
+  const p = readQueryParam("phase");
+  // Stripe's success URL. She arrives from another origin, and by then she has
+  // paid — there is nothing left to personalise or lose.
+  if (p === "download") return "download";
+  // Dev-only: preview the results / plan steps without finishing the quiz.
+  if (
+    (p === "results" || p === "diagnosis") &&
+    process.env.NODE_ENV === "development"
+  ) {
+    return p;
+  }
+  return null;
+}
+
 function RegisterPageContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const prefersReducedMotion = useReducedMotion();
 
   /**
@@ -3744,17 +3860,22 @@ function RegisterPageContent() {
    * success URL, she arrives on it from another origin, and by then she has
    * paid — there is nothing left to personalise or lose.
    */
+  /*
+   * Always "quiz", on the server and on the client's first render alike.
+   *
+   * It used to read `?phase=download` here. It cannot any more, and the reason
+   * is the same one that makes this page static: the prerendered HTML is one
+   * file served to everybody, so a first client render that disagreed with it
+   * would be a hydration mismatch — React throws away the server HTML and
+   * re-renders the subtree on the client, which is slower than the dynamic
+   * rendering this change removed.
+   *
+   * `urlPhaseOverride()` is applied instead in a layout effect below, before
+   * the browser paints, so the download screen still arrives without a visible
+   * flash of question 1. She has already paid by then; she is not the cohort
+   * this page's load time is being defended for.
+   */
   const [phase, setPhase] = useState<Phase>(() => {
-    const phaseParam = searchParams.get("phase");
-    if (phaseParam === "download") return phaseParam;
-    // Dev-only: preview the results / plan steps directly without finishing the
-    // quiz.
-    if (
-      (phaseParam === "results" || phaseParam === "diagnosis") &&
-      process.env.NODE_ENV === "development"
-    ) {
-      return phaseParam;
-    }
     /*
      * **Question 1 is the funnel. There is no start screen (2026-09-04).**
      *
@@ -3786,29 +3907,68 @@ function RegisterPageContent() {
   const currentStep = STEPS[stepIndex];
   const autoAdvances = AUTO_ADVANCE_STEPS.includes(currentStep);
 
-  // Preload the next step's images (and prewarm the very first step on mount) so
-  // tiles are already cached before the step renders.
+  /*
+   * Warm the NEXT step's tiles. Never the current step's, and never at a
+   * guessed width.
+   *
+   * Both halves of that were wrong here, and together they were the funnel's
+   * largest load-time bug. This effect used to also warm `STEPS[0]` on mount —
+   * the nine tiles already on screen — and it warmed every source at two
+   * hardcoded widths, 640 and 828. next/image had meanwhile emitted its own
+   * `priority` preload for those same nine tiles at the width the layout
+   * actually resolves.
+   *
+   * Measured on the entrance with Lighthouse (mobile, simulated slow 4G):
+   * **37 image requests and 391KB, for a screen that needs nine tiles and about
+   * 70KB** — every tile fetched three times over, at 384 (the real one) plus
+   * the two guesses. The LCP element is one of those tiles, so the warm-up was
+   * taking bandwidth from the exact image it existed to make faster: LCP 5.7s,
+   * of which 5.3s was render delay with the image already in cache.
+   *
+   * The rules, which `preloadResponsiveImage` above had already learned for the
+   * screenshots:
+   *
+   *   1. **Never warm what is on screen.** `priority` on a rendered <Image>
+   *      *is* the preload. A second one is a second download.
+   *   2. **Never guess a width or a quality.** `warmTile()` asks
+   *      `getImageProps()` for the real candidate list. A hardcoded
+   *      `?w=640&q=75` misses the tiles' q=60 on its own, which is a whole
+   *      extra copy of every image.
+   *
+   * And it waits for idle, so even the next step's tiles cannot compete with
+   * this step's paint. She has to tap before she can reach them.
+   */
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const srcs = [
-      // Index-driven, never the first step by name: the funnel's opening screen
-      // has now changed twice, and a hardcoded key here warms the wrong tiles
-      // silently — the screen still works, it just paints slower on the one
-      // screen that takes 100% of paid traffic.
-      ...(stepIndex === 0 ? STEP_IMAGES[STEPS[0]] ?? [] : []),
-      ...(STEP_IMAGES[STEPS[stepIndex + 1]] ?? []),
-    ];
-    // No cleanup: it used to set `img.src = ""` on every step change, and a step
-    // change is when the next step's images stop being a preload and start being
-    // the screen - so the abort landed on exactly the fetch it was warming. The
-    // Image objects are dropped, but the responses they pull stay in the HTTP
-    // cache, which is the only thing the tiles need.
-    srcs.forEach((src) => {
-      for (const w of [640, 828]) {
-        const img = new window.Image();
-        img.src = optimizedImageUrl(src, w);
+    const next = STEPS[stepIndex + 1];
+    const srcs = (next && STEP_IMAGES[next]) ?? [];
+    if (srcs.length === 0) return;
+    const sizes = next === "q_symptom_primary" ? PRIMARY_TILE_SIZES : CHOICE_TILE_SIZES;
+
+    let cancelled = false;
+    const run = () => {
+      if (cancelled) return;
+      srcs.forEach((src) => warmTile(src, sizes));
+    };
+
+    // Safari has no requestIdleCallback; a short timer is the same idea with a
+    // worse guarantee, and either way the fetches are `fetchpriority=low`.
+    const canIdle = typeof window.requestIdleCallback === "function";
+    const handle: number = canIdle
+      ? window.requestIdleCallback(run, { timeout: 2000 })
+      : window.setTimeout(run, 600);
+
+    return () => {
+      // Cancels only the *scheduling*. An in-flight warm is deliberately left
+      // alone: a step change is exactly when these stop being a preload and
+      // become the screen, so aborting here lands on the fetch it was warming.
+      cancelled = true;
+      if (canIdle && typeof window.cancelIdleCallback === "function") {
+        window.cancelIdleCallback(handle);
+      } else {
+        window.clearTimeout(handle);
       }
-    });
+    };
   }, [stepIndex]);
 
   // Pull the plan catalog from q_body onwards - four steps before the first
@@ -4726,7 +4886,7 @@ function RegisterPageContent() {
 
       let email = await read();
       if (!email) {
-        const sessionId = searchParams.get("session_id");
+        const sessionId = readQueryParam("session_id");
         if (sessionId) {
           try {
             const res = await fetch("/api/stripe/sync-session", {
@@ -4783,7 +4943,7 @@ function RegisterPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [phase, searchParams]);
+  }, [phase]);
 
   /** Back to question 1. The funnel's only recovery move — there is no state to
    *  restore, so restarting is both the simplest repair and the honest one.
@@ -4819,9 +4979,41 @@ function RegisterPageContent() {
     // Runs after every commit, i.e. after the restore swap has painted.
     skipPhaseTransition.current = false;
   });
+
+  /**
+   * Apply `?phase=…` from the URL, before the first paint.
+   *
+   * This is the other half of making the page static (see `readQueryParam`).
+   * The phase state initializer cannot read the URL without breaking
+   * hydration, so the read happens here instead — in a *layout* effect, which
+   * React flushes before the browser paints, so nothing flashes.
+   *
+   * Declared above the resume-ticket effect so it wins the commit, and the
+   * cross-fade is skipped for the same reason the restore skips it: question 1
+   * is on screen only because it is what the static HTML had to contain, not
+   * because it is a screen she was on.
+   */
+  const urlPhaseChecked = useRef(false);
+  useIsomorphicLayoutEffect(() => {
+    if (urlPhaseChecked.current) return;
+    urlPhaseChecked.current = true;
+    const override = urlPhaseOverride();
+    if (!override) return;
+    skipPhaseTransition.current = true;
+    setPhase(override);
+  }, []);
+
   useIsomorphicLayoutEffect(() => {
     if (resumeChecked.current) return;
     resumeChecked.current = true;
+    /*
+     * A URL phase outranks a ticket, and this guard is how that survives the
+     * move out of the state initializer. Both effects run in the same commit,
+     * so `phase` still reads "quiz" in this closure even though the effect
+     * above has already queued the override — checking the state alone would
+     * send a paying customer to the paywall she just bought from.
+     */
+    if (urlPhaseOverride()) return;
     // "quiz" is the cold-start phase. What this guard is really saying is "only
     // when this load would otherwise begin the funnel from the top" -
     // `?phase=download` and the dev-only params are decided by the initializer
@@ -6011,7 +6203,7 @@ function RegisterPageContent() {
               type="button"
               disabled={syncingPayment}
               onClick={async () => {
-                const sessionId = searchParams.get("session_id");
+                const sessionId = readQueryParam("session_id");
                 if (sessionId) {
                   setSyncingPayment(true);
                   try {
@@ -6635,7 +6827,7 @@ function RegisterPageContent() {
                                 src={option.image}
                                 alt={option.label}
                                 fill
-                                sizes="(min-width: 640px) 33vw, 40vw"
+                                sizes={PRIMARY_TILE_SIZES}
                                 // This is the funnel's landing screen, so these
                                 // nine tiles are the LCP. Without `priority`
                                 // next/image ships them `loading="lazy"` —
@@ -6643,6 +6835,27 @@ function RegisterPageContent() {
                                 // paint is a grid of labels over empty boxes on a
                                 // phone.
                                 priority
+                                /*
+                                 * These nine are the largest thing on the LCP
+                                 * path now that the page is static HTML, so
+                                 * their bytes are the load time.
+                                 *
+                                 * Measured on joint_pain (the heaviest tile) at
+                                 * the width a phone actually requests: AVIF
+                                 * 11,985 B at q75 against 7,806 B at q60 — 35%
+                                 * off the biggest item on the path, for nine
+                                 * tiles. Rendered side by side at 384px (they
+                                 * paint at ~156 CSS px, under half that) the two
+                                 * are indistinguishable: these are flat,
+                                 * soft-gradient illustrations with no fine
+                                 * detail or text, which is the content type
+                                 * AVIF handles best at low quality.
+                                 *
+                                 * 60 is the floor `qualities` in next.config.ts
+                                 * permits; anything lower needs that list
+                                 * widened, and needs looking at first.
+                                 */
+                                quality={TILE_QUALITY}
                                 // `contain`, not `cover`: these illustrations sit
                                 // on a transparent ground the same colour as the
                                 // card, so a taller-than-wide box adds cream

@@ -192,7 +192,7 @@ function formatClock(seconds: number): string {
  * into credentials. Avatars are 192px crops in public/brand/.
  */
 const FOUNDERS = [
-  { name: "Zoka", role: "Came up with MenoLisa", src: "/brand/founder-zoka.webp" },
+  { name: "Merry", role: "Came up with MenoLisa", src: "/brand/founder-zoka.webp" },
   { name: "Luka", role: "Built the app", src: "/brand/founder-luka.webp" },
 ];
 

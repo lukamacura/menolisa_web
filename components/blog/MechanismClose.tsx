@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ZOKA } from "@/lib/blog";
+import { MERRY } from "@/lib/blog";
 import { PLAN_WEEKS } from "@/lib/pricing";
 
 /**
@@ -64,8 +64,8 @@ export default function MechanismClose() {
       <div className="mt-6 flex items-center gap-4 border-t border-[#E8DDD9] pt-5">
         <div className="relative h-[90px] w-[72px] shrink-0 overflow-hidden rounded-xl ring-1 ring-black/5">
           <Image
-            src={ZOKA.photo}
-            alt="Zoka holding the MenoLisa quiz on her phone"
+            src={MERRY.photo}
+            alt="Merry holding the MenoLisa quiz on her phone"
             fill
             sizes="72px"
             className="object-cover object-[50%_60%]"
