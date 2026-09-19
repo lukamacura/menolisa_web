@@ -79,8 +79,53 @@ import { QuizNudge } from "@/components/funnel/QuizNudge";
  * fetches them well before the phase that needs them. `next/dynamic` dedupes,
  * so warming and rendering share one request.
  */
+/**
+ * Retry a failed chunk load before giving up on it.
+ *
+ * A dynamic import that rejects throws during render and lands on
+ * `app/error.tsx`, whose reset remounts the tree and loses every answer — on
+ * the paywall, the money screen. Two things make a chunk fail for a real
+ * visitor: a deploy mid-visit (the hashed URL she was handed no longer exists,
+ * which no retry fixes, so the third attempt still throws and the boundary
+ * still catches it) and a flaky in-app webview on a train, which a second
+ * request a moment later almost always fixes. Webpack drops a rejected chunk
+ * promise from its cache, so a retry really re-requests the file.
+ */
+const CHUNK_RETRIES = 3;
+function retryImport<T>(load: () => Promise<T>, attempt = 1): Promise<T> {
+  return load().catch((err) => {
+    if (attempt >= CHUNK_RETRIES) throw err;
+    return new Promise<T>((resolve) =>
+      setTimeout(() => resolve(retryImport(load, attempt + 1)), 700 * attempt)
+    );
+  });
+}
+
+/**
+ * `fetch` that gives up. Every call in this funnel used to wait forever, and
+ * on a phone a request that never settles is ordinary: the webview is
+ * backgrounded mid-flight, the carrier hands off, a captive portal swallows
+ * the socket. Each hang was a permanent stall with no message and no button —
+ * the calculating meter parked at 99%, the buy button reading "Redirecting…"
+ * for good. A timed-out request throws like a failed one, so every caller's
+ * existing error path (with its Try again) handles it.
+ *
+ * `AbortSignal.timeout` is iOS 16+ / Chrome 103+; older browsers just keep the
+ * old behaviour rather than losing the request.
+ */
+function fetchWithTimeout(input: string, init: RequestInit, ms: number): Promise<Response> {
+  const signal =
+    typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function"
+      ? AbortSignal.timeout(ms)
+      : undefined;
+  return fetch(input, signal ? { ...init, signal } : init);
+}
+const isTimeoutError = (e: unknown) =>
+  e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+const TIMEOUT_MESSAGE = "That took longer than it should. Check your connection and try again.";
+
 const loadPaywallView = () =>
-  import("@/components/PaywallView").then((m) => ({ default: m.PaywallView }));
+  retryImport(() => import("@/components/PaywallView")).then((m) => ({ default: m.PaywallView }));
 // The identical component used to be defined a second time in this file, with a
 // narrower `variant` union that had already drifted from the shared one.
 //
@@ -89,11 +134,13 @@ const loadPaywallView = () =>
 // its only caller and imports it statically, so it travels in the chunk
 // `loadPaywallView` already pulls.
 const loadPlanStage = () =>
-  import("@/components/PlanStage").then((m) => ({ default: m.PlanStage }));
+  retryImport(() => import("@/components/PlanStage")).then((m) => ({ default: m.PlanStage }));
 const loadHowLisaRuns = () =>
-  import("@/components/HowLisaRuns").then((m) => ({ default: m.HowLisaRuns }));
+  retryImport(() => import("@/components/HowLisaRuns")).then((m) => ({ default: m.HowLisaRuns }));
 const loadSocialProofPolaroid = () =>
-  import("@/components/SocialProof").then((m) => ({ default: m.SocialProofPolaroid }));
+  retryImport(() => import("@/components/SocialProof")).then((m) => ({
+    default: m.SocialProofPolaroid,
+  }));
 /*
  * The three reward boards, split out of the landing bundle (2026-09-11).
  *
@@ -103,7 +150,7 @@ const loadSocialProofPolaroid = () =>
  * step 1 below, exactly like the post-quiz chunks: by the time a board renders
  * its code has been in the module cache for several screens.
  */
-const loadRewardBoards = () => import("@/components/funnel/RewardBoards");
+const loadRewardBoards = () => retryImport(() => import("@/components/funnel/RewardBoards"));
 
 const PaywallView = dynamic(loadPaywallView);
 const PlanStage = dynamic(loadPlanStage);
@@ -933,9 +980,20 @@ function warmPlanCatalog() {
 // with no Continue bar - a dead end at step 14 with no way forward.
 const PLAN_CATALOG_RETRIES = 6;
 
-function usePlanCatalog(): PlanCatalog | null {
+/**
+ * The catalog, and whether loading it has been given up on.
+ *
+ * `failed` is what un-sticks step 14 when every retry is spent (~21s): the
+ * reward board there gates its payoff on this chunk, and with no way to say
+ * "stop waiting" the meter sat at 100% with no Continue bar — the retries
+ * bounded that dead end, they did not remove it. With `failed` the board
+ * renders its fallback and the funnel goes on; the diagnosis screen and the
+ * paywall already read the shape as optional.
+ */
+function usePlanCatalog(): { catalog: PlanCatalog | null; failed: boolean } {
   const [catalog, setCatalog] = useState<PlanCatalog | null>(planCatalogCache);
   const [attempt, setAttempt] = useState(0);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     if (catalog) return;
     let alive = true;
@@ -943,12 +1001,18 @@ function usePlanCatalog(): PlanCatalog | null {
     loadPlanCatalog()
       .then((m) => {
         planCatalogCache = m;
-        if (alive) setCatalog(m);
+        if (alive) {
+          setCatalog(m);
+          setFailed(false);
+        }
       })
       .catch((err) => {
         console.error("Plan catalog chunk failed to load:", err);
-        if (alive && attempt < PLAN_CATALOG_RETRIES) {
+        if (!alive) return;
+        if (attempt < PLAN_CATALOG_RETRIES) {
           retry = setTimeout(() => setAttempt((a) => a + 1), 1000 * (attempt + 1));
+        } else {
+          setFailed(true);
         }
       });
     return () => {
@@ -956,7 +1020,7 @@ function usePlanCatalog(): PlanCatalog | null {
       if (retry) clearTimeout(retry);
     };
   }, [catalog, attempt]);
-  return catalog;
+  return { catalog, failed };
 }
 
 // The "What have you tried" step was removed from the funnel. The field stays in
@@ -4254,7 +4318,7 @@ function RegisterPageContent() {
     !rewardRevealed[currentStep] &&
     !rewardSeen.current[currentStep];
 
-  const planCatalog = usePlanCatalog();
+  const { catalog: planCatalog, failed: planCatalogFailed } = usePlanCatalog();
 
   // Loader B: her week, straight off MOVEMENT_VOLUME and CARDIO_VOLUME - the
   // same two tables the generator uses, so what she is shown here is what the
@@ -4704,8 +4768,11 @@ function RegisterPageContent() {
           .eq("user_id", sessionUser.id)
           .maybeSingle();
         if (trialRow && stateAllowsAccess(getAccountState(trialRow).state)) {
-          router.replace("/dashboard");
-          router.refresh();
+          // A full navigation, not a client-side one: the loader has no
+          // message for this case, so a client transition that stalls or is
+          // bounced by proxy.ts leaves her on a 99% meter with nothing on it.
+          // A document load is the one move an in-app webview never drops.
+          window.location.assign("/dashboard");
           return false;
         }
         // hasProfile: true because save-quiz writes it a moment from now.
@@ -4740,19 +4807,38 @@ function RegisterPageContent() {
       identifyMetaUser(sessionUser.id);
       setUserId(sessionUser.id);
 
-      const res = await fetch("/api/auth/save-quiz", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          quizAnswers: quizPayload,
-          ...(isQaSession() ? { is_test: true } : {}),
-        }),
-      });
+      const res = await fetchWithTimeout(
+        "/api/auth/save-quiz",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            quizAnswers: quizPayload,
+            ...(isQaSession() ? { is_test: true } : {}),
+          }),
+        },
+        30_000
+      );
 
       if (!res.ok) {
+        // A 401 here means the browser holds a session the server cannot see
+        // (a cookie the in-app webview refused to send, a token the purge cron
+        // has since deleted). Retrying as-is repeats the same 401 forever,
+        // because `getUser()` above keeps finding the local session and
+        // skipping the sign-in. Drop it locally so the next Try again mints a
+        // fresh anonymous account; the dead one is the purge cron's.
+        if (res.status === 401) {
+          await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+        }
         const data = await res.json().catch(() => ({}));
-        setError(typeof data.error === "string" ? data.error : "Couldn't save your answers. Please try again.");
+        setError(
+          res.status === 401
+            ? "Your session expired. Please try again."
+            : typeof data.error === "string"
+              ? data.error
+              : "Couldn't save your answers. Please try again."
+        );
         return false;
       }
 
@@ -4766,10 +4852,16 @@ function RegisterPageContent() {
       // from a returning one. See `sendMetaLead`.
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Network error. Please try again.");
+      setError(
+        isTimeoutError(e)
+          ? TIMEOUT_MESSAGE
+          : e instanceof Error
+            ? e.message
+            : "Network error. Please try again."
+      );
       return false;
     }
-  }, [quizPayload, router]);
+  }, [quizPayload]);
 
   // Runs once per visit to the calculating screen. The ref guard matters: a
   // second run would mint a second anonymous account and orphan the first.
@@ -4885,19 +4977,35 @@ function RegisterPageContent() {
     let cancelled = false;
 
     void (async () => {
-      const supabase = await getSupabase();
-      const read = async () => (await supabase.auth.getUser()).data?.user?.email ?? null;
+      // Inside its own try: this whole block is a detached promise, and a
+      // failed auth-chunk load here was an unhandled rejection that silently
+      // left both the email and the date unset.
+      let supabase: Awaited<ReturnType<typeof getSupabase>>;
+      try {
+        supabase = await getSupabase();
+      } catch {
+        return;
+      }
+      const read = async () =>
+        (await supabase.auth.getUser().catch(() => ({ data: null })))?.data?.user?.email ?? null;
 
       let email = await read();
       if (!email) {
         const sessionId = readQueryParam("session_id");
         if (sessionId) {
           try {
-            const res = await fetch("/api/stripe/sync-session", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ session_id: sessionId }),
-            });
+            // Generous: when the webhook was missed this call runs the whole
+            // fulfillment, plan generation included (see sync-session's own
+            // maxDuration).
+            const res = await fetchWithTimeout(
+              "/api/stripe/sync-session",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ session_id: sessionId }),
+              },
+              60_000
+            );
             const body = (await res.json().catch(() => ({}))) as { merged?: boolean; email?: string | null };
             if (body.merged) {
               // The purchase landed on her older account; this anonymous one
@@ -4916,10 +5024,11 @@ function RegisterPageContent() {
       if (!cancelled) setCheckoutEmail(email);
 
       try {
-        const res = await fetch("/api/account/status", {
-          credentials: "include",
-          cache: "no-store",
-        });
+        const res = await fetchWithTimeout(
+          "/api/account/status",
+          { credentials: "include", cache: "no-store" },
+          15_000
+        );
         const json = res.ok ? ((await res.json()) as { ends_at?: string | null }) : null;
         const ends = json?.ends_at ? new Date(json.ends_at) : null;
         // Trust the server date only if it looks like *this* purchase: in the
@@ -5096,22 +5205,26 @@ function RegisterPageContent() {
       }
 
       const origin = typeof window !== "undefined" ? window.location.origin : "";
-      const res = await fetch("/api/stripe/create-checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          plan: PLAN_ID,
-          from_registration: true,
-          return_origin: origin || undefined,
-          // Dedup key for the server-side InitiateCheckout the route fires.
-          meta_event_id: metaEventId,
-          // The funnel visit, so the webhook's purchase_completed row joins the
-          // screens she walked; and the QA flag, so a test buy stays a test.
-          funnel_session_id: funnelSessionId() ?? undefined,
-          ...(isQaSession() ? { is_test: true } : {}),
-        }),
-        credentials: "include",
-      });
+      const res = await fetchWithTimeout(
+        "/api/stripe/create-checkout",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            plan: PLAN_ID,
+            from_registration: true,
+            return_origin: origin || undefined,
+            // Dedup key for the server-side InitiateCheckout the route fires.
+            meta_event_id: metaEventId,
+            // The funnel visit, so the webhook's purchase_completed row joins the
+            // screens she walked; and the QA flag, so a test buy stays a test.
+            funnel_session_id: funnelSessionId() ?? undefined,
+            ...(isQaSession() ? { is_test: true } : {}),
+          }),
+          credentials: "include",
+        },
+        25_000
+      );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         // She already has an active subscription on this account — the
@@ -5128,7 +5241,15 @@ function RegisterPageContent() {
           router.refresh();
           return;
         }
-        setError(data.error ?? "Could not start checkout. Please try again.");
+        // Never the raw server string on the price screen: a 401 prints the
+        // literal word "Unauthorized" to a woman who did nothing wrong.
+        setError(
+          res.status === 401
+            ? "Your session expired. Go back one screen and forward again, then retry."
+            : typeof data.error === "string" && res.status < 500
+              ? data.error
+              : "Could not start checkout. Please try again."
+        );
         setCheckoutLoading(false);
         return;
       }
@@ -5144,8 +5265,8 @@ function RegisterPageContent() {
       }
       setError("Checkout could not be started. Please try again.");
       setCheckoutLoading(false);
-    } catch {
-      setError("Network error. Please try again.");
+    } catch (e) {
+      setError(isTimeoutError(e) ? TIMEOUT_MESSAGE : "Network error. Please try again.");
       setCheckoutLoading(false);
     }
   };
@@ -6096,7 +6217,12 @@ function RegisterPageContent() {
           onCheckout={handleStartCheckout}
           checkoutLoading={checkoutLoading}
           error={error}
-          onBack={() => setPhase("diagnosis")}
+          // Clear a stale checkout error with the screen it belonged to, or
+          // Back-and-forward remounts the paywall with last time's banner.
+          onBack={() => {
+            setError(null);
+            setPhase("diagnosis");
+          }}
           trackingSource="register"
           topProblems={topProblems}
           goal={goal}
@@ -6212,11 +6338,15 @@ function RegisterPageContent() {
                 if (sessionId) {
                   setSyncingPayment(true);
                   try {
-                    const res = await fetch("/api/stripe/sync-session", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ session_id: sessionId }),
-                    });
+                    const res = await fetchWithTimeout(
+                      "/api/stripe/sync-session",
+                      {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ session_id: sessionId }),
+                      },
+                      60_000
+                    );
                     const body = (await res.json().catch(() => ({}))) as { merged?: boolean };
                     if (body.merged) mergedAccount.current = true;
                   } catch {
@@ -6226,12 +6356,19 @@ function RegisterPageContent() {
                   }
                 }
                 if (mergedAccount.current) {
-                  const supabase = await getSupabase();
-                  await supabase.auth.signOut();
-                  router.push("/login?redirectedFrom=/dashboard/account");
+                  // Both awaits used to sit outside any try, after `finally`
+                  // had re-enabled the button — a rejection left her tapping
+                  // a button that did nothing. A full navigation either way.
+                  try {
+                    const supabase = await getSupabase();
+                    await supabase.auth.signOut();
+                  } catch {
+                    // The login page signs her in fresh regardless.
+                  }
+                  window.location.assign("/login?redirectedFrom=/dashboard/account");
                   return;
                 }
-                router.push("/dashboard");
+                window.location.assign("/dashboard");
               }}
               className="text-sm text-[#9A9A9A] hover:text-[#5A5A5A] underline transition-colors disabled:opacity-50"
             >
@@ -7084,10 +7221,10 @@ function RegisterPageContent() {
                     messages={messages}
                     initialDone={!!rewardSeen.current.reward_plan_shape}
                     onDone={() => markRewardSeen("reward_plan_shape")}
-                    ready={!!weekShape && !!weekPlanner}
+                    ready={(!!weekShape && !!weekPlanner) || planCatalogFailed}
                   >
                   <div className={REWARD_SCROLL_SHELL + " py-1"}>
-                    {weekPlanner && (
+                    {weekPlanner ? (
                       <div className={REWARD_PAYOFF_CENTER}>
                       <TrainingWeekBoard
                         days={weekPlanner}
@@ -7095,6 +7232,21 @@ function RegisterPageContent() {
                         food={food}
                         windDown={windDown}
                       />
+                      </div>
+                    ) : (
+                      // The catalog chunk never arrived. Say what is true and
+                      // let her continue rather than parking her here.
+                      <div className={REWARD_PAYOFF_CENTER}>
+                        <div className="rounded-2xl border border-foreground/10 bg-white/80 p-5 text-center">
+                          <p className="text-base font-semibold text-[#3D3D3D]">
+                            Your week is sized from your answers.
+                          </p>
+                          <p className="mt-1.5 text-sm text-muted-foreground">{food}</p>
+                          <p className="mt-1 text-sm text-muted-foreground">{windDown}</p>
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            The full week is laid out on the next screens.
+                          </p>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -7158,7 +7310,12 @@ function RegisterPageContent() {
                    step now fits in the top half — so there is no moment where
                    she can see a text box and not the way forward, on any
                    browser, whatever the visual viewport does. */
-                <div className="flex-1 flex flex-col justify-start gap-3 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col justify-start gap-3 animate-in fade-in slide-in-from-right-4 duration-300">
+                  {/* `overflow-y-auto` is the fallback for a small phone with a
+                      tall keyboard (320x568, or a webview with its own bottom
+                      toolbar): if the button does fall under the keyboard, she
+                      can at least scroll to it. Every shell above is
+                      overflow-hidden, so without this nothing here scrolls. */}
                   <div>
                     <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-1">
                       What should we call you?

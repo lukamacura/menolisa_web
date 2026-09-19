@@ -8,6 +8,13 @@ import { PAYWALL_EXIT_REASONS, type PaywallExitReason } from "@/lib/funnelSteps"
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/**
+ * The heaviest route on the site: up to ~30 sequential Stripe pages, five
+ * `listUsers` pages and eleven Supabase queries per call. On the platform
+ * default it would be killed mid-walk on a slow Stripe day and the panel would
+ * read "Couldn't load the numbers" with nothing in any log.
+ */
+export const maxDuration = 60;
 
 /**
  * The sales desk.
@@ -366,7 +373,11 @@ async function loadRevenue(
   };
 
   const rev = emptyRevenue(null);
-  rev.truncated = charges.length >= MAX_CHARGES || subs.length >= MAX_SUBS;
+  // Intents count too: the list is unfiltered on a shared account, so once the
+  // other products push MenoLisa's intents past the newest thousand,
+  // `ownIntents` starts missing ids and revenue silently undercounts.
+  rev.truncated =
+    charges.length >= MAX_CHARGES || subs.length >= MAX_SUBS || intents.length >= MAX_CHARGES;
   rev.livemode = charges[0]?.livemode ?? null;
 
   const now = Date.now();
@@ -695,19 +706,22 @@ function buildCohorts(
  * the admin API. There is no bulk get-by-ids, hence the paged walk; the funnel
  * mints an account per quiz finisher, so the cap matters.
  */
-async function loadEmails(): Promise<Map<string, string | null>> {
+async function loadEmails(): Promise<{ map: Map<string, string | null>; error: string | null }> {
   const supabaseAdmin = getSupabaseAdmin();
-  const emails = new Map<string, string | null>();
-  for (let page = 1; page <= 5; page++) {
+  const map = new Map<string, string | null>();
+  const MAX_PAGES = 5;
+  for (let page = 1; page <= MAX_PAGES; page++) {
     const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 1000 });
     if (error) {
       console.error("Admin stats: listUsers failed:", error);
-      break;
+      return { map, error: "Couldn't read every login email — some sales may show without one." };
     }
-    for (const u of data.users) emails.set(u.id, u.email ?? null);
-    if (data.users.length < 1000) break;
+    for (const u of data.users) map.set(u.id, u.email ?? null);
+    if (data.users.length < 1000) return { map, error: null };
   }
-  return emails;
+  // Every page was full, so there are accounts past the cap. Say so rather
+  // than let a missing address read as "no email on the charge".
+  return { map, error: `More than ${MAX_PAGES * 1000} accounts — emails past the newest ${MAX_PAGES * 1000} aren't shown.` };
 }
 
 /**
@@ -842,6 +856,15 @@ export async function POST(req: NextRequest) {
   const thirtyDaysAgo = startOfToday - 29 * DAY_MS;
 
   /**
+   * Things that went wrong without being fatal. Each one used to be swallowed
+   * into a confident zero — an ad-spend read failing printed "No spend — log a
+   * day of ad spend", a `user_plans` read failing listed every paying customer
+   * as stranded. The panel prints these at the top so a bad number is never
+   * mistaken for a true one.
+   */
+  const warnings: string[] = [];
+
+  /**
    * The floor every funnel and acquisition figure is measured from: 30 days, or
    * the campaign start if that is more recent. See {@link CAMPAIGN_START_MS} —
    * without it the funnel counts your own pre-launch testing as customer
@@ -869,11 +892,64 @@ export async function POST(req: NextRequest) {
    * would silently narrow the whole block on a quiet weekend. Once the rolling
    * 30 days clears 2026-09-02 this stops binding and `funnelSince` takes over.
    */
+  //
+  // Everything that does not depend on the curve window is started *before*
+  // this probe is awaited, so the Stripe walks — the slow part — overlap it
+  // rather than queue behind it.
+  const revenuePromise = stripe
+    ? loadRevenue(stripe, startOfToday, funnelSince)
+    : Promise.resolve(emptyRevenue("STRIPE_SECRET_KEY is not set"));
+  const emailsPromise = loadEmails();
+  const trialsPromise = supabaseAdmin
+    .from("user_trials")
+    // Built from TRIAL_SELECT_COLS, never hand-listed: a missing column
+    // comes back undefined, which getAccountState reads as "no dispute,
+    // not canceled, no failed payment".
+    .select(`user_id, created_at, stripe_customer_id, ${TRIAL_SELECT_COLS}`)
+    .order("created_at", { ascending: false })
+    .limit(MAX_CLIENTS);
+  const profilesPromise = supabaseAdmin
+    .from("user_profiles")
+    .select("user_id, name")
+    .eq("is_test", false);
+  // `user_trials` has no `is_test` column; the QA flag lives on the profile.
+  // Test accounts are dropped from the account rows through this set, so a
+  // `?qa=1` purchase never counts as an active customer or raises an alert.
+  const testUsersPromise = supabaseAdmin
+    .from("user_profiles")
+    .select("user_id")
+    .eq("is_test", true);
+  // One row per cycle; `planMap` keeps the last, so ascending order shows
+  // the newest cycle's status rather than an arbitrary one.
+  const plansPromise = supabaseAdmin
+    .from("user_plans")
+    .select("user_id, status")
+    .order("cycle", { ascending: true });
+  const quizCountPromise = supabaseAdmin
+    .from("user_profiles")
+    .select("user_id", { count: "exact", head: true })
+    .eq("is_test", false)
+    .gte("created_at", new Date(funnelSince).toISOString());
+  const spendPromise = supabaseAdmin
+    .from("ad_spend")
+    .select("day, amount_usd")
+    .gte("day", isoDay(thirtyDaysAgo, tzOffsetMinutes))
+    .order("day", { ascending: true });
+
+  // Not a QA ping: a `?qa=1` walk on a fresh database would otherwise become
+  // the instant the whole curve is windowed from.
   const trackingStartResult = await supabaseAdmin
     .from("funnel_events")
     .select("created_at")
+    .eq("is_test", false)
     .order("created_at", { ascending: true })
     .limit(1);
+  if (trackingStartResult.error) {
+    console.error("Admin stats: tracking-start probe failed:", trackingStartResult.error);
+    warnings.push(
+      "Couldn't read when screen tracking began, so the funnel window may reach back past the first ping."
+    );
+  }
   const trackingStart = trackingStartResult.data?.[0]?.created_at
     ? new Date(trackingStartResult.data[0].created_at as string).getTime()
     : null;
@@ -906,6 +982,7 @@ export async function POST(req: NextRequest) {
   const [
     trialsResult,
     profilesResult,
+    testUsersResult,
     plansResult,
     quizCountResult,
     spendResult,
@@ -916,35 +993,17 @@ export async function POST(req: NextRequest) {
     dailyResult,
     exitResult,
   ] = await Promise.all([
-    supabaseAdmin
-      .from("user_trials")
-      // Built from TRIAL_SELECT_COLS, never hand-listed: a missing column
-      // comes back undefined, which getAccountState reads as "no dispute,
-      // not canceled, no failed payment".
-      .select(`user_id, created_at, stripe_customer_id, ${TRIAL_SELECT_COLS}`)
-      .order("created_at", { ascending: false })
-      .limit(MAX_CLIENTS),
-    supabaseAdmin.from("user_profiles").select("user_id, name").eq("is_test", false),
-    // One row per cycle; `planMap` keeps the last, so ascending order shows
-    // the newest cycle's status rather than an arbitrary one.
-    supabaseAdmin.from("user_plans").select("user_id, status").order("cycle", { ascending: true }),
-    supabaseAdmin
-      .from("user_profiles")
-      .select("user_id", { count: "exact", head: true })
-      .eq("is_test", false)
-      .gte("created_at", new Date(funnelSince).toISOString()),
-    supabaseAdmin
-      .from("ad_spend")
-      .select("day, amount_usd")
-      .gte("day", isoDay(thirtyDaysAgo, tzOffsetMinutes))
-      .order("day", { ascending: true }),
-    stripe
-      ? loadRevenue(stripe, startOfToday, funnelSince)
-      : Promise.resolve(emptyRevenue("STRIPE_SECRET_KEY is not set")),
+    trialsPromise,
+    profilesPromise,
+    testUsersPromise,
+    plansPromise,
+    quizCountPromise,
+    spendPromise,
+    revenuePromise,
     stripe
       ? loadCheckoutStarts(stripe, curveSince, curveUntil)
       : Promise.resolve(emptyCheckoutStarts(null)),
-    loadEmails(),
+    emailsPromise,
     // Screen-by-screen drop-off inside the funnel — the seventeen quiz steps
     // plus the six phases after them. This is the only block on the panel that
     // can see *inside* the quiz: every other funnel figure here starts at the
@@ -1006,15 +1065,44 @@ export async function POST(req: NextRequest) {
   if (dropoffResult.error) console.error("funnel_dropoff failed:", dropoffResult.error);
   if (dailyResult.error) console.error("funnel_daily failed:", dailyResult.error);
 
+  // The non-fatal reads. Each failure is named on the panel, because the
+  // alternative is a confident wrong number: an empty plan map lists every
+  // paying customer as stranded, an empty spend map says "no spend".
+  if (profilesResult.error) {
+    console.error("Admin stats: user_profiles read failed:", profilesResult.error);
+    warnings.push("Couldn't read customer names — the sales list falls back to what Stripe has.");
+  }
+  if (testUsersResult.error) {
+    console.error("Admin stats: test-profile read failed:", testUsersResult.error);
+    warnings.push("Couldn't read which accounts are QA runs — test accounts may be counted below.");
+  }
+  if (plansResult.error) {
+    console.error("Admin stats: user_plans read failed:", plansResult.error);
+    warnings.push("Couldn't read plan status — the \"no plan to open\" alert is suppressed this refresh.");
+  }
+  if (quizCountResult.error) {
+    console.error("Admin stats: quiz count failed:", quizCountResult.error);
+    warnings.push("Couldn't count quiz finishers — the funnel's empty state may be wrong.");
+  }
+  if (spendResult.error) {
+    console.error("Admin stats: ad_spend read failed:", spendResult.error);
+    warnings.push("Couldn't read ad spend — cost per customer and contribution are wrong this refresh.");
+  }
+  if (emails.error) {
+    warnings.push(emails.error);
+  }
+  const emailMap = emails.map;
+
   const nameMap = new Map(
     (profilesResult.data ?? []).map((p) => [p.user_id, p.name as string | null])
   );
   const planMap = new Map(
     (plansResult.data ?? []).map((p) => [p.user_id, p.status as string | null])
   );
+  const testUserIds = new Set((testUsersResult.data ?? []).map((p) => p.user_id as string));
 
   const nowDate = new Date();
-  const rows = trialsResult.data ?? [];
+  const rows = (trialsResult.data ?? []).filter((r) => !testUserIds.has(r.user_id));
 
   /** Stripe customer id → the account it belongs to, for the sales list. */
   const accountByCustomer = new Map<string, string>();
@@ -1045,7 +1133,7 @@ export async function POST(req: NextRequest) {
       refunded: s.refunded > 0,
       kind: s.kind,
       name: (userId ? nameMap.get(userId) : null) ?? s.chargeName ?? null,
-      email: (userId ? emails.get(userId) : null) ?? s.chargeEmail ?? null,
+      email: (userId ? emailMap.get(userId) : null) ?? s.chargeEmail ?? null,
       /** Her next renewal date, or null when there isn't one. */
       renewsAt: s.refunded > 0 || canceled ? null : renews?.toISOString() ?? null,
     };
@@ -1207,6 +1295,13 @@ export async function POST(req: NextRequest) {
   const MIN_CLIFF_BASE = 25;
   const MIN_VERDICT_ENTRY = 50;
   /**
+   * Only a loss this large is coloured. On a 23-screen funnel everything
+   * below it is ordinary attrition, and colouring it all teaches the reader
+   * to ignore the colour. Lived on the page until 2026-09-19, which meant the
+   * verdict and the bars could drift apart; it is sent down with the rest.
+   */
+  const CLIFF_PCT = 25;
+  /**
    * The screens the curve is measured over — **the active funnel only**.
    *
    * `start` is excluded, and it is the one exclusion this needs. `/register`
@@ -1346,12 +1441,21 @@ export async function POST(req: NextRequest) {
   const paidInCurve = revenue.firstChargeTimes.filter(
     (t) => t >= curveSince && (curveUntil === null || t < curveUntil)
   ).length;
+  /**
+   * With no screen rows the curve is not drawn at all. It used to fall through
+   * to the two Stripe rows alone, which made the checkout count the entry base
+   * and printed "N visits → … → N paid" at 100% — a plausible, wrong chart
+   * next to a one-line error. An empty curve and the error line is the honest
+   * shape of "the funnel RPC failed".
+   */
   const curveRows: {
     step: string;
     sessions: number;
     group: "quiz" | "after" | "money";
     source: "screens" | "stripe";
-  }[] = [
+  }[] = dropoffResult.error
+    ? []
+    : [
     ...screenRows.map((r) => ({
       step: r.step,
       sessions: r.sessions,
@@ -1401,7 +1505,12 @@ export async function POST(req: NextRequest) {
    * stood on the screen being accused.
    */
   const dropoff = dropoffRows.map((row, i) => {
-    const next = i === dropoffRows.length - 1 ? null : dropoffRows[i + 1].sessions;
+    // When Stripe would not list sessions the card-form row is absent, and the
+    // paywall's "next" row is then `stripe_paid` — a paywall → paid loss that
+    // would print as paywall → next screen. No figure beats a wrong one.
+    const nextMissing = row.step === "paywall" && !!checkout.error;
+    const next =
+      i === dropoffRows.length - 1 || nextMissing ? null : dropoffRows[i + 1].sessions;
     const lostCount = next === null ? null : Math.max(row.sessions - next, 0);
     return {
       index: i,
@@ -1436,6 +1545,7 @@ export async function POST(req: NextRequest) {
             (d) =>
               d.significant &&
               d.lostPct !== null &&
+              d.lostPct >= CLIFF_PCT &&
               d.source === "screens" &&
               d.step !== "paywall"
           )
@@ -1529,14 +1639,19 @@ export async function POST(req: NextRequest) {
 
   const alerts: Alert[] = [];
 
-  const stranded = rows.filter((r) => {
-    const s = state.get(r.user_id);
-    return (s === "active" || s === "canceling") && planMap.get(r.user_id) !== "ready";
-  });
+  // Suppressed when the plan read failed: an empty plan map would list every
+  // paying customer as stranded, in red, with an instruction to resend
+  // webhooks. The warning at the top says why it is missing.
+  const stranded = plansResult.error
+    ? []
+    : rows.filter((r) => {
+        const s = state.get(r.user_id);
+        return (s === "active" || s === "canceling") && planMap.get(r.user_id) !== "ready";
+      });
   if (stranded.length > 0) {
     const who = stranded
       .slice(0, 2)
-      .map((r) => nameMap.get(r.user_id) || emails.get(r.user_id) || r.user_id.slice(0, 8))
+      .map((r) => nameMap.get(r.user_id) || emailMap.get(r.user_id) || r.user_id.slice(0, 8))
       .join(", ");
     const more = stranded.length > 2 ? ` and ${stranded.length - 2} more` : "";
     alerts.push({
@@ -1672,6 +1787,8 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     livemode: revenue.livemode,
     revenueError: revenue.error,
+    /** Non-fatal reads that failed this refresh, each named. */
+    warnings,
     spendWriteError,
     truncated: revenue.truncated || rows.length >= MAX_CLIENTS || checkout.truncated,
     verdict,
@@ -1757,6 +1874,12 @@ export async function POST(req: NextRequest) {
       entrySessions,
       /** How many the verdict needs before it will name a screen. */
       minVerdictEntry: MIN_VERDICT_ENTRY,
+      /** The per-row base a loss needs before it may be called a cliff. The
+       *  by-day table colours on the same number. */
+      minCliffBase: MIN_CLIFF_BASE,
+      /** The loss, in percent, at or above which a row is coloured. From here
+       *  so the curve, the by-day table and the verdict share one rule. */
+      cliffPct: CLIFF_PCT,
       dropoffError: dropoffResult.error ? "Could not read funnel steps" : null,
     },
     contribution30,

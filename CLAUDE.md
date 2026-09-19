@@ -421,6 +421,46 @@ tomorrow?"** — which is the only question a $59 auto-renewing plan sold on Met
 ever really asks. Five blocks: the verdict, cash in, unit economics, the funnel
 top to bottom, latest sales, needs a human.
 
+Reliability rules added 2026-09-19, each from a failure that was live:
+
+- **A restored session shows `<AdminSkeleton />`, never the password form.**
+  It used to sit on the login screen reading "Checking…" for the whole Stripe
+  walk. The skeleton is the panel's own layout in grey, block for block, so
+  the numbers fill in without a layout shift. Keep it in step with the real
+  blocks when one is added or removed.
+- **Every non-fatal read that fails is named in `warnings[]`** and printed at
+  the top of the panel. Before this, a failed `ad_spend` read printed "No
+  spend — log a day of ad spend", a failed `user_plans` read listed **every**
+  paying customer as stranded in red, and a failed `funnel_dropoff` drew a
+  curve whose entry base was the Stripe checkout count. A read that fails
+  must never become a confident zero: add the warning, and suppress the figure
+  or alert that would lie (the stranded alert is skipped on a plan-read error;
+  the curve is empty on a dropoff error; the paywall row's loss is null when
+  the card-form row is missing).
+- **A silent refresh that fails sets `staleSince`** and the panel says so
+  above the verdict. The cycle bar kept looping over hours-old numbers.
+- **`cliffPct`, `minCliffBase` and `minVerdictEntry` all come from the route.**
+  `CLIFF_PCT` lived on the page and the by-day table used its own `n >= 10`
+  guard, so the same 12 → 8 day was orange in one tab and grey in the other.
+  `worstStep` also applies `cliffPct`, so the verdict can never name a screen
+  the bar would not colour.
+- **`is_test` rides on `payment_intent_data.metadata`, not only the session.**
+  Since one-time pricing the PaymentIntent *is* the product boundary, and a
+  `?qa=1` purchase stamped only on the session was real revenue on `/admin`
+  while its screens and Checkout Session were dropped — a curve where paid
+  outran the card form, which the page then explained away as the
+  immutable-sessions artefact. `user_trials` has no `is_test` column, so test
+  accounts are dropped from the account rows via the `user_profiles` flag.
+- **`checkout_opened` is written for web checkouts only**, matching the
+  curve's card-form row, so the by-day table and the curve count one
+  population.
+- **The tracking-start probe filters `is_test`** and everything that does not
+  depend on the curve window (the Stripe walks, `listUsers`, the account
+  reads) is started before it is awaited. `maxDuration` is 60.
+- **`revenue.truncated` covers the PaymentIntent walk too.** It is unfiltered
+  on a shared account, so once the other products push ours past the newest
+  thousand, `ownIntents` starts missing ids and revenue undercounts silently.
+
 - **Money is Stripe. People are Supabase. Never mixed.** Every dollar comes from
   `stripe.charges.list()`; names, quiz finishers, renewal dates, plan status and
   cancellations come from Supabase. `user_trials` holds one row per person,
@@ -641,6 +681,51 @@ the headline** — at two sales a day it swings 100% on noise, so seven days lea
 and today is a cell. Migrations: `scripts/sql/2026-08-11-llm-usage.sql`,
 `scripts/sql/2026-08-30-ad-spend.sql`.
 
+
+### The funnel must never stall (2026-09-19)
+
+On a phone a request that never settles is ordinary — the webview is
+backgrounded mid-flight, the carrier hands off, a captive portal eats the
+socket — and until 2026-09-19 every `fetch` in `/register` waited forever.
+Each hang was a permanent stall with no message and no button: the calculating
+meter parked at 99%, the buy button reading "Redirecting to checkout…" for
+good. Rules, all in `app/register/page.tsx` unless noted:
+
+- **Every request on the critical path goes through `fetchWithTimeout()`**
+  (`save-quiz` 30s, `create-checkout` 25s, `sync-session` 60s because it may
+  run the whole fulfillment inline, `account/status` 15s). A timeout throws
+  like a failure, so the caller's existing error + Try again path handles it;
+  `TIMEOUT_MESSAGE` replaces the raw `TimeoutError` text. Browsers without
+  `AbortSignal.timeout` keep the old behaviour rather than losing the call.
+- **Every `next/dynamic` chunk loads through `retryImport()`** (3 attempts).
+  A rejected chunk throws during render and lands on `app/error.tsx`, whose
+  reset loses every answer — on the paywall, the money screen. A flaky
+  webview is fixed by the second request; a deploy mid-visit is not, and
+  still reaches the boundary.
+- **A `save-quiz` 401 signs the dead session out locally** before showing Try
+  again. Otherwise `getUser()` kept finding the local session, skipped the
+  sign-in, and the same 401 repeated forever.
+- **The checkout error renders in the sticky bar, above the button she
+  tapped** (`components/PaywallView.tsx`). It rendered below the fact sheet,
+  ~2,000px down, so a failed tap on the sticky CTA showed nothing at all.
+  `onBack` clears it, or Back-and-forward remounted the paywall with last
+  time's banner. Never print the raw server string there: a 401 read
+  "Unauthorized" on the price screen.
+- **`usePlanCatalog()` returns `{ catalog, failed }`.** After its six retries
+  `reward_plan_shape` used to sit at 100% with no Continue bar — a dead end
+  at step 14. With `failed` the board renders a plain fallback and she goes
+  on; the diagnosis screen and paywall already treat the shape as optional.
+- **A returning customer with access gets `window.location.assign("/dashboard")`**
+  from the loader, not a client transition — the loader has no copy for that
+  case, and a stalled `router.replace` left her on a 99% meter with nothing
+  on it. Same on the download screen's "Go to my account".
+- **`q8_name` scrolls** (`overflow-y-auto` on its column) as the fallback for
+  a short phone with a tall keyboard; every shell above it is
+  `overflow-hidden`, so without it nothing on that screen could scroll.
+- **A `?qa=1` walk sends nothing to Meta**: `ViewContent`, the paywall-view
+  beacon, both `InitiateCheckout` copies and the webhook `Purchase` all check
+  the flag. A test walk was already dropped from `/admin`; it was still
+  training delivery.
 
 ### Funnel measurement (`POST /api/funnel-step`, `funnel_events`)
 
@@ -1877,7 +1962,32 @@ feature (checked 2026-09-08).
 
 ### Recent work
 
-**2026-09-19 (latest) — two reward boards made to fit a phone.** Measured
+**2026-09-19 (latest) — the funnel made unable to stall; `/admin` made
+honest about failures and fast to open.** Two audits (the funnel read in
+full, the admin route and page read in full), a Playwright walk of all 21
+screens at 390x700, and a query of `funnel_events` against what the code
+sends today. The funnel's step keys, indices and labels all matched; the
+`?phase=download` re-entry does **not** produce a phantom entry ping (0 of 6
+download sessions — verified rather than assumed). What was wrong, and is
+now a rule in §4 "The funnel must never stall" and the admin section:
+no request had a timeout; no chunk load retried; the checkout error rendered
+2,000px below the button; a `save-quiz` 401 retried forever; step 14 could
+dead-end; QA walks reached Meta. On `/admin`: no skeleton (the login form
+showed "Checking…" for the whole Stripe walk); five swallowed read errors
+each became a confident wrong number; a `?qa=1` purchase counted as real
+revenue because `is_test` never reached the PaymentIntent; `checkout_opened`
+was written for mobile checkouts; the by-day table coloured on a guard the
+curve did not use; one source chip overflowed a phone by 50px. Verified:
+`tsc --noEmit` clean, eslint clean on every touched file, `npm run build`
+clean, the walk reaches the paywall with every ping in order and the error
+now sits on the sticky bar, `/admin` renders the skeleton at ~0.5s and the
+panel with no horizontal scroll at 390px. **Not done, needs a human:** the
+local `.env.local` still has `STRIPE_PRICE_WEEKLY` and no `STRIPE_PRICE_PLAN`
+/ `STRIPE_PRICE_PLAN_REGULAR`, so checkout 500s locally and `/admin` reads
+"STRIPE_PRICE_PLAN is not set" locally — production has them (a real
+purchase went through on 2026-09-18). Copy the two values from Vercel.
+
+**2026-09-19 — two reward boards made to fit a phone.** Measured
 by Playwright walk-through at 390x700 and 375x667 (`reward_social_proof`,
 `reward_progress`), before → after:
 

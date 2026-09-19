@@ -159,11 +159,15 @@ async function handleCheckoutSessionCompleted(
     // And not for a $0 session: money is the event. (Nothing sells one now;
     // the guard is what keeps that true if a 100%-off coupon ever appears.)
     const amountPaid = (session.amount_total ?? 0) / 100;
+    //
+    // And not for a `?qa=1` walk: a test purchase is dropped from `/admin`
+    // and must be dropped from the ad platform's optimization signal too.
     if (
       result.written &&
       amountPaid > 0 &&
       !isMobileCheckout(session.metadata) &&
-      !gpcOptOutFromMetadata(session.metadata)
+      !gpcOptOutFromMetadata(session.metadata) &&
+      !isTestFromMetadata(session.metadata)
     ) {
       after(() =>
         sendMetaPurchase({

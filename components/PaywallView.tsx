@@ -48,7 +48,7 @@ import {
   type PlanOffer,
 } from "@/lib/pricing";
 import { trackFb } from "@/lib/metaPixelClient";
-import { pingFunnelStep } from "@/lib/funnelClient";
+import { isQaSession, pingFunnelStep } from "@/lib/funnelClient";
 import { SERVER_FUNNEL_STEPS, type PaywallExitReason } from "@/lib/funnelSteps";
 import { BlurStack } from "@/components/BlurStack";
 import { HighlightSweep } from "@/components/HighlightSweep";
@@ -658,6 +658,11 @@ export function PaywallView({
       currency: META_CURRENCY,
     };
 
+    // A QA walk (`?qa=1`) is dropped from `/admin` and from the ad platform
+    // alike: nothing about it may train delivery. The server copies check
+    // the same flag off the request body.
+    if (isQaSession()) return;
+
     // No id to dedup on and no session for the beacon to authenticate. Report
     // the view rather than lose it, and accept the double count. Neither caller
     // reaches here in practice; see the `userId` prop.
@@ -696,19 +701,24 @@ export function PaywallView({
   // is not affordable. `create-checkout` sends the server copy - see
   // `sendMetaInitiateCheckout`.
   const handleCheckoutClick = () => {
+    // A second tap while the first is in flight must not mint a second event
+    // id: the parent drops the call, and the pixel copy would go out unpaired.
+    if (checkoutLoading) return;
     const eventId = newInitiateCheckoutEventId();
-    trackFb(
-      "InitiateCheckout",
-      {
-        content_name: PLAN_ID,
-        content_category: trackingSource,
-        content_type: "product",
-        value: offer.price,
-        currency: META_CURRENCY,
-        num_items: 1,
-      },
-      { eventID: eventId }
-    );
+    if (!isQaSession()) {
+      trackFb(
+        "InitiateCheckout",
+        {
+          content_name: PLAN_ID,
+          content_category: trackingSource,
+          content_type: "product",
+          value: offer.price,
+          currency: META_CURRENCY,
+          num_items: 1,
+        },
+        { eventID: eventId }
+      );
+    }
     return onCheckout(eventId);
   };
 
@@ -1308,16 +1318,23 @@ export function PaywallView({
           </p>
         </div>
 
-        {error && (
-          <div className="mb-3 rounded-xl border border-error/30 bg-error/10 p-3 text-sm text-error">
-            {error}
-          </div>
-        )}
       </motion.div>
 
       {/* Sticky CTA bar - fixed to the bottom on every viewport */}
       <div className="fixed bottom-0 inset-x-0 z-40 border-t border-foreground/10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/85 px-4 pt-3 pb-[calc(10px+env(safe-area-inset-bottom))]">
         <div className="max-w-md mx-auto w-full">
+          {/* The checkout error lives on the bar she tapped, not at the foot
+              of a 2,000px scroll: it used to render below the fact sheet, so
+              a failed tap on the sticky button showed her nothing at all and
+              read as a button that does nothing. */}
+          {error && (
+            <div
+              role="alert"
+              className="mb-2 rounded-xl border border-error/30 bg-error/10 px-3 py-2 text-center text-[13px] leading-snug text-error"
+            >
+              {error}
+            </div>
+          )}
           <CheckoutButton loading={checkoutLoading} onClick={handleCheckoutClick} />
           {/* What she is agreeing to, on the element she agrees with. The price
               card scrolls away and this bar does not, so the one-charge terms

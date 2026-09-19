@@ -292,8 +292,13 @@ export async function POST(req: NextRequest) {
       // able to tell MenoLisa's money apart from everything else's; with no
       // subscription to key off any more, the Checkout Session's own
       // payment_intent is what does it.
+      //
+      // The QA flag rides here too, not only on the session: since one-time
+      // pricing the PaymentIntent *is* the product boundary `/admin` filters
+      // on, and a `?qa=1` purchase stamped only on the session counted as real
+      // revenue there while its screens and Checkout Session were dropped.
       payment_intent_data: {
-        metadata: { product: PRODUCT_METADATA_VALUE, user_id: user.id },
+        metadata: { product: PRODUCT_METADATA_VALUE, user_id: user.id, ...funnelMetadata },
       },
       // No `discounts`, no coupon and no trial (2026-09-11): the card is
       // charged the full plan price at checkout, which is the only figure any
@@ -351,13 +356,20 @@ export async function POST(req: NextRequest) {
 
     // `checkout_opened`, keyed to her visit. Deferred: nothing about
     // measurement may sit between her tap and the card form.
-    after(() =>
-      logFunnelEvent(getSupabaseAdmin(), {
-        step: "checkout_opened",
-        sessionId: funnelSessionId,
-        isTest,
-      })
-    );
+    //
+    // Web only. `funnel_events` is the `/register` funnel's table and the
+    // curve's card-form row already excludes mobile sessions; a row for an
+    // Expo-app checkout put the by-day table and the curve on different
+    // populations under one heading.
+    if (checkoutSurface === "web") {
+      after(() =>
+        logFunnelEvent(getSupabaseAdmin(), {
+          step: "checkout_opened",
+          sessionId: funnelSessionId,
+          isTest,
+        })
+      );
+    }
 
     // Server-side InitiateCheckout, deduped against the browser copy the paywall
     // fired a moment ago on the same event_id. Sent only once the checkout
@@ -368,8 +380,11 @@ export async function POST(req: NextRequest) {
     // is on the critical path to the card form. A missing or malformed id skips
     // the server copy rather than inventing one: an unpaired event_id would
     // double-count her against the browser pixel.
+    //
+    // Not for a `?qa=1` walk either: the browser copy is skipped on the same
+    // flag, and a test tap must not train delivery.
     const metaEventId = body?.meta_event_id;
-    if (isValidMetaEventId(metaEventId) && !gpcOptOut) {
+    if (isValidMetaEventId(metaEventId) && !gpcOptOut && !isTest) {
       const eventTimeSec = Math.floor(Date.now() / 1000);
       after(async () => {
         // Her first name, hashed as `fn` — the same identity parameter `Lead`

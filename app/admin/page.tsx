@@ -243,6 +243,9 @@ type Sale = {
 type Stats = {
   livemode: boolean | null;
   revenueError: string | null;
+  /** Non-fatal reads that failed on this refresh. Each one means a figure
+   *  below is wrong in a named way; none of them used to be surfaced. */
+  warnings: string[];
   spendWriteError: string | null;
   truncated: boolean;
   verdict: { tone: "good" | "warn" | "bad" | "idle"; word: string; text: string };
@@ -347,6 +350,10 @@ type Stats = {
     entrySessions: number;
     /** What `entrySessions` has to clear before a screen is named. */
     minVerdictEntry: number;
+    /** Per-row base a loss needs before it may be called a cliff. */
+    minCliffBase: number;
+    /** The loss, in percent, at or above which a row is coloured. */
+    cliffPct: number;
     dropoffError: string | null;
   };
   contribution30: number;
@@ -356,7 +363,7 @@ type Stats = {
     truncated: boolean;
     cohorts: CohortRow[];
     totals: CohortRow;
-    week2Rate: number | null;
+    renewalRate: number | null;
   };
   exitQuestion: {
     asked: number;
@@ -503,6 +510,14 @@ export default function AdminPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Set when a background refresh fails and the numbers on screen are older
+   * than the cycle bar implies. The silent path deliberately keeps the last
+   * good figures rather than replacing them with a red line — but a panel
+   * that has quietly stopped updating must say so, or the operator reads
+   * three-hour-old money as live.
+   */
+  const [staleSince, setStaleSince] = useState<string | null>(null);
 
   // ── The funnel window, and which view of it is on screen ──────────────────
   //
@@ -561,15 +576,18 @@ export default function AdminPage() {
       }
       if (!res.ok) {
         if (!silent) setError("Couldn't load the numbers. Try again.");
+        else setStaleSince((s) => s ?? new Date().toISOString());
         return null;
       }
       const data: Stats = await res.json();
       sessionStorage.setItem(SESSION_KEY, pw);
       setStats(data);
       setError(null);
+      setStaleSince(null);
       return data;
     } catch {
       if (!silent) setError("Network error. Try again.");
+      else setStaleSince((s) => s ?? new Date().toISOString());
       return null;
     } finally {
       if (!silent) setLoading(false);
@@ -711,6 +729,17 @@ export default function AdminPage() {
     }));
     commitSpend(day, raw);
   };
+
+  // ── First load ────────────────────────────────────────────────────────────
+  //
+  // The skeleton, not the password form. A restored session used to sit on
+  // the login screen with the button reading "Checking…" for the whole Stripe
+  // walk — a screen the operator had already passed, giving no sign that the
+  // panel was on its way. The skeleton is the panel's own layout in grey, so
+  // the eye lands where the numbers will and nothing jumps when they arrive.
+  if (!stats && loading) {
+    return <AdminSkeleton />;
+  }
 
   // ── Password gate ─────────────────────────────────────────────────────────
   if (!stats) {
@@ -854,11 +883,32 @@ export default function AdminPage() {
           />
         </div>
 
+        {staleSince && (
+          <p
+            role="status"
+            className="mb-5 rounded-lg border border-[var(--spend-line)] bg-[var(--spend-bg)] px-4 py-3 text-sm text-[var(--spend-deep)]"
+          >
+            Couldn&rsquo;t refresh since {stamp(staleSince)}. The figures below are from{" "}
+            {stamp(stats.refreshedAt)} — press Refresh to try again.
+          </p>
+        )}
+
         {stats.revenueError && (
           <p className="mb-5 rounded-lg border border-[var(--spend-line)] bg-[var(--spend-bg)] px-4 py-3 text-sm text-[var(--spend-deep)]">
             Stripe unavailable: {stats.revenueError}. Everything that comes from Supabase still
             reads correctly below.
           </p>
+        )}
+
+        {/* One line per read that failed. Each of these used to become a
+            confident zero somewhere below — "No spend", every customer
+            stranded — so the reader must see the cause before the figure. */}
+        {(stats.warnings ?? []).length > 0 && (
+          <ul className="mb-5 space-y-1 rounded-lg border border-[var(--spend-line)] bg-[var(--spend-bg)] px-4 py-3 text-sm text-[var(--spend-deep)]">
+            {stats.warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
         )}
 
         {/* ── The verdict ─────────────────────────────────────────────────── */}
@@ -1173,6 +1223,7 @@ export default function AdminPage() {
               worst={funnel.worstStep}
               entrySessions={funnel.entrySessions}
               minVerdictEntry={funnel.minVerdictEntry}
+              cliffPct={funnel.cliffPct}
               error={funnel.dropoffError}
               sessionsError={funnel.sessionsError}
               keptPerSale={acq.keptPerSale}
@@ -1186,6 +1237,8 @@ export default function AdminPage() {
               rows={stats.funnelDaily.rows}
               totals={stats.funnelDaily.totals}
               error={stats.funnelDaily.error}
+              cliffPct={funnel.cliffPct}
+              minCliffBase={funnel.minCliffBase}
             />
           )}
         </Panel>
@@ -1372,6 +1425,158 @@ export default function AdminPage() {
 
 // ─── Presentational bits ────────────────────────────────────────────────────
 
+/** A grey slab where a figure will be. Pulses so it reads as "coming", not "empty". */
+function Bone({ className = "" }: { className?: string }) {
+  return (
+    <div
+      className={`animate-pulse rounded-md bg-[var(--line-soft)] ${className}`}
+      aria-hidden
+    />
+  );
+}
+
+/**
+ * The panel's own layout in grey, shown from the first paint of a restored
+ * session until the numbers land.
+ *
+ * It mirrors the real page block for block — masthead, cycle bar, the verdict,
+ * Cash in, the unit economics pair, the funnel, the sales list — at the same
+ * widths and heights, so the transition to live figures is a fill, not a
+ * layout shift. It is deliberately not a spinner: a spinner says "wait", this
+ * says "here is the desk, the numbers are on their way", and on a slow Stripe
+ * day that is a ten-second difference in how broken the page feels.
+ */
+function AdminSkeleton() {
+  return (
+    <main
+      style={PALETTE}
+      className="min-h-dvh bg-[var(--paper)] px-5 pb-20 pt-10 text-[var(--ink)] sm:px-8"
+      aria-busy="true"
+      aria-label="Loading the sales desk"
+    >
+      <div className="mx-auto max-w-[1060px]">
+        <header className="mb-3 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">MenoLisa</h1>
+            <p className="mt-0.5 text-[10.5px] font-semibold uppercase tracking-[0.13em] text-[var(--ink-3)]">
+              Sales desk
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Bone className="h-6 w-14 rounded-full" />
+            <Bone className="size-8 rounded-full" />
+            <Bone className="size-8 rounded-full" />
+          </div>
+        </header>
+        <div className="mb-6 h-[3px] w-full overflow-hidden rounded-full bg-[var(--line-soft)]">
+          <div
+            className="h-full w-1/3 animate-pulse rounded-full"
+            style={{ background: "linear-gradient(90deg, var(--cash), var(--ahead), var(--her))" }}
+          />
+        </div>
+
+        {/* The verdict */}
+        <div className="mb-8 rounded-xl border border-[var(--line)] bg-white p-5">
+          <Bone className="h-3 w-24" />
+          <Bone className="mt-3 h-7 w-40" />
+          <Bone className="mt-3 h-3.5 w-full max-w-[640px]" />
+          <Bone className="mt-2 h-3.5 w-3/4 max-w-[520px]" />
+        </div>
+
+        {/* Cash in */}
+        <div className="mb-2 flex items-center gap-2">
+          <Bone className="size-2 rounded-full" />
+          <Bone className="h-3 w-16" />
+        </div>
+        <Panel accent="var(--line-soft)" className="mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-[1.05fr_1.35fr]">
+            <div className="border-b border-[var(--line)] px-6 py-5 md:border-b-0 md:border-r">
+              <Bone className="h-3 w-32" />
+              <Bone className="mt-3 h-14 w-48" />
+              <Bone className="mt-3 h-3 w-40" />
+            </div>
+            <div className="grid grid-cols-3 gap-4 px-6 py-5">
+              {[0, 1, 2].map((i) => (
+                <div key={i}>
+                  <Bone className="h-3 w-14" />
+                  <Bone className="mt-3 h-6 w-20" />
+                  <Bone className="mt-2 h-3 w-12" />
+                </div>
+              ))}
+              <Bone className="col-span-3 mt-2 h-24 w-full" />
+            </div>
+          </div>
+        </Panel>
+
+        {/* Cost and value */}
+        <div className="mb-2 flex items-center gap-2">
+          <Bone className="size-2 rounded-full" />
+          <Bone className="h-3 w-28" />
+        </div>
+        <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2">
+          {[0, 1].map((i) => (
+            <Panel key={i} accent="var(--line-soft)">
+              <div className="px-6 py-5">
+                <Bone className="h-3 w-28" />
+                <Bone className="mt-3 h-9 w-32" />
+                <Bone className="mt-4 h-3 w-full" />
+                <Bone className="mt-2 h-3 w-2/3" />
+              </div>
+            </Panel>
+          ))}
+        </div>
+
+        {/* The funnel */}
+        <div className="mb-2 flex items-center gap-2">
+          <Bone className="size-2 rounded-full" />
+          <Bone className="h-3 w-20" />
+        </div>
+        <Panel accent="var(--line-soft)" className="mb-8">
+          <div className="px-6 py-5">
+            <div className="mb-4 flex gap-2">
+              <Bone className="h-7 w-24 rounded-full" />
+              <Bone className="h-7 w-16 rounded-full" />
+            </div>
+            <div className="space-y-2.5">
+              {Array.from({ length: 12 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <Bone className="h-3 w-28 shrink-0 sm:w-40" />
+                  {/* A falling curve, so the block reads as a funnel before it
+                      is one. Inline width: a runtime Tailwind class can't be built. */}
+                  <div
+                    className="h-4 animate-pulse rounded-md bg-[var(--line-soft)]"
+                    style={{ width: `${Math.max(100 - i * 8, 8)}%` }}
+                    aria-hidden
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </Panel>
+
+        {/* Latest sales */}
+        <div className="mb-2 flex items-center gap-2">
+          <Bone className="size-2 rounded-full" />
+          <Bone className="h-3 w-24" />
+        </div>
+        <Panel accent="var(--line-soft)">
+          <div className="divide-y divide-[var(--line)]">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center justify-between gap-4 px-6 py-3.5">
+                <div className="flex items-center gap-3">
+                  <Bone className="h-3.5 w-28" />
+                  <Bone className="h-4 w-10 rounded-full" />
+                </div>
+                <Bone className="h-3.5 w-16" />
+              </div>
+            ))}
+          </div>
+        </Panel>
+      </div>
+    </main>
+  );
+}
+
 /**
  * A block, with a coloured spine across the top naming what kind of numbers are
  * inside it. `accent` is any CSS background — a single var for one-subject
@@ -1511,8 +1716,11 @@ function SectionHead({
   source?: string;
   note?: string;
 }) {
+  // `min-w-0` + a shrinkable chip: the longest source tag ("Stripe + your ad
+  // spend") beside a title used to push the row 50px past a 390px phone and
+  // the whole page scrolled sideways.
   return (
-    <div className="mb-2.5 mt-8 flex items-center gap-3">
+    <div className="mb-2.5 mt-8 flex min-w-0 items-center gap-3">
       {dot && (
         <i
           className="block size-2.5 shrink-0 rounded-full"
@@ -1520,17 +1728,17 @@ function SectionHead({
           aria-hidden
         />
       )}
-      <h2 className="whitespace-nowrap text-[14px] font-bold tracking-tight">{title}</h2>
+      <h2 className="shrink-0 whitespace-nowrap text-[14px] font-bold tracking-tight">{title}</h2>
       {/* The source tag stays on every block, and stays legible. Which side of
           the house a figure came from is the thing people forget first, and a
           panel that mixes Stripe money with Supabase people is the one way this
           screen can lie. */}
       {source && (
-        <span className="whitespace-nowrap rounded-full border border-[var(--line)] bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--ink-2)]">
+        <span className="min-w-0 truncate rounded-full border border-[var(--line)] bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--ink-2)]">
           {source}
         </span>
       )}
-      <span className="h-px flex-1 bg-[var(--line)]" />
+      <span className="h-px min-w-3 flex-1 bg-[var(--line)]" />
       {note && (
         <span className="hidden whitespace-nowrap text-[11.5px] text-[var(--ink-3)] sm:inline">
           {note}
@@ -2338,11 +2546,11 @@ function FunnelControls({
  *     them is accused of anything. The step-to-step loss is what names a screen.
  *   - **A loss is only coloured when it sits on a base worth dividing by.** The
  *     first live render of this painted `4 -> 2` and `2 -> 1` bright orange as
- *     50% cliffs, which is noise wearing the costume of a finding. Both
- *     thresholds come from the route so the bar, the figure and the verdict can
- *     never use different rules.
+ *     50% cliffs, which is noise wearing the costume of a finding. All three
+ *     thresholds — the base, the verdict gate and the loss that gets colour
+ *     (`cliffPct`) — come from the route so the bar, the figure, the by-day
+ *     table and the verdict can never use different rules.
  */
-const CLIFF_PCT = 25;
 
 /** One row of either band. Identical geometry in both, so the eye reads the
  *  whole thing as a single falling curve even though the base changes once. */
@@ -2454,6 +2662,7 @@ function WholeFunnel({
   worst,
   entrySessions,
   minVerdictEntry,
+  cliffPct,
   error,
   sessionsError,
   keptPerSale,
@@ -2466,6 +2675,7 @@ function WholeFunnel({
   worst: Stats["funnel"]["worstStep"];
   entrySessions: number;
   minVerdictEntry: number;
+  cliffPct: number;
   error: string | null;
   sessionsError: string | null;
   keptPerSale: number;
@@ -2476,7 +2686,7 @@ function WholeFunnel({
 }) {
   const entry = rows[0]?.sessions ?? 0;
   const confident = entrySessions >= minVerdictEntry;
-  const hasVerdict = confident && worst && worst.lostPct !== null && worst.lostPct >= CLIFF_PCT;
+  const hasVerdict = confident && worst && worst.lostPct !== null && worst.lostPct >= cliffPct;
 
   const find = (step: string) => rows.find((r) => r.step === step)?.sessions ?? null;
   const quizDone = find("calculating");
@@ -2547,7 +2757,7 @@ function WholeFunnel({
           {rows.map((r, i) => {
             // Both halves matter: a big percentage on a base of two is not a
             // cliff, it is two people.
-            const cliff = r.significant && r.lostPct !== null && r.lostPct >= CLIFF_PCT;
+            const cliff = r.significant && r.lostPct !== null && r.lostPct >= cliffPct;
             // A stretch label where the funnel changes character, so the eye can
             // find the money without the block splitting into separate charts.
             const head = r.group !== rows[i - 1]?.group ? GROUP_HEAD[r.group] : null;
@@ -2640,7 +2850,8 @@ function WholeFunnel({
 
       {sessionsError && (
         <p className="mt-2 text-[12px] text-[var(--spend-deep)]">
-          {sessionsError}, so the card-form row is blank. Every other row is still correct.
+          {sessionsError}, so the card-form row is missing and the paywall row&rsquo;s loss cannot
+          be computed. Every other row is still correct.
         </p>
       )}
 
@@ -2691,10 +2902,14 @@ function FunnelByDay({
   rows,
   totals,
   error,
+  cliffPct,
+  minCliffBase,
 }: {
   rows: DailyRow[];
   totals: DailyRow;
   error: string | null;
+  cliffPct: number;
+  minCliffBase: number;
 }) {
   if (error) return <p className="px-6 py-5 text-[13px] text-[var(--ink-2)]">{error}</p>;
   if (rows.length === 0 || totals.counts.entered === 0) {
@@ -2722,7 +2937,9 @@ function FunnelByDay({
         {lost !== null && (
           <span
             className={`block text-[10.5px] ${
-              lost >= CLIFF_PCT && n >= 10 ? "text-[#C2410C]" : "text-[var(--ink-3)]"
+              // Same two guards as the curve: the route's base, not a
+              // separate one — a 12 → 8 day was orange here and grey there.
+              lost >= cliffPct && n >= minCliffBase ? "text-[#C2410C]" : "text-[var(--ink-3)]"
             }`}
           >
             −{lost}%
