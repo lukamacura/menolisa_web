@@ -19,7 +19,7 @@ export default function LandingInside() {
         <p className="mt-2 text-center text-[#5B5557]">Real screens from MenoLisa.</p>
 
         <div className="-mx-4 mt-8 overflow-x-auto px-4 pb-3 snap-x snap-mandatory md:mx-0 md:overflow-visible md:px-0">
-          <ul className="flex w-max gap-4 md:grid md:w-auto md:grid-cols-5">
+          <ul className="flex w-max gap-4 md:grid md:w-auto md:grid-cols-6">
             {shots.map((shot) => (
               <li key={shot.src} className="w-40 shrink-0 snap-start md:w-auto">
                 <div className="rounded-[1.4rem] bg-[#1d1d1f] p-1 shadow-[0_16px_36px_-16px_rgba(61,61,61,0.55)]">

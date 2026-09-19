@@ -845,12 +845,21 @@ export function TrainingWeekBoard({
  *   behind MenoLisa" card (owner's call, 2026-09-13). The role is the one the
  *   owner gave; nothing here dresses it up into a credential. Never add a name
  *   or a title here that is not real and agreed.
- * - **No outcome promise.** The board opens "You already know what to do." over
- *   the advice she has already heard for her goal (FOUNDER_BECAUSE in
- *   app/register/page.tsx), then argues that doing it daily takes discipline
- *   that runs out on everyone - and the app removes the deciding. Never "you
- *   will lose X". Weight is the most common goal and the most regulated claim
- *   in this category. The answer is the habit system, not a result.
+ * - **No outcome promise.** The board opens on the truism ("knowing what to
+ *   do was never the hard part, doing it every day is"), then says what the
+ *   app actually does about that - today is already planned from her answers,
+ *   she does it and ticks it off, tomorrow is waiting. Never "you will lose
+ *   X". Weight is the most common goal and the most regulated claim in this
+ *   category. The answer is the habit system, not a result.
+ * - **Compact, and every sentence is a fact about the app (2026-09-19).** The
+ *   first cut was two paragraphs plus a goal-keyed line of the generic advice
+ *   she had already heard ("Same bedtime. No late coffee."), and it overflowed
+ *   the reward screen at 390x700. The advice line told her nothing, and the
+ *   two paragraphs made one point twice. One paragraph now; each clause is
+ *   checkable: the 56 days are generated up front from the quiz, the tick is
+ *   `POST /api/plan/complete`, and the next day is there without her doing
+ *   anything. Do not grow it back - a note she has to scroll is a note she
+ *   does not read one screen before her results.
  * - **Discipline is named as universal, never as her failing** (2026-09-16).
  *   "Discipline you don't have" is true and insulting; "discipline runs out,
  *   on everyone" is the same point and takes the blame off her.
@@ -877,13 +886,13 @@ const FOUNDER = {
 const TICK_BASE = 1.15;
 const TICK_STEP = 0.2;
 
-export function FounderNoteBoard({ because }: { because: string }) {
+export function FounderNoteBoard() {
   const reduced = useReducedMotion();
   const doneAt = TICK_BASE + PLAN_PILLARS.length * TICK_STEP;
 
   return (
     <RewardPaper title={`A note from ${FOUNDER.name}`}>
-      <div className="mt-2 flex items-start gap-3">
+      <div className="mt-2 flex items-center gap-3">
         {/* A print pinned to the note, not an avatar: the paywall already has
             the round 64px avatar, and a second one would read as the same
             badge twice. The frame fill is the paper's own warm grey, so a slow
@@ -912,31 +921,24 @@ export function FounderNoteBoard({ because }: { because: string }) {
           </figcaption>
         </motion.figure>
 
-        <div className="min-w-0 flex-1 pt-0.5">
+        <div className="min-w-0 flex-1">
           <Line i={0} base={0.4} className="font-script text-[23px] leading-[1.1] text-[#3D3D3D] text-balance">
-            You already know what to do.
+            Knowing what to do was never the hard part.
           </Line>
-          <Line i={1} base={0.4} className="mt-1.5 text-[12px] font-semibold leading-snug text-[#8C8279]">
-            {because}
+          <Line i={1} base={0.4} className="mt-1 text-[13px] font-extrabold leading-snug text-[#3D3D3D]">
+            Doing it every day is.
           </Line>
         </div>
       </div>
 
-      <div className="mt-2.5 space-y-1.5 text-[12.5px] leading-snug text-[#3D3D3D]">
-        <Line i={2} base={0.4}>
-          Knowing was never the hard part.{" "}
-          <span className="font-extrabold">Doing it every single day is.</span> That takes
-          discipline, and discipline runs out, usually on the Tuesday you slept badly and the
-          day got away from you. That&apos;s not a flaw in you. It happens to everyone.
-        </Line>
-        <Line i={3} base={0.4}>
-          So MenoLisa doesn&apos;t run on willpower. Open the app and today is already planned
-          for you. Nothing to figure out, nothing to decide. You do it, you tick it off, and one
-          day at a time it becomes just what you do.
-        </Line>
-      </div>
+      <Line i={2} base={0.4} className="mt-2.5 text-[13px] leading-snug text-[#3D3D3D]">
+        Discipline runs out on everyone, usually the week you sleep badly. So MenoLisa
+        doesn&apos;t run on it. Open the app and{" "}
+        <span className="font-extrabold">today is already planned from your answers.</span>{" "}
+        Do it, tick it off, close the app. Tomorrow is there when you wake up.
+      </Line>
 
-      <Line i={4} base={0.4} className="mt-2.5 rounded-xl border border-[#E8DDD9] bg-white px-2.5 py-2">
+      <Line i={3} base={0.4} className="mt-2.5 rounded-xl border border-[#E8DDD9] bg-white px-2.5 py-2">
         <div className="flex items-center justify-between gap-2 pb-1.5 text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#B5ADA9]">
           <span>Today, in your app</span>
           <motion.span

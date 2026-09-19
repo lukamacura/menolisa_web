@@ -617,7 +617,7 @@ export function SocialProofPolaroid({
             items={members.map((m) => ({
               key: m.id,
               node: (
-                <p className="font-script text-2xl sm:text-3xl leading-tight text-[#3D3D3D]">
+                <p className="font-script text-[22px] sm:text-3xl leading-tight text-[#3D3D3D]">
                   This is {m.name}. She started right where you are.
                 </p>
               ),
@@ -633,10 +633,19 @@ export function SocialProofPolaroid({
               on a page rather than two stacked components. It lands once, on
               view; the women after the first arrive by crossfade inside the
               frame, because re-dropping the print every five seconds would
-              turn one photograph handed to you into a slideshow. */}
+              turn one photograph handed to you into a slideshow.
+
+              Smaller on a phone (2026-09-19). At 228px wide the print was
+              294px tall, which on the funnel's reward screen (530px of scroll
+              at 390x700) left the quote as the last thing above the fold and
+              put the stars' credibility, the dots, the story and the "read
+              her story" button all below it - the proof was a photograph and
+              nothing else. At 164px the print is still the hero, and the
+              quote, the dots and the button sit under it without a scroll.
+              `sm:` keeps the full print where there is room for it. */}
           <motion.figure
             variants={drop}
-            className="relative z-10 mx-auto w-[228px] sm:w-[248px] rounded-[3px] bg-white p-2.5 pb-1.5 shadow-[0_18px_34px_-14px_rgba(0,0,0,0.45)] ring-1 ring-black/5"
+            className="relative z-10 mx-auto w-[164px] sm:w-[248px] rounded-[3px] bg-white p-2 pb-1 sm:p-2.5 sm:pb-1.5 shadow-[0_18px_34px_-14px_rgba(0,0,0,0.45)] ring-1 ring-black/5"
           >
             <Tape className="-top-2.5 -left-4 -rotate-[24deg]" />
             <Tape className="-top-2.5 -right-4 rotate-[19deg]" />
@@ -678,7 +687,7 @@ export function SocialProofPolaroid({
               />
             </div>
 
-            <figcaption className="px-1 pt-2 pb-0.5 text-center">
+            <figcaption className="px-0.5 pt-1.5 pb-0.5 text-center sm:px-1 sm:pt-2">
               <Swap
                 index={index}
                 still={still}
@@ -686,10 +695,10 @@ export function SocialProofPolaroid({
                   key: m.id,
                   node: (
                     <>
-                      <span className="block font-script text-xl leading-none text-[#3D3D3D]">
+                      <span className="block font-script text-lg sm:text-xl leading-none text-[#3D3D3D]">
                         {m.name}, {m.age}
                       </span>
-                      <span className="mt-1.5 block text-[9.5px] font-semibold uppercase leading-[1.4] tracking-[0.07em] text-[#9A9A9A]">
+                      <span className="mt-1 block text-[9px] sm:text-[9.5px] font-semibold uppercase leading-[1.4] tracking-[0.05em] sm:tracking-[0.07em] text-[#9A9A9A]">
                         {m.context}
                       </span>
                     </>
@@ -703,7 +712,7 @@ export function SocialProofPolaroid({
           <motion.div
             variants={rise}
             style={{ backgroundColor: PAPER }}
-            className="-mt-4 rounded-2xl border border-[#E8DDD9] px-4 pb-4 pt-9 shadow-sm"
+            className="-mt-4 rounded-2xl border border-[#E8DDD9] px-4 pb-4 pt-8 sm:pt-9 shadow-sm"
           >
             <motion.div variants={stage} className="flex justify-center gap-0.5">
               {Array.from({ length: 5 }).map((_, i) => (

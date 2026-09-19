@@ -20,6 +20,7 @@ import { PLAN_WEEKS } from "@/lib/pricing";
  */
 export const PLAN_SHOTS = {
   day: "/screenshots/screen1.webp",
+  session: "/screenshots/screen5.webp",
   movement: "/screenshots/movement.webp",
   nutrition: "/screenshots/screen2.webp",
   habits: "/screenshots/screen3.webp",
@@ -35,6 +36,9 @@ export type PlanSlide = { src: string; caption: string; alt: string };
  * weeks, and each slide answers the objection the one before it raises:
  *
  *   day       the whole offer in one frame - four pillars, real progress
+ *   session   "what does doing it look like?" - a warm-up move mid-session, on
+ *             video, with the timer counting down and Done / +20 sec / Pause
+ *             under it: she follows along on the mat, nothing to work out
  *   movement  "what is a session, actually?" - three moves, about five minutes,
  *             which is the answer to the fear that this needs a gym and an hour
  *   nutrition "so what do I eat?" - a list, with a reason on every row
@@ -49,6 +53,11 @@ export const PLAN_HERO_SLIDES: ReadonlyArray<PlanSlide> = [
     src: PLAN_SHOTS.day,
     caption: "Day 1, already built",
     alt: `Day 1 of your personalized ${PLAN_WEEKS}-week plan in the MenoLisa app, showing movement, nutrition, relaxation and habit tasks`,
+  },
+  {
+    src: PLAN_SHOTS.session,
+    caption: "Follow along, move by move",
+    alt: "A session running in the MenoLisa app: a warm-up stretch shown on video with a countdown timer, and Done, +20 sec and Pause buttons",
   },
   {
     src: PLAN_SHOTS.movement,

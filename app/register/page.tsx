@@ -665,21 +665,6 @@ const COHORT_PHRASE: Record<string, string> = {
   not_sure: "women your age",
 };
 
-// Reward 4 (`reward_progress`, the founder's note): the board opens "You
-// already know what to do." and this line lists it, keyed off her goal - the
-// advice she has heard a hundred times for that goal. The point is recognition,
-// not instruction: she knows all of it, and the note's argument is that knowing
-// was never the problem. Keep each one to the generic, everyone-says-it advice;
-// never a dose, and never an outcome ("lose 10 lb in 8 weeks"). See the rules
-// above <FounderNoteBoard />.
-const FOUNDER_BECAUSE: Record<string, string> = {
-  get_body_back: "Eat more protein. Move more. Skip the late-night snacks.",
-  sleep_through_night: "Same bedtime. No late coffee. Phone out of the bedroom.",
-  think_clearly: "Sleep more. Move more. Stress less.",
-  feel_like_myself: "Move more. Eat better. Make time for yourself.",
-};
-const FOUNDER_BECAUSE_DEFAULT = "Move more. Eat better. Get more sleep.";
-
 const HRT_OPTIONS = [
   { id: "currently", label: "I am currently taking HRT", image: "/quiz/hrt/current.webp" },
   { id: "past", label: "I have taken HRT in the past", image: "/quiz/hrt/past.webp" },
@@ -5650,8 +5635,9 @@ function RegisterPageContent() {
                 split. They all run through one static bezel as
                 <PlanHeroCarousel />: `day` first, because "Day 1 · Week 1" plus
                 four pillars with real progress is the whole offer in one frame,
-                then the surfaces that run it - a session, the food list, a
-                habit, the eight weeks, the streak. See PLAN_HERO_SLIDES for
+                then the surfaces that run it - a move mid-session on video, the
+                session list, the food list, a habit, the eight weeks, the
+                streak. See PLAN_HERO_SLIDES for
                 why that order. They used to be a hero plus
                 a tilted, cropped, faded trio of the same three shots 300px
                 lower, where nothing in them could be read - see the component
@@ -7140,9 +7126,7 @@ function RegisterPageContent() {
                 >
                   <div className={REWARD_SCROLL_SHELL + " py-1"}>
                     <div className={REWARD_PAYOFF_CENTER}>
-                      <FounderNoteBoard
-                        because={FOUNDER_BECAUSE[goal[0]] ?? FOUNDER_BECAUSE_DEFAULT}
-                      />
+                      <FounderNoteBoard />
                     </div>
                   </div>
                 </QuizReward>

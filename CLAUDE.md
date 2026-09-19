@@ -1877,6 +1877,31 @@ feature (checked 2026-09-08).
 
 ### Recent work
 
+**2026-09-19 (latest) — two reward boards made to fit a phone.** Measured
+by Playwright walk-through at 390x700 and 375x667 (`reward_social_proof`,
+`reward_progress`), before → after:
+
+- **`<SocialProofPolaroid />`: the print is 164px wide on phones, 248px from
+  `sm:`.** At 228px it was 294px tall on a 530px scroll area; the quote was
+  the last thing above the fold and the stars, dots, story and "read her
+  story" button were all below it — the proof read as a photograph alone.
+  Now the stars, quote, dots and the first story lines are in view at both
+  sizes; the button is still one short scroll down (overflow 206px → 138px).
+  Same component on the paywall and landing page, so those shrink on phones
+  too. Headline 24px → 22px on phones; caption and chin trimmed to match.
+  Still open there: the quote slot is a `Swap` grid, so every member's quote
+  cell is as tall as the longest (the HRT member's, five lines) — the blank
+  band between the quote and the dots on the other three.
+- **`<FounderNoteBoard />` is one paragraph and takes no props.** The
+  goal-keyed advice line (`FOUNDER_BECAUSE`, deleted from
+  `app/register/page.tsx`) and the second paragraph went; it overflowed
+  530px by 19px and said one thing twice. Headline is now the truism
+  ("Knowing what to do was never the hard part. / Doing it every day is."),
+  the body is four checkable clauses about the app, the pillar checklist and
+  the sign-off are unchanged. Fits with ~100px to spare at 390x700.
+
+`tsc --noEmit` and eslint clean on the three files.
+
 **2026-09-19 (later) — `/register` first paint 2.8s → 1.0s on a phone.** The
 page was already static; what set the paint time was Vercel's edge serving
 every stream fair-share, so the render-blocking CSS arrived last. Full
@@ -1922,10 +1947,11 @@ burn", "restart the trigger" and "control centre" are gone from every screen
 (US spelling; `yoghurt` → yogurt; eggs moved from the counter to the fridge).
 `WEIGHT_LINK_BY_PILLAR` prints "muscle and belly fat". The founder note opens
 "You already know what to do." over the goal's familiar advice
-(`FOUNDER_BECAUSE`), says discipline runs out on everyone rather than that she
-lacks it, and signs off "You don't need more discipline. You need fewer
-decisions." `MechanismClose` moved with `getWeightChain`. Zoka should read the
-note before it ships — it is in her voice.
+(`FOUNDER_BECAUSE`; both cut 2026-09-19 — see that entry), says discipline
+runs out on everyone rather than that she lacks it, and signs off "You don't
+need more discipline. You need fewer decisions." `MechanismClose` moved with
+`getWeightChain`. Zoka should read the note before it ships — it is in her
+voice.
 
 Second pass the same day, across the rest of the funnel: the results headline
 no longer claims "worse than you've been told" or speaks as an unintroduced
