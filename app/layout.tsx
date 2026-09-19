@@ -19,11 +19,30 @@ const dancingScript = Dancing_Script({
 // Weights are limited to what the app actually renders: 400/500/600/700.
 // `font-extrabold` (800) and `font-black` (900) appear in markup but resolve to
 // 700 anyway because `font-synthesis-weight: none` is set in globals.css.
+//
+// `preload: false` is deliberate and load-bearing (2026-09-19). With it on,
+// next/font emits four `<link rel="preload" as="font">` in the head, and Chrome
+// treats head font preloads as render-blocking: on the live `/register`,
+// roughly one visit in three had its FIRST PAINT held for ~1.0-1.1s after
+// every byte of the page had arrived and the main thread was idle
+// (Lighthouse traces: layout done at ~220ms, the `pagereveal` event and first
+// paint at ~1315ms, the four fonts all loaded by 300ms). Blocking the font
+// requests made the hold vanish (0/6 runs) and cut first paint to ~200ms;
+// blocking all JavaScript did not (4/6), so it is the preload, not
+// hydration. It was the largest single cause of the 5-6s LCPs PageSpeed
+// Insights was intermittently reporting.
+//
+// Nothing is lost: the stylesheet is inlined in the document
+// (`experimental.inlineCss`), so the `@font-face` rules are parsed at the same
+// instant the preloads would have been discovered, and `display: "swap"` plus
+// next/font's size-adjusted fallback means text paints immediately in a
+// metric-matched fallback and swaps with no layout shift.
 const poppins = Poppins({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
   variable: "--font-poppins",
   display: "swap",
+  preload: false,
 });
 
 // Only rendered on /register — don't spend the first-paint budget on it elsewhere.
