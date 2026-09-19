@@ -14,11 +14,30 @@ const nextConfig: NextConfig = {
   // Performance optimizations
   experimental: {
     optimizePackageImports: ["framer-motion", "lucide-react", "@supabase/supabase-js"],
-    // `inlineCss` was tried on 2026-09-19 and rejected: it pastes the raw
-    // stylesheet (~450KB uncompressed) into every HTML document, which took
-    // `/register` from 37KB to 487KB on the wire before compression and made
-    // FCP, LCP and total transfer all worse under Lighthouse's slow-4G
-    // simulation. Keep the stylesheet external.
+    // Ship the stylesheet inside the HTML instead of as a separate
+    // render-blocking request. **This is the single largest thing that
+    // decides when `/register` first paints on a phone, and the reason is
+    // the edge, not the CSS.**
+    //
+    // Vercel's edge multiplexes every HTTP/2 stream with equal weight and
+    // ignores the browser's priority: measured 2026-09-19 with Lighthouse
+    // under real (DevTools) slow-4G throttling, the 24KB stylesheet marked
+    // VeryHigh finished at 2.8s — *after* ten High images, four fonts and
+    // ~200KB of Low async JS that were requested at the same moment — and
+    // first paint sat on it. The same build behind a fair-share HTTP/2 proxy
+    // reproduces the figure exactly (FCP 2.8s); with the CSS inlined it
+    // paints at 0.9s and the tiles (LCP) land at 1.6s, because the stylesheet
+    // is now inside the one stream that is alone on the wire.
+    //
+    // Two costs, both known and accepted. The document grows: Next inlines the
+    // full 138KB stylesheet once as a <style> and twice more inside the RSC
+    // payload (React needs it there for client navigation), ~87KB gzipped
+    // against 6KB + 25KB before. And Lighthouse's *simulated* throttling
+    // (what PageSpeed Insights reports) models the bigger document as pure
+    // delay and prices this at about −1 point / +0.2s LCP, because its model
+    // assumes an edge that honours priority. Trust the DevTools-throttled
+    // number for what a visitor sees; see `scripts/perf/` to reproduce.
+    inlineCss: true,
   },
 
   // Image optimization (AVIF + WebP, responsive device sizes)
