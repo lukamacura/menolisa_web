@@ -45,7 +45,8 @@ function buildSteps(topLabel: string): Step[] {
     },
     // "The app", not "Lisa" (2026-09-14): before checkout the name means
     // nothing, and the funnel now names the plan and the app everywhere it
-    // used to name her. The AI disclosure lives in the landing FAQ and Terms §1.
+    // used to name her. The AI disclosure lives in Terms §1 only (2026-09-20:
+    // the word is off every marketing surface, the FAQ included).
     {
       title: "The app reads what you logged",
       body: `It builds next week from what you actually did, with your ${topLabel} in mind. Your plan, not a template.`,

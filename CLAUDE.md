@@ -1931,6 +1931,7 @@ feature (checked 2026-09-08).
 | Re-add an introductory price, a first-period discount or a Stripe coupon | Gone 2026-09-11. An introductory price that steps up is a second number, and the weekly plan proved what a second number costs on this screen: the paywall had to reconcile three durations and Terms §10.1 had to state that the billing period and the plan block were different lengths. `create-checkout` passes no `discounts`. (The $29 quiz-taker price is not this: it is its own one-time Price, and nothing after it steps up.) |
 | Turn the plan back into a subscription without rewriting Terms §10 in the same commit | §10 currently states, in its own bordered box, that nothing recurs and there is nothing to cancel. Shipping recurring billing under that text is the same misrepresentation as a wrong price, pointing the other way — and it is the paragraph a customer quotes when she disputes the charge. |
 | Print "cancel anytime" anywhere | There is no subscription and no scheduled charge, so it is false, not just off-message. The reassurance that replaced it ("one payment, nothing recurring") is stronger and true. |
+| Print the word "AI" on any marketing surface — the `<title>`/description, landing page, FAQ, funnel, paywall, emails, blog | Owner's call (2026-09-20): to this audience it reads as "a chatbot instead of help". The disclosure that Lisa is an AI lives in Terms §1 and the Privacy Policy, and nowhere else. The landing FAQ's "Is Lisa a real person?" still answers "No" — it says "digital companion", never a human, and never "AI". |
 | Make the access-ending alert conditional on cancellation again | It was `.eq("subscription_canceled", true)`, which is false for every one-time customer — so every access window would have expired in silence. It is now the only warning she gets that the app is about to stop. |
 | Report booked or forecast revenue on `/admin` | Nothing is scheduled. Every future dollar needs her to decide to buy again, so a "booked" figure would be invented money. Show who is inside their window and who is about to leave it. |
 | Reuse `STRIPE_PRICE_8WEEK` or `STRIPE_PRICE_WEEKLY` as the env var | They hold the archived $59 and $4.99 prices. A stale value under a reused name charges a figure no surface prints. The live variable is `STRIPE_PRICE_PLAN`. |
@@ -2189,7 +2190,8 @@ everything, and each fix is a contradiction she could catch:
   "Ask Lisa anything" in `WHAT_YOU_GET`, "she decides what you do next" and
   `HowLisaRuns`'s two rows, `PRICE_SUBLINE`, the body/time-of-day/name
   sublines, and the `QuizNudge` sender ("Lisa · your coach" → the app,
-  "Quick note"). The AI disclosure stays in the landing FAQ and Terms §1.
+  "Quick note"). The AI disclosure stays in Terms §1 (and, since 2026-09-20,
+  only there — see the "Decided against" row on the word "AI").
   `HowLisaRuns` keeps its identifier.
 - **The results card bridges cause to plan** for weight-first women: after the
   three links, "Diets cut calories, which shrinks muscle faster … short

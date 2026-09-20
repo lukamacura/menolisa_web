@@ -360,8 +360,9 @@ export const WHAT_YOU_GET: ReadonlyArray<{ bold: string; sub: string }> = [
   // No "AI" in the headline (2026-09-13): to this audience the word reads as
   // "a chatbot instead of help", on the screen where trust is the whole sale.
   // It must not swing the other way and imply a human coach either - "in
-  // seconds, any hour" is the honest shape, and the landing FAQ and Terms §1
-  // still disclose that Lisa is an AI. And no "Lisa" (2026-09-14): the name
+  // seconds, any hour" is the honest shape, and Terms §1 still discloses that
+  // Lisa is an AI (since 2026-09-20 the word is off every marketing surface,
+  // the landing FAQ included). And no "Lisa" (2026-09-14): the name
   // means nothing before she has opened the app, and it was the last of five
   // places the funnel named a persona instead of the plan. No "she" for the
   // same reason.

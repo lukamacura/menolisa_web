@@ -54,8 +54,9 @@ const lora = Lora({
 });
 
 export const metadata: Metadata = {
-  title: "MenoLisa | AI support for women in menopause",
-  description: "AI companion for women's health and menopause support",
+  title: "MenoLisa | Your personal 8-week menopause plan",
+  description:
+    "A personal 8-week menopause plan built from a free 2-minute quiz. Movement, nutrition, sleep and daily habits, in one app.",
   icons: {
     icon: [{ url: "/favicon.png", type: "image/png" }],
     shortcut: "/favicon.png",

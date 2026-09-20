@@ -30,7 +30,7 @@ const FAQS = [
   },
   {
     q: "Is Lisa a real person?",
-    a: "No. Lisa is an AI trained on menopause research. She gives clear, research-backed information, not medical advice, and she'll tell you when a question is one for your doctor.",
+    a: "No. Lisa is a digital companion built on menopause research. She gives clear, research-backed information, not medical advice, and she'll tell you when a question is one for your doctor.",
   },
   {
     q: "Is my information private?",

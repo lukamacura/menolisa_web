@@ -1161,8 +1161,8 @@ export function PaywallView({
 
             The "Lisa is an AI, not a doctor" row went on 2026-09-13 (owner's
             call: to this audience the word reads as "a chatbot instead of
-            help"). The disclosure did not go - it is in the landing FAQ and
-            Terms §1 - and nothing here may imply Lisa is a person.
+            help"). The disclosure did not go - it is in Terms §1, and since
+            2026-09-20 only there - and nothing here may imply Lisa is a person.
 
             **Do not add a name, a credential or an advisory board here unless
             it is real and the person has agreed to be named.** An invented
