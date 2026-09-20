@@ -3888,6 +3888,21 @@ function urlPhaseOverride(): Phase | null {
   return null;
 }
 
+/**
+ * `?rebuild=1` swaps screen 1's headline for "Rebuild your Plan".
+ *
+ * For a link sent to someone who already went through the funnel once (her
+ * 56 days ran out, or she wants a plan for a different symptom) — the default
+ * headline promises a plan to a stranger, and to her it reads as if we forgot
+ * her. Nothing else changes: same questions, same account flow, same price
+ * rule (`isQuizPriceEligible()` decides the figure off the account, not off
+ * the URL). Read on the client only, like every other param on this page, so
+ * the static HTML stays one file.
+ */
+function urlRebuildHeadline(): boolean {
+  return readQueryParam("rebuild") === "1";
+}
+
 function RegisterPageContent() {
   const router = useRouter();
   const prefersReducedMotion = useReducedMotion();
@@ -5111,9 +5126,14 @@ function RegisterPageContent() {
    * because it is a screen she was on.
    */
   const urlPhaseChecked = useRef(false);
+  // `?rebuild=1` — see `urlRebuildHeadline`. Applied in the same pre-paint
+  // effect as the phase override, for the same reason: the state initializer
+  // cannot read the URL without a hydration mismatch against the static HTML.
+  const [rebuildHeadline, setRebuildHeadline] = useState(false);
   useIsomorphicLayoutEffect(() => {
     if (urlPhaseChecked.current) return;
     urlPhaseChecked.current = true;
+    if (urlRebuildHeadline()) setRebuildHeadline(true);
     const override = urlPhaseOverride();
     if (!override) return;
     skipPhaseTransition.current = true;
@@ -6486,9 +6506,17 @@ function RegisterPageContent() {
                     the grid below). */}
                 <EntranceProof>
                   <h1 className="text-lg sm:text-xl font-bold leading-tight text-[#3D3D3D]">
-                    Answer a few questions.
-                    <br />
-                    Get your {PLAN_WEEKS}-week plan.
+                    {rebuildHeadline ? (
+                      // `?rebuild=1` — a returning member's link, see
+                      // `urlRebuildHeadline`.
+                      <>Rebuild your Plan</>
+                    ) : (
+                      <>
+                        Answer a few questions.
+                        <br />
+                        Get your {PLAN_WEEKS}-week plan.
+                      </>
+                    )}
                   </h1>
                 </EntranceProof>
                 {/* The two costs she is weighing, on one line under the row
