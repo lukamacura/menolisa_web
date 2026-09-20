@@ -429,6 +429,13 @@ export default function PrivacyPage() {
               <strong>Meta Platforms, Inc.</strong> — advertising measurement on our website only.
               Section 6 sets out exactly what it receives, which does not include health information.
             </li>
+            <li>
+              <strong>Microsoft Corporation (Clarity)</strong> — session replay and heatmaps on our
+              website’s quiz pages only, described in Section 6.2. Because the quiz is answered by
+              tapping tiles, a recording can show the answers you chose. What you type is masked.
+              Microsoft processes this on our behalf and does not receive your name, email address,
+              account identifier, or payment details. United States.
+            </li>
           </ul>
 
           <h3 className="text-xl font-semibold mb-3 mt-6">5.3 Other disclosures</h3>
@@ -534,6 +541,15 @@ export default function PrivacyPage() {
             across sites, and do not build an advertising profile of you. We do not use Google
             Analytics.
           </p>
+          <p>
+            On the quiz pages of our website we also use <strong>Microsoft Clarity</strong>, which
+            records how the page is used — taps, scrolling, and the screens shown — so we can see
+            where the quiz is confusing and fix it. A recording is keyed to a random per-visit
+            identifier, not to your account, and is not used for advertising. Text you type is
+            masked before it leaves your browser. Clarity is not loaded in the mobile app, is not
+            loaded when your browser sends a Global Privacy Control signal, and Microsoft’s own
+            privacy statement applies to its processing.
+          </p>
 
           <h3 className="text-xl font-semibold mb-3 mt-6">6.3 Cookies and similar technologies</h3>
           <ul>
@@ -543,6 +559,11 @@ export default function PrivacyPage() {
             </li>
             <li>
               <strong>Advertising</strong> — Meta’s <code>_fbp</code> and <code>_fbc</code>, as above.
+            </li>
+            <li>
+              <strong>Analytics</strong> — Microsoft Clarity’s <code>_clck</code> and{" "}
+              <code>_clsk</code> on the quiz pages, which tell Clarity that a later visit came from
+              the same browser. They are not shared with advertisers.
             </li>
           </ul>
           <p>

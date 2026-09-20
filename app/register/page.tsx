@@ -64,6 +64,7 @@ import { HighlightSweep } from "@/components/HighlightSweep";
 import type { PlannerDay } from "@/components/funnel/RewardBoards";
 import { QuizNudge } from "@/components/funnel/QuizNudge";
 import { EntranceProof } from "@/components/funnel/EntranceProof";
+import Clarity, { tagClarityStep } from "@/components/funnel/Clarity";
 
 /*
  * Everything past the quiz is code-split.
@@ -4098,6 +4099,8 @@ function RegisterPageContent() {
     if (funnelStepsSent.current.has(step)) return;
     funnelStepsSent.current.add(step);
     pingFunnelStep(step, index);
+    // Same key into Clarity, so a recording can be filtered to this screen.
+    tagClarityStep(step);
   }, [phase, stepIndex]);
   // Question position for the progress label/dots (reward steps excluded; during a
   // reward step we keep the last answered question's dot lit).
@@ -7329,6 +7332,9 @@ function RegisterPageContent() {
                         name she has typed into a hundred other forms. */}
                     <input
                       type="text"
+                      // Never captured in a Clarity recording, whatever the
+                      // project's masking level. See components/funnel/Clarity.tsx.
+                      data-clarity-mask="true"
                       value={firstName}
                       maxLength={50}
                       onChange={(e) => setFirstName(e.target.value)}
@@ -7489,5 +7495,14 @@ function RegisterPageContent() {
  * put the boundary around *that*, not around the page.
  */
 export default function RegisterPage() {
-  return <RegisterPageContent />;
+  return (
+    <>
+      <RegisterPageContent />
+      {/* Session recordings for the funnel only — see the component for the
+          production / QA / GPC gates and what a recording contains. Mounted
+          here, outside the content component, so it never re-renders with a
+          step change. */}
+      <Clarity />
+    </>
+  );
 }

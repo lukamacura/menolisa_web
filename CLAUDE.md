@@ -1353,6 +1353,31 @@ place:
 See `.env.example` for the full annotated list rather than duplicating it here —
 a second copy is a second thing to forget to update.
 
+### Microsoft Clarity (2026-09-20) — session replay on `/register` only
+
+`components/funnel/Clarity.tsx`, mounted once from `RegisterPage`. It answers
+the question `funnel_events` cannot: not *which* screen she left on but what
+she did on it first. It is a product-analytics tool — **not a Meta event, and
+it must not become one** (see the AEM budget below). Rules, all in the
+component:
+
+- **`lazyOnload`, production-only, off on `?qa=1`, off under GPC, off when
+  `NEXT_PUBLIC_CLARITY_PROJECT_ID` is unset.** Same four gates as the pixel,
+  same reasons. Re-measure with `npm run perf` before moving it earlier.
+- **Recordings are keyed to the visit, never the account.** The
+  `funnel_session` tag is the same uuid `funnel_events` uses, so a recording
+  and a drop-off row can be matched. Never call `clarity("identify", …)` with
+  a user id or email.
+- **`tagClarityStep(step)` fires beside `pingFunnelStep()`** with the same key,
+  so filtering recordings by screen uses the funnel's own names.
+- **A recording shows her tapped answers** — the quiz is tiles. That is health
+  data about a visit held by a processor, so Privacy §5.2, §6.2 and §6.3 name
+  Microsoft and the `_clck` / `_clsk` cookies; they move with this tag in both
+  directions. The name box carries `data-clarity-mask` so what she types is
+  never captured; the sliders are masked by Clarity's default "Balanced" level.
+  Set the project to "Strict" in Clarity → Settings → Masking if the tile
+  labels themselves should be blurred.
+
 ### Meta Pixel / Conversions API
 Ad tracking for the `/register` web2app funnel:
 
@@ -1664,6 +1689,7 @@ for on every page load. Before adding an image, shrink it (e.g. squoosh.app):
 | Stripe | Payments, subscriptions | `app/api/stripe/`, `app/checkout/` |
 | Resend | Transactional email (welcome, charge confirmed, renewal notice, admin alerts) | `lib/resend.ts` |
 | Vercel | Hosting + Cron jobs | `vercel.json` |
+| Microsoft Clarity | Session replay + heatmaps, `/register` only | `components/funnel/Clarity.tsx` |
 
 ### Security-Sensitive Areas
 - `app/api/stripe/webhook/route.ts` — **must** verify Stripe signature before processing; never remove signature verification
