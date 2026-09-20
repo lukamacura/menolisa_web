@@ -16,6 +16,7 @@ import Image from "next/image";
 import { motion, MotionConfig, useReducedMotion, type Variants } from "framer-motion";
 import { ChevronDown, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Tape } from "@/components/Tape";
 import { getSocialProofMembers, type SocialProofMember } from "@/lib/testimonials";
 
 /** Hand-drawn arrow curving down-right, from the caption into the photo. */
@@ -447,21 +448,6 @@ const pop: Variants = {
   hidden: { opacity: 0, scale: 0.6 },
   show: { opacity: 1, scale: 1, transition: { duration: 0.32, ease: EASE } },
 };
-
-/** A strip of washi tape holding one corner of the print to the page. */
-function Tape({ className }: { className: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "pointer-events-none absolute h-5 w-16 rounded-[2px] shadow-sm",
-        "bg-[rgba(233,222,199,0.78)] ring-1 ring-black/5",
-        "before:absolute before:inset-0 before:rounded-[2px] before:bg-linear-to-b before:from-white/45 before:to-transparent",
-        className
-      )}
-    />
-  );
-}
 
 /**
  * The human faces on the page. Everything around it is her own numbers and her

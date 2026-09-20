@@ -1048,11 +1048,33 @@ is right; what follows is the pass that finished it.
   to be proud of, only distance left. The counter and the dots now render from
   step 1 onward and the entrance carries the offer instead — *Answer a few
   questions. Get your 8-week plan. / Free 2-minute menopause quiz / No email
-  needed*, beside a small phone mockup of the app's Today screen (2026-09-17;
-  beside, never above — the tile grid takes whatever height is left). Every clause is
-  checkable, which is the rule the whole funnel is written under: thirteen
-  one-tap questions, and nothing charged and no address collected before Stripe
-  (results, diagnosis and the paywall all render first).
+  needed*, beside a member's face and her own sentence (`<EntranceProof />`,
+  2026-09-20 — beside, never above: the tile grid takes whatever height is
+  left). Every clause is checkable, which is the rule the whole funnel is
+  written under: thirteen one-tap questions, and nothing charged and no
+  address collected before Stripe (results, diagnosis and the paywall all
+  render first).
+- **The face beside the offer is a member, in her own words, weight first
+  (2026-09-20).** The slot held a 56px phone mockup of the Today screen from
+  2026-09-17, whose job was "app, not PDF"; at that size it was an unreadable
+  blob and did that job for nobody. `components/funnel/EntranceProof.tsx` is
+  the paywall's polaroid at thumbnail size — same paper, same `<Tape />`
+  (now `components/Tape.tsx`, shared), same tilt, the same four members from
+  `lib/testimonials.ts`, crossfading every 4.5s with only `opacity` moving so
+  the tile grid never shifts under her thumb. The quote is `pullQuote`, a
+  sentence that appears verbatim in her story, never retyped; `draft` members
+  never render in production. It leads with `weight_changes` because there is
+  one live ad and it sells weight — 63% of finishers since 2026-09-13 tapped
+  weight first (12 of 19; sleep 3, hot flashes 2) — change the constant when
+  the creative changes. **No stars, rating or member count go beside it**:
+  those are claims about a population, and nothing sources them. Measured at
+  390x700 the strip is 145px against the mockup's 88; tiles are 112x127
+  (were 112x146), 107x116 at 375x667, nine fit with no scroll at both. Only the
+  first print carries `loading="eager"` + `fetchPriority="high"`: in Next 16
+  eager emits a preload, and the other three would otherwise share the pipe
+  with the nine tiles. Read this against the entrance loss, which was 66%
+  (113 → 38) over 2026-09-13 → 09-20 and climbing daily while volume fell —
+  roughly half of that is media, not screen, so give it a comparable window.
 - **The headline names the plan, not an explanation (2026-09-14).** It read
   "Find out what's driving your symptoms" for two days, which promised a
   diagnosis while the funnel builds, and sells, a plan. The live ad targets
@@ -1190,8 +1212,9 @@ rule:
   observed FCP is over ~700ms with load at ~450ms is a held paint.
 
 What is *not* the problem, so nobody re-audits it: the tiles are served at
-w=384 AVIF q60 (4–7KB each, ~45KB for nine) and the header mockup at w=128
-(3KB); fonts are next/font Poppins 400/500/600/700 latin, `display: swap`,
+w=384 AVIF q60 (4–7KB each, ~45KB for nine) and the entrance print at the
+72px slot (one preloaded, three lazy — see `EntranceProof`; the header mockup
+it replaced was 3KB at w=128); fonts are next/font Poppins 400/500/600/700 latin, `display: swap`,
 self-hosted, no Google Fonts stylesheet; the Meta pixel is `lazyOnload` and
 its ~247KB lands after the load event (`PageView` still fires — verified in
 every run). Every Lighthouse run against the live URL writes a
@@ -1962,7 +1985,31 @@ feature (checked 2026-09-08).
 
 ### Recent work
 
-**2026-09-19 (latest) — the funnel made unable to stall; `/admin` made
+**2026-09-20 (latest) — screen 1's mockup replaced by a member's face and
+her own sentence.** Read first: since 2026-09-13, 19 non-test finishers, 12
+of them weight-first (63%), 15 of 19 with the goal "get my body back" — the
+weight ad sends weight women. Entrance loss over the same window was 66%
+(113 → 38), climbing every day since 09-07 (35% → 80%) on near-unchanged
+code while daily entries fell from 237 to ~12, so that curve is creative
+fatigue and delivery drift, not the screen, and no screen change is
+measurable at this volume for weeks. Median dwell on screen 1 is 5.3s (was
+9.0s), so the ranking problem is solved. The symptom question stays: its
+answer is what everything downstream keys off and 37% of finishers are not
+weight. What changed is the slot beside the headline —
+`components/funnel/EntranceProof.tsx`, the paywall's taped print at thumbnail
+size, cycling Lindsey → Mara → Taryn → Jillian with their `pullQuote`s, weight
+first; `Tape` moved to `components/Tape.tsx` so both surfaces share it. Rules
+and measurements in §4 "The funnel's entrance". Verified: `tsc --noEmit` and
+eslint clean, `npm run build` clean, Playwright at 390x700 / 375x667 / 390x844
+— strip 145px, nine tiles fit with no scroll and no horizontal overflow at
+all three, the print cycles at 4.5s, ten image preloads (nine tiles + the
+first face). `public/screenshots/mockup.webp` stays: the paywall still uses
+it. **Not done:** the quotes are the women's existing pull quotes about the
+app, not sentences about the quiz — none of them wrote one, and a sentence we
+wrote under a real face is fabricated proof. If quiz-specific lines are
+wanted, they come from the members.
+
+**2026-09-19 — the funnel made unable to stall; `/admin` made
 honest about failures and fast to open.** Two audits (the funnel read in
 full, the admin route and page read in full), a Playwright walk of all 21
 screens at 390x700, and a query of `funnel_events` against what the code

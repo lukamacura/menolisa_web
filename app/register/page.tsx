@@ -63,6 +63,7 @@ import type { LucideIcon } from "lucide-react";
 import { HighlightSweep } from "@/components/HighlightSweep";
 import type { PlannerDay } from "@/components/funnel/RewardBoards";
 import { QuizNudge } from "@/components/funnel/QuizNudge";
+import { EntranceProof } from "@/components/funnel/EntranceProof";
 
 /*
  * Everything past the quiz is code-split.
@@ -6465,42 +6466,35 @@ function RegisterPageContent() {
                     $19 at the paywall, and "free" next to it here is the bait
                     reading the paywall's opening line exists to prevent.
 
-                    The phone sits beside the headline, never above it
-                    (2026-09-17). "8-week plan" alone does not say whether she
-                    gets a PDF or an app; a real Today screen does, at a glance.
-                    Beside rather than above because the tile grid below is
-                    sized to whatever height is left: a hero on top would take
-                    a third of every tile on the screen that has to earn the
-                    first tap. At this size the header costs ~40px more than
-                    the one-line version it replaced. */}
-                <div className="flex items-center justify-center gap-3 text-left">
-                  <Image
-                    src="/screenshots/mockup.webp"
-                    alt="The MenoLisa app's Today screen"
-                    width={640}
-                    height={1198}
-                    loading="eager"
-                    sizes="56px"
-                    // Above the fold beside the h1, so it paints with the
-                    // tiles rather than after the scripts — see the tiles'
-                    // `fetchPriority` note below. ~3KB at the 128px candidate.
-                    fetchPriority="high"
-                    decoding="sync"
-                    className="h-[84px] sm:h-24 w-auto shrink-0 drop-shadow-md"
-                  />
-                  <div className="min-w-0">
-                    <h1 className="text-lg sm:text-xl font-bold leading-tight text-[#3D3D3D]">
-                      Answer a few questions.
-                      <br />
-                      Get your {PLAN_WEEKS}-week plan.
-                    </h1>
-                    <p className="mt-1 text-xs leading-snug text-[#5A5A5A]">
-                      Free 2-minute menopause quiz
-                      <br />
-                      No email needed
-                    </p>
-                  </div>
-                </div>
+                    Beside the headline is a member's face and her own
+                    sentence - `<EntranceProof />`, the paywall's taped print
+                    at thumbnail size, cycling through the women in
+                    `lib/testimonials.ts`, weight first. It replaced a 56px
+                    phone mockup on 2026-09-20: at that size the Today screen
+                    was an unreadable blob, and what a cold click from a
+                    weight ad is actually weighing is not "app or PDF" but
+                    "is anyone real behind this". The rules for what may go in
+                    that slot are at the component. Beside rather than above
+                    because the tile grid below is sized to whatever height is
+                    left: a hero on top would take a third of every tile on
+                    the screen that has to earn the first tap. Measured at
+                    390x700 the strip is ~140px against the mockup's 88, and
+                    the nine tiles still fit with no scroll (see the note on
+                    the grid below). */}
+                <EntranceProof>
+                  <h1 className="text-lg sm:text-xl font-bold leading-tight text-[#3D3D3D]">
+                    Answer a few questions.
+                    <br />
+                    Get your {PLAN_WEEKS}-week plan.
+                  </h1>
+                </EntranceProof>
+                {/* The two costs she is weighing, on one line under the row
+                    so the print keeps the height for the quote. Both stay
+                    checkable: thirteen one-tap questions, and no address
+                    collected before Stripe. */}
+                <p className="mt-1.5 text-xs leading-snug text-[#5A5A5A]">
+                  Free 2-minute menopause quiz &middot; No email needed
+                </p>
               </div>
             ) : (
               <>
