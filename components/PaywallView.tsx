@@ -147,6 +147,14 @@ function useAccessEnd(): string | null {
  * disappears, the price does not move), and it never visibly resets - the
  * deadline is stamped in localStorage on first view, so a reload or a return
  * from Stripe's cancel URL continues the same clock.
+ *
+ * A stamp that has already run out when the page loads is stale, not a clock
+ * she is watching: it is replaced (2026-09-21). Until then the stamp was kept
+ * forever, so any device that had seen the paywall more than 30 minutes
+ * earlier - a return visit the next day, or the owner's own phone after a
+ * test walk - never showed the sentence again. Within one page load the
+ * deadline is held in `priceHoldUntil` and never re-read, so a clock she has
+ * watched reach zero stays at zero.
  */
 const PRICE_HOLD_MS = 30 * 60 * 1000;
 const PRICE_HOLD_KEY = "menolisa.quizPriceHoldUntil";
@@ -156,7 +164,7 @@ function priceHoldSecondsLeft(): number {
   if (priceHoldUntil === null) {
     try {
       const stored = Number(localStorage.getItem(PRICE_HOLD_KEY));
-      if (stored > 0) priceHoldUntil = stored;
+      if (stored > Date.now()) priceHoldUntil = stored;
     } catch {}
     if (priceHoldUntil === null) {
       priceHoldUntil = Date.now() + PRICE_HOLD_MS;
@@ -982,11 +990,10 @@ export function PaywallView({
             <p className="mx-auto mt-2 max-w-76 text-center text-xs leading-snug text-[#5A5A5A]">
               <b className="text-[#15803D]">{QUIZ_PRICE_LABEL}.</b> {QUIZ_PRICE_REASON}
               {priceHold !== null && priceHold > 0 && (
-                <>
-                  {" "}It&apos;s valid for another{" "}
-                  <b className="tabular-nums text-[#2B2627]">{formatClock(priceHold)}</b>{" "}
-                  minutes.
-                </>
+                <b className="mt-1 block font-bold text-[#2B2627]">
+                  It&apos;s valid for another{" "}
+                  <span className="tabular-nums">{formatClock(priceHold)}</span> minutes.
+                </b>
               )}
             </p>
           )}
