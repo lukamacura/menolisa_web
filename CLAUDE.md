@@ -1047,8 +1047,9 @@ is right; what follows is the pass that finished it.
   the worst number it will ever show her: at the entrance there is no progress
   to be proud of, only distance left. The counter and the dots now render from
   step 1 onward and the entrance carries the offer instead — *Answer a few
-  questions. Get your 8-week plan. / Free 2-minute menopause quiz / No email
-  needed*, beside a member's face and her own sentence (`<EntranceProof />`,
+  questions. Get your 8-week plan. / For women in menopause / No email
+  needed* (the sub-line was "Free 2-minute menopause quiz" until 2026-09-21),
+  beside a member's face and her own sentence (`<EntranceProof />`,
   2026-09-20 — beside, never above: the tile grid takes whatever height is
   left). Every clause is checkable, which is the rule the whole funnel is
   written under: thirteen one-tap questions, and nothing charged and no
@@ -1092,40 +1093,45 @@ is right; what follows is the pass that finished it.
   and an unsourced number is worth least in first position, where it becomes the
   first claim she evaluates. No countdown either — see the "decided against"
   table.
-- **`PROBLEM_OPTIONS` is ordered by measured demand, and the order is not
-  cosmetic.** It was authored order, which put `weight_changes` — the single
-  most chosen answer at **27.3%** of primaries — in slot 5, the middle of the
-  second row, while slots 1-3 held 43%. On a 3x3 grid the top row is scanned
-  first, so most of the traffic had to read past its own answer to find it. Now
-  sorted worst-first from `top_problems[1]` across the 165 non-test profiles
-  created since single-select shipped: weight 27.3, hot flashes 18.2, sleep
-  17.6, joint pain 9.1, fatigue 9.1, brain fog 7.3, anxiety 6.7, mood swings
-  2.4, bloating 2.4 — top row 63.1% of demand, each row lighter than the one
-  above. Two caveats before re-sorting: the measurement comes from women who
-  *finished* (a tap is only durable once `save-quiz` writes the profile), and it
-  is self-reinforcing, so read it against a window where the order has been
-  stable and never chase a couple of points. **Nothing comes off the list for a
-  low share** — for the 2.4% woman the alternative to her tile is no honest
-  answer, which is the loss being fixed; and nine fills the grid exactly, so a
-  tenth or an eighth is a layout change.
-- **The sub-line's job is to make the tap cheap, and dwell time is how you know
-  it isn't.** Median time on this screen is **9.0s against 4.6s on the
-  identically-shaped four-tile age grid** (p25 5.8, p75 14.0, p90 19.8). She is
-  not tapping, she is *ranking* — and a woman with five of these nine cannot
-  rank them. "Hitting you hardest" asks for a measurement she does not have, so
-  the h2 keeps it (naming the pain is its job) and the sub-line now gives the
-  permission: *"Pick the one you'd most like to fix first."* (2026-09-14; was
-  "More than one? Tap the one you'd fix first."). A preference is
-  answered instantly and lands on the same tile. It replaced "Just tap it.",
-  which repeated the h2's instruction and answered nothing she was hesitating
-  over.
+- **`PROBLEM_OPTIONS` is four tiles, the four most chosen, in measured order
+  (2026-09-21, owner's call).** It was nine until then, on the argument that
+  the 2.4% woman deserves her own tile; the owner's read of the bounce is that
+  nine photographs to rank on a cold landing *is* the loss, so the entrance is
+  now the same 2x2 shape as the age grid, whose median dwell was half of this
+  screen's (4.6s against 9.0s). Which four, from `top_problems[1]` on non-test
+  finishers — the 165-profile read (2026-09-06 → 09-12): weight 27.3%, hot
+  flashes 18.2, sleep 17.6, joint pain 9.1, fatigue 9.1, brain fog 7.3, anxiety
+  6.7, mood swings 2.4, bloating 2.4; the 24 that survive the anonymous-account
+  purge on 2026-09-21: weight 12, sleep 5, hot flashes 4, joint pain 2, fatigue
+  1, nothing else chosen first. Joint pain takes the fourth slot on the recent
+  data; hot flashes and sleep are a dead heat across both reads and keep their
+  order. Two caveats before re-sorting: the measurement comes from women who
+  *finished* (a tap is only durable once `save-quiz` writes the profile), and
+  it is self-reinforcing — more so now, since the five removed ids cannot be
+  chosen on the web at all, so this table will never argue for one to come
+  back. The removed ids stay in every downstream table (`SYMPTOM_ICON`,
+  `SYMPTOM_LABELS`, `SYMPTOM_MECHANISM`, `SYMPTOM_FIRST_MOVE`, the transforms):
+  the Expo app still asks the full list and older profiles carry them. **The
+  cost of the decision is the woman whose symptom is not on the grid** — she
+  picks the nearest one or leaves, and nothing on the screen addresses her.
+  Read the entrance loss against the pre-change table below before crediting
+  or blaming this.
+- **The copy is one instruction, direct response (2026-09-21).** h2 *"Tap the
+  symptom you'd fix first."*, sub-line *"Your plan starts with that one."* It
+  was a question ("Which symptom is hitting you hardest?") over a permission
+  line ("Pick the one you'd most like to fix first."), two sentences for one
+  tap, and the question asked for a ranking she does not have: median dwell
+  here was **9.0s against 4.6s on the age grid** (p25 5.8, p75 14.0, p90 19.8).
+  "You'd fix first" is a preference, answered instantly. The sub-line is
+  checkable: `top_problems[0]` is what the results pain line, the first reward
+  board and the plan's first move are built from. It promises no outcome.
 - **No escape tile, deliberately.** A "not sure" or "all of them" option looks
-  like the fix for the ranking problem and would break everything downstream:
+  like the fix for the four-tile gap and would break everything downstream:
   `top_problems[0]` is what `SYMPTOM_MECHANISM`, `SYMPTOM_FIRST_MOVE`, the
   results pain line, the reward boards and the plan's first move are all built
-  from, and none of them has a branch for "no primary". The sub-line solves the
-  same problem with copy. (A `not_sure` *tone* entry exists near
-  `PROBLEM_OPTIONS` for other screens — it is not an option on this one.)
+  from, and none of them has a branch for "no primary". (A `not_sure` *tone*
+  entry exists near `PROBLEM_OPTIONS` for other screens — it is not an option
+  on this one.)
 - **Screen 1 has no `QuizNudge`, and re-keying one onto it is a regression.**
   The banner is `fixed top-0`, spanning roughly y=20..140; the offer headline
   sits at y=12. Measured at 390x700, a nudge here hid the headline from ~2.6s to
@@ -1150,13 +1156,17 @@ is right; what follows is the pass that finished it.
   placements. **Read this table before crediting or blaming any change to this
   screen**, and expect roughly half the loss to move with the media rather than
   with the copy.
-- **The nine tiles are the LCP and must keep `priority`.** Verified 2026-09-12:
+- **The tiles are the LCP and must keep `priority`.** Verified 2026-09-12:
   the preload links are emitted in list order, so re-ordering `PROBLEM_OPTIONS`
-  re-orders the preloads too. All nine fit with no scroll and no horizontal
-  overflow at both 390x700 and 375x667 (tiles 112x171 and 107x160). The render
-  ping fires on *mount*, so a woman still waiting on images is already counted
-  in the 836 — some unknown part of the loss is women who never saw the screen
-  they are recorded as rejecting.
+  re-orders the preloads too. With four tiles (2026-09-21) all fit with no
+  scroll and no horizontal overflow at 390x700 and 375x667 (tiles 172x208 and
+  165x192; `PRIMARY_TILE_SIZES` is `50vw`, so a phone now requests w=640
+  rather than w=384 — five image preloads in total, four tiles plus the first
+  face). From `sm:` the grid may be wider than tall (`max(150cqh, 27rem)`),
+  because a zoomed desktop at ~1100x430 otherwise printed four 112px squares
+  with wrapped labels. The render ping fires on *mount*, so a woman still
+  waiting on images is already counted in the 836 — some unknown part of the
+  loss is women who never saw the screen they are recorded as rejecting.
 
 ### Page speed on `/register` — the edge, not the bundle (2026-09-19)
 
@@ -1977,8 +1987,8 @@ feature (checked 2026-09-08).
 | Put "Question 1 of 13" (or the progress dots) back on screen 1 | It is the whole cost of the funnel in the largest type on the screen that takes 100% of paid traffic, above a screen that then made no promise at all. 1-of-13 is the worst number an endowed-progress meter will ever show her; there is no progress to endow at an entrance. The counter earns its place from step 2 onward. |
 | Put a star rating, a member count or a countdown in the screen-1 header | Nothing sources "4.9 · 12,800+ women" — it came off the paywall on 2026-09-12 for that reason, and first position is the worst place for an unsourced claim because it becomes the first thing she evaluates. The header's three clauses are all checkable against this codebase. |
 | Re-key a `QuizNudge` onto `q_symptom_primary` | The banner is `fixed top-0` and covers the offer headline at y=12. Measured at 390x700 it hid the headline from ~2.6s to ~8.6s against a 9.0s median dwell. A later delay does not help — every delay long enough to protect the headline lands inside the dwell it then covers. The card's own sub-line carries the same message permanently. |
-| Add a "not sure" / "all of them" tile to `PROBLEM_OPTIONS` | `top_problems[0]` is what `SYMPTOM_MECHANISM`, `SYMPTOM_FIRST_MOVE`, the results pain line, the reward boards and the plan's first move are built from, and none has a branch for "no primary". The ranking problem it appears to solve is solved by the sub-line instead. |
-| Re-order `PROBLEM_OPTIONS` to authored order, or drop a low-share tile | The order is measured demand, worst-first; authored order buried the most-chosen answer (weight changes, 27.3%) in slot 5 while the first-scanned row held 43%. And the 2.4% woman's alternative to her own tile is no honest answer — which is the loss the screen is being fixed for. Nine fills the 3x3 grid exactly. |
+| Add a "not sure" / "all of them" tile to `PROBLEM_OPTIONS` | `top_problems[0]` is what `SYMPTOM_MECHANISM`, `SYMPTOM_FIRST_MOVE`, the results pain line, the reward boards and the plan's first move are built from, and none has a branch for "no primary". With four tiles it is the obvious fifth; it still has nowhere to go downstream. |
+| Re-order `PROBLEM_OPTIONS` to authored order, or put the nine tiles back without a measurement | The order is measured demand, worst-first; authored order buried the most-chosen answer (weight changes, 27.3%) in slot 5 while the first-scanned row held 43%. The cut from nine to four (2026-09-21) is the owner's call on the bounce; reversing it is a call on the entrance-loss table in §4, not a taste change. Four fills the 2x2 grid exactly — a fifth is a layout change. |
 | Put an *optional* email box back on the funnel | Tried on results for one day (2026-09-08). Optional is the worst of both: it does not build the list a sequence needs and it still adds a field to the payoff screen. Either no capture, or a required standalone screen between results and the plan — and that one only once there is a sequence to send. |
 | Bind a funnel-collected email to `auth.users` | Stripe's address is the login and the collision/merge in `resolveCheckoutAccount` depends on it. `user_profiles.email` is a contact detail. |
 | Widen `funnel_events.detail` past the five exit tokens | The table's safety argument is that it holds screen names. A free-text or quiz-answer column makes it health data about a re-identifiable visit. |
@@ -2012,7 +2022,21 @@ feature (checked 2026-09-08).
 
 ### Recent work
 
-**2026-09-20 (latest) — screen 1's mockup replaced by a member's face and
+**2026-09-21 (latest) — screen 1 cut to four tiles and one instruction.**
+Owner's call on the entrance bounce. `PROBLEM_OPTIONS` is weight, hot flashes,
+sleep, joint pain — the four most chosen first, from the 165-profile read plus
+the 24 finishers that survive the purge today (weight 12, sleep 5, hot flashes
+4, joint pain 2, fatigue 1). The grid is 2x2 (`grid-rows-2`, floor 14.5rem,
+`PRIMARY_TILE_SIZES` = `50vw`), copy is *"Tap the symptom you'd fix first." /
+"Your plan starts with that one."* The five removed ids stay in every
+downstream table for the Expo app and older profiles. Rules and the numbers in
+§4 "The funnel's entrance". Verified: `tsc --noEmit` and eslint clean,
+Playwright at 390x700 / 375x667 / 390x844 / 1100x430 — no scroll and no
+horizontal overflow on the phones (tiles 172x208, 165x192), five image
+preloads. **Read the entrance loss against the day-by-day table before
+crediting this**: the rate was 35% → 80% on unchanged code as volume fell.
+
+**2026-09-20 — screen 1's mockup replaced by a member's face and
 her own sentence.** Read first: since 2026-09-13, 19 non-test finishers, 12
 of them weight-first (63%), 15 of 19 with the goal "get my body back" — the
 weight ad sends weight women. Entrance loss over the same window was 66%
@@ -2112,15 +2136,15 @@ PSI reading's 3.7s FCP on a static page is the same signature). Fixed with
 it: real slow-4G throttling FCP 0.8s, LCP 1.4s, score 100; PSI-style
 simulation 96–99, LCP 2.1–2.7s; held paint 1 in 16 runs, from 4 in 6.
 
-**2026-09-19 — the founder is named "Merry" on every surface.** The welcome
-email was signed "Merry, Founder" while the funnel's founder note, the
-paywall's team card and the blog byline said "Zoka" — the first customer saw
-both names twelve minutes apart. Same person, one name now: `FOUNDER` in
-`RewardBoards.tsx`, `FOUNDERS` in `PaywallView.tsx`, `MERRY` in `lib/blog.ts`,
-and the email signature reads "Came up with MenoLisa", the role the funnel
-uses. Entries below that say "Zoka" mean Merry; the image files keep their
-`zoka` filenames. The `EMAIL_FROM` default is "Merry | MenoLisa" — check the
-Vercel value matches.
+**2026-09-19 — the founder is named "Zoe" on every surface** (renamed from
+"Merry" 2026-09-21). The welcome email was signed "Merry, Founder" while the
+funnel's founder note, the paywall's team card and the blog byline said "Zoka"
+— the first customer saw both names twelve minutes apart. Same person, one
+name now: `FOUNDER` in `RewardBoards.tsx`, `FOUNDERS` in `PaywallView.tsx`,
+`ZOE` in `lib/blog.ts`, and the email signature reads "Came up with MenoLisa",
+the role the funnel uses. Entries below that say "Zoka" or "Merry" mean Zoe;
+the image files keep their `zoka` filenames. The `EMAIL_FROM` default is
+"Zoe | MenoLisa" — check the Vercel value matches.
 
 **2026-09-16 — copy pass for plain US English on results and the founder
 note.** Supersedes the quoted copy in the 2026-09-14 entries below. The weight

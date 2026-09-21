@@ -210,11 +210,9 @@ import {
 import {
   PLAN_ACCESS_DAYS,
   PLAN_ID,
-  PLAN_PRICE,
   PLAN_WEEKS,
   SUPPORT_EMAIL,
   formatChargeDate,
-  formatPrice,
   isQuizPriceEligible,
   planOffer,
 } from "@/lib/pricing";
@@ -303,8 +301,8 @@ const STEPS: Step[] = [
   // multi-select is two actions minimum (choose, then confirm) and the ad
   // promises one ("tap your symptom"). It is now one tap that auto-advances,
   // and there is no "anything else" screen behind it — the funnel asks which
-  // symptom is worst, and `q_symptom_impact` two screens later asks how hard
-  // her symptoms hit overall. Those two answers are what the score is built
+  // symptom is worst, and `q_symptom_impact` two screens later asks how much
+  // that one symptom gets in her way. Those two answers are what the score is built
   // from; the *number* of boxes she ticked is not a question any more.
   //
   // `top_problems` is therefore a one-element array on every web signup.
@@ -358,6 +356,20 @@ const AUTO_ADVANCE_STEPS: Step[] = [
   "q_nutrition",
   "q_relaxation",
   "q5_hrt",
+];
+
+// The three questions answered with text rows (`ToneChoiceList`) rather than
+// tiles. On every tile screen the card fills the viewport because the tiles
+// stretch to fill it; these rows are fixed-height, so a full-height card was a
+// white box with three rows floating in the middle of it. Measured 2026-09-21
+// at 390x700 on `q_symptom_impact`: 172px between the sub-line and the first
+// row, ~150px of empty card under the last. The card hugs its content on these
+// steps instead (`flex-initial` in the quiz shell) and the ground shows below
+// it - the question and its answers read as one block.
+const TONE_LIST_STEPS: Step[] = [
+  "q_menopause_type",
+  "q_symptom_impact",
+  "q_training_time",
 ];
 
 // Reward steps mirror her answers back with a stat - pure dopamine, not questions.
@@ -566,46 +578,45 @@ const MENOPAUSE_TYPE_TONE: Record<string, ChoiceTone> = {
   },
 };
 
-// Image-based symptom tiles (same style as Q1 age / Q2 status). 9 options, one tap.
+// Image-based symptom tiles (same style as Q1 age / Q2 status). 4 options, one tap.
 // IDs reuse the existing downstream keys (SYMPTOM_LABELS, pillars, comparison) so results keep working.
 //
-// **The order is measured demand, worst-first, and it is not cosmetic.** It was
-// authored order until 2026-09-12, which put `weight_changes` — the single most
-// chosen answer, 27.3% of primaries — in slot 5, the middle of the second row,
-// while slots 1-3 held 43%. On a 3x3 grid the top row is what gets scanned
-// first, so more than half the traffic had to read past its own answer to find
-// it, and the screen's dwell says that cost real time: 9.0s median here against
-// 4.6s on the identically-shaped four-tile age grid.
+// **Four tiles since 2026-09-21, the four most chosen, in measured order.** The
+// screen carried nine until then and was losing 36-66% of paid traffic before
+// one tap; the owner's call is that nine photographs to rank on a cold landing
+// is the bounce, so the grid is now the same 2x2 shape as the age question,
+// whose median dwell was half of this screen's (4.6s against 9.0s).
 //
-// Re-sorted by `top_problems[1]` across the 165 non-test profiles created since
-// the single-select shipped (2026-09-06): weight 27.3, hot flashes 18.2, sleep
-// 17.6, joint pain 9.1, fatigue 9.1, brain fog 7.3, anxiety 6.7, mood swings
-// 2.4, bloating 2.4. The top row is now 63.1% of demand and each row is
-// strictly lighter than the one above it.
+// Which four, from `top_problems[1]` on non-test finishers. The 165-profile
+// read from 2026-09-06 → 09-12: weight 27.3%, hot flashes 18.2, sleep 17.6,
+// joint pain 9.1, fatigue 9.1, brain fog 7.3, anxiety 6.7, mood swings 2.4,
+// bloating 2.4. The 24 that survive the anonymous-account purge as of
+// 2026-09-21 (all single-select): weight 12, sleep 5, hot flashes 4, joint
+// pain 2, fatigue 1, and nothing else chosen first at all. Joint pain edges
+// fatigue on the recent data, so it takes the fourth slot; hot flashes and
+// sleep are a dead heat across both reads and keep their order.
 //
 // Two caveats for whoever re-sorts this next. The measurement is drawn from
 // women who *finished* the quiz, because a tile tap is only durable once
 // `save-quiz` writes the profile — so it is a proxy for what is tapped here,
 // biased by whatever the rest of the funnel selects for. And it is self
-// reinforcing: promoting a tile raises its share, which would promote it again.
-// Re-read it against a window where the order has been stable, and do not chase
-// a difference inside a couple of points.
+// reinforcing: promoting a tile raises its share, which would promote it again
+// — and with only four on screen, the five removed ids can no longer be
+// chosen on the web at all, so this table will never argue for bringing one
+// back. Re-read it against a window where the order has been stable, and do
+// not chase a difference inside a couple of points.
 //
-// Nothing may be deleted from this list on the strength of a low share. Mood
-// swings and bloating are 2.4% each, and for that woman the alternative to her
-// own tile is no honest answer at all - which is the whole loss this screen is
-// being fixed for. Nine tiles also fill the 3x3 grid exactly; a tenth or an
-// eighth is a layout change, not a copy change.
+// The five removed ids (low_energy, brain_fog, anxiety, mood_swings, bloating)
+// stay in every downstream table (SYMPTOM_ICON, SYMPTOM_LABELS,
+// SYMPTOM_MECHANISM, SYMPTOM_FIRST_MOVE, the transforms): the Expo app still
+// asks the full list and older profiles carry them. Only the entrance shrank.
+// The cost of this decision is the woman whose symptom is not on the grid: she
+// picks the nearest one or leaves. Nothing on the screen addresses her.
 const PROBLEM_OPTIONS = [
   { id: "weight_changes", label: "Weight changes", image: "/quiz/symptoms/weight_gain.webp" },
   { id: "hot_flashes", label: "Hot flashes", image: "/quiz/symptoms/hot_flashes.webp" },
   { id: "sleep_issues", label: "Can't sleep", image: "/quiz/symptoms/insomnia.webp" },
   { id: "joint_pain", label: "Joint pain", image: "/quiz/symptoms/joint_pain.webp" },
-  { id: "low_energy", label: "Fatigue", image: "/quiz/symptoms/fatigue.webp" },
-  { id: "brain_fog", label: "Brain fog", image: "/quiz/symptoms/brain_fog.webp" },
-  { id: "anxiety", label: "Anxiety", image: "/quiz/symptoms/anxiety.webp" },
-  { id: "mood_swings", label: "Mood swings", image: "/quiz/symptoms/mood_swings.webp" },
-  { id: "bloating", label: "Bloating", image: "/quiz/symptoms/bloating.webp" },
 ];
 
 // id -> icon, for the reward screens.
@@ -641,13 +652,18 @@ const SYMPTOM_ICON: Record<string, LucideIcon> = {
 //
 // The ids stay mild/moderate/severe - IMPACT_VALUE, the score and the results
 // copy all key off them - but she never sees those words. "Moderate" is what a
-// doctor writes on a chart after deciding her symptoms don't warrant much; the
-// label she taps should be a sentence she'd actually say, and the three of them
-// escalate by how much of her day the symptoms have taken.
+// doctor writes on a chart after deciding her symptoms don't warrant much.
+//
+// 2026-09-21: the screen asks about the ONE symptom she tapped on screen 1, by
+// name ("how much do hot flashes get in your way?"), so the three answers are
+// a plain amount scale - a little / quite a bit / a lot - rather than three
+// sentences about "them" on a screen where she named one thing. The hints
+// escalate by how much of her day it has taken, and carry no it/they: her
+// options split singular and plural.
 const SYMPTOM_IMPACT_OPTIONS = [
-  { id: "mild", label: "I work around them", hint: "They're there, but the day still goes to plan" },
-  { id: "moderate", label: "They get in the way", hint: "Most days I'm pushing through" },
-  { id: "severe", label: "They run my life", hint: "I plan my days around them" },
+  { id: "mild", label: "A little", hint: "Most days still go to plan" },
+  { id: "moderate", label: "Quite a bit", hint: "Most days I'm pushing through" },
+  { id: "severe", label: "A lot", hint: "I plan my days around this" },
 ];
 
 // Green/amber/red so the three levels read as a scale before she reads a word,
@@ -1151,8 +1167,8 @@ function preloadResponsiveImage(src: string, sizes: string) {
  */
 const TILE_MASTER_PX = 460;
 const TILE_QUALITY = 60;
-/** The nine-tile 3x3 grid on the entrance. */
-const PRIMARY_TILE_SIZES = "(min-width: 640px) 33vw, 40vw";
+/** The four-tile 2x2 grid on the entrance (same shape as the choice grids). */
+const PRIMARY_TILE_SIZES = "50vw";
 /** The 2x2 grid behind every four-option question. */
 const CHOICE_TILE_SIZES = "50vw";
 
@@ -1832,7 +1848,9 @@ const DIAGNOSIS_CTA_LABEL = `Unlock My ${PLAN_WEEKS}-Week Plan`;
 // the money buys, which is the thing she is actually deciding about.
 function getDiagnosisForwardCopy(): { sub: React.ReactNode } {
   return {
-    sub: `${formatPrice(PLAN_PRICE)} once \u00b7 all ${PLAN_WEEKS} weeks included \u00b7 no subscription`,
+    // No price here since 2026-09-21 (owner's call): the paywall is the first
+    // screen that names a figure. The offer's shape stays.
+    sub: `All ${PLAN_WEEKS} weeks included \u00b7 no subscription`,
   };
 }
 
@@ -3403,17 +3421,17 @@ function ToneChoiceList({
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
       {/*
-        `my-auto` on the list, never `justify-center` on the scroller - the same
-        rule REWARD_SCROLL_SHELL carries, and this list was the last place in
-        the funnel still breaking it. `justify-center` centres a list taller
-        than the box, which puts its first row ABOVE scrollTop 0 where no
-        gesture can reach it. Measured 2026-09-08 on `q_menopause_type`: the
-        top option was 11px unreachable at 360x480 and 24px at 320x480 - an
-        answer she cannot see and cannot scroll to. `my-auto` centres
-        identically while there is room and collapses to nothing when there is
-        not, so a tall list simply scrolls from its own first row.
+        Top-aligned, never centred. The list carried `my-auto` until
+        2026-09-21 (and `justify-center` on the scroller before 2026-09-08,
+        which put the first row above scrollTop 0 on a short viewport - see
+        REWARD_SCROLL_SHELL for that rule). Centring only ever mattered because
+        the card filled the viewport; now the card hugs these screens
+        (TONE_LIST_STEPS) there is no room to centre in, and the rows sit
+        directly under the question. Anything that re-centres this list must
+        collapse to nothing when the list is taller than the box, or the top
+        answer becomes unreachable again.
       */}
-      <div className="my-auto w-full shrink-0 flex flex-col gap-2.5">
+      <div className="w-full shrink-0 flex flex-col gap-2">
       {options.map((option) => {
         const isSelected = selected === option.id;
         const tone = tones[option.id];
@@ -3423,7 +3441,7 @@ function ToneChoiceList({
             key={option.id}
             type="button"
             onClick={() => onSelect(option.id)}
-            className={`w-full shrink-0 flex items-center justify-between gap-3 px-4 py-3.5 rounded-2xl border-2 text-left transition-all duration-200 cursor-pointer ${
+            className={`w-full shrink-0 flex items-center justify-between gap-3 px-3.5 py-3 rounded-2xl border-2 text-left transition-all duration-200 cursor-pointer ${
               isSelected ? tone.selected : tone.idle
             }`}
           >
@@ -3972,6 +3990,7 @@ function RegisterPageContent() {
   const [stepIndex, setStepIndex] = useState(0);
   const currentStep = STEPS[stepIndex];
   const autoAdvances = AUTO_ADVANCE_STEPS.includes(currentStep);
+  const cardHugsContent = TONE_LIST_STEPS.includes(currentStep);
 
   /*
    * Warm the NEXT step's tiles. Never the current step's, and never at a
@@ -4208,7 +4227,11 @@ function RegisterPageContent() {
     () => getSymptomTransforms(topProblems, 3, true),
     [topProblems]
   );
-  const transformCarousel = useCarouselIndex(diagnosisTransforms.length);
+  // The diagnosis deck: her outcome, Day 1 and a session on the phone, the
+  // do-nothing chart, then the topped-up outcomes - three cards more than
+  // the transforms.
+  const deckCount = diagnosisTransforms.length + 3;
+  const transformCarousel = useCarouselIndex(deckCount);
 
   // Normalized body metrics (canonical cm/kg) derived from the per-unit inputs.
   const bodyMetrics = useMemo(() => {
@@ -5791,6 +5814,109 @@ function RegisterPageContent() {
                 viewport at column width. ─────────────────────────────────── */}
             {(() => {
               const goalLabel = getOfferPromise(goal).toLowerCase();
+              // Her symptom leads the deck; the topped-up outcomes close it.
+              const [hers, ...rest] = diagnosisTransforms;
+              // One outcome card, unchanged from the carousel it came from:
+              // stock photo with tinted halves, then the two columns.
+              const transformCard = (t: (typeof diagnosisTransforms)[number]) => (
+                <div
+                  key={t.image}
+                  className="rounded-2xl bg-card border-2 border-[#E8DDD9] overflow-hidden shadow-sm shrink-0 snap-center w-[82%] flex flex-col"
+                >
+                  <div className="relative">
+                    <Image
+                      src={t.image}
+                      alt={`${t.label}: before and after with MenoLisa`}
+                      width={1000}
+                      height={546}
+                      // The card is 82% of the scroller; without this the
+                      // optimizer only offers 1080/1920px versions.
+                      sizes="(max-width: 768px) 82vw, 630px"
+                      className="w-full object-cover"
+                      priority={t === hers}
+                    />
+                    <div className="absolute inset-y-0 left-0 w-1/2 bg-[#DB4F45]/20 pointer-events-none" />
+                    <div className="absolute inset-y-0 right-0 w-1/2 bg-green-500/20 pointer-events-none" />
+                    <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-white/70" />
+                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-[#DB4F45] text-[10px] font-bold text-white tracking-wide shadow-sm">
+                      Right now
+                    </span>
+                    <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-green-600 text-[10px] font-bold text-white tracking-wide shadow-sm">
+                      With the plan
+                    </span>
+                    {/* Verified check on the "after" half - stock photography
+                        on its own says nothing about software; the tick is
+                        what ties the outcome back to the app that tracked it. */}
+                    <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-white/95 pl-1 pr-2 py-0.5 shadow-md">
+                      <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-600">
+                        <Check className="w-2.5 h-2.5 text-white" strokeWidth={3.5} />
+                      </span>
+                      <span className="text-[9px] font-bold text-green-700 tracking-wide">
+                        {PLAN_WEEKS}-week plan
+                      </span>
+                    </span>
+                  </div>
+                  <div className="p-3 flex-1">
+                    <p className="text-xs font-bold text-[#3D3D3D] mb-2 text-center">{t.label}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-xl bg-[#FDF1F0] border border-[#F5CFCB] px-2.5 py-2">
+                        <p className="text-[10px] font-semibold text-[#B23A31] mb-0.5 uppercase tracking-wide">Right now</p>
+                        <p className="text-[11px] text-[#8F2A22] leading-snug">{t.before}</p>
+                      </div>
+                      <div className="rounded-xl bg-green-50 border border-green-200 px-2.5 py-2">
+                        <p className="text-[10px] font-semibold text-green-600 mb-0.5 uppercase tracking-wide">With the plan</p>
+                        <p className="text-[11px] text-green-800 leading-snug">{t.after}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+              // One phone card: caption, one line under it, then the app in
+              // the bezel on a soft radial wash - the phone floats on light
+              // rather than sitting on a flat card.
+              const phoneCard = (slide: (typeof PLAN_HERO_SLIDES)[number], line: string) => (
+                <div
+                  key={slide.src}
+                  className="rounded-2xl border-2 border-[#E8DDD9] overflow-hidden shadow-sm shrink-0 snap-center w-[82%] flex flex-col"
+                  style={{
+                    background:
+                      "radial-gradient(120% 90% at 50% 100%, rgba(255,141,161,0.38) 0%, rgba(255,205,190,0.32) 38%, rgba(255,252,248,1) 78%)",
+                  }}
+                >
+                  <div className="px-3 pt-3 pb-2">
+                    <p className="text-xs font-bold text-[#3D3D3D] text-center">{slide.caption}</p>
+                    <p className="text-[11px] text-[#5A5A5A] text-center leading-snug mt-0.5">{line}</p>
+                  </div>
+                  <div className="relative flex-1 min-h-[150px] overflow-hidden">
+                    <div className="absolute inset-x-0 top-0 mx-auto w-[56%] rounded-[1.75rem] bg-[#1d1d1f] p-1.5 shadow-[0_24px_50px_-18px_rgba(61,61,61,0.6)]">
+                      <div
+                        className="relative overflow-hidden rounded-[1.45rem] bg-[#f5f5f7]"
+                        style={{ aspectRatio: `${SHOT_W} / ${SHOT_H}` }}
+                      >
+                        <Image
+                          src={slide.src}
+                          alt={slide.alt}
+                          width={SHOT_W}
+                          height={SHOT_H}
+                          sizes="(max-width: 480px) 46vw, 170px"
+                          className="w-full h-auto"
+                          draggable={false}
+                          decoding="sync"
+                        />
+                        <span
+                          aria-hidden
+                          className="pointer-events-none absolute left-1/2 top-[1.35%] z-10 h-[4.1%] w-[31.8%] -translate-x-1/2 rounded-full bg-[#0A0A0B]"
+                        >
+                          <span
+                            aria-hidden
+                            className="absolute right-[7%] top-1/2 block h-[52%] w-[15.5%] -translate-y-1/2 rounded-full bg-[#17171C]"
+                          />
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
               return (
                 <motion.div
                   // No delay: this block contains the hero, and the phase
@@ -5821,139 +5947,66 @@ function RegisterPageContent() {
                     </p>
                   </div>
 
-                  <PlanHeroCarousel slides={PLAN_HERO_SLIDES} />
-                  <p className="mt-2.5 text-center text-[11px] text-[#9A9A9A] leading-snug">
-                    All of this is set up for you in the app.
-                  </p>
-                </motion.div>
-              );
-            })()}
-
-            {/* ── Block 2: Personalized before/after for her symptoms.
-                Demoted from 4xl to 2xl - it supports the plan above rather than
-                competing with it. ────────────────────────────────────────────── */}
-            {diagnosisTransforms.length > 0 && (() => {
-              const transforms = diagnosisTransforms;
-              return (
-                // On scroll, not on mount. Everything from here down starts a
-                // clear viewport below the fold - block 1 alone is the headline,
-                // the hero phone and the scroll - so a mount animation finished
-                // playing long before she arrived, and she scrolled onto a still.
-                // Blocks 3 and 4 already worked this way; 2, 5 and the trust
-                // strip did not, which is why the page went from arriving to
-                // already-arrived halfway down.
-                //
-                // The cards are variant children rather than per-card
-                // `whileInView` for the reason the carousel exists: only the
-                // first card and a sliver of the second are ever on screen, so
-                // an observer per card would leave the rest - including the
-                // sliver that is the whole signal there *is* a carousel -
-                // permanently invisible. They ran their own mount stagger until
-                // 2026-08-31, which is the same bug one level down: they
-                // animated behind this fade, finished before she arrived, and
-                // she scrolled onto a still inside a block that had just moved.
-                <motion.div
-                  variants={{
-                    hidden: { opacity: 0, y: 16 },
-                    show: {
-                      opacity: 1,
-                      y: 0,
-                      transition: {
-                        duration: prefersReducedMotion ? 0 : 0.5,
-                        ease: [0.16, 1, 0.3, 1],
-                        staggerChildren: prefersReducedMotion ? 0 : 0.09,
-                        delayChildren: prefersReducedMotion ? 0 : 0.12,
-                      },
-                    },
-                  }}
-                  initial="hidden"
-                  whileInView="show"
-                  viewport={{ once: true, amount: 0.15 }}
-                  className="mb-5"
-                >
-                  <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] leading-tight mb-3">
-                    {firstName.trim() ? `${firstName.trim()}, what ` : "What "}
-                    <HighlightSweep>{PLAN_WEEKS} weeks</HighlightSweep> can look like
-                  </h2>
-
+                  {/* ── The deck (2026-09-21). One horizontal swipe, in the
+                      fold, carrying the whole argument: her symptom's
+                      before/after first, Day 1 of the plan on the phone, the
+                      cost of doing nothing, then the other two outcomes.
+                      Clarity recordings showed a 9s median dwell on this
+                      screen with almost no vertical scroll - and a horizontal
+                      swipe on the outcome cards, the one thing she does here.
+                      So the swipe is the reading surface; everything below
+                      the fold is extra. Native snap scroll, as the outcome
+                      cards always were: the page scroll is never blocked.
+                      `items-stretch` so the three card shapes share one
+                      height and the row never steps. */}
                   <div
                     ref={transformCarousel.ref}
                     onScroll={transformCarousel.onScroll}
-                    className="flex overflow-x-auto snap-x snap-mandatory gap-3 -mx-4 sm:-mx-6 px-4 sm:px-6 pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                    className="flex items-stretch overflow-x-auto snap-x snap-mandatory gap-3 -mx-4 sm:-mx-6 px-4 sm:px-6 pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
                   >
-                    {transforms.map((t) => (
-                      <motion.div
-                        key={t.image}
-                        variants={{
-                          hidden: { opacity: 0, y: 12 },
-                          show: {
-                            opacity: 1,
-                            y: 0,
-                            transition: {
-                              duration: prefersReducedMotion ? 0 : 0.45,
-                              ease: [0.16, 1, 0.3, 1],
-                            },
-                          },
-                        }}
-                        className="rounded-2xl bg-card border-2 border-[#E8DDD9] overflow-hidden shadow-sm shrink-0 snap-center w-[82%]"
-                      >
-                        {/* Image with red/green tint halves and matching labels */}
-                        <div className="relative">
-                          <Image
-                            src={t.image}
-                            alt={`${t.label}: before and after with MenoLisa`}
-                            width={1000}
-                            height={546}
-                            // The card is 82% of the scroller; without this the
-                            // optimizer only offers 1080/1920px versions.
-                            sizes="(max-width: 768px) 82vw, 630px"
-                            className="w-full object-cover"
-                          />
-                          {/* Red tint over left half */}
-                          <div className="absolute inset-y-0 left-0 w-1/2 bg-[#DB4F45]/20 pointer-events-none" />
-                          {/* Green tint over right half */}
-                          <div className="absolute inset-y-0 right-0 w-1/2 bg-green-500/20 pointer-events-none" />
-                          {/* Center divider */}
-                          <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-white/70" />
-                          {/* Red label */}
-                          <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-[#DB4F45] text-[10px] font-bold text-white tracking-wide shadow-sm">
-                            Right now
-                          </span>
-                          {/* Green label */}
-                          <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-green-600 text-[10px] font-bold text-white tracking-wide shadow-sm">
-                            With the plan
-                          </span>
-                          {/* Verified check on the "after" half - stock photography
-                              on its own says nothing about software; the tick is
-                              what ties the outcome back to the app that tracked it. */}
-                          <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-white/95 pl-1 pr-2 py-0.5 shadow-md">
-                            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-600">
-                              <Check className="w-2.5 h-2.5 text-white" strokeWidth={3.5} />
-                            </span>
-                            <span className="text-[9px] font-bold text-green-700 tracking-wide">
-                              8-week plan
-                            </span>
-                          </span>
-                        </div>
+                    {hers && transformCard(hers)}
 
-                        {/* Two equal columns - red before, green after */}
-                        <div className="p-3">
-                          <p className="text-xs font-bold text-[#3D3D3D] mb-2 text-center">{t.label}</p>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="rounded-xl bg-[#FDF1F0] border border-[#F5CFCB] px-2.5 py-2">
-                              <p className="text-[10px] font-semibold text-[#B23A31] mb-0.5 uppercase tracking-wide">Right now</p>
-                              <p className="text-[11px] text-[#8F2A22] leading-snug">{t.before}</p>
-                            </div>
-                            <div className="rounded-xl bg-green-50 border border-green-200 px-2.5 py-2">
-                              <p className="text-[10px] font-semibold text-green-600 mb-0.5 uppercase tracking-wide">With the plan</p>
-                              <p className="text-[11px] text-green-800 leading-snug">{t.after}</p>
-                            </div>
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
+                    {/* The app on the phone, twice: Day 1 (the whole offer in
+                        one frame) and a session mid-move (what doing it looks
+                        like). Same bezel <PlanHeroCarousel /> draws below,
+                        cropped at the card's foot so the card stays the height
+                        of its neighbours; what has to be read is at the top of
+                        each capture. */}
+                    {phoneCard(PLAN_HERO_SLIDES[0], "Your four tasks for tomorrow are already in the app.")}
+                    {phoneCard(PLAN_HERO_SLIDES[1], "Every move on video, with a timer. Just follow along.")}
+
+                    {/* The cost of doing nothing, as a card. It was Block 4,
+                        a full-width card ~1,500px down that the 9s dwell
+                        never reached. Same copy, same chart; the chart still
+                        draws itself the first time it is on screen, which
+                        inside a horizontal scroller means the first time she
+                        swipes to it. */}
+                    <div className="rounded-2xl bg-card border-2 border-[#E8DDD9] shadow-sm shrink-0 snap-center w-[82%] p-3 flex flex-col">
+                      <div className="flex items-center gap-2 mb-1">
+                        <TrendingDown className="w-4 h-4 text-[#DB4F45]" />
+                        <h2 className="text-sm font-bold text-[#3D3D3D]">And if you do nothing</h2>
+                      </div>
+                      <p className="text-[11px] text-[#5A5A5A] leading-snug mb-2">
+                        {firstName.trim() ? (
+                          <>
+                            <span className="font-bold">{firstName.trim()}</span>, menopause
+                          </>
+                        ) : (
+                          "Menopause"
+                        )}{" "}
+                        symptoms last 4&ndash;7 years on average. That&apos;s a long time to just
+                        wait it out.
+                      </p>
+                      {/* Centred in whatever height the neighbours set, so the
+                          chart never sits on the card's floor under a gap. */}
+                      <div className="my-auto">
+                        <TrajectoryChart score={score} reduced={!!prefersReducedMotion} />
+                      </div>
+                    </div>
+
+                    {rest.map(transformCard)}
                   </div>
-                  <CarouselDots count={transforms.length} index={transformCarousel.index} />
+                  <CarouselDots count={deckCount} index={transformCarousel.index} />
                   <p className="text-[10px] text-[#9A9A9A] mt-2 px-1 leading-snug">
                     Illustrative. MenoLisa is not a medical treatment.
                   </p>
@@ -5961,95 +6014,49 @@ function RegisterPageContent() {
               );
             })()}
 
+            {/* ── Block 2: every screen of the app, on one phone.
+                This was the fold's hero until 2026-09-21, when the deck above
+                took its slot; the phone still walks every screen for the reader
+                who scrolls. Arrives on scroll for the reason blocks 3-5 always
+                did: a mount animation here plays to nobody. ─────────────────── */}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.15 }}
+              transition={{ duration: prefersReducedMotion ? 0 : 0.5, ease: [0.16, 1, 0.3, 1] }}
+              className="mb-6"
+            >
+              <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D3D] leading-tight mb-3 px-1">
+                {firstName.trim() ? `${firstName.trim()}, every ` : "Every "}
+                <HighlightSweep>day</HighlightSweep> is already set up
+              </h2>
+              <PlanHeroCarousel slides={PLAN_HERO_SLIDES} />
+              <p className="mt-2.5 text-center text-[11px] text-[#9A9A9A] leading-snug">
+                All of this is set up for you in the app.
+              </p>
+            </motion.div>
+
             {/* ── The plan, playing on a phone. Swapped below the before/after
                 cards on 2026-09-13: the outcome cards now sit directly under
                 the hero screenshots, the animation follows them. ────────── */}
             <div className="mb-6">
-              {/* The tray the phone lies on. Glass, not a card, since
-                  2026-09-12, and the reason is a colour collision rather
-                  than a taste: <PhoneMock />'s screen is #FFFCF8 and
-                  `bg-card` is #FFFCF8, so the box under the phone and the
-                  app inside it were the same white. The only thing
-                  separating the product from the surface it sat on was the
-                  bezel, and the block read as one flat slab about 500px
-                  tall.
+              {/* No tray since 2026-09-21 (owner's call): the phone sits
+                  straight on the page's paper, with nothing drawn behind it.
+                  The glass panel it lay on from 2026-09-12 is gone - the
+                  bezel is the only edge the block has now.
 
-                  So the surface is translucent instead: DIAGNOSIS_PAPER
-                  shows through it at roughly a third strength, the phone's
-                  opaque screen lifts off it, and the screen ends up with
-                  one texture rather than a sheet of paper laid on a sheet
-                  of paper at a different rule pitch.
-
-                  No `backdrop-filter`. The backdrop here is a fixed
-                  gradient plus 28px rules, so a blur buys nothing a lower
-                  alpha does not - and this is a ~500px pane inside a
-                  scroller, on an audience arriving in the Instagram
-                  webview. The CTA bar is the one place on this screen worth
-                  spending a blur on.
-
-                  The glass is three cheap cues, all in the shadow stack: a
-                  1px white inner edge along the top (the lit rim), a
-                  hairline #E8DDD9 ring (so it still has the funnel's card
-                  edge), and the sheen below. */}
-              <div
-                className="relative rounded-2xl overflow-hidden"
-                style={{
-                  background:
-                    "linear-gradient(158deg, rgba(255,255,255,0.74) 0%, rgba(255,252,248,0.46) 48%, rgba(255,255,255,0.62) 100%)",
-                  boxShadow: [
-                    "inset 0 1px 0 rgba(255,255,255,0.95)",
-                    "inset 0 -1px 0 rgba(255,255,255,0.55)",
-                    "0 0 0 1px rgba(232,221,217,0.85)",
-                    "0 18px 40px -24px rgba(61,43,26,0.45)",
-                  ].join(", "),
-                }}
-              >
-                {/* The specular: one soft diagonal wipe across the top-left
-                    corner. It is what makes the panel read as glass rather
-                    than as a card someone forgot to fill in - a flat
-                    translucent rectangle has no light in it, and light is
-                    the whole tell. Under the phone by DOM order, so it
-                    never washes the screenshot. */}
-                <span
-                  aria-hidden
-                  className="pointer-events-none absolute inset-0"
-                  style={{
-                    background:
-                      "linear-gradient(118deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.28) 26%, rgba(255,255,255,0) 46%)",
-                  }}
-                />
-                {/* The plan, playing on a phone: her four tasks for today
-                    ticking themselves off, then the eight weeks those days
-                    add up to. It loops on its own while it's on screen -
-                    nothing in it is tappable, so it never competes with the
-                    CTA for a thumb.
-
-                    Until 2026-09-12 both acts played inside a parchment
-                    scroll that unrolled on arrival and wrote her name onto
-                    the paper first. The scroll is gone and the phone is now
-                    the whole stage - see the header of <PlanStage /> for
-                    the three reasons, of which the load-bearing one is that
-                    the phone was 190px wide inside the paper and the task
-                    rows were the smallest legible thing on the screen they
-                    are the point of.
-
-                    A <ShotStage /> of nutrition/habits/rewards used to
-                    close this card. Those three are now slides 2-4 of the
-                    hero at the top of this screen, where the checklist,
-                    the habit and the streak can actually be read - so the
-                    stage was the same three images a second time, ~300px
-                    lower, tilted to ~30% width behind a gradient fade.
-                    Showing a shot twice on one screen doesn't double the
-                    proof; it halves the attention on the legible copy. */}
-                <PlanStage
-                  firstName={firstName.trim() || undefined}
-                  goalLabel={getOfferPromise(goal).toLowerCase()}
-                  tasks={pillarTasks}
-                  // `relative` only so the phone stacks over the sheen
-                  // above it - both are positioned, so DOM order decides.
-                  className="relative pb-2"
-                />
-              </div>
+                  The plan, playing on a phone: her four tasks for today
+                  ticking themselves off, then the eight weeks those days
+                  add up to. It loops on its own while it's on screen -
+                  nothing in it is tappable, so it never competes with the
+                  CTA for a thumb. See the header of <PlanStage /> for why
+                  the phone is the whole stage. */}
+              <PlanStage
+                firstName={firstName.trim() || undefined}
+                goalLabel={getOfferPromise(goal).toLowerCase()}
+                tasks={pillarTasks}
+                className="relative pb-2"
+              />
             </div>
 
             {/* ── Block 3 was <SocialProofPolaroid />, deleted 2026-09-09 as the
@@ -6066,70 +6073,9 @@ function RegisterPageContent() {
                 cards - a close is not a second pitch, and this was a second
                 pitch before the close. ──────────────────── */}
 
-            {/* ── Block 4: Where this is heading.
-                Moved down from the top of the page. Opening on fear spent
-                credibility before she had seen a single thing she was being
-                sold; the cost of doing nothing lands far better *after* she
-                knows there is a concrete alternative, because now it is a
-                comparison rather than a threat. ─────────────────────────────── */}
-            {(() => {
-              // Unlike the blocks above it, this one arrives on scroll rather
-              // than on mount: it sits far enough down the plan scroll that a
-              // mount animation has always finished playing to nobody, and the
-              // card is an argument in three beats - the claim, the sentence,
-              // then the chart that draws it - so the beats are staggered in
-              // that order.
-              //
-              // Reduced motion collapses every duration to zero instead of
-              // branching on `initial`: `useReducedMotion()` reads false through
-              // hydration, so a branch there is a mismatch on exactly the
-              // visitors it is meant to help.
-              const rise: Variants = {
-                hidden: { opacity: 0, y: 14 },
-                show: {
-                  opacity: 1,
-                  y: 0,
-                  transition: {
-                    duration: prefersReducedMotion ? 0 : 0.5,
-                    ease: [0.16, 1, 0.3, 1],
-                  },
-                },
-              };
-              return (
-                <motion.div
-                  variants={{
-                    hidden: {},
-                    show: { transition: { staggerChildren: prefersReducedMotion ? 0 : 0.14 } },
-                  }}
-                  initial="hidden"
-                  whileInView="show"
-                  viewport={{ once: true, amount: 0.25 }}
-                  className="rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 mb-5 shadow-md shadow-primary/5"
-                >
-                  <motion.div variants={rise} className="flex items-center gap-2 mb-1">
-                    <TrendingDown className="w-5 h-5 text-[#DB4F45]" />
-                    <h2 className="text-base font-bold text-[#3D3D3D]">And if you do nothing</h2>
-                  </motion.div>
-                  <motion.p variants={rise} className="text-xs text-[#5A5A5A] mb-3">
-                    {firstName.trim() ? (
-                      <>
-                        <span className="font-bold">{firstName.trim()}</span>, menopause
-                      </>
-                    ) : (
-                      "Menopause"
-                    )}{" "}
-                    symptoms last 4&ndash;7 years on average. That&apos;s a long time to just
-                    wait it out.
-                  </motion.p>
-                  {/* Not a `rise` child: the chart runs its own draw off its
-                      own `whileInView`, so it starts when *it* is on screen
-                      rather than when the card's headline is. Two beats that
-                      happen to overlap read better than a chart that finished
-                      drawing above the fold. */}
-                  <TrajectoryChart score={score} reduced={!!prefersReducedMotion} />
-                </motion.div>
-              );
-            })()}
+            {/* ── Block 4, "And if you do nothing", moved into the deck at the
+                top of this screen on 2026-09-21 (third card). It sat here as a
+                full-width card that a 9s median dwell never scrolled to. ──── */}
 
             {/* ── Block 5: What she gets alongside the plan. Deliberately after
                 the plan and deliberately small - these are the tools she runs
@@ -6502,7 +6448,7 @@ function RegisterPageContent() {
                     left: a hero on top would take a third of every tile on
                     the screen that has to earn the first tap. Measured at
                     390x700 the strip is ~140px against the mockup's 88, and
-                    the nine tiles still fit with no scroll (see the note on
+                    the tiles still fit with no scroll (see the note on
                     the grid below). */}
                 <EntranceProof>
                   <h1 className="text-lg sm:text-xl font-bold leading-tight text-[#3D3D3D]">
@@ -6519,12 +6465,12 @@ function RegisterPageContent() {
                     )}
                   </h1>
                 </EntranceProof>
-                {/* The two costs she is weighing, on one line under the row
-                    so the print keeps the height for the quote. Both stay
-                    checkable: thirteen one-tap questions, and no address
-                    collected before Stripe. */}
+                {/* Who it is for and the one cost she is weighing, on one
+                    line under the row so the print keeps the height for the
+                    quote. Both stay checkable: the plan is built for
+                    menopause, and no address is collected before Stripe. */}
                 <p className="mt-1.5 text-xs leading-snug text-[#5A5A5A]">
-                  Free 2-minute menopause quiz &middot; No email needed
+                  For women in menopause &middot; No email needed
                 </p>
               </div>
             ) : (
@@ -6575,7 +6521,16 @@ function RegisterPageContent() {
 
           {/* Question Content - Scrollable area */}
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden mb-1">
-            <div className="rounded-xl sm:rounded-2xl border border-foreground/10 bg-card backdrop-blur-sm p-2.5 mx-0 my-1 sm:p-3 sm:mx-1 space-y-1.5 sm:space-y-2 flex-1 min-h-0 shadow-lg shadow-primary/5 overflow-hidden flex flex-col">
+            <div
+              className={cn(
+                "rounded-xl sm:rounded-2xl border border-foreground/10 bg-card backdrop-blur-sm p-2.5 mx-0 my-1 sm:p-3 sm:mx-1 space-y-1.5 sm:space-y-2 min-h-0 shadow-lg shadow-primary/5 overflow-hidden flex flex-col",
+                // `flex-initial` (grow 0, shrink 1): the card takes its
+                // content's height and still shrinks - with `min-h-0` kept -
+                // so the list inside scrolls on a viewport too short for it.
+                // See TONE_LIST_STEPS.
+                cardHugsContent ? "flex-initial" : "flex-1"
+              )}
+            >
               {/* Quiz step illustration (from public/quiz/, same as mobile assets/quiz/) */}
               {QUIZ_ILLUSTRATION[currentStep] && (
                 <div className="shrink-0 flex justify-center mb-2 sm:mb-3">
@@ -6930,54 +6885,78 @@ function RegisterPageContent() {
               {currentStep === "q_symptom_primary" && (
                 <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
+                    {/* Direct response, one instruction (2026-09-21, owner's
+                        call): the h2 is the verb and the action, the sub-line
+                        is what the tap buys. It was a question ("Which symptom
+                        is hitting you hardest?") over a permission line ("Pick
+                        the one you'd most like to fix first") — two sentences
+                        for one tap, and the question asked for a ranking she
+                        does not have (median 9.0s here against 4.6s on the
+                        age grid). "You'd fix first" is a preference, answered
+                        instantly. "Your plan starts with that one" is
+                        checkable: `top_problems[0]` is what the results pain
+                        line, the first reward board and the plan's first move
+                        are built from. Nothing here promises an outcome. */}
                     <h2 className="text-lg sm:text-xl font-bold mb-0.5">
-                      Which symptom is hitting you hardest?
+                      Tap the symptom you&apos;d fix first.
                     </h2>
-                    {/* The sub-line's job is to make the tap cheap, and "Just
-                        tap it" did not do it: it repeated the instruction the
-                        h2 had already given and answered nothing she was
-                        hesitating over. What she hesitates over is measurable —
-                        median 9.0s on this screen against 4.6s on the
-                        identically-shaped four-tile age grid, so she is not
-                        tapping, she is *ranking*, and a woman with five of these
-                        nine cannot rank them. "Hitting you hardest" asks for a
-                        measurement she does not have; "the one you'd most like to fix first"
-                        asks for a preference she answers instantly, and it lands
-                        on the same tile. The h2 keeps the harder wording because
-                        naming the pain is its job; the permission to stop
-                        ranking goes here. */}
                     <p className="text-sm text-muted-foreground">
-                      Pick the one you&apos;d most like to fix first.
+                      Your plan starts with that one.
                     </p>
                   </div>
-                  {/* Nine tiles, three by three, sized to the card rather than to
-                      their width. Until 2026-09-08 the tile was width-driven
+                  {/* Four tiles, two by two (nine, three by three, until
+                      2026-09-21), sized to the card rather than to their
+                      width. Until 2026-09-08 the tile was width-driven
                       (a third of the row, 4:3 image, 40px footer), which on a
                       375x667 phone left the bottom third of the card empty on
                       the screen that takes 100% of paid traffic, and on taller
                       phones left half of it. The grid now takes the whole
-                      remaining height of the card - `grid-rows-3` is
+                      remaining height of the card - `grid-rows-2` is
                       `minmax(0, 1fr)` per row, the tile is `min-h-0` so a row
                       can shrink, and the image is `flex-1` so it absorbs
-                      whatever the footer does not need. Nothing scrolls: nine
+                      whatever the footer does not need. Nothing scrolls: the
                       tiles fit by construction, whatever the viewport.
 
                       Two caps keep "fill the height" from becoming absurd. The
                       wrapper is a size container, so the grid can measure
-                      itself against it: `max-h-[190cqw]` lets a phone fill
-                      the card (a 390x844 needs ~1.9x the width) but stops a
-                      freak tall-narrow viewport stretching a tile past ~1.85:1,
-                      and `max-w-[100cqh]` stops a wide desktop card turning a
-                      square illustration into a letterbox.
+                      itself against it: `max-h-[150cqw]` stops a tall-narrow
+                      viewport stretching a tile past 1.5:1 (the illustrations
+                      are square and `object-contain`, so past that the extra
+                      height is cream around the drawing), and the width cap
+                      stops a wide desktop card turning a square illustration
+                      into a letterbox.
                       `my-auto`/`mx-auto` centre the grid when a cap bites.
                       `overflow-y-auto` remains only as the net for a viewport
-                      shorter than the grid's `min-h-[17.5rem]` (three 5.5rem
-                      rows plus gaps) - a landscape phone - where scrolling
+                      shorter than the grid's `min-h-[14.5rem]` (two 7rem
+                      rows plus the gap) - a landscape phone - where scrolling
                       beats an unreadable tile. The floor is on the grid, not
                       the tile: a grid track never grows for an item's
-                      min-height, the item just overflows it. */}
+                      min-height, the item just overflows it.
+
+                      The width cap is `max(100cqh, 14.5rem)`, never `100cqh`
+                      alone (2026-09-21). `cqh` is the *container's* height,
+                      and on a short viewport the container is shorter than
+                      the grid's own floor - a desktop browser zoomed to
+                      150-175% (common at 45-60) measures ~1100x430 CSS px,
+                      leaving the container ~170px tall. A bare `100cqh` then
+                      capped the grid at 170px wide while the floor held it
+                      taller: tiles with every label cut off, seen in a
+                      Clarity replay. Tying the cap to the same floor keeps
+                      the tiles square whenever the grid scrolls.
+
+                      From `sm:` the floor rises to 18rem and the cap to
+                      `max(150cqh, 27rem)`: with four tiles the phone cap
+                      gave that same zoomed desktop four 112px squares with
+                      "Weight changes" on two lines. A 2x2 tile can be wider
+                      than tall (the illustration is `object-contain` and
+                      only gains cream at the sides), so on a wide short
+                      viewport the grid is now ~432x288 - tiles 212x144, one
+                      line per label, scrolling ~120px inside the card
+                      rather than shrinking. On a normal desktop the
+                      container is tall enough that `h-full` and `w-full`
+                      decide, and the tiles stay near square. */}
                   <div className="flex-1 min-h-0 flex flex-col overflow-y-auto overscroll-contain [container-type:size] [scrollbar-width:thin]">
-                    <div className="grid grid-cols-3 grid-rows-3 gap-2 w-full h-full min-h-[17.5rem] max-h-[190cqw] max-w-[100cqh] my-auto mx-auto shrink-0">
+                    <div className="grid grid-cols-2 grid-rows-2 gap-2 w-full h-full min-h-[14.5rem] sm:min-h-[18rem] max-h-[150cqw] max-w-[max(100cqh,14.5rem)] sm:max-w-[max(150cqh,27rem)] my-auto mx-auto shrink-0">
                       {PROBLEM_OPTIONS.map((option) => {
                         // Her *primary* is the first key, not any selected key:
                         // coming back with Back onto a screen where three tiles
@@ -7001,14 +6980,14 @@ function RegisterPageContent() {
                                 fill
                                 sizes={PRIMARY_TILE_SIZES}
                                 // This is the funnel's landing screen, so these
-                                // nine tiles are the LCP. Without `priority`
+                                // four tiles are the LCP. Without `priority`
                                 // next/image ships them `loading="lazy"` —
                                 // verified on the live HTML — and the ad's first
                                 // paint is a grid of labels over empty boxes on a
                                 // phone.
                                 priority
                                 // `priority` only *preloads* in Next 16 — it
-                                // no longer sets `fetchpriority`, so the nine
+                                // no longer sets `fetchpriority`, so the
                                 // tiles were requested at Chrome's default
                                 // "Low" for images, behind ~330KB of async JS
                                 // on the same pipe. Verified on the live HTML
@@ -7030,16 +7009,15 @@ function RegisterPageContent() {
                                 // thread to come back.
                                 decoding="sync"
                                 /*
-                                 * These nine are the largest thing on the LCP
+                                 * These tiles are the largest thing on the LCP
                                  * path now that the page is static HTML, so
                                  * their bytes are the load time.
                                  *
                                  * Measured on joint_pain (the heaviest tile) at
-                                 * the width a phone actually requests: AVIF
-                                 * 11,985 B at q75 against 7,806 B at q60 — 35%
-                                 * off the biggest item on the path, for nine
-                                 * tiles. Rendered side by side at 384px (they
-                                 * paint at ~156 CSS px, under half that) the two
+                                 * the width a phone requested on the 3x3 grid:
+                                 * AVIF 11,985 B at q75 against 7,806 B at q60 —
+                                 * 35% off the biggest item on the path. Rendered
+                                 * side by side at 384px the two
                                  * are indistinguishable: these are flat,
                                  * soft-gradient illustrations with no fine
                                  * detail or text, which is the content type
@@ -7080,19 +7058,28 @@ function RegisterPageContent() {
                 </div>
               )}
 
-              {/* Severity - its own screen, straight after the tiles. One overall
-                  rating of the whole load; asking her to rate nine symptoms
-                  separately is the version of this question nobody finishes. */}
-              {currentStep === "q_symptom_impact" && (
+              {/* Severity - one rating of the one symptom she tapped on screen
+                  1, named back to her. It asked "how much are your symptoms
+                  costing you?" until 2026-09-21 - plural and abstract, three
+                  screens after she tapped exactly one thing. The sub-line is
+                  checkable: this answer times her symptom's weight is the
+                  burden term of her score (SYMPTOM_LOAD), and the results pain
+                  line keys off it. The plan generator does not read it, so the
+                  old "it shapes the plan we build" is gone. */}
+              {currentStep === "q_symptom_impact" && (() => {
+                const label = SYMPTOM_LABELS[topProblems[0]];
+                const noun = label ? label.toLowerCase() : "your symptoms";
+                const verb = !label || PLURAL_SYMPTOM_LABELS.has(label) ? "get" : "gets";
+                return (
                 <div className="flex-1 flex flex-col min-h-0 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="shrink-0">
                     <h2 className="text-lg sm:text-xl font-bold mb-0.5">
-                      Overall, how much are{" "}
-                      <span className="text-primary">your symptoms</span>{" "}
-                      costing you?
+                      Tap how much{" "}
+                      <span className="text-primary">{noun}</span>{" "}
+                      {verb} in your way.
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                      No wrong answer — it shapes the plan we build for you
+                      Your score is built from this answer.
                     </p>
                   </div>
                   <ToneChoiceList
@@ -7102,7 +7089,8 @@ function RegisterPageContent() {
                     onSelect={(id) => selectAndAdvance(() => setSymptomImpact(id))}
                   />
                 </div>
-              )}
+                );
+              })()}
 
               {/* Reward 1: her worst symptom named, explained, and one free
                   thing she can do about it tonight.

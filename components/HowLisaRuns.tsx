@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PLAN_WEEKS } from "@/lib/pricing";
 
@@ -20,6 +21,12 @@ import { PLAN_WEEKS } from "@/lib/pricing";
  * ~1500px into a page she is reading on a phone, so the beat she happened to
  * scroll into was the one she read. It is four static rows now. Nothing here
  * needs to be watched to be understood.
+ *
+ * **Drawn as a note pinned to the board (2026-09-21).** Same paper, rules and
+ * tape as <PlanFinishBoard /> on the paywall - warm white, faintly ruled, two
+ * strips of yellow tape - so the two surfaces read as one person's pinboard.
+ * Each row is a ticked line on the note rather than a bullet: the point of
+ * the block is that these are already done for her.
  *
  * **No store listings, before the purchase (removed 2026-09-12).** Two
  * captured App Store / Google Play listings sat under the rows, meant as proof
@@ -58,6 +65,13 @@ function buildSteps(topLabel: string): Step[] {
   ];
 }
 
+/** The tape strips <PlanFinishBoard /> uses, verbatim, so the two boards are
+ *  held down by the same roll. */
+const TAPE_STYLE = {
+  background: "rgba(255,235,118,0.55)",
+  boxShadow: "0 1px 2px rgba(61,61,61,0.12)",
+} as const;
+
 export function HowLisaRuns({
   topLabel,
   className,
@@ -71,20 +85,44 @@ export function HowLisaRuns({
   return (
     <div
       className={cn(
-        "rounded-2xl bg-card border-2 border-[#E8DDD9] p-4 shadow-md shadow-primary/5",
+        // pt-5: the tape overhangs the top edge, so the first line needs room
+        // under it.
+        "relative rounded-2xl border px-4 pt-5 pb-3 shadow-sm",
         className
       )}
+      style={{
+        borderColor: "#E8DDD9",
+        // Paper: warm white, faintly ruled at 24px - the same sheet as the
+        // finish board. `leading-6` on the rows below sits the text on the
+        // rules rather than across them.
+        backgroundColor: "#FFFDF8",
+        backgroundImage:
+          "repeating-linear-gradient(180deg, transparent 0 23px, rgba(61,61,61,0.045) 23px 24px)",
+      }}
     >
-      <ul className="flex flex-col gap-3">
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -top-1.5 left-5 h-4 w-11 -rotate-6 rounded-[2px]"
+        style={TAPE_STYLE}
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -top-1.5 right-5 h-4 w-11 rotate-6 rounded-[2px]"
+        style={TAPE_STYLE}
+      />
+
+      <ul className="flex flex-col gap-2">
         {steps.map((step) => (
           <li key={step.title} className="flex gap-2.5">
             <span
               aria-hidden
-              className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
-            />
+              className="mt-1 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-green-600/15"
+            >
+              <Check className="h-2.5 w-2.5 text-green-700" strokeWidth={3} />
+            </span>
             <div className="min-w-0">
-              <p className="text-xs font-bold text-[#3D3D3D] leading-tight">{step.title}</p>
-              <p className="text-[11px] text-[#5A5A5A] leading-snug mt-0.5">{step.body}</p>
+              <p className="text-xs font-bold text-[#3D3D3D] leading-6">{step.title}</p>
+              <p className="text-[11px] text-[#5A5A5A] leading-snug -mt-0.5">{step.body}</p>
             </div>
           </li>
         ))}

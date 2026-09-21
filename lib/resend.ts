@@ -11,14 +11,14 @@ export function getResend(): Resend {
   return resendClient;
 }
 
-const DEFAULT_FROM = "Merry | MenoLisa <onboarding@menolisa.com>";
+const DEFAULT_FROM = "Zoe | MenoLisa <onboarding@menolisa.com>";
 const APP_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://menolisa.com";
 
 /**
  * Shared HTML wrapper for all transactional and sequence emails.
  * Pass body-only HTML (no <html>/<body> tags); this wraps it in the
  * branded template: warm cream page, purple header with logo, wave arch,
- * white body, Merry signature, lavender footer.
+ * white body, Zoe signature, lavender footer.
  */
 export function buildEmailHtml(body: string): string {
   return `<!DOCTYPE html>
@@ -58,7 +58,7 @@ export function buildEmailHtml(body: string): string {
             <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:36px">
               <tr>
                 <td style="border-top:1px solid #ede9fe;padding-top:22px">
-                  <p style="margin:0 0 3px;font-weight:700;color:#7c3aed;font-size:15px">Merry</p>
+                  <p style="margin:0 0 3px;font-weight:700;color:#7c3aed;font-size:15px">Zoe</p>
                   <p style="margin:0;color:#a78bc4;font-size:13px">Came up with MenoLisa</p>
                 </td>
               </tr>
